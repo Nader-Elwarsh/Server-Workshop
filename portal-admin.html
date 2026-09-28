@@ -5,19 +5,31 @@
 <section class="panel"><h2>➕ اقتراحات إضافة (بتستنى موافقتك)</h2><div id="sg">…</div></section>
 <section class="panel"><h2>📣 شكاوى العملاء</h2><div id="cp">…</div></section>
 <section class="panel"><h2>🧾 أوامر شغل عن طريق العملاء</h2><p class="hint">الطلبات الجديدة بتتحول لأوامر تلقائيًا لما تفتح الرئيسية. من هنا تخصّص اللي يظهر للعميل في كل أمر.</p><div id="po">…</div></section>
+<section class="panel"><h2>📰 مقالات ونصايح للعملاء</h2><p class="hint">بتظهر للعميل في صفحة الترحيب وتبويب «نصايح». اكتب نص عادي (السطور بتتحفظ).</p>
+<div class="form-grid"><label>العنوان<input id="pt"></label><label>النوع<select id="pc"><option>نصيحة</option><option>مقال</option><option>عرض</option><option>تنبيه</option></select></label></div>
+<label>النص<textarea id="pb" rows="6"></textarea></label><label>صورة (اختياري)<input id="pi" type="file" accept="image/*"></label>
+<label><input type="checkbox" id="pp"> تثبيت في الأول</label> <label><input type="checkbox" id="pu" checked> منشور للعملاء</label>
+<button type="button" onclick="savePost()">💾 حفظ</button> <button type="button" class="secondary" onclick="clearPost()">جديد</button> <span id="pm" class="hint"></span><div id="pl"></div></section>
 <section class="panel"><h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2><div id="vis"></div><button type="button" onclick="saveVis()">حفظ</button> <span id="visMsg" class="hint"></span></section>
 </main>
 <script src="shared-data.js"></script>
 <script>
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-var KIND={village:"قرية",brand:"ماركة"},VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
-var SG=[],CP=[],db=null;
+var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"},VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
+var SG=[],CP=[],PT=[],db=null,editId="",editImg="";
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K){return setTimeout(ready,300)}db=firebase.firestore();
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});rSg()});
+db.collection("portalPosts").onSnapshot(function(s){PT=s.docs.map(function(d){return Object.assign({id:d.id},d.data())}).sort(function(a,b){return(b.createdAt&&b.createdAt.seconds||0)-(a.createdAt&&a.createdAt.seconds||0)});rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=s.docs.map(function(d){return Object.assign({id:d.id},d.data())}).filter(function(c){return c.status!=="مغلقة"});rCp()})});rPo();rVis()}
 function rSg(){document.getElementById("sg").innerHTML=SG.length?SG.map(function(g){return'<div class="card" style="padding:10px;margin:6px 0"><b>'+esc(KIND[g.kind]||g.kind)+': '+esc(g.value)+'</b>'+(g.parent?' <span class="hint">('+esc(g.parent)+')</span>':"")+'<div style="margin-top:6px"><button onclick="sgOk(\''+g.id+'\')">✅ موافقة</button> <button class="secondary" onclick="sgEdit(\''+g.id+'\')">✏️ تعديل وموافقة</button> <button class="secondary" onclick="sgNo(\''+g.id+'\')">❌ رفض</button></div></div>'}).join(""):'<p class="hint">مفيش اقتراحات جديدة.</p>'}
-function addOpt(g,v){var s=window.settings();if(g.kind==="village"){if(Array.isArray(s.villages)){if(s.villages.indexOf(v)<0)s.villages.push(v)}else{s.villages=s.villages||{};var a=s.villages[g.parent]=s.villages[g.parent]||[];if(a.indexOf(v)<0)a.push(v)}}else if(g.kind==="brand"){s.brands=s.brands||[];if(s.brands.indexOf(v)<0)s.brands.push(v)}localStorage.setItem(window.K.s,JSON.stringify(s))}
+function addOpt(g,v){var s=window.settings();function ec(c){s.centers=s.centers||[];if(c&&s.centers.indexOf(c)<0)s.centers.push(c)}
+if(g.kind==="center")ec(v);
+else if(g.kind==="village"){ec(g.parent);if(Array.isArray(s.villages)){if(s.villages.indexOf(v)<0)s.villages.push(v)}else{s.villages=s.villages||{};var a=s.villages[g.parent]=s.villages[g.parent]||[];if(a.indexOf(v)<0)a.push(v)}}
+else if(g.kind==="brand"){s.brands=s.brands||[];if(s.brands.indexOf(v)<0)s.brands.push(v)}
+else if(g.kind==="type"){s.types=s.types||{};if(!s.types[v])s.types[v]=[]}
+else if(g.kind==="category"){s.types=s.types||{};var c=s.types[g.parent]=s.types[g.parent]||[];if(c.indexOf(v)<0)c.push(v)}
+localStorage.setItem(window.K.s,JSON.stringify(s))}
 function sgFind(id){return SG.find(function(x){return x.id===id})}
 function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;addOpt(g,v);db.collection("portalSuggestions").doc(id).update({status:"approved",value:v})}
 function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإضافة:",g.value);if(v)sgOk(id,v)}
@@ -30,5 +42,16 @@ document.getElementById("po").innerHTML=rs.length?rs.map(function(r){var v=r.por
 function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
 function rVis(){var s=window.settings(),v=s.portalVis||{};document.getElementById("vis").innerHTML=VIS.map(function(x){return'<label style="display:block;margin:6px 0"><input type="checkbox" id="v_'+x[0]+'" '+(v[x[0]]===false?"":"checked")+'> '+x[1]+'</label>'}).join("")}
 function saveVis(){var s=window.settings();s.portalVis={};VIS.forEach(function(x){s.portalVis[x[0]]=document.getElementById("v_"+x[0]).checked});localStorage.setItem(window.K.s,JSON.stringify(s));document.getElementById("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
+function $(i){return document.getElementById(i)}
+function rPt(){$("pl").innerHTML=PT.map(function(p){return'<div class="card" style="padding:10px;margin:6px 0"><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span><div style="margin-top:6px"><button class="secondary" onclick="editPost(\''+p.id+'\')">✏️ تعديل</button> <button class="secondary" onclick="togPost(\''+p.id+'\','+(p.published?"false":"true")+')">'+(p.published?"إخفاء":"نشر")+'</button> <button class="secondary" onclick="delPost(\''+p.id+'\')">🗑️ حذف</button></div></div>'}).join("")}
+function clearPost(){editId="";editImg="";$("pt").value="";$("pb").value="";$("pi").value="";$("pp").checked=false;$("pu").checked=true;$("pc").value="نصيحة";$("pm").textContent=""}
+function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;editImg=p.image||"";$("pt").value=p.title;$("pb").value=p.body;$("pc").value=p.category||"نصيحة";$("pp").checked=!!p.pinned;$("pu").checked=!!p.published;$("pm").textContent="بتعدّل مقال — اضغط حفظ";scrollTo(0,$("pt").offsetTop-80)}
+function togPost(id,v){db.collection("portalPosts").doc(id).update({published:v})}
+function delPost(id){if(confirm("تحذف المقال نهائيًا؟"))db.collection("portalPosts").doc(id).delete()}
+function resize(f){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var m=1000,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);c.toBlob(res,"image/jpeg",.7)};im.onerror=rej;im.src=URL.createObjectURL(f)})}
+function upl(b){var fd=new FormData();fd.append("file",b);fd.append("upload_preset","workshop_unsigned");return fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(j){if(!j.secure_url)throw 0;return j.secure_url})}
+function savePost(){var t=$("pt").value.trim(),b=$("pb").value.trim();if(!t||!b){$("pm").textContent="اكتب العنوان والنص.";return}$("pm").textContent="جاري الحفظ…";var f=$("pi").files[0];
+(f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=firebase.firestore.FieldValue.serverTimestamp();return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
 ready();
 </script></body></html>
