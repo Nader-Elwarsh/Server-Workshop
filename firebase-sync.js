@@ -19,7 +19,7 @@
   function saveBase() { origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
 
   /* ---------- واجهة ---------- */
-  function cover(msg) { if (document.getElementById("wfCloudCover")) return; var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
+  function cover(msg) { var ex = document.getElementById("wfCloudCover"); if (ex) { ex.textContent = msg; return; } var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
   function uncover() { var c = document.getElementById("wfCloudCover"); if (c) c.remove(); }
   function banner() { if (document.getElementById("wfCloudBanner")) return; var b = document.createElement("div"); b.id = "wfCloudBanner"; b.style.cssText = "position:fixed;bottom:70px;left:12px;right:12px;z-index:9999;background:#0b57d0;color:#fff;padding:12px;border-radius:10px;text-align:center;direction:rtl;font:600 15px sans-serif;cursor:pointer"; b.textContent = "🔄 فيه تحديث من جهاز تاني — اضغط لإعادة التحميل"; b.onclick = function () { location.reload(); }; (document.body || document.documentElement).appendChild(b); }
   function badge() {
@@ -240,7 +240,11 @@
       cover("لازم تفتح الموقع أونلاين أول مرة على الجهاز ده"); return;
     }
     var STAFF = "wf_is_staff_uid";
-    var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) { if (d.exists) origSet.call(ls, STAFF, user.uid); return d.exists; }).catch(function () { return ls.getItem(STAFF) === user.uid; });
+    var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) {
+      if (d.exists) { origSet.call(ls, STAFF, user.uid); return true; }
+      // مفيش مستند موظف: نرفض بس لو الحساب ده عميل بوابة (وإلا نعتبره موظف قديم لحد ما القواعد الجديدة تتنشر)
+      return withTimeout(db.collection("customers").doc(user.uid).get()).then(function (c) { return !(c.exists && c.data().portal === true); }).catch(function () { return true; });
+    }).catch(function () { return true; });
     staffCheck.then(function (isStaff) {
       if (isStaff) return continueBoot();
       denied = true; cover("الحساب ده مش حساب موظف. لو أنت عميل ادخل من بوابة العملاء."); var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; document.getElementById("wfCloudCover").appendChild(a); firebase.auth().signOut();
