@@ -239,6 +239,7 @@
       if (hydrated) { ready = true; uncover(); badge(); return; }
       cover("لازم تفتح الموقع أونلاين أول مرة على الجهاز ده"); return;
     }
+    if (hydrated) uncover();
     var STAFF = "wf_is_staff_uid";
     var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) {
       if (d.exists) { origSet.call(ls, STAFF, user.uid); return true; }
@@ -255,7 +256,7 @@
       if (!needFull && !Object.keys(timers).length) return goReady(false);
       return hydrateFull().then(function (r) {
         if (r && r.cloudEmpty && !hydrated) { /* سحابة فاضية: هيترفع اللي على الجهاز */ }
-        var reloadKey = "wf_hyd_reload"; var doReload = r && r.changed && !sessionStorage.getItem(reloadKey);
+        var reloadKey = "wf_hyd_reload"; var doReload = !hydrated && r && r.changed && !sessionStorage.getItem(reloadKey); if (hydrated && r && r.changed) banner();
         if (doReload) sessionStorage.setItem(reloadKey, "1"); else sessionStorage.removeItem(reloadKey);
         goReady(doReload);
       });
@@ -286,7 +287,7 @@
   document.addEventListener("DOMContentLoaded", badge);
 
   firebase.initializeApp(CFG);
-  if (!isLogin) cover("جاري تحميل بيانات الورشة…");
+  if (!isLogin && !ls.getItem(HYD)) cover("جاري تحميل بيانات الورشة…"); // أول مرة بس
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
     if (!u) { if (denied) return; if (navigator.onLine === false && ls.getItem(HYD)) { ready = false; uncover(); return; } location.replace("login.html"); return; }

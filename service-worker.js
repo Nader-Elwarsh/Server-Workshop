@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-141-portal";
+const CACHE_NAME = "workshop-v11-142-portal";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const CORE_FILES = [
@@ -84,7 +84,8 @@ const CORE_FILES = [
 self.addEventListener("install", event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_FILES))
+      // كل ملف لوحده: لو ملف واحد ناقص على الاستضافة ما يبوّظش تثبيت باقي الصفحات للأوفلاين
+      .then(cache => Promise.all(CORE_FILES.map(f => cache.add(f).catch(e => console.warn("[SW] precache skip", f, e)))))
       .then(() => self.skipWaiting())
   );
 });
@@ -151,7 +152,7 @@ self.addEventListener("fetch", event => {
     const cacheKey = new Request(url.origin + url.pathname, { method: "GET" });
     event.respondWith(
       caches.open(CACHE_NAME).then(cache =>
-        cache.match(cacheKey).then(cached => {
+        cache.match(cacheKey).then(hit => hit || cache.match(request, { ignoreSearch: true })).then(cached => {
           const networkUpdate = fetch(request)
             .then(response => {
               if (response && response.ok) cache.put(cacheKey, response.clone());
