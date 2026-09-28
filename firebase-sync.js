@@ -33,7 +33,8 @@
   /* ---------- أدوات ---------- */
   function h(s) { var x = 5381, i = s.length; while (i) x = ((x << 5) + x + s.charCodeAt(--i)) | 0; return (x >>> 0).toString(36) + s.length.toString(36); }
   function clean(v) { if (v && typeof v.toDate === "function") return v.toDate().toISOString(); if (Array.isArray(v)) return v.map(clean); if (v && typeof v === "object") { var o = {}; Object.keys(v).forEach(function (k) { o[k] = clean(v[k]); }); return o; } return v; }
-  function stable(v) { if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
+  var ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?$/;
+  function stable(v) { if (typeof v === "string" && ISO.test(v)) { var t = Date.parse(v); if (!isNaN(t)) return JSON.stringify("~" + t); } if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
   function hr(r) { var o = Object.assign({}, r); delete o.id; return h(stable(o)); }
   function fromDoc(d) { var o = clean(d.data()); o.id = d.id; return o; }
   function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; ["createdAt", "updatedAt"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
@@ -63,15 +64,19 @@
       Object.keys(B).forEach(function (id) { if (!seen[id]) { dels++; ops.push(function (bt) { bt.delete(col.doc(id)); }); } });
       var total = Object.keys(B).length;
       if (dels > 20 && dels > total / 2) { // حماية من المسح الجماعي
-        if (!interactive || !window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
+        if (!interactive) return Promise.resolve(done(false)); // هنسأل لما تضغط «مزامنة الآن»
+        if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
       if (!ops.length) { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
       return commitOps(ops).then(function () { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { if (k === "wf_r" || k === "wf_c" || k === "wf_d") projectOrders(); return done(true); }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false); });
     }
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));
+      if (SB.x[k] === h(snapshotRaw)) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
       return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
     }
+    var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
+    if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
     var id = "wfkv_" + k, old = SB.x["n_" + k] || 0, parts = [], n;
     if (snapshotRaw !== null) for (var i = 0; i < snapshotRaw.length; i += CHUNK) parts.push(snapshotRaw.slice(i, i + CHUNK));
     n = parts.length;
@@ -159,6 +164,31 @@
     }).catch(function (e) { console.warn("portal convert", e && e.message); }).then(function () { converting = false; });
   }
 
+  function isDirty(k) {
+    var rawv = ls.getItem(k);
+    if (COLS[k]) { var arr = local(k) || [], B = SB.c[k] || {}, ids = {}; for (var i = 0; i < arr.length; i++) { var r = arr[i]; if (!r || !r.id) continue; ids[r.id] = 1; if (B[r.id] !== hr(r)) return true; } return Object.keys(B).some(function (id) { return !ids[id]; }); }
+    if (k === SETTINGS) return rawv !== null && h(rawv) !== SB.x[k];
+    return rawv === null ? (SB.x[k] !== undefined && SB.x[k] !== null) : h(rawv) !== SB.x[k];
+  }
+  // رفع نسخة الجهاز للسحابة واعتبارها الأصل (بيستبدل اللي في السحابة): بيتنادى تلقائيًا بعد استرجاع نسخة احتياطية
+  window.wfCloudForceUpload = function (skipConfirm) {
+    if (!online()) return Promise.reject(new Error("offline"));
+    if (!skipConfirm && !window.confirm("هيتم استبدال بيانات السحابة ببيانات الجهاز ده بالكامل (اللي مش موجود هنا هيتمسح من السحابة). متأكد؟")) return Promise.resolve(false);
+    var keys = Object.keys(COLS);
+    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }))).then(function (res) {
+      var ops = [], next = {};
+      keys.forEach(function (k, i) {
+        var col = db.collection(COLS[k]), arr = local(k) || [], seen = {}, nb = {};
+        arr.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; nb[r.id] = hr(r); ops.push(function (bt) { bt.set(col.doc(r.id), toDoc(r)); }); });
+        res[i].docs.forEach(function (d) { if (!seen[d.id]) ops.push(function (bt) { bt.delete(d.ref); }); });
+        next[k] = nb;
+      });
+      return commitOps(ops).then(function () { keys.forEach(function (k) { SB.c[k] = next[k]; }); saveBase(); });
+    }).then(function () {
+      var rest = EXTRA.concat([SETTINGS]); rest.forEach(function (k) { delete SB.x[k]; delete lastRaw[k]; });
+      return Promise.all(rest.map(function (k) { return push(k, false); }));
+    }).then(function () { origSet.call(ls, HYD, CURRENT_UID || ls.getItem(HYD) || ""); origSet.call(ls, FULL, String(Date.now())); return touchMeta(); }).then(function () { projectOrders(); badge(); return true; });
+  };
   function hydrateFull(force) {
     if (hydrating) return Promise.resolve(false); hydrating = true;
     var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
@@ -179,7 +209,7 @@
       var lr = ls.getItem(SETTINGS), lchanged = lr !== null && (first ? !g : h(lr) !== SB.x[SETTINGS]);
       if (g) { var lo = local(SETTINGS) || {}; var m = lchanged ? Object.assign({}, g, lo) : Object.assign({}, lo, g); if (stable(lo) !== stable(m)) { raw(SETTINGS, JSON.stringify(m)); changedAny = true; } if (!lchanged) SB.x[SETTINGS] = h(ls.getItem(SETTINGS)); }
       raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
-      lastRaw = {}; // بعد الدمج: ارفع أي فروق محلية
+      lastRaw = {}; ALL.forEach(function (k) { if (!isDirty(k)) lastRaw[k] = ls.getItem(k); }); // ارفع بس اللي اتغيّر فعلًا
       return { changed: changedAny, cloudEmpty: cloudEmpty };
     }).then(function (r) { hydrating = false; return r; }, function (e) { hydrating = false; throw e; });
   }

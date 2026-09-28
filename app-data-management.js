@@ -199,6 +199,7 @@ async function restoreBackupFile(input){
       if(window.setSchemaVersion)window.setSchemaVersion(Math.min(backupSchema,window.CURRENT_SCHEMA_VERSION||backupSchema));
       if(data._meta?.exportedAt)localStorage.setItem("wf_last_backup_at",data._meta.exportedAt);
       localStorage.setItem(AUTO_BACKUP_HASH_KEY,await backupDataFingerprint(await snapshotAllData()));localStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));localStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));
+      if(window.wfCloudForceUpload){try{await window.wfCloudForceUpload(true)}catch(e){console.warn("[cloud] رفع النسخة المسترجعة تأجّل",e);alert("تم الاسترجاع على الجهاز، لكن رفعه للسحابة لسه ما تمش. افتح الإعدادات واضغط «رفع بيانات الجهاز للسحابة» وأنت أونلاين.")}}
       alert("✅ تم استرجاع النسخة الاحتياطية بنجاح. هيتم فتح الرئيسية الآن.");location.href="index.html";
     }catch(e){
       console.error("[backup] فشل الاسترجاع",e);
