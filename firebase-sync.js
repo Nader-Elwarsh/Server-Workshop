@@ -147,12 +147,13 @@
     if (SB.x.pc === x) return;
     db.collection("portal").doc("config").set(c).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
   }
-  var inboxN = { a: 0, b: 0, c: 0 };
-  function pill() {
-    var t = inboxN.a + inboxN.b + inboxN.c, el = document.getElementById("wfPortalPill");
-    if (!t) { if (el) el.remove(); return; }
-    if (!el) { if (!document.body) return; el = document.createElement("a"); el.id = "wfPortalPill"; el.href = "portal-admin.html"; el.style.cssText = "position:fixed;top:8px;left:8px;z-index:9997;background:#c62828;color:#fff;padding:5px 12px;border-radius:16px;font:700 13px sans-serif;text-decoration:none;direction:rtl"; document.body.appendChild(el); }
-    el.textContent = "🔔 " + t + " من بوابة العملاء";
+  var inboxN = { a: 0, b: 0, c: 0, q: 0 };
+  window.wfPortalInbox = inboxN;
+  function pill() { // مفيش شريط عايم: العدّاد بيظهر جوه كارت "بوابة العملاء" في الرئيسية بس
+    var t = inboxN.a + inboxN.b + inboxN.c + inboxN.q, old = document.getElementById("wfPortalPill");
+    if (old) old.remove();
+    window.wfPortalTotal = t;
+    try { document.dispatchEvent(new CustomEvent("wf-portal-inbox", { detail: { total: t, n: inboxN } })); } catch (e) {}
   }
   var inboxOn = false;
   function watchInbox() {
@@ -161,6 +162,7 @@
       db.collection("portalRequests").where("handled", "==", false).onSnapshot(function (s) { inboxN.a = s.size; pill(); convertPortal(); }, function () {});
       db.collection("portalComplaints").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.b = s.size; pill(); }, function () {});
       db.collection("portalSuggestions").where("status", "==", "pending").onSnapshot(function (s) { inboxN.c = s.size; pill(); }, function () {});
+      db.collection("portalQuestions").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.q = s.size; pill(); }, function () {});
     } catch (e) {}
   }
   window.wfChangePassword = function () { // تغيير كلمة سر الموظف/المدير

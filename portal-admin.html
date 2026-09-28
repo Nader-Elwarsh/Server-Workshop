@@ -1,28 +1,189 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script><script src="firebase-sync.js"></script><script src="theme.js" defer></script><meta name="viewport" content="width=device-width,initial-scale=1"><title>إدارة بوابة العملاء</title><link rel="stylesheet" href="style.css"></head>
-<body><script src="app-lock.js"></script><main class="page">
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script>
+<script src="firebase-sync.js"></script>
+<script src="theme.js" defer></script>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>بوابة العملاء | الورشة الفنية</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.pa-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}
+@media(min-width:700px){.pa-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.pa-stat{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;cursor:pointer;font:inherit;color:inherit}
+.pa-stat b{display:block;font-size:22px;line-height:1.2}
+.pa-stat small{color:var(--text-muted);font-size:12px}
+.pa-stat.hot{border-color:#c62828}.pa-stat.hot b{color:#c62828}
+.pa-tabs{display:flex;gap:6px;overflow-x:auto;padding:6px 0;position:sticky;top:0;background:var(--bg);z-index:3}
+.pa-tabs button{white-space:nowrap;flex:0 0 auto;font-size:13px;padding:8px 12px}
+.pa-tabs button.off{background:transparent;color:inherit;border:1px solid var(--border)}
+.pa-tabs em{background:#c62828;color:#fff;border-radius:10px;padding:0 7px;font-size:11px;font-style:normal;margin-inline-start:4px}
+.pa-item{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:10px;margin:8px 0}
+.pa-row{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.pa-tag{display:inline-block;padding:1px 9px;border-radius:10px;background:var(--bg-sunken);font-size:12px;font-weight:700}
+.pa-tag.new{background:#c62828;color:#fff}.pa-tag.ok{background:#1a7f37;color:#fff}
+.pa-item textarea,.pa-item input[type=text]{width:100%;margin:4px 0}
+.pa-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pa-bar{height:8px;border-radius:5px;background:var(--bg-sunken);overflow:hidden}.pa-bar i{display:block;height:100%;background:#0b57d0}
+.pa-sec{display:none}.pa-sec.on{display:block}
+</style>
+</head>
+<body>
+<script src="app-lock.js"></script>
+<main class="page">
 <div class="page-topbar"><a class="back" href="index.html">← الرئيسية</a></div>
-<div class="page-head"><div><h1>🌐 إدارة بوابة العملاء</h1><p class="hint">اقتراحات الإضافة والشكاوى وأوامر العملاء، وتحكم في اللي العميل يشوفه.</p></div></div>
-<section class="panel"><h2>➕ اقتراحات إضافة (بتستنى موافقتك)</h2><div id="sg">…</div></section>
-<section class="panel"><h2>📣 شكاوى العملاء</h2><div id="cp">…</div></section>
-<section class="panel"><h2>🧾 أوامر شغل عن طريق العملاء</h2><p class="hint">الطلبات الجديدة بتتحول لأوامر تلقائيًا لما تفتح الرئيسية. من هنا تخصّص اللي يظهر للعميل في كل أمر.</p><div id="po">…</div></section>
-<section class="panel"><h2>📰 مقالات ونصايح للعملاء</h2><p class="hint">بتظهر للعميل في صفحة الترحيب وتبويب «نصايح». اكتب نص عادي (السطور بتتحفظ).</p>
-<div class="form-grid"><label>العنوان<input id="pt"></label><label>النوع<select id="pc"><option>نصيحة</option><option>مقال</option><option>عرض</option><option>تنبيه</option></select></label></div>
-<label>النص<textarea id="pb" rows="6"></textarea></label><label>صورة (اختياري)<input id="pi" type="file" accept="image/*"></label>
-<label><input type="checkbox" id="pp"> تثبيت في الأول</label> <label><input type="checkbox" id="pu" checked> منشور للعملاء</label>
-<button type="button" onclick="savePost()">💾 حفظ</button> <button type="button" class="secondary" onclick="clearPost()">جديد</button> <span id="pm" class="hint"></span><div id="pl"></div></section>
-<section class="panel"><h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2><div id="vis"></div><button type="button" onclick="saveVis()">حفظ</button> <span id="visMsg" class="hint"></span></section>
+<div class="page-head"><div>
+<h1>🌐 بوابة العملاء</h1>
+<p class="hint">كل اللي يخص بوابة العملاء في مكان واحد: العملاء المسجّلين، أوامرهم، أسئلتهم، شكاويهم، والمقالات.</p>
+</div></div>
+
+<div class="pa-stats" id="st"></div>
+<div class="pa-tabs" id="tabs"></div>
+
+<section class="pa-sec" id="t_ov"><div id="ovBox"></div></section>
+
+<section class="pa-sec" id="t_cl">
+<div class="panel">
+<h2>👥 العملاء المسجّلين من البوابة</h2>
+<input id="cs" type="search" placeholder="🔍 ابحث بالاسم أو التليفون أو القرية...">
+<div id="cl"></div>
+</div>
+</section>
+
+<section class="pa-sec" id="t_or">
+<div class="panel">
+<h2>📥 طلبات لسه ما اتحوّلتش لأوامر</h2>
+<p class="hint">بتتحوّل لأوامر شغل تلقائيًا لما تفتح الرئيسية والنت شغال.</p>
+<div id="rq"></div>
+</div>
+<div class="panel">
+<h2>🧾 أوامر عملاء البوابة</h2>
+<select id="of"><option value="all">كل الأوامر</option><option value="open">المفتوحة</option><option value="done">المكتملة</option><option value="portal">اللي اتطلبت من البوابة</option></select>
+<p class="hint">من هنا تخصّص اللي يظهر للعميل في كل أمر.</p>
+<div id="po"></div>
+</div>
+</section>
+
+<section class="pa-sec" id="t_q">
+<div class="panel">
+<h2>❓ أسئلة العملاء</h2>
+<p class="hint">ردّ على السؤال، ولو مفيد للكل انشره كمقال في «نصايح» (اسم العميل مابيتنشرش أبدًا، وتقدر تعدّل نص السؤال قبل النشر).</p>
+<select id="qf"><option value="new">في انتظار الرد</option><option value="answered">اتردّ عليها</option><option value="pub">المنشورة كمقال</option><option value="all">الكل</option></select>
+<div id="qs"></div>
+</div>
+</section>
+
+<section class="pa-sec" id="t_cp">
+<div class="panel"><h2>📣 شكاوى العملاء</h2><div id="cp">…</div></div>
+</section>
+
+<section class="pa-sec" id="t_sg">
+<div class="panel"><h2>➕ اقتراحات إضافة (بتستنى موافقتك)</h2><div id="sg">…</div></div>
+</section>
+
+<section class="pa-sec" id="t_ps">
+<div class="panel">
+<h2>📰 مقالات ونصايح للعملاء</h2>
+<p class="hint">بتظهر للعميل في صفحة الترحيب وتبويب «نصايح». اكتب نص عادي (السطور بتتحفظ).</p>
+<div class="form-grid">
+<label>العنوان<input id="pt"></label>
+<label>النوع<select id="pc"><option>نصيحة</option><option>مقال</option><option>سؤال وجواب</option><option>عرض</option><option>تنبيه</option></select></label>
+</div>
+<label>النص<textarea id="pb" rows="6"></textarea></label>
+<label>صورة (اختياري)<input id="pi" type="file" accept="image/*"></label>
+<label><input type="checkbox" id="pp"> تثبيت في الأول</label>
+<label><input type="checkbox" id="pu" checked> منشور للعملاء</label>
+<button type="button" data-act="savePost">💾 حفظ</button>
+<button type="button" class="secondary" data-act="clearPost">جديد</button>
+<span id="pm" class="hint"></span>
+<div id="pl"></div>
+</div>
+</section>
+
+<section class="pa-sec" id="t_vs">
+<div class="panel">
+<h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2>
+<div id="vis"></div>
+<button type="button" data-act="saveVis">حفظ</button> <span id="visMsg" class="hint"></span>
+</div>
+</section>
 </main>
 <script src="shared-data.js"></script>
 <script>
+var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
+var VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
+var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ps","📰 المقالات"],["vs","👁️ الظهور"]];
+var SG=[],CP=[],PT=[],QS=[],RQ=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
+function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"},VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
-var SG=[],CP=[],PT=[],db=null,editId="",editImg="";
-function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K){return setTimeout(ready,300)}db=firebase.firestore();
-firebase.auth().onAuthStateChanged(function(u){if(!u)return;
-db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});rSg()});
-db.collection("portalPosts").onSnapshot(function(s){PT=s.docs.map(function(d){return Object.assign({id:d.id},d.data())}).sort(function(a,b){return(b.createdAt&&b.createdAt.seconds||0)-(a.createdAt&&a.createdAt.seconds||0)});rPt()});
-db.collection("portalComplaints").onSnapshot(function(s){CP=s.docs.map(function(d){return Object.assign({id:d.id},d.data())}).filter(function(c){return c.status!=="مغلقة"});rCp()})});rPo();rVis()}
-function rSg(){document.getElementById("sg").innerHTML=SG.length?SG.map(function(g){return'<div class="card" style="padding:10px;margin:6px 0"><b>'+esc(KIND[g.kind]||g.kind)+': '+esc(g.value)+'</b>'+(g.parent?' <span class="hint">('+esc(g.parent)+')</span>':"")+'<div style="margin-top:6px"><button onclick="sgOk(\''+g.id+'\')">✅ موافقة</button> <button class="secondary" onclick="sgEdit(\''+g.id+'\')">✏️ تعديل وموافقة</button> <button class="secondary" onclick="sgNo(\''+g.id+'\')">❌ رفض</button></div></div>'}).join(""):'<p class="hint">مفيش اقتراحات جديدة.</p>'}
+function ms(v){if(!v)return 0;if(v.toDate)return v.toDate().getTime();if(typeof v.seconds==="number")return v.seconds*1000;return Date.parse(v)||0}
+function fdt(v){var t=ms(v);return t?new Date(t).toLocaleDateString("ar-EG",{day:"numeric",month:"short",year:"numeric"}):""}
+function money(n){return(+n||0).toLocaleString("ar-EG")}
+function byNew(a,b){return ms(b.createdAt)-ms(a.createdAt)}
+function docs(s){return s.docs.map(function(d){return Object.assign({id:d.id},d.data())})}
+/* ---- بيانات محلية (عملاء وأوامر البوابة) ---- */
+function custs(){return window.arr(window.K.c).filter(function(c){return c&&c.portal===true})}
+function ordsAll(){var ids={};custs().forEach(function(c){ids[c.id]=1});return window.arr(window.K.r).filter(function(r){return r&&(r.source==="portal"||ids[r.customerId])})}
+function isOpen(r){return r.status!=="مكتمل"&&r.status!=="ملغي"}
+function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id===id});return d?[d.type,d.brand,d.model].filter(Boolean).join(" "):""}
+/* ---- الأرقام والتبويبات ---- */
+function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
+rq:RQ.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
+function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis()}
+function rTabs(){var c=counts(),bd={or:c.rq,q:c.qn,cp:c.cp,sg:c.sg};
+$("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
+function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
+function rStats(){var c=counts(),rev=ordsAll().filter(function(r){return r.status==="مكتمل"}).reduce(function(a,r){return a+(+r.total||0)},0);
+$("st").innerHTML=box(c.cl,"عميل مسجّل","cl")+box(c.or,"أمر شغل ("+c.open+" مفتوح)","or")+box(c.rq,"طلب بانتظار التحويل","or",1)+box(c.qn,"سؤال جديد","q",1)+box(c.cp,"شكوى جديدة","cp",1)+box(c.sg,"اقتراح إضافة","sg",1)+box(c.pub,"مقال منشور","ps")+box(money(rev),"إيراد الأوامر المكتملة (ج)","or")}
+function rOv(){var cl=custs(),o=ordsAll(),st={},vl={},now=Date.now(),n30=0;
+o.forEach(function(r){st[r.status||"—"]=(st[r.status||"—"]||0)+1});
+cl.forEach(function(c){var a=c.mainAddress||{},k=[a.center,a.village].filter(Boolean).join(" - ")||"غير محدد";vl[k]=(vl[k]||0)+1;if(now-ms(c.createdAt)<30*864e5)n30++});
+function bars(m){var ks=Object.keys(m).sort(function(a,b){return m[b]-m[a]}).slice(0,6),mx=Math.max.apply(null,ks.map(function(k){return m[k]}).concat(1));
+return ks.length?ks.map(function(k){return'<div style="margin:6px 0"><div class="pa-row"><span>'+esc(k)+'</span><b>'+m[k]+'</b></div><div class="pa-bar"><i style="width:'+Math.round(m[k]/mx*100)+'%"></i></div></div>'}).join(""):'<p class="hint">لسه مفيش بيانات.</p>'}
+var last=cl.slice().sort(byNew).slice(0,5).map(function(c){return'<div class="pa-row" style="margin:5px 0"><a href="customer.html?id='+esc(c.id)+'">'+esc(c.name)+'</a><span class="hint">'+esc(fdt(c.createdAt))+'</span></div>'}).join("")||'<p class="hint">لسه مفيش عملاء مسجّلين.</p>';
+var portalOrders=o.filter(function(r){return r.source==="portal"}).length;
+$("ovBox").innerHTML='<div class="panel"><h2>📈 ملخص</h2><div class="pa-row"><span>عملاء مسجّلين آخر 30 يوم</span><b>'+n30+'</b></div><div class="pa-row"><span>أوامر اتطلبت من البوابة نفسها</span><b>'+portalOrders+'</b></div><div class="pa-row"><span>أسئلة إجمالي / منشورة كمقال</span><b>'+QS.length+' / '+QS.filter(function(q){return q.published}).length+'</b></div></div>'+
+'<div class="panel"><h2>🧾 الأوامر حسب الحالة</h2>'+bars(st)+'</div><div class="panel"><h2>📍 العملاء حسب المنطقة</h2>'+bars(vl)+'</div><div class="panel"><h2>🆕 آخر المسجّلين</h2>'+last+'</div>'}
+/* ---- العملاء ---- */
+function rCl(){var q=($("cs").value||"").trim(),ds=window.arr(window.K.d),os=ordsAll(),h="";
+var l=custs().filter(function(c){var a=c.mainAddress||{};return!q||[c.name,c.phone,a.center,a.village].join(" ").indexOf(q)>-1}).sort(byNew);
+h=l.map(function(c){var a=c.mainAddress||{},mo=os.filter(function(r){return r.customerId===c.id}),nd=ds.filter(function(d){return d.customerId===c.id}).length,tot=mo.filter(function(r){return r.status==="مكتمل"}).reduce(function(s,r){return s+(+r.total||0)},0);
+return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">سجّل '+esc(fdt(c.createdAt))+'</span></div><div class="hint">📞 <a href="tel:'+esc(c.phone)+'">'+esc(c.phone)+'</a> — 📍 '+esc([a.center,a.village,a.street].filter(Boolean).join(" - "))+'</div><div class="pa-row" style="margin-top:6px"><span>🔧 '+nd+' جهاز</span><span>🧾 '+mo.length+' أمر ('+mo.filter(isOpen).length+' مفتوح)</span><span>💰 '+money(tot)+' ج</span></div><div class="pa-actions"><a class="btn secondary" href="customer.html?id='+esc(c.id)+'">📂 ملف العميل 360°</a></div></div>'}).join("");
+$("cl").innerHTML=h||'<p class="hint">مفيش عملاء مطابقين.</p>'}
+/* ---- الأوامر ---- */
+function rRq(){$("rq").innerHTML=RQ.length?RQ.sort(byNew).map(function(r){var c=custs().find(function(x){return x.id===r.customerId})||{};return'<div class="pa-item"><b>'+esc(c.name||"عميل")+'</b> — <span class="hint">'+esc(devLabel(r.deviceId))+'</span><div>'+esc((r.fault||"").slice(0,120))+'</div><span class="hint">'+esc(fdt(r.createdAt))+'</span></div>'}).join(""):'<p class="hint">مفيش طلبات معلّقة.</p>'}
+function rPo(){var cs={};custs().forEach(function(c){cs[c.id]=c});var f=$("of").value,rs=ordsAll().filter(function(r){return f==="open"?isOpen(r):f==="done"?r.status==="مكتمل":f==="portal"?r.source==="portal":true}).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt))});
+$("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{};return'<div class="pa-item"><div class="pa-row"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a><span class="pa-tag">'+esc(r.status)+'</span></div><div>'+esc((cs[r.customerId]||{}).name||"")+(r.source==="portal"?' 🌐':'')+' — <span class="hint">'+esc(devLabel(r.deviceId))+'</span></div><div class="hint">'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="price" '+(v.price===false?"checked":"")+'> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="labor,parts,work" '+(v.work===false?"checked":"")+'> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">مفيش أوامر مطابقة.</p>'}
+function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
+/* ---- الأسئلة ---- */
+function dv(id,k,d){var x=DR[id];return x&&x[k]!==undefined?x[k]:d}
+function rQs(){var a=document.activeElement;if(a&&a.closest&&a.closest("#qs")&&/TEXTAREA|INPUT/.test(a.tagName)){qDefer=true;return}qDefer=false;
+var f=$("qf").value,l=QS.filter(function(q){return f==="new"?q.status==="جديد":f==="answered"?(q.status==="تم الرد"&&!q.published):f==="pub"?q.published:true}).sort(byNew),cs={};custs().forEach(function(c){cs[c.id]=c});
+$("qs").innerHTML=l.length?l.map(function(q){var id=esc(q.id),nm=(cs[q.customerId]||{}).name||q.customerName||"عميل",dl=q.deviceLabel||devLabel(q.deviceId),pubd=q.published;
+return'<div class="pa-item"><div class="pa-row"><b>'+esc(nm)+'</b><span><span class="pa-tag '+(q.status==="جديد"?"new":"ok")+'">'+esc(q.status)+'</span>'+(pubd?' <span class="pa-tag ok">📰 منشور</span>':'')+'</span></div>'+(dl?'<div class="hint">🔧 '+esc(dl)+'</div>':"")+'<div style="margin:6px 0">'+esc(q.text).replace(/\n/g,"<br>")+'</div><div class="hint">'+esc(fdt(q.createdAt))+'</div>'+
+'<label>ردّك للعميل<textarea rows="3" data-dr="'+id+'" data-f="a" placeholder="اكتب الرد...">'+esc(dv(q.id,"a",q.answer||""))+'</textarea></label>'+
+'<details style="margin-top:6px"><summary>📰 إعدادات النشر كمقال (اختياري)</summary><label>عنوان المقال<input type="text" data-dr="'+id+'" data-f="t" value="'+esc(dv(q.id,"t",q.postTitle||(q.text||"").slice(0,120)))+'"></label><label>نص السؤال كما هيتنشر (شيل أي بيانات شخصية)<textarea rows="3" data-dr="'+id+'" data-f="q">'+esc(dv(q.id,"q",q.text||""))+'</textarea></label></details>'+
+'<div class="pa-actions"><button type="button" data-act="qSave" data-id="'+id+'">💬 حفظ الرد</button><button type="button" class="secondary" data-act="qPub" data-id="'+id+'">'+(pubd?"🔄 تحديث المقال":"📰 رد + نشر كمقال")+'</button>'+(pubd?'<button type="button" class="secondary" data-act="qUnpub" data-id="'+id+'">🚫 إلغاء النشر</button>':"")+'<button type="button" class="secondary" data-act="qDel" data-id="'+id+'">🗑️ حذف</button></div></div>'}).join(""):'<p class="hint">مفيش أسئلة هنا.</p>'}
+function qGet(id){var q=QS.find(function(x){return x.id===id});return q}
+function qAns(id){var q=qGet(id);return String(dv(id,"a",q.answer||"")).trim()}
+function qSave(id){var a=qAns(id);if(!a)return alert("اكتب الرد الأول.");var q=qGet(id),u={answer:a.slice(0,2000),status:"تم الرد"};if(!q.answeredAt)u.answeredAt=SV;db.collection("portalQuestions").doc(id).update(u).then(function(){delete DR[id]}).catch(function(){alert("تعذّر الحفظ.")})}
+function qPub(id){var q=qGet(id),a=qAns(id),qt=String(dv(id,"q",q.text||"")).trim(),ti=String(dv(id,"t",q.postTitle||qt.slice(0,120))).trim();
+if(!a)return alert("اكتب الرد الأول.");if(!qt||!ti)return alert("اكتب عنوان ونص السؤال للنشر.");
+var pid=q.postId||db.collection("portalPosts").doc().id,post={title:ti.slice(0,150),category:"سؤال وجواب",body:("❓ السؤال:\n"+qt+"\n\n✅ الرد:\n"+a).slice(0,8000),image:"",published:true,updatedAt:SV},b=db.batch();
+if(q.postId)b.set(db.collection("portalPosts").doc(pid),post,{merge:true});else{post.pinned=false;post.createdAt=SV;b.set(db.collection("portalPosts").doc(pid),post)}
+var u={answer:a.slice(0,2000),status:"تم الرد",published:true,postId:pid,postTitle:ti.slice(0,150)};if(!q.answeredAt)u.answeredAt=SV;b.update(db.collection("portalQuestions").doc(id),u);
+b.commit().then(function(){delete DR[id]}).catch(function(){alert("تعذّر النشر.")})}
+function qUnpub(id){var q=qGet(id);if(!q.postId||!confirm("تخفي المقال من العملاء؟"))return;var b=db.batch();b.update(db.collection("portalPosts").doc(q.postId),{published:false});b.update(db.collection("portalQuestions").doc(id),{published:false});b.commit().catch(function(){alert("تعذّر الإخفاء.")})}
+function qDel(id){if(confirm("تحذف السؤال؟ (لو كان منشور كمقال، المقال هيفضل موجود — احذفه من تبويب المقالات)"))db.collection("portalQuestions").doc(id).delete().catch(function(){alert("تعذّر الحذف.")})}
+/* ---- الشكاوى ---- */
+function rCp(){$("cp").innerHTML=CP.filter(function(c){return c.status!=="مغلقة"}).length?CP.filter(function(c){return c.status!=="مغلقة"}).sort(byNew).map(function(c){return'<div class="pa-item"><div class="pa-row"><b>أمر #'+esc(c.orderNo)+'</b><span class="pa-tag '+(c.status==="جديد"?"new":"")+'">'+esc(c.status)+'</span></div><div>'+esc(c.text)+'</div>'+(c.reply?'<div class="hint">ردك: '+esc(c.reply)+'</div>':"")+'<div class="pa-actions"><button type="button" data-act="cpReply" data-id="'+esc(c.id)+'">💬 رد</button><button type="button" class="secondary" data-act="cpClose" data-id="'+esc(c.id)+'">إغلاق</button></div></div>'}).join(""):'<p class="hint">مفيش شكاوى مفتوحة.</p>'}
+function cpReply(id){var t=prompt("اكتب ردك للعميل:");if(t)db.collection("portalComplaints").doc(id).update({reply:t.slice(0,1000),status:"تم الرد"})}
+function cpClose(id){if(confirm("تقفل الشكوى؟"))db.collection("portalComplaints").doc(id).update({status:"مغلقة"})}
+/* ---- الاقتراحات ---- */
+function rSg(){$("sg").innerHTML=SG.length?SG.map(function(g){return'<div class="pa-item"><b>'+esc(KIND[g.kind]||g.kind)+': '+esc(g.value)+'</b>'+(g.parent?' <span class="hint">('+esc(g.parent)+')</span>':"")+'<div class="pa-actions"><button type="button" data-act="sgOk" data-id="'+esc(g.id)+'">✅ موافقة</button><button type="button" class="secondary" data-act="sgEdit" data-id="'+esc(g.id)+'">✏️ تعديل وموافقة</button><button type="button" class="secondary" data-act="sgNo" data-id="'+esc(g.id)+'">❌ رفض</button></div></div>'}).join(""):'<p class="hint">مفيش اقتراحات جديدة.</p>'}
 function addOpt(g,v){var s=window.settings();function ec(c){s.centers=s.centers||[];if(c&&s.centers.indexOf(c)<0)s.centers.push(c)}
 if(g.kind==="center")ec(v);
 else if(g.kind==="village"){ec(g.parent);if(Array.isArray(s.villages)){if(s.villages.indexOf(v)<0)s.villages.push(v)}else{s.villages=s.villages||{};var a=s.villages[g.parent]=s.villages[g.parent]||[];if(a.indexOf(v)<0)a.push(v)}}
@@ -34,16 +195,8 @@ function sgFind(id){return SG.find(function(x){return x.id===id})}
 function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;addOpt(g,v);db.collection("portalSuggestions").doc(id).update({status:"approved",value:v})}
 function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإضافة:",g.value);if(v)sgOk(id,v)}
 function sgNo(id){if(confirm("ترفض الاقتراح ده؟"))db.collection("portalSuggestions").doc(id).update({status:"rejected"})}
-function rCp(){document.getElementById("cp").innerHTML=CP.length?CP.sort(function(a,b){return(b.createdAt&&b.createdAt.seconds||0)-(a.createdAt&&a.createdAt.seconds||0)}).map(function(c){return'<div class="card" style="padding:10px;margin:6px 0"><b>أمر #'+esc(c.orderNo)+'</b> <span class="hint">['+esc(c.status)+']</span><div>'+esc(c.text)+'</div>'+(c.reply?'<div class="hint">ردك: '+esc(c.reply)+'</div>':"")+'<button onclick="cpReply(\''+c.id+'\')">💬 رد</button> <button class="secondary" onclick="cpClose(\''+c.id+'\')">إغلاق</button></div>'}).join(""):'<p class="hint">مفيش شكاوى مفتوحة.</p>'}
-function cpReply(id){var t=prompt("اكتب ردك للعميل:");if(t)db.collection("portalComplaints").doc(id).update({reply:t.slice(0,1000),status:"تم الرد"})}
-function cpClose(id){if(confirm("تقفل الشكوى؟"))db.collection("portalComplaints").doc(id).update({status:"مغلقة"})}
-function rPo(){var cs={};window.arr(window.K.c).forEach(function(c){cs[c.id]=c});var rs=window.arr(window.K.r).filter(function(r){return r.source==="portal"}).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt))});
-document.getElementById("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{};return'<div class="card" style="padding:10px;margin:6px 0"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a> — '+esc((cs[r.customerId]||{}).name||"")+' — <span class="hint">'+esc(r.status)+'</span><div>'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" '+(v.price===false?"checked":"")+' onchange="ov(\''+r.id+'\',[\'price\'],this.checked)"> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" '+(v.work===false?"checked":"")+' onchange="ov(\''+r.id+'\',[\'labor\',\'parts\',\'work\'],this.checked)"> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">لسه مفيش أوامر جاية من البوابة.</p>'}
-function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
-function rVis(){var s=window.settings(),v=s.portalVis||{};document.getElementById("vis").innerHTML=VIS.map(function(x){return'<label style="display:block;margin:6px 0"><input type="checkbox" id="v_'+x[0]+'" '+(v[x[0]]===false?"":"checked")+'> '+x[1]+'</label>'}).join("")}
-function saveVis(){var s=window.settings();s.portalVis={};VIS.forEach(function(x){s.portalVis[x[0]]=document.getElementById("v_"+x[0]).checked});localStorage.setItem(window.K.s,JSON.stringify(s));document.getElementById("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
-function $(i){return document.getElementById(i)}
-function rPt(){$("pl").innerHTML=PT.map(function(p){return'<div class="card" style="padding:10px;margin:6px 0"><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span><div style="margin-top:6px"><button class="secondary" onclick="editPost(\''+p.id+'\')">✏️ تعديل</button> <button class="secondary" onclick="togPost(\''+p.id+'\','+(p.published?"false":"true")+')">'+(p.published?"إخفاء":"نشر")+'</button> <button class="secondary" onclick="delPost(\''+p.id+'\')">🗑️ حذف</button></div></div>'}).join("")}
+/* ---- المقالات ---- */
+function rPt(){$("pl").innerHTML=PT.map(function(p){return'<div class="pa-item"><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span><div class="pa-actions"><button type="button" class="secondary" data-act="editPost" data-id="'+esc(p.id)+'">✏️ تعديل</button><button type="button" class="secondary" data-act="togPost" data-id="'+esc(p.id)+'" data-v="'+(p.published?"0":"1")+'">'+(p.published?"إخفاء":"نشر")+'</button><button type="button" class="secondary" data-act="delPost" data-id="'+esc(p.id)+'">🗑️ حذف</button></div></div>'}).join("")}
 function clearPost(){editId="";editImg="";$("pt").value="";$("pb").value="";$("pi").value="";$("pp").checked=false;$("pu").checked=true;$("pc").value="نصيحة";$("pm").textContent=""}
 function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;editImg=p.image||"";$("pt").value=p.title;$("pb").value=p.body;$("pc").value=p.category||"نصيحة";$("pp").checked=!!p.pinned;$("pu").checked=!!p.published;$("pm").textContent="بتعدّل مقال — اضغط حفظ";scrollTo(0,$("pt").offsetTop-80)}
 function togPost(id,v){db.collection("portalPosts").doc(id).update({published:v})}
@@ -51,7 +204,28 @@ function delPost(id){if(confirm("تحذف المقال نهائيًا؟"))db.col
 function resize(f){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var m=1000,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);c.toBlob(res,"image/jpeg",.7)};im.onerror=rej;im.src=URL.createObjectURL(f)})}
 function upl(b){var fd=new FormData();fd.append("file",b);fd.append("upload_preset","workshop_unsigned");return fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(j){if(!j.secure_url)throw 0;return j.secure_url})}
 function savePost(){var t=$("pt").value.trim(),b=$("pb").value.trim();if(!t||!b){$("pm").textContent="اكتب العنوان والنص.";return}$("pm").textContent="جاري الحفظ…";var f=$("pi").files[0];
-(f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
-if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=firebase.firestore.FieldValue.serverTimestamp();return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
+(f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:SV};
+if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=SV;return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
+/* ---- الظهور ---- */
+function rVis(){var s=window.settings(),v=s.portalVis||{};$("vis").innerHTML=VIS.map(function(x){return'<label style="display:block;margin:6px 0"><input type="checkbox" id="v_'+x[0]+'" '+(v[x[0]]===false?"":"checked")+'> '+x[1]+'</label>'}).join("")}
+function saveVis(){var s=window.settings();s.portalVis={};VIS.forEach(function(x){s.portalVis[x[0]]=$("v_"+x[0]).checked});localStorage.setItem(window.K.s,JSON.stringify(s));$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
+/* ---- ربط الأحداث ---- */
+var ACT={tab:function(b){go(b.dataset.k)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis};
+document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
+document.addEventListener("change",function(e){var t=e.target;if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
+document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
+document.addEventListener("focusout",function(){if(qDefer)setTimeout(rQs,150)});
+$("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("qf").addEventListener("change",rQs);
+function rAll(){rTabs();rStats();rOv();rCl();rRq();rPo();rQs();rCp();rSg();rPt()}
+function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"){return setTimeout(ready,300)}db=firebase.firestore();SV=firebase.firestore.FieldValue.serverTimestamp();
+go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
+firebase.auth().onAuthStateChanged(function(u){if(!u)return;
+db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
+db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).sort(byNew);rTabs();rStats();rOv();rPt()});
+db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});
+db.collection("portalQuestions").onSnapshot(function(s){QS=docs(s);rTabs();rStats();rOv();rQs()});
+db.collection("portalRequests").where("handled","==",false).onSnapshot(function(s){RQ=docs(s);rTabs();rStats();rRq()})})}
 ready();
-</script></body></html>
+</script>
+</body>
+</html>
