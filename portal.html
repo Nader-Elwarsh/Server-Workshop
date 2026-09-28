@@ -1,0 +1,73 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#001b4d"><title>بوابة العملاء | الورشة الفنية</title>
+<style>
+:root{--bg:#f4f6fb;--card:#fff;--tx:#14213d;--mut:#667085;--pri:#0b57d0;--bd:#dde3ee;--ok:#1a7f37;--err:#c62828}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#1b1f27;--tx:#e9edf2;--mut:#9aa5b1;--pri:#5fb0ff;--bd:#2c3340;--ok:#4ade80;--err:#ff6b6b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,Tahoma,Arial,sans-serif}
+header{background:#001b4d;color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}header b{font-size:18px}
+main{max-width:640px;margin:auto;padding:12px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin:10px 0}
+label{font-size:14px;font-weight:600}input,select,textarea{width:100%;padding:11px;margin:4px 0 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font-family:inherit;font-size:16px}
+button{background:var(--pri);color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer}button.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+nav{display:flex;gap:6px;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:2}nav button{flex:1;padding:9px 4px;font-size:13px}nav button.off{background:transparent;color:var(--pri);border:1px solid var(--bd)}
+.err{color:var(--err)}.ok{color:var(--ok)}.mut{color:var(--mut);font-size:13px}.steps{display:flex;gap:4px;margin:8px 0}.steps i{flex:1;height:6px;border-radius:3px;background:var(--bd)}.steps i.on{background:var(--pri)}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;background:var(--bd);font-size:13px;font-weight:600}.row{display:flex;justify-content:space-between;gap:8px}
+</style>
+<script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script></head>
+<body><header><b>🔧 الورشة الفنية — بوابة العملاء</b><button class="sec" id="outBtn" style="display:none;color:#fff;border-color:#fff" onclick="auth.signOut()">خروج</button></header><main id="app">جاري التحميل…</main>
+<script>
+firebase.initializeApp({apiKey:"AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8",authDomain:"elwarsha-elfanya.firebaseapp.com",projectId:"elwarsha-elfanya",storageBucket:"elwarsha-elfanya.firebasestorage.app",messagingSenderId:"916075814550",appId:"1:916075814550:web:90e6b0c01b58abc614ecb7"});
+var auth=firebase.auth(),db=firebase.firestore(),FV=firebase.firestore.FieldValue,app=document.getElementById("app");
+var cfg={centers:["مطاي","بني مزار"],villages:{},types:{"غسالات":["هاف أوتوماتيك","فوق أوتوماتيك","أمامي أوتوماتيك"],"ثلاجات":["عادية","نوفروست","ديب فريزر"],"تكييفات":["سبليت","شباك"],"سخانات":["كهرباء","غاز"],"كولديرات":["كولدير"],"أجهزة_أخرى":["عام"]},brands:[],executionPlaces:["عند العميل","الورشة"]};
+var U=null,me=null,devs=[],pend=[],orders=[],tab="orders",unsubs=[],signingUp=false,mode="login",msg="";
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function ms(v){return v&&v.toDate?v.toDate().getTime():(Date.parse(v)||0)}
+function $(id){return document.getElementById(id)}function val(id){var e=$(id);return e?e.value.trim():""}
+function opts(a,sel){return a.map(function(x){return'<option'+(x===sel?" selected":"")+'>'+esc(x)+'</option>'}).join("")}
+function say(t,ok){msg='<p class="'+(ok?"ok":"err")+'">'+esc(t)+'</p>';var m=$("msg");if(m)m.innerHTML=msg}
+function errText(e){var c=e&&e.code||"";return({"auth/email-already-in-use":"الإيميل ده مسجّل قبل كده.","auth/invalid-email":"الإيميل غير صحيح.","auth/weak-password":"كلمة المرور ضعيفة (6 حروف على الأقل).","auth/invalid-credential":"الإيميل أو كلمة المرور غير صحيحة.","auth/wrong-password":"الإيميل أو كلمة المرور غير صحيحة.","auth/user-not-found":"الإيميل أو كلمة المرور غير صحيحة.","auth/too-many-requests":"محاولات كتير، جرّب بعد شوية.","permission-denied":"مش مسموح لك بالعملية دي."})[c]||"حصل خطأ، جرّب تاني."}
+
+function showAuth(){document.body.dataset.s="a";$("outBtn").style.display="none";var su=mode==="signup";
+app.innerHTML='<div class="card"><h3>'+(su?"إنشاء حساب جديد":"تسجيل الدخول")+'</h3>'+
+(su?'<label>الاسم</label><input id="f_name" autocomplete="name"><label>رقم التليفون</label><input id="f_phone" type="tel" autocomplete="tel"><label>المركز</label><select id="f_center" onchange="fillVillages()"><option value="">اختر</option>'+opts(cfg.centers)+'</select><label>القرية / المنطقة</label><select id="f_village"></select><label>العنوان بالتفصيل</label><input id="f_street">':"")+
+'<label>الإيميل</label><input id="f_email" type="email" autocomplete="username"><label>كلمة المرور</label><input id="f_pw" type="password" autocomplete="'+(su?"new-password":"current-password")+'"><button onclick="'+(su?"signup()":"login()")+'">'+(su?"إنشاء الحساب":"دخول")+'</button> <button class="sec" onclick="mode=\''+(su?"login":"signup")+'\';showAuth()">'+(su?"عندي حساب":"حساب جديد")+'</button><div id="msg">'+msg+'</div></div>';msg="";if(su)fillVillages()}
+function fillVillages(){var c=val("f_center"),v=(cfg.villages||{})[c]||[];$("f_village").innerHTML='<option value="">—</option>'+opts(v)}
+function login(){auth.signInWithEmailAndPassword(val("f_email"),$("f_pw").value).catch(function(e){say(errText(e))})}
+function signup(){var n=val("f_name"),p=val("f_phone"),c=val("f_center");if(n.length<2)return say("اكتب اسمك.");if(p.replace(/\D/g,"").length<10)return say("رقم التليفون غير صحيح.");if(!c)return say("اختر المركز.");if($("f_pw").value.length<6)return say("كلمة المرور 6 حروف على الأقل.");
+signingUp=true;auth.createUserWithEmailAndPassword(val("f_email"),$("f_pw").value).then(function(cr){return db.collection("customers").doc(cr.user.uid).set({name:n,phone:p,email:val("f_email"),mainAddress:{center:c,village:val("f_village"),street:val("f_street")},portal:true,createdAt:FV.serverTimestamp()})}).then(function(){signingUp=false;start(auth.currentUser)}).catch(function(e){signingUp=false;say(errText(e))})}
+
+function stop(){unsubs.forEach(function(f){f()});unsubs=[]}
+function start(u){U=u;$("outBtn").style.display="";
+db.collection("staff").doc(u.uid).get().then(function(s){if(s.exists){stop();app.innerHTML='<div class="card">ده حساب موظف. استخدم لوحة الورشة من الصفحة الرئيسية.</div>';return auth.signOut()}
+return db.collection("portal").doc("config").get().then(function(c){if(c.exists){var d=c.data();Object.keys(d).forEach(function(k){if(d[k]&&(Array.isArray(d[k])?d[k].length:Object.keys(d[k]).length))cfg[k]=d[k]})}}).catch(function(){}).then(function(){return db.collection("customers").doc(u.uid).get()}).then(function(c){if(!c.exists){app.innerHTML='<div class="card">حسابك مش مكتمل. سجّل خروج وأنشئ حساب جديد.</div>';return}
+me=c.data();stop();var q=function(col){return db.collection(col).where("customerId","==",u.uid)};
+unsubs.push(q("devices").onSnapshot(function(s){devs=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});render()},function(){}));
+unsubs.push(q("portalRequests").onSnapshot(function(s){pend=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});render()},function(){}));
+unsubs.push(q("portalOrders").onSnapshot(function(s){orders=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});render()},function(){}));render()})}).catch(function(e){app.innerHTML='<div class="card err">تعذّر تحميل حسابك ('+esc(errText(e))+')</div>'})}
+auth.onAuthStateChanged(function(u){if(signingUp)return;if(!u){stop();U=null;me=null;showAuth();return}start(u)});
+
+function dev(id){return devs.find(function(d){return d.id===id})||{}}
+function label(d){return[d.type,d.brand,d.model].filter(Boolean).join(" ")||"جهاز"}
+function render(){if(!me)return;var t=[["orders","📋 طلباتي"],["new","➕ طلب جديد"],["devices","🔧 أجهزتي"],["me","👤 حسابي"]];
+app.innerHTML='<nav>'+t.map(function(x){return'<button class="'+(tab===x[0]?"":"off")+'" onclick="tab=\''+x[0]+'\';msg=\'\';render()">'+x[1]+'</button>'}).join("")+'</nav>'+({orders:vOrders,new:vNew,devices:vDevices,me:vMe})[tab]()}
+var STEPS=["جديد","جاري التنفيذ","مكتمل"];
+function vOrders(){var seen={},list=orders.map(function(o){seen[o.id]=1;return o});pend.forEach(function(p){if(!seen[p.id])list.push({id:p.id,pending:true,fault:p.fault,deviceId:p.deviceId,createdAt:p.createdAt,visit:p.visit,rejected:p.rejected})});
+list.sort(function(a,b){return ms(b.createdAt)-ms(a.createdAt)});if(!list.length)return'<div class="card mut">مفيش طلبات لسه. ابدأ من «طلب جديد».</div>';
+return list.map(function(o){var st=o.pending?(o.rejected?"مرفوض":"تم الاستلام — بانتظار مراجعة الورشة"):o.status,i=STEPS.indexOf(o.status);
+return'<div class="card"><div class="row"><b>'+(o.no?"أمر #"+esc(o.no)+" — ":"")+esc(o.deviceLabel||label(dev(o.deviceId)))+'</b><span class="badge">'+esc(st)+'</span></div>'+
+(!o.pending&&o.status!=="ملغي"?'<div class="steps">'+STEPS.map(function(s,k){return'<i class="'+(k<=i?"on":"")+'"></i>'}).join("")+'</div>':"")+
+'<div>'+esc(o.fault)+'</div>'+(o.visit?'<div class="mut">📅 الموعد: '+esc(o.visit)+'</div>':"")+(o.executionPlace?'<div class="mut">📍 '+esc(o.executionPlace)+'</div>':"")+
+(o.partsWaiting?'<div class="mut">⏳ بانتظار قطع غيار</div>':"")+(o.workshopStatus&&o.workshopStatus!=="غير مطلوب"?'<div class="mut">🏭 '+esc(o.workshopStatus)+'</div>':"")+
+(+o.total?'<div class="row" style="margin-top:8px"><span>الإجمالي: <b>'+o.total+'</b> ج</span><span>العربون: '+(+o.deposit||0)+' ج</span><span>المتبقي: <b>'+(+o.remain||0)+'</b> ج</span></div>':"")+'</div>'}).join("")}
+function vNew(){if(!devs.length)return'<div class="card">لازم تضيف جهاز الأول من «أجهزتي».</div>';
+return'<div class="card"><label>الجهاز</label><select id="r_dev">'+devs.map(function(d){return'<option value="'+esc(d.id)+'">'+esc(label(d))+'</option>'}).join("")+'</select><label>وصف العطل</label><textarea id="r_fault" rows="3"></textarea><label>الموعد المناسب (اختياري)</label><input id="r_visit" type="date"><label>مكان التنفيذ</label><select id="r_place">'+opts(cfg.executionPlaces)+'</select><label>ملاحظات (اختياري)</label><input id="r_note"><button onclick="sendReq()">إرسال الطلب</button><div id="msg">'+msg+'</div></div>'}
+function sendReq(){var f=val("r_fault");if(f.length<3)return say("اكتب وصف العطل.");db.collection("portalRequests").add({customerId:U.uid,deviceId:val("r_dev"),fault:f.slice(0,1000),visit:val("r_visit"),executionPlace:val("r_place"),note:val("r_note").slice(0,500),handled:false,portal:true,createdAt:FV.serverTimestamp()}).then(function(){tab="orders";msg="";render()}).catch(function(e){say(errText(e))})}
+function vDevices(){var t=Object.keys(cfg.types);return devs.map(function(d){return'<div class="card">'+(d.photo?'<img src="'+esc(d.photo)+'" style="max-width:100px;border-radius:8px;float:left;margin-inline-start:8px">':"")+'<b>'+esc(label(d))+'</b><div class="mut">'+esc([d.category,d.desc].filter(Boolean).join(" — "))+'</div></div>'}).join("")+
+'<div class="card"><h4>إضافة جهاز</h4><label>النوع</label><select id="d_type" onchange="fillCat()">'+opts(t)+'</select><label>التصنيف</label><select id="d_cat"></select><label>الماركة</label><input id="d_brand" list="brands"><datalist id="brands">'+(cfg.brands||[]).map(function(b){return'<option value="'+esc(b)+'">'}).join("")+'</datalist><label>الموديل</label><input id="d_model"><label>ملاحظات</label><input id="d_desc"><label>صورة (اختياري)</label><input id="d_photo" type="file" accept="image/*"><button onclick="addDev()">حفظ الجهاز</button><div id="msg">'+msg+'</div></div>'}
+function fillCat(){var c=cfg.types[val("d_type")]||[];$("d_cat").innerHTML=opts(c)}
+function resize(file){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var m=720,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);c.toBlob(res,"image/jpeg",.62)};im.onerror=rej;im.src=URL.createObjectURL(file)})}
+function upload(b){var fd=new FormData();fd.append("file",b);fd.append("upload_preset","workshop_unsigned");return fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload",{method:"POST",body:fd}).then(function(r){return r.json()}).then(function(j){if(!j.secure_url)throw 0;return j.secure_url})}
+function addDev(){var b=val("d_brand");if(!b)return say("اكتب الماركة.");var f=$("d_photo").files[0];say("جاري الحفظ…",true);
+(f?resize(f).then(upload):Promise.resolve("")).then(function(url){return db.collection("devices").add({customerId:U.uid,addressKey:"main",type:val("d_type"),category:val("d_cat"),brand:b.slice(0,60),model:val("d_model").slice(0,80),desc:val("d_desc").slice(0,300),photo:url,portal:true,createdAt:FV.serverTimestamp()})}).then(function(){msg="";render()}).catch(function(e){say(e&&e.code?errText(e):"تعذّر حفظ الجهاز أو رفع الصورة.")})}
+function vMe(){var a=me.mainAddress||{};return'<div class="card"><label>الاسم</label><input id="m_name" value="'+esc(me.name)+'"><label>التليفون</label><input id="m_phone" value="'+esc(me.phone)+'"><div class="mut">'+esc([a.center,a.village,a.street].filter(Boolean).join(" - "))+' — '+esc(me.email)+'</div><br><button onclick="saveMe()">حفظ</button><div id="msg">'+msg+'</div></div>'}
+function saveMe(){var n=val("m_name"),p=val("m_phone");if(n.length<2)return say("اكتب اسمك.");db.collection("customers").doc(U.uid).update({name:n,phone:p,updatedAt:FV.serverTimestamp()}).then(function(){me.name=n;me.phone=p;say("اتحفظ ✅",true)}).catch(function(e){say(errText(e))})}
+document.addEventListener("change",function(e){if(e.target.id==="d_type")fillCat()});new MutationObserver(function(){if($("d_cat")&&!$("d_cat").options.length)fillCat()}).observe(app,{childList:true});
+</script></body></html>

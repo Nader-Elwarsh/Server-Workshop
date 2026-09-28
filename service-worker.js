@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-136-cloud";
+const CACHE_NAME = "workshop-v11-139-portal";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const CORE_FILES = [
@@ -127,6 +127,15 @@ self.addEventListener("fetch", event => {
   }
 
   if (request.method !== "GET") return;
+  // مكتبات Firebase: نحفظها في الكاش عشان التطبيق يفتح أوفلاين
+  if (url.hostname === "www.gstatic.com" && url.pathname.startsWith("/firebasejs/")) {
+    event.respondWith(caches.open(CACHE_NAME).then(cache => cache.match(request).then(cached => {
+      const net = fetch(request).then(r => { if (r && r.ok) cache.put(request, r.clone()); return r; }).catch(() => null);
+      if (cached) { event.waitUntil(net); return cached; }
+      return net.then(r => r || Response.error());
+    })));
+    return;
+  }
   if (url.origin !== self.location.origin) return;
 
   // HTML pages: cache by pathname, not by query string.

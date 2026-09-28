@@ -56,19 +56,35 @@
   }
 
 
-  // رفع الصور على Cloudinary (نفس إعداد الموقع القديم) عشان تظهر على كل الأجهزة؛
-  // لو فشل الرفع (أوفلاين مثلًا) بترجع للتخزين المحلي زي الأصل.
+  // رفع أي ملف (صورة/صوت) على Cloudinary بنفس إعداد الموقع القديم. بترجع الرابط أو "" لو فشل.
+  async function imageStoreUploadRemote(dataUrl) {
+    if (!String(dataUrl || "").startsWith("data:") || navigator.onLine === false) return "";
+    try {
+      const blob = await (await fetch(dataUrl)).blob();
+      const fd = new FormData(); fd.append("file", blob); fd.append("upload_preset", "workshop_unsigned");
+      const kind = String(dataUrl).startsWith("data:image/") ? "image" : "auto";
+      const r = await fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/" + kind + "/upload", { method: "POST", body: fd });
+      const j = await r.json();
+      return j.secure_url || "";
+    } catch (e) { return ""; }
+  }
+
+  // لو فيه نت: ارفع فورًا. لو مفيش: خزّن محليًا، ومزامنة السحابة (firebase-sync.js) هترفعه أول ما النت يرجع.
   async function imageStoreSave(dataUrl, oldRef) {
-    if (String(dataUrl || "").startsWith("data:image/") && navigator.onLine !== false) {
-      try {
-        const blob = await (await fetch(dataUrl)).blob();
-        const fd = new FormData(); fd.append("file", blob); fd.append("upload_preset", "workshop_unsigned");
-        const r = await fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload", { method: "POST", body: fd });
-        const j = await r.json();
-        if (j.secure_url) return j.secure_url;
-      } catch (e) {}
-    }
-    return imageStoreSaveLocal(dataUrl, oldRef);
+    const url = await imageStoreUploadRemote(dataUrl);
+    return url || imageStoreSaveLocal(dataUrl, oldRef);
+  }
+
+  // كل المراجع المحلية الموجودة في IndexedDB
+  async function imageStoreKeys() {
+    try {
+      let db = await imgDbOpen();
+      return await new Promise((resolve, reject) => {
+        let rq = db.transaction(IMG_STORE, "readonly").objectStore(IMG_STORE).getAllKeys();
+        rq.onsuccess = () => resolve(rq.result || []);
+        rq.onerror = () => reject(rq.error);
+      });
+    } catch (e) { return []; }
   }
 
   async function imageStoreGet(refId) {
@@ -157,6 +173,8 @@
 
   window.ImageStore = {
     save: imageStoreSave,
+    uploadRemote: imageStoreUploadRemote,
+    keys: imageStoreKeys,
     get: imageStoreGet,
     delete: imageStoreDelete,
     exportAll: imageStoreExportAll,

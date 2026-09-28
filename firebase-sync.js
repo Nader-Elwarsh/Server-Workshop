@@ -1,103 +1,261 @@
-/* ربط الورشة الفنية (النسخة الكاملة) بنفس قاعدة Firebase بتاعة الموقع الحالي.
-   التطبيق بيشتغل على localStorage زي الأصل، وهنا بنعكسه على نفس الكولكشنز
-   (customers, devices, requests, parts, treasury, tasks, walletTx, faultCodes, invoices, settings/global)
-   فبياناتك القديمة تظهر، وأي حاجة تتسجل هنا تظهر في الموقع القديم والعكس. */
+/* ربط الورشة الفنية بنفس قاعدة Firebase بتاعة الموقع الحالي، مع دعم الأوفلاين.
+   - التطبيق بيشتغل على localStorage، وكل تعديل بيتعكس على نفس الكولكشنز (customers, devices, requests, ...).
+   - أوفلاين: التعديلات (والصور) بتفضل معلّقة على الجهاز وبتترفع لوحدها أول ما النت يرجع، حتى لو قفلت الصفحة.
+   - أي دمج بين الجهاز والسحابة بيحافظ على البيانات: بنقارن بآخر حالة اتزامنت، فمفيش سجل بيتمسح من السحابة إلا لو انت مسحته. */
 (function () {
   "use strict";
+  if (typeof firebase === "undefined") { console.warn("Firebase SDK غير متاح (أوفلاين قبل أول تحميل) — التطبيق شغال محليًا"); return; }
   var CFG = { apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8", authDomain: "elwarsha-elfanya.firebaseapp.com", projectId: "elwarsha-elfanya", storageBucket: "elwarsha-elfanya.firebasestorage.app", messagingSenderId: "916075814550", appId: "1:916075814550:web:90e6b0c01b58abc614ecb7" };
   var COLS = { wf_c: "customers", wf_d: "devices", wf_r: "requests", wf_p: "parts", wf_tr: "treasury", wf_tasks: "tasks", wf_wallet_tx: "walletTx", wf_fault_codes: "faultCodes", wf_inv: "invoices" };
-  var EXTRA = ["wf_m", "wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"]; // مفيش لها كولكشن في الموقع القديم → بتتخزن جوه settings
-  var SETTINGS = "wf_s", CHUNK = 250000, HYD = "wf_cloud_hydrated_uid";
+  var EXTRA = ["wf_m", "wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"];
+  var SETTINGS = "wf_s", CHUNK = 250000, TIMEOUT = 25000;
   var ALL = Object.keys(COLS).concat(EXTRA, [SETTINGS]);
+  var HYD = "wf_cloud_hydrated_uid", BASEKEY = "wf_syncbase", FULL = "wf_last_full_sync", SEEN = "wf_meta_seen";
   var isLogin = /login\.html$/.test(location.pathname);
   var P = Storage.prototype, ls = window.localStorage, origSet = P.setItem, origRemove = P.removeItem;
-  var db, ready = false, applying = false, timers = {}, base = {}, DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
+  var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
+  var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
+  var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
+  function saveBase() { origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
 
+  /* ---------- واجهة ---------- */
   function cover(msg) { if (document.getElementById("wfCloudCover")) return; var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
   function uncover() { var c = document.getElementById("wfCloudCover"); if (c) c.remove(); }
   function banner() { if (document.getElementById("wfCloudBanner")) return; var b = document.createElement("div"); b.id = "wfCloudBanner"; b.style.cssText = "position:fixed;bottom:70px;left:12px;right:12px;z-index:9999;background:#0b57d0;color:#fff;padding:12px;border-radius:10px;text-align:center;direction:rtl;font:600 15px sans-serif;cursor:pointer"; b.textContent = "🔄 فيه تحديث من جهاز تاني — اضغط لإعادة التحميل"; b.onclick = function () { location.reload(); }; (document.body || document.documentElement).appendChild(b); }
+  function badge() {
+    if (isLogin || !document.body) return;
+    var el = document.getElementById("wfCloudBadge");
+    if (!el) { el = document.createElement("div"); el.id = "wfCloudBadge"; el.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:9998;background:rgba(0,27,77,.85);color:#fff;padding:4px 10px;border-radius:14px;font:600 12px sans-serif;direction:rtl;pointer-events:none"; document.body.appendChild(el); }
+    var pending = ALL.filter(function (k) { return lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]; }).length;
+    el.textContent = navigator.onLine === false ? "📴 أوفلاين — التعديلات هتترفع لما النت يرجع" : (pending || Object.keys(timers).length ? "⏳ جاري الرفع للسحابة" : "☁️ متزامن");
+  }
 
-  // لازم نعدّل Storage.prototype (تعديل localStorage.setItem مباشرة مش بيشتغل)
-  P.setItem = function (k, v) { origSet.call(this, k, v); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
-  P.removeItem = function (k) { origRemove.call(this, k); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
-  function raw(k, v) { applying = true; origSet.call(ls, k, v); applying = false; }
-
+  /* ---------- أدوات ---------- */
+  function h(s) { var x = 5381, i = s.length; while (i) x = ((x << 5) + x + s.charCodeAt(--i)) | 0; return (x >>> 0).toString(36) + s.length.toString(36); }
   function clean(v) { if (v && typeof v.toDate === "function") return v.toDate().toISOString(); if (Array.isArray(v)) return v.map(clean); if (v && typeof v === "object") { var o = {}; Object.keys(v).forEach(function (k) { o[k] = clean(v[k]); }); return o; } return v; }
   function stable(v) { if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
+  function hr(r) { var o = Object.assign({}, r); delete o.id; return h(stable(o)); }
   function fromDoc(d) { var o = clean(d.data()); o.id = d.id; return o; }
   function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; ["createdAt", "updatedAt"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
   function byCreated(a, b) { return (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0); }
   function local(k) { try { return JSON.parse(ls.getItem(k) || "null"); } catch (e) { return null; } }
+  function raw(k, v) { applying = true; origSet.call(ls, k, v); applying = false; }
+  function withTimeout(p) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, TIMEOUT); })]); }
+  function online() { return navigator.onLine !== false && !!db; }
 
-  function queue(k) { clearTimeout(timers[k]); timers[k] = setTimeout(function () { delete timers[k]; push(k); }, 700); }
-  function commitOps(ops) { var chain = Promise.resolve(); for (var i = 0; i < ops.length; i += 400) (function (part) { chain = chain.then(function () { var b = db.batch(); part.forEach(function (f) { f(b); }); return b.commit(); }); })(ops.slice(i, i + 400)); return chain; }
+  P.setItem = function (k, v) { origSet.call(this, k, v); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
+  P.removeItem = function (k) { origRemove.call(this, k); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
 
-  function push(k) {
-    if (!db) return Promise.resolve();
-    var ops = [], v = local(k);
+  /* ---------- الرفع ---------- */
+  function queue(k) { clearTimeout(timers[k]); timers[k] = setTimeout(function () { delete timers[k]; push(k, true); }, 700); badge(); }
+  function commitOps(ops) { var chain = Promise.resolve(); for (var i = 0; i < ops.length; i += 400) (function (part) { chain = chain.then(function () { var b = db.batch(); part.forEach(function (f) { f(b); }); return withTimeout(b.commit()); }); })(ops.slice(i, i + 400)); return chain; }
+  function touchMeta() { var ts = Date.now(); origSet.call(ls, SEEN, String(ts)); return meta.set({ ts: ts, dev: DEV }).catch(function () {}); }
+
+  function push(k, interactive) {
+    if (!online() || pushing[k]) return Promise.resolve(false);
+    pushing[k] = true;
+    var done = function (ok) { pushing[k] = false; badge(); return ok; };
+    var snapshotRaw = ls.getItem(k), ops = [], v = local(k), next;
     if (COLS[k]) {
-      var col = db.collection(COLS[k]), arr = Array.isArray(v) ? v : [], seen = {}, b = base[k] = base[k] || {}, next = {};
-      arr.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; var s = stable(clean(toDoc(r))); next[r.id] = s; if (b[r.id] !== s) ops.push(function (bt) { bt.set(col.doc(r.id), toDoc(r)); }); });
-      Object.keys(b).forEach(function (id) { if (!seen[id]) ops.push(function (bt) { bt.delete(col.doc(id)); }); });
-      return commitOps(ops).then(function () { base[k] = next; }).catch(function (e) { console.error("sync failed", k, e); });
+      var col = db.collection(COLS[k]), B = SB.c[k] || {}, arr = Array.isArray(v) ? v : [], seen = {}, dels = 0;
+      next = {};
+      arr.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; var x = hr(r); next[r.id] = x; if (B[r.id] !== x) ops.push(function (bt) { bt.set(col.doc(r.id), toDoc(r)); }); });
+      Object.keys(B).forEach(function (id) { if (!seen[id]) { dels++; ops.push(function (bt) { bt.delete(col.doc(id)); }); } });
+      var total = Object.keys(B).length;
+      if (dels > 20 && dels > total / 2) { // حماية من المسح الجماعي
+        if (!interactive || !window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
+      }
+      if (!ops.length) { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
+      return commitOps(ops).then(function () { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { if (k === "wf_r" || k === "wf_c" || k === "wf_d") projectOrders(); return done(true); }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false); });
     }
-    if (k === SETTINGS) { if (!v) return Promise.resolve(); return db.collection("settings").doc("global").set(toDoc(v), { merge: true }).catch(function (e) { console.error(e); }); }
-    var raw_ = ls.getItem(k), id = "wfkv_" + k, old = base[k] || 0, parts = [], n;
-    if (raw_ !== null) for (var i = 0; i < raw_.length; i += CHUNK) parts.push(raw_.slice(i, i + CHUNK));
+    if (k === SETTINGS) {
+      if (!v) return Promise.resolve(done(true));
+      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
+    }
+    var id = "wfkv_" + k, old = SB.x["n_" + k] || 0, parts = [], n;
+    if (snapshotRaw !== null) for (var i = 0; i < snapshotRaw.length; i += CHUNK) parts.push(snapshotRaw.slice(i, i + CHUNK));
     n = parts.length;
     ops.push(function (bt) { n ? bt.set(db.collection("settings").doc(id), { n: n, dev: DEV, ts: Date.now() }) : bt.delete(db.collection("settings").doc(id)); });
     parts.forEach(function (p, i) { ops.push(function (bt) { bt.set(db.collection("settings").doc(id + "~" + i), { v: p }); }); });
     for (var j = n; j < old; j++) (function (j) { ops.push(function (bt) { bt.delete(db.collection("settings").doc(id + "~" + j)); }); })(j);
-    return commitOps(ops).then(function () { base[k] = n; }).catch(function (e) { console.error(e); });
+    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
   }
+  function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
 
-  function extrasFrom(snap) { var meta = {}, ch = {}, out = {}; snap.forEach(function (d) { var i = d.id.indexOf("~"); if (d.id.indexOf("wfkv_") !== 0) return; if (i < 0) meta[d.id.slice(5)] = d.data(); else { var k = d.id.slice(5, i); (ch[k] = ch[k] || [])[+d.id.slice(i + 1)] = d.data().v; } }); Object.keys(meta).forEach(function (k) { var c = ch[k] || [], ok = true; for (var i = 0; i < meta[k].n; i++) if (c[i] == null) ok = false; if (ok) out[k] = { v: c.slice(0, meta[k].n).join(""), n: meta[k].n, dev: meta[k].dev }; }); return out; }
-
-  function hydrate(user) {
-    var keys = Object.keys(COLS);
-    if (sessionStorage.getItem("wf_hyd_once") && ls.getItem(HYD) === user.uid) { // اتسحبت البيانات في الجلسة دي: كمّل من المحلي وبس
-      keys.forEach(function (k) { base[k] = {}; (local(k) || []).forEach(function (r) { if (r && r.id) base[k][r.id] = stable(clean(toDoc(r))); }); });
-      EXTRA.forEach(function (k) { var v = ls.getItem(k); base[k] = v ? Math.ceil(v.length / CHUNK) : 0; });
-      ready = true; listen(); return Promise.resolve();
-    }
-    return Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }).concat([db.collection("settings").get()])).then(function (res) {
-      var settingsSnap = res[keys.length], any = false, data = {};
-      keys.forEach(function (k, i) { var arr = res[i].docs.map(fromDoc).sort(byCreated); if (arr.length) any = true; data[k] = arr; base[k] = {}; arr.forEach(function (r) { base[k][r.id] = stable(clean(toDoc(r))); }); });
-      var ex = extrasFrom(settingsSnap), g = null; settingsSnap.forEach(function (d) { if (d.id === "global") g = clean(d.data()); });
-      Object.keys(ex).forEach(function (k) { base[k] = ex[k].n; });
-      if (!any && !g && !Object.keys(ex).length && ls.getItem(HYD) !== user.uid) { // السحابة فاضية تمامًا: ارفع اللي على الجهاز
-        ready = true; return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== null; }).map(push)).then(function () { raw(HYD, user.uid); sessionStorage.setItem("wf_hyd_once", "1"); listen(); });
+  /* ---------- رفع الصور/الصوت المعلّقة (اتعملت أوفلاين) ---------- */
+  function flushImages() {
+    if (!online() || flushing || !window.ImageStore || !window.ImageStore.keys) return Promise.resolve();
+    flushing = true;
+    return window.ImageStore.keys().then(async function (keys) {
+      if (!keys.length) return;
+      var targets = Object.keys(COLS).concat(EXTRA), map = {}, raws = {}, changed = {};
+      targets.forEach(function (t) { raws[t] = ls.getItem(t) || ""; });
+      for (var ki = 0; ki < keys.length; ki++) {
+        var ref = String(keys[ki]), needle = '"' + ref + '"';
+        var holders = targets.filter(function (t) { return raws[t].indexOf(needle) > -1; });
+        if (!holders.length) continue;
+        var data = await window.ImageStore.get(ref); if (!data) continue;
+        var url = await window.ImageStore.uploadRemote(data); if (!url) continue;
+        map[ref] = url;
+        holders.forEach(function (t) { raws[t] = raws[t].split(needle).join('"' + url + '"'); changed[t] = 1; });
       }
-      keys.forEach(function (k) { raw(k, JSON.stringify(data[k])); });
-      if (g) { var cur = local(SETTINGS) || {}; raw(SETTINGS, JSON.stringify(Object.assign(cur, g))); }
-      Object.keys(ex).forEach(function (k) { raw(k, ex[k].v); });
-      raw(HYD, user.uid);
-      if (!sessionStorage.getItem("wf_hyd_once")) { sessionStorage.setItem("wf_hyd_once", "1"); location.reload(); return; }
-      ready = true; listen();
-    });
+      Object.keys(changed).forEach(function (t) { ls.setItem(t, raws[t]); });
+      Object.keys(map).forEach(function (ref) { if (!targets.some(function (t) { return raws[t].indexOf('"' + ref + '"') > -1; })) window.ImageStore.delete(ref); });
+    }).catch(function (e) { console.warn("image flush", e); }).then(function () { flushing = false; });
   }
 
-  function listen() {
-    Object.keys(COLS).forEach(function (k) {
-      db.collection(COLS[k]).onSnapshot(function (snap) {
-        if (snap.metadata.hasPendingWrites || timers[k]) return;
-        var arr = snap.docs.map(fromDoc).sort(byCreated), cur = local(k) || [];
-        var nb = {}; arr.forEach(function (r) { nb[r.id] = stable(clean(toDoc(r))); });
-        if (stable(arr.map(function (r) { return r.id + nb[r.id]; })) === stable(cur.map(function (r) { return r.id + stable(clean(toDoc(r))); }))) { base[k] = nb; return; }
-        base[k] = nb; raw(k, JSON.stringify(arr)); banner();
+  /* ---------- السحب والدمج ---------- */
+  function extrasFrom(snap) { var mt = {}, ch = {}, out = {}; snap.forEach(function (d) { if (d.id.indexOf("wfkv_") !== 0) return; var i = d.id.indexOf("~"); if (i < 0) mt[d.id.slice(5)] = d.data(); else { var k = d.id.slice(5, i); (ch[k] = ch[k] || [])[+d.id.slice(i + 1)] = d.data().v; } }); Object.keys(mt).forEach(function (k) { var c = ch[k] || [], ok = true; for (var i = 0; i < mt[k].n; i++) if (c[i] == null) ok = false; if (ok) out[k] = { v: c.slice(0, mt[k].n).join(""), n: mt[k].n }; }); return out; }
+
+
+  /* ---------- بوابة العملاء (جهة الموظف) ---------- */
+  function sanitize(o) { if (typeof o === "string") return o.replace(/[<>]/g, ""); if (Array.isArray(o)) return o.map(sanitize); if (o && typeof o === "object") { var r = {}; Object.keys(o).forEach(function (k) { r[k] = sanitize(o[k]); }); return r; } return o; }
+  function cleanPortal(r) { return r && r.portal === true ? sanitize(r) : r; }
+  var poBusy = false;
+  function projectOrders() { // نسخة آمنة من أوامر عملاء البوابة (من غير تكلفة القطع) عشان العميل يتابع حالته
+    if (!online() || poBusy) return Promise.resolve();
+    var cs = local("wf_c") || [], ds = local("wf_d") || [], rs = local("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
+    cs.forEach(function (c) { if (c && c.portal === true) portal[c.id] = 1; });
+    rs.forEach(function (r) {
+      if (!r || !r.id || !portal[r.customerId]) return; seen[r.id] = 1;
+      var d = ds.find(function (x) { return x.id === r.deviceId; }) || {};
+      var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: r.status || "", visit: r.visit || "", executionPlace: r.executionPlace || "", workshopStatus: r.workshopStatus || "", partsWaiting: !!r.partsWaiting, total: +r.total || 0, deposit: +r.deposit || 0, remain: +r.remain || 0, closed: !!r.closed, createdAt: r.createdAt || "" };
+      var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
+    });
+    Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });
+    if (!ops.length) return Promise.resolve();
+    poBusy = true;
+    return commitOps(ops).then(function () { SB.po = next; saveBase(); }).catch(function (e) { console.warn("portal projection pending", e && e.message); }).then(function () { poBusy = false; });
+  }
+  function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
+    if (!online() || typeof window.settings !== "function") return;
+    var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] }, x = h(stable(c));
+    if (SB.x.pc === x) return;
+    db.collection("portal").doc("config").set(c).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
+  }
+  var converting = false;
+  function convertPortal() { // حوّل طلبات البوابة الجديدة لأوامر شغل حقيقية
+    var fns = ["orderNo", "recordStatusHistory", "applyStatusTimestamp", "saveJSONSafe", "arr", "settings"];
+    if (!online() || converting || !ready || fns.some(function (f) { return typeof window[f] !== "function"; }) || !window.K) return Promise.resolve();
+    converting = true;
+    return db.collection("portalRequests").where("handled", "==", false).get().then(function (snap) {
+      var n = 0, marks = [];
+      snap.docs.forEach(function (d) {
+        var p = sanitize(clean(d.data())), id = d.id, ds = window.arr(window.K.d), cs = window.arr(window.K.c);
+        var dev = ds.find(function (x) { return x.id === p.deviceId; }), cust = cs.find(function (x) { return x.id === p.customerId; });
+        if (!dev || !cust) return; // لسه مانزلش على الجهاز: هنحاول تاني
+        if (dev.customerId !== p.customerId) { marks.push(d.ref.update({ handled: true, rejected: true })); return; }
+        var exists = window.arr(window.K.r).find(function (x) { return x.id === id; });
+        if (!exists) {
+          var s = window.settings();
+          var r = { id: id, no: window.orderNo(), customerId: p.customerId, deviceId: p.deviceId, addressKey: "main", visit: p.visit || "", status: "جديد", executionPlace: p.executionPlace || (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault: p.fault || "", work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, source: "portal", customerNote: p.note || "", createdAt: new Date().toISOString() };
+          window.recordStatusHistory(r, "", r.status); window.applyStatusTimestamp(r, r.status);
+          if (!window.saveJSONSafe(window.K.r, window.arr(window.K.r).concat(r))) return;
+          exists = r; n++;
+        }
+        marks.push(d.ref.update({ handled: true, orderId: id, orderNo: exists.no || "" }));
       });
-    });
+      return Promise.all(marks).then(function () { if (n) { banner(); return projectOrders(); } });
+    }).catch(function (e) { console.warn("portal convert", e && e.message); }).then(function () { converting = false; });
   }
 
-  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); sessionStorage.removeItem("wf_hyd_once"); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
-  window.addEventListener("pagehide", function () { Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); push(k); }); });
+  function hydrateFull(force) {
+    if (hydrating) return Promise.resolve(false); hydrating = true;
+    var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
+    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }).concat([db.collection("settings").get()]))).then(function (res) {
+      var changedAny = false;
+      var sSnap = res[keys.length], ex = extrasFrom(sSnap), g = null; sSnap.forEach(function (d) { if (d.id === "global") g = clean(d.data()); });
+      var cloudEmpty = !g && !Object.keys(ex).length && keys.every(function (k, i) { return !res[i].docs.length; });
+      keys.forEach(function (k, i) {
+        var merged = mergeColWithBase(k, res[i].docs.map(fromDoc).map(cleanPortal), first, SB.c[k]);
+        if (stable(local(k) || []) !== stable(merged.arr)) { raw(k, JSON.stringify(merged.arr)); changedAny = true; }
+        SB.c[k] = merged.base;
+      });
+      EXTRA.forEach(function (k) {
+        var lr = ls.getItem(k), changed = lr !== null && (first ? !ex[k] : h(lr) !== SB.x[k]);
+        if (ex[k] && !changed) { if (lr !== ex[k].v) { raw(k, ex[k].v); changedAny = true; } SB.x[k] = h(ex[k].v); }
+        SB.x["n_" + k] = ex[k] ? ex[k].n : (SB.x["n_" + k] || 0);
+      });
+      var lr = ls.getItem(SETTINGS), lchanged = lr !== null && (first ? !g : h(lr) !== SB.x[SETTINGS]);
+      if (g) { var lo = local(SETTINGS) || {}; var m = lchanged ? Object.assign({}, g, lo) : Object.assign({}, lo, g); if (stable(lo) !== stable(m)) { raw(SETTINGS, JSON.stringify(m)); changedAny = true; } if (!lchanged) SB.x[SETTINGS] = h(ls.getItem(SETTINGS)); }
+      raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
+      lastRaw = {}; // بعد الدمج: ارفع أي فروق محلية
+      return { changed: changedAny, cloudEmpty: cloudEmpty };
+    }).then(function (r) { hydrating = false; return r; }, function (e) { hydrating = false; throw e; });
+  }
+  // دمج بأساس صريح (آخر حالة اتزامنت)
+  function mergeColWithBase(k, cloudArr, first, B0) {
+    var B = B0 || {}, Larr = local(k); Larr = Array.isArray(Larr) ? Larr : [];
+    var cm = {}; cloudArr.forEach(function (r) { cm[r.id] = r; });
+    if (first || !B0) { B = {}; Larr.forEach(function (r) { if (r && cm[r.id]) B[r.id] = hr(r); }); }
+    var out = [], seen = {};
+    Larr.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (B[r.id] !== hr(r)) out.push(r); else if (cm[r.id]) out.push(cm[r.id]); });
+    cloudArr.forEach(function (r) { if (!seen[r.id] && B[r.id] === undefined) out.push(r); });
+    var nb = {}; cloudArr.forEach(function (r) { nb[r.id] = hr(r); });
+    return { arr: out.sort(byCreated), base: nb };
+  }
 
-  firebase.initializeApp(CFG); db = firebase.firestore();
-  try { db.enablePersistence({ synchronizeTabs: true }).catch(function () {}); } catch (e) {}
+  var CURRENT_UID = null, denied = false;
+  function boot(user) {
+    CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
+    var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
+    function goReady(reload) {
+      ready = true; uncover(); badge();
+      if (reload) { location.reload(); return; }
+      pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); }, 1500);
+      try { db.collection("portalRequests").where("handled", "==", false).onSnapshot(function () { convertPortal(); }, function () {}); } catch (e) {}
+    }
+    if (!online()) { // أوفلاين: اشتغل على النسخة المحلية
+      if (hydrated) { ready = true; uncover(); badge(); return; }
+      cover("لازم تفتح الموقع أونلاين أول مرة على الجهاز ده"); return;
+    }
+    var STAFF = "wf_is_staff_uid";
+    var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) { if (d.exists) origSet.call(ls, STAFF, user.uid); return d.exists; }).catch(function () { return ls.getItem(STAFF) === user.uid; });
+    staffCheck.then(function (isStaff) {
+      if (isStaff) return continueBoot();
+      denied = true; cover("الحساب ده مش حساب موظف. لو أنت عميل ادخل من بوابة العملاء."); var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; document.getElementById("wfCloudCover").appendChild(a); firebase.auth().signOut();
+    });
+    function continueBoot() {
+    var quick = hydrated && recent;
+    (quick ? withTimeout(meta.get()).then(function (d) { return d.exists && String(d.data().ts) !== ls.getItem(SEEN); }).catch(function () { return false; }) : Promise.resolve(true)).then(function (needFull) {
+      if (!needFull && !Object.keys(timers).length) return goReady(false);
+      return hydrateFull().then(function (r) {
+        if (r && r.cloudEmpty && !hydrated) { /* سحابة فاضية: هيترفع اللي على الجهاز */ }
+        var reloadKey = "wf_hyd_reload"; var doReload = r && r.changed && !sessionStorage.getItem(reloadKey);
+        if (doReload) sessionStorage.setItem(reloadKey, "1"); else sessionStorage.removeItem(reloadKey);
+        goReady(doReload);
+      });
+    }).catch(function (e) {
+      console.warn("hydrate failed", e);
+      if (hydrated) { ready = true; uncover(); badge(); } else cover("تعذّر الاتصال بقاعدة البيانات — راجع الإنترنت وصلاحيات Firestore ثم أعد التحميل");
+    });
+    }
+  }
+
+  var watching = false;
+  function watchMeta() {
+    if (watching) return; watching = true;
+    meta.onSnapshot(function (d) {
+      if (!d.exists || d.metadata.hasPendingWrites) return;
+      var x = d.data(); if (x.dev === DEV || String(x.ts) === ls.getItem(SEEN)) return;
+      hydrateFull().then(function (r) { origSet.call(ls, SEEN, String(x.ts)); if (r && r.changed) { banner(); } pushAll(false); }).catch(function () {});
+    }, function () {});
+  }
+
+  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); sessionStorage.removeItem("wf_hyd_reload"); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
+  window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
+  window.addEventListener("online", function () { badge(); pushAll(false); });
+  window.addEventListener("offline", badge);
+  window.addEventListener("pagehide", function () { Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); delete timers[k]; push(k, false); }); });
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") pushAll(false); });
+  setInterval(function () { badge(); if (ready && online()) pushAll(false); }, 15000);
+  document.addEventListener("DOMContentLoaded", badge);
+
+  firebase.initializeApp(CFG);
   if (!isLogin) cover("جاري تحميل بيانات الورشة…");
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
-    if (!u) { location.replace("login.html"); return; }
-    hydrate(u).then(uncover).catch(function (e) { console.error(e); cover("تعذّر الاتصال بقاعدة البيانات — راجع الإنترنت وصلاحيات Firestore ثم أعد التحميل"); });
+    if (!u) { if (denied) return; if (navigator.onLine === false && ls.getItem(HYD)) { ready = false; uncover(); return; } location.replace("login.html"); return; }
+    boot(u);
   });
 })();
