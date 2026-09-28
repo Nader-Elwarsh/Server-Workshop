@@ -1,0 +1,1611 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1b2b">
+<title>الورشة الفنية | نسخة سحابية</title>
+<style>
+  :root{
+    --bg:#0f1115;--bg-elevated:#1b1f27;--bg-sunken:#232833;--border:#2c3340;
+    --text:#e9edf2;--text-muted:#9aa5b1;--accent-text:#5fb0ff;
+    --header-grad-1:#0b1b2b;--header-grad-2:#123146;
+    --danger-text:#ff6b6b;--success-text:#4ade80;
+    --shadow-card:0 2px 10px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.5}
+  header{background:linear-gradient(135deg,var(--header-grad-1),var(--header-grad-2));color:#fff;padding:18px 16px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  header::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 85% -20%,rgba(255,255,255,.14),transparent 55%);pointer-events:none}
+  .brand{display:flex;gap:12px;align-items:center;position:relative;z-index:1}
+  .brand-logo{width:42px;height:42px;border-radius:11px;flex:0 0 auto;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .brand h1{margin:0;font-size:20px}
+  .brand p{margin:2px 0 0;opacity:.85;font-size:12px}
+  .wrap{max-width:950px;margin:auto;padding:16px}
+  .box,.panel{background:var(--bg-elevated);border-radius:14px;box-shadow:var(--shadow-card);padding:16px;margin-top:14px;border:1px solid var(--border)}
+  .ok{color:var(--success-text);font-weight:bold}
+  .err{color:var(--danger-text);font-weight:bold}
+  input,select,textarea{width:100%;padding:11px;margin-top:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-sunken);color:var(--text);font-size:16px;font-family:inherit}
+  textarea{resize:vertical}
+  label{display:block;margin-top:10px;font-size:14px;font-weight:bold;color:var(--text)}
+  label small{font-weight:normal;color:var(--text-muted)}
+  button{background:#17324d;color:#fff;border:none;padding:11px 16px;border-radius:9px;font-size:15px;font-weight:bold;margin-top:10px;cursor:pointer;font-family:inherit}
+  button.danger{background:transparent;color:var(--danger-text);border:1px solid var(--danger-text)}
+  button.secondary{background:var(--bg-sunken);color:var(--text);border:1px solid var(--border)}
+  button.small{padding:7px 12px;font-size:13px;margin-inline-start:6px;margin-top:6px}
+  h2,h3{margin-top:0}
+  .item{background:var(--bg-sunken);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:10px}
+  .item div{color:var(--text-muted);margin-top:4px;font-size:14px}
+  .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;background:var(--bg-elevated);border:1px solid var(--border)}
+  .hidden{display:none}
+  #loginBox{max-width:400px;margin:60px auto}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hint{color:var(--text-muted);font-size:13px;margin-top:6px}
+  .searchResults{background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;margin-top:4px;max-height:200px;overflow:auto;box-shadow:var(--shadow-card)}
+  .searchResults div{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text);cursor:pointer}
+  .searchResults div:last-child{border-bottom:0}
+  .searchResults div:hover{background:var(--bg-sunken)}
+  nav{position:sticky;top:0;background:var(--bg-elevated);display:flex;overflow-x:auto;border-bottom:1px solid var(--border);z-index:10;-webkit-overflow-scrolling:touch}
+  nav button{background:none;color:var(--text-muted);border:none;border-radius:0;padding:14px 14px;margin:0;font-size:13px;font-weight:bold;white-space:nowrap}
+  nav button.active{color:var(--accent-text);border-bottom:3px solid var(--accent-text)}
+  #logoutBtn{background:none;color:var(--text-muted);font-weight:normal}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px}
+  .card{display:flex;flex-direction:column;text-align:center;align-items:center;gap:8px;padding:18px 10px;background:var(--bg-elevated);border-radius:14px;box-shadow:var(--shadow-card);border:1px solid var(--border);cursor:pointer}
+  .card i{font-style:normal;font-size:24px;width:50px;height:50px;display:flex;align-items:center;justify-content:center;border-radius:14px;color:#fff}
+  .card b{display:block;font-size:14px;margin-top:2px}
+  .card span{color:var(--text-muted);font-size:11px}
+  .card-accent-blue i{background:linear-gradient(135deg,#3a7bd5,#2a5298)}
+  .card-accent-teal i{background:linear-gradient(135deg,#11998e,#2fce7a)}
+  .card-accent-orange i{background:linear-gradient(135deg,#f7971e,#e85d04)}
+  .card-accent-green i{background:linear-gradient(135deg,#3a7d1f,#8bc34a)}
+  .card-accent-purple i{background:linear-gradient(135deg,#7b2ff7,#4a00e0)}
+  .card-accent-cyan i{background:linear-gradient(135deg,#0891b2,#0e7490)}
+  .card-accent-red i{background:linear-gradient(135deg,#e11d48,#9f1239)}
+  .card-accent-gold i{background:linear-gradient(135deg,#e8a13a,#c77d0e)}
+  .nav-section-title{grid-column:1/-1;margin:10px 0 -4px;font-size:13px;color:var(--text-muted);font-weight:bold}
+  .statCard{display:inline-block;background:var(--bg-sunken);border:1px solid var(--border);border-radius:10px;padding:12px 18px;margin:6px 6px 0 0;text-align:center;cursor:pointer}
+  .statCard b{display:block;font-size:22px;color:var(--accent-text)}
+  .treasury-balance{background:linear-gradient(135deg,#17324d,#0c1c2c);color:#fff;border-radius:14px;padding:18px;text-align:center;margin-bottom:14px}
+  .treasury-balance b{font-size:28px}
+  @media(max-width:650px){.row2{grid-template-columns:1fr}.grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+  <div id="globalErrorBanner" class="hidden" style="background:#7f1d1d;color:#fff;padding:12px 16px;font-size:13px;position:sticky;top:0;z-index:100;word-break:break-word"></div>
+  <script>
+    (function () {
+      const banner = document.getElementById("globalErrorBanner");
+      function show(msg) { banner.textContent = "❌ خطأ في الصفحة: " + msg; banner.classList.remove("hidden"); }
+      window.onerror = (msg, src, line) => show(`${msg} (سطر ${line})`);
+      window.addEventListener("unhandledrejection", e => show("Promise فشل: " + (e.reason?.message || e.reason)));
+    })();
+  </script>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">🔧</div>
+      <div><h1>الورشة الفنية</h1><p>نسخة سحابية — تجريبية</p></div>
+    </div>
+  </header>
+
+  <div id="loginBox" class="box">
+    <h2>🔑 تسجيل الدخول</h2>
+    <input id="email" type="email" placeholder="الإيميل">
+    <input id="password" type="password" placeholder="كلمة المرور">
+    <button id="loginBtn">دخول</button>
+    <div id="loginMsg"></div>
+  </div>
+
+  <div id="appShell" class="hidden">
+    <nav>
+      <button data-view="home" class="active">🏠 الرئيسية</button>
+      <button data-view="customers">👤 العملاء</button>
+      <button data-view="devices">🔧 الأجهزة</button>
+      <button data-view="parts">📦 المخزن</button>
+      <button data-view="requests">🛠️ أوامر الشغل</button>
+      <button data-view="route">🗺️ خط السير</button>
+      <button data-view="wallets">💳 الحسابات</button>
+      <button data-view="treasury">💵 الخزنة</button>
+      <button data-view="tasks">📋 المهام</button>
+      <button data-view="faultcodes">🧯 أكواد الأعطال</button>
+      <button data-view="invoices">🧾 الفواتير</button>
+      <button id="logoutBtn" style="margin-inline-start:auto">خروج</button>
+    </nav>
+    <div class="wrap">
+
+      <div id="view-home">
+        <div id="seedAllBox" class="box hidden">
+          <span class="err">⚠️ مفيش إعدادات (مراكز/قرى/أنواع/ماركات/حالات) على السيرفر لسه.</span>
+          <button id="seedAllBtn">🌱 زرع كل الإعدادات الافتراضية دفعة واحدة</button>
+          <div id="seedMsg"></div>
+        </div>
+        <div class="grid">
+          <div class="nav-section-title">📊 نظرة عامة</div>
+          <div class="statCard" data-view="customers"><b id="statCustomers">0</b>عملاء</div>
+          <div class="statCard" data-view="devices"><b id="statDevices">0</b>أجهزة</div>
+          <div class="statCard" data-view="parts"><b id="statParts">0</b>قطع غيار</div>
+          <div class="statCard" data-view="requests"><b id="statRequests">0</b>أوامر شغل</div>
+
+          <div class="nav-section-title">⚡ التشغيل اليومي</div>
+          <div class="card card-accent-orange" data-view="requests"><i>🛠️</i><b>أوامر الشغل</b><span>التشغيل والحساب وقطع الغيار</span></div>
+          <div class="card card-accent-orange" data-view="route"><i>🗺️</i><b>خط السير</b><span>زيارات اليوم</span></div>
+          <div class="card card-accent-teal" data-view="tasks"><i>✅</i><b>المهام</b><span>متابعة يومية</span></div>
+
+          <div class="nav-section-title">🗂️ قاعدة البيانات</div>
+          <div class="card card-accent-blue" data-view="customers"><i>👤</i><b>العملاء</b><span>الملفات والعناوين</span></div>
+          <div class="card card-accent-teal" data-view="devices"><i>🔧</i><b>الأجهزة</b><span>الأنواع والماركات</span></div>
+          <div class="card card-accent-green" data-view="parts"><i>📦</i><b>المخزن</b><span>القطع والكميات</span></div>
+          <div class="card card-accent-purple" data-view="faultcodes"><i>🧯</i><b>أكواد الأعطال</b><span>مرجع فني</span></div>
+
+          <div class="nav-section-title">💰 الأموال</div>
+          <div class="card card-accent-gold" data-view="wallets"><i>💳</i><b>الحسابات</b><span>المحافظ والأرصدة</span></div>
+          <div class="card card-accent-red" data-view="treasury"><i>💵</i><b>الخزنة</b><span>درج نقدي منفصل</span></div>
+          <div class="card card-accent-cyan" data-view="invoices"><i>🧾</i><b>الفواتير</b><span>فواتير الموردين</span></div>
+        </div>
+      </div>
+
+      <div id="view-customers" class="hidden"></div>
+      <div id="view-devices" class="hidden"></div>
+      <div id="view-parts" class="hidden"></div>
+      <div id="view-requests" class="hidden"></div>
+      <div id="view-route" class="hidden"></div>
+      <div id="view-wallets" class="hidden"></div>
+      <div id="view-treasury" class="hidden"></div>
+      <div id="view-tasks" class="hidden"></div>
+      <div id="view-faultcodes" class="hidden"></div>
+      <div id="view-invoices" class="hidden"></div>
+
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8",
+      authDomain: "elwarsha-elfanya.firebaseapp.com",
+      projectId: "elwarsha-elfanya",
+      storageBucket: "elwarsha-elfanya.firebasestorage.app",
+      messagingSenderId: "916075814550",
+      appId: "1:916075814550:web:90e6b0c01b58abc614ecb7"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    /* ==================== حالة عامة مشتركة ==================== */
+    let allCustomers = [], allDevices = [], allRequests = [], allParts = [], allWalletTx = [], allTreasury = [], allTasks = [], allFaultCodes = [], allInvoices = [];
+    let settingsData = {};
+    let unsub = [];
+    const WORK_ORDER_TRANSITIONS = { "جديد": ["جاري التنفيذ", "ملغي"], "جاري التنفيذ": ["مكتمل", "ملغي"], "مكتمل": ["جاري التنفيذ"], "ملغي": ["جديد"] };
+    function nextStatusOptions(status) { return [...new Set([status, ...(WORK_ORDER_TRANSITIONS[status] || [])])]; }
+    function addressText(a) { if (!a) return "—"; return [a.center, a.village, a.street].filter(Boolean).join(" - ") || "—"; }
+    function customerAddresses(c) {
+      const e = c.extraAddress || {};
+      const hasExtra = !!(e.center || e.village || e.street);
+      return [{ key: "main", label: "العنوان الأساسي", ...c.mainAddress }].concat(hasExtra ? [{ key: "extra", label: "العنوان الإضافي", ...e }] : []);
+    }
+    function customerName(cid) { const c = allCustomers.find(x => x.id === cid); return c ? c.name : "—"; }
+    function deviceLabel(did) { const d = allDevices.find(x => x.id === did); return d ? `${d.type || ""} ${d.brand || ""}` : "—"; }
+    function reqRef(rid) { return db.collection("requests").doc(rid); }
+    /* رفع صورة على Cloudinary — بنصغّرها ونضغطها أول (زي التطبيق الأصلي
+       بالظبط: أقصى ضلع 720 بكسل، جودة 62%) قبل الرفع، عشان توفير المساحة. */
+    function resizeImageFile(file, max = 720, quality = 0.62) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            const scale = Math.min(1, max / Math.max(img.width, img.height));
+            const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            canvas.toBlob(blob => resolve(blob), "image/jpeg", quality);
+          };
+          img.onerror = reject;
+          img.src = reader.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    function uploadToCloudinary(blob) {
+      const formData = new FormData();
+      formData.append("file", blob);
+      formData.append("upload_preset", "workshop_unsigned");
+      return fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload", { method: "POST", body: formData })
+        .then(r => r.json())
+        .then(data => { if (!data.secure_url) throw new Error(data.error?.message || "فشل رفع الصورة"); return data.secure_url; });
+    }
+    /* حركة حساب مرتبطة بأمر شغل (عربون أو تحصيل نهائي) — بنستخدم refKey
+       نفسه كـ ID المستند في Firestore (بدل البحث عنه)، فده أبسط وأضمن من
+       أسلوب البحث في مصفوفة اللي كان مستخدم في localStorage. */
+    function upsertWalletTx(refKey, data) {
+      const ref = db.collection("walletTx").doc(refKey);
+      const amount = +data.amount || 0, wallet = (data.wallet || "").trim();
+      if (!wallet || amount <= 0) return ref.set({ deleted: true }, { merge: true });
+      return ref.set({
+        refKey, manualOverride: false, deleted: false, type: "in", amount, wallet,
+        category: data.category || "تحصيل عميل", reason: data.reason || "", note: data.note || "",
+        date: new Date().toISOString().slice(0, 10), source: "order-link",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    /* ==================== تسجيل الدخول ==================== */
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        document.getElementById("loginBox").classList.add("hidden");
+        document.getElementById("appShell").classList.remove("hidden");
+        boot();
+      } else {
+        document.getElementById("loginBox").classList.remove("hidden");
+        document.getElementById("appShell").classList.add("hidden");
+        unsub.forEach(u => u()); unsub = [];
+      }
+    });
+    document.getElementById("loginBtn").onclick = () => {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const msg = document.getElementById("loginMsg");
+      msg.textContent = "⏳ جاري الدخول...";
+      auth.signInWithEmailAndPassword(email, password).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    };
+    document.getElementById("logoutBtn").onclick = () => auth.signOut();
+
+    /* ==================== التنقل بين الشاشات ==================== */
+    document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click", () => switchView(btn.dataset.view)));
+    function switchView(name) {
+      ["home", "customers", "devices", "parts", "requests", "route", "wallets", "treasury", "tasks", "faultcodes", "invoices"].forEach(v => {
+        document.getElementById("view-" + v).classList.toggle("hidden", v !== name);
+      });
+      document.querySelectorAll("nav [data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+      if (name === "customers") renderCustomersView();
+      if (name === "devices") renderDevicesView();
+      if (name === "parts") renderPartsView();
+      if (name === "requests") renderRequestsView();
+      if (name === "route") renderRouteView();
+      if (name === "wallets") renderWalletsView();
+      if (name === "treasury") renderTreasuryView();
+      if (name === "tasks") renderTasksView();
+      if (name === "faultcodes") renderFaultCodesView();
+      if (name === "invoices") renderInvoicesView();
+    }
+
+    /* ==================== الإقلاع: تحميل الإعدادات + الاستماع اللحظي ==================== */
+    function boot() {
+      initAllViews();
+      db.collection("settings").doc("global").get().then(doc => {
+        settingsData = doc.exists ? doc.data() : {};
+        document.getElementById("seedAllBox").classList.toggle("hidden", !!(settingsData.centers && settingsData.types && settingsData.orderStatuses && settingsData.wallets));
+        // القوائم اتبنت فاضية في initAllViews() لإن الإعدادات لسه مجتش من
+        // السيرفر وقتها — لازم نعيد ملأها دلوقتي بعد ما البيانات وصلت.
+        fillCenterSelects(); fillTypeSelect(); fillBrandSelect(); fillRequestStaticSelects(); fillFaultCodeSelects();
+        startListening();
+      });
+    }
+    document.getElementById("seedAllBtn").onclick = () => {
+      const defaults = {
+        centers: ["مطاي", "بني مزار"],
+        villages: { "مطاي": ["مطاي البلد", "أبو عزيز", "بردنوها", "منبال", "أبوان", "إبوان", "حلوة", "سيلة الشرقية", "سيلة الغربية", "عزبة بطرس", "عزبة أبو شحاته"], "بني مزار": [] },
+        types: {
+          "غسالات": ["هاف أوتوماتيك", "فوق أوتوماتيك", "أمامي أوتوماتيك"], "ثلاجات": ["عادية", "نوفروست", "ديب فريزر"],
+          "تكييفات": ["سبليت", "شباك"], "سخانات": ["كهرباء", "غاز"], "كولديرات": ["كولدير"], "أجهزة_أخرى": ["عام"]
+        },
+        brands: ["Fresh", "Unionaire", "Tornado", "Beko", "LG", "Samsung", "Sharp", "Ariston", "Zanussi", "Whirlpool", "Indesit", "White Point", "Kiriazi", "Ideal", "فريش", "توشيبا العربى", "كريازى"],
+        orderStatuses: ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"],
+        workshopStatuses: ["غير مطلوب", "تم السحب", "تم التسليم"],
+        executionPlaces: ["عند العميل", "الورشة"],
+        wallets: ["محفظتي الشخصية", "محفظة فودافون كاش", "محفظة أورنج كاش", "إنستاباي"],
+        walletCategories: ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "سلفة / تحويل", "أخرى"]
+      };
+      db.collection("settings").doc("global").set(defaults, { merge: true }).then(() => {
+        settingsData = { ...settingsData, ...defaults };
+        document.getElementById("seedMsg").innerHTML = "<span class='ok'>✅ اتزرعت.</span>";
+        document.getElementById("seedAllBox").classList.add("hidden");
+        fillCenterSelects(); fillTypeSelect(); fillBrandSelect(); fillRequestStaticSelects(); fillFaultCodeSelects();
+        renderCustomersView(); renderDevicesView(); renderRequestsView(); renderFaultCodesView();
+      });
+    };
+
+    function startListening() {
+      unsub.push(db.collection("customers").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allCustomers = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("statCustomers").textContent = allCustomers.length;
+        renderCustomersView(); renderDevicesView(); renderRequestsView();
+      }));
+      unsub.push(db.collection("devices").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allDevices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("statDevices").textContent = allDevices.length;
+        renderDevicesView(); renderRequestsView();
+      }));
+      unsub.push(db.collection("parts").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allParts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("statParts").textContent = allParts.length;
+        renderPartsView(); renderRequestsView();
+      }));
+      unsub.push(db.collection("requests").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allRequests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        document.getElementById("statRequests").textContent = allRequests.length;
+        renderRequestsView();
+        renderRouteView();
+      }));
+      unsub.push(db.collection("walletTx").onSnapshot(snap => {
+        allWalletTx = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => !x.deleted);
+        renderWalletsView();
+      }));
+      unsub.push(db.collection("treasury").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allTreasury = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderTreasuryView();
+      }));
+      unsub.push(db.collection("tasks").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allTasks = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => !x.deleted);
+        renderTasksView();
+      }));
+      unsub.push(db.collection("faultCodes").onSnapshot(snap => {
+        allFaultCodes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderFaultCodesView();
+      }));
+      unsub.push(db.collection("invoices").orderBy("createdAt", "desc").onSnapshot(snap => {
+        allInvoices = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderInvoicesView();
+      }));
+    }
+
+    /* ==================== شاشة العملاء ==================== */
+    let editingCustomerId = null;
+    function initCustomersView() {
+      document.getElementById("view-customers").innerHTML = `
+        <div class="box">
+          <b id="cFormTitle">➕ إضافة عميل جديد</b>
+          <div class="row2">
+            <label>اسم العميل<input id="cName"></label>
+            <label>التليفون<input id="cPhone" type="tel"></label>
+          </div>
+          <h3>📍 العنوان الأساسي</h3>
+          <div class="row2">
+            <label>المركز<select id="cCenter"><option value="">اختر المركز</option></select></label>
+            <label>القرية<select id="cVillage"><option value="">اختر القرية</option></select></label>
+          </div>
+          <label>الشارع <small>اختياري</small><input id="cStreet"></label>
+          <h3>📍 عنوان إضافي <small>اختياري</small></h3>
+          <div class="row2">
+            <label>المركز<select id="aCenter"><option value="">اختر المركز</option></select></label>
+            <label>القرية<select id="aVillage"><option value="">اختر القرية</option></select></label>
+          </div>
+          <label>الشارع <small>اختياري</small><input id="aStreet"></label>
+          <div id="cDupHint" class="hint"></div>
+          <button id="cSaveBtn">💾 حفظ</button>
+          <button id="cNewBtn" class="secondary">➕ عميل جديد (تصفير)</button>
+          <div id="cSaveMsg"></div>
+        </div>
+        <div class="box">
+          <input id="cSearch" placeholder="🔍 بحث بالاسم أو التليفون">
+          <b style="display:block;margin-top:10px">📋 قائمة العملاء — <span id="cCount">0</span></b>
+          <div id="cList">⏳</div>
+        </div>
+        <div id="cDetailBox" class="box hidden"></div>`;
+      fillCenterSelects();
+      document.getElementById("cCenter").onchange = () => fillVillageSelect("cCenter", "cVillage");
+      document.getElementById("aCenter").onchange = () => fillVillageSelect("aCenter", "aVillage");
+      document.getElementById("cPhone").addEventListener("input", () => {
+        const dup = allCustomers.find(c => c.id !== editingCustomerId && (c.phone || "").trim() === document.getElementById("cPhone").value.trim() && document.getElementById("cPhone").value.trim());
+        document.getElementById("cDupHint").innerHTML = dup ? `⚠️ الرقم مسجل بالفعل للعميل: <b>${dup.name}</b>` : "";
+      });
+      document.getElementById("cSaveBtn").onclick = saveCustomer;
+      document.getElementById("cNewBtn").onclick = clearCustomerForm;
+      document.getElementById("cSearch").addEventListener("input", renderCustomersList);
+    }
+    function fillCenterSelects() {
+      const centers = settingsData.centers || [];
+      ["cCenter", "aCenter"].forEach(id => {
+        const el = document.getElementById(id); if (!el) return;
+        const cur = el.value;
+        el.innerHTML = '<option value="">اختر المركز</option>' + centers.map(c => `<option>${c}</option>`).join("");
+        el.value = cur;
+      });
+    }
+    function fillVillageSelect(centerId, villageId) {
+      const center = document.getElementById(centerId).value;
+      const villages = (settingsData.villages || {})[center] || [];
+      document.getElementById(villageId).innerHTML = '<option value="">اختر القرية</option>' + villages.map(v => `<option>${v}</option>`).join("");
+    }
+    function saveCustomer() {
+      const msg = document.getElementById("cSaveMsg");
+      const name = document.getElementById("cName").value.trim();
+      if (!name) { msg.innerHTML = "<span class='err'>اكتب اسم العميل.</span>"; return; }
+      const formData = {
+        name, phone: document.getElementById("cPhone").value.trim(),
+        mainAddress: { center: document.getElementById("cCenter").value, village: document.getElementById("cVillage").value, street: document.getElementById("cStreet").value.trim() },
+        extraAddress: { center: document.getElementById("aCenter").value, village: document.getElementById("aVillage").value, street: document.getElementById("aStreet").value.trim() }
+      };
+      const dup = allCustomers.find(c => c.id !== editingCustomerId && formData.phone && (c.phone || "").trim() === formData.phone);
+      if (dup && !confirm(`⚠️ الرقم مسجل للعميل ${dup.name}. متابعة؟`)) return;
+      msg.textContent = "⏳...";
+      const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      const op = editingCustomerId ? db.collection("customers").doc(editingCustomerId).update(payload)
+        : db.collection("customers").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      op.then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearCustomerForm(); }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearCustomerForm() {
+      ["cName", "cPhone", "cStreet", "aStreet"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("cCenter").value = ""; document.getElementById("aCenter").value = "";
+      fillVillageSelect("cCenter", "cVillage"); fillVillageSelect("aCenter", "aVillage");
+      document.getElementById("cDupHint").textContent = "";
+      editingCustomerId = null;
+      document.getElementById("cFormTitle").textContent = "➕ إضافة عميل جديد";
+    }
+    function editCustomer(cid) {
+      const c = allCustomers.find(x => x.id === cid); if (!c) return;
+      editingCustomerId = cid;
+      document.getElementById("cName").value = c.name || "";
+      document.getElementById("cPhone").value = c.phone || "";
+      document.getElementById("cCenter").value = c.mainAddress?.center || ""; fillVillageSelect("cCenter", "cVillage");
+      document.getElementById("cVillage").value = c.mainAddress?.village || "";
+      document.getElementById("cStreet").value = c.mainAddress?.street || "";
+      document.getElementById("aCenter").value = c.extraAddress?.center || ""; fillVillageSelect("aCenter", "aVillage");
+      document.getElementById("aVillage").value = c.extraAddress?.village || "";
+      document.getElementById("aStreet").value = c.extraAddress?.street || "";
+      document.getElementById("cFormTitle").textContent = `✏️ تعديل: ${c.name}`;
+      window.scrollTo(0, 0);
+    }
+    function deleteCustomer(cid, name) {
+      const devices = allDevices.filter(d => d.customerId === cid);
+      const requests = allRequests.filter(r => r.customerId === cid);
+      let warning = `حذف العميل «${name}» نهائيًا؟`;
+      if (devices.length || requests.length) {
+        warning = `⚠️ العميل «${name}» ليه ${devices.length} جهاز و ${requests.length} أمر شغل مرتبطين بيه.\n\nحذف العميل هيحذف كل ده معاه نهائيًا. متأكد إنك عايز تكمل؟`;
+      }
+      if (!confirm(warning)) return;
+      const batch = db.batch();
+      requests.forEach(r => batch.delete(db.collection("requests").doc(r.id)));
+      devices.forEach(d => batch.delete(db.collection("devices").doc(d.id)));
+      batch.delete(db.collection("customers").doc(cid));
+      batch.commit().then(() => document.getElementById("cDetailBox")?.classList.add("hidden"))
+        .catch(err => alert("❌ تعذر الحذف: " + err.message));
+    }
+    function openCustomer(cid) {
+      const c = allCustomers.find(x => x.id === cid); if (!c) return;
+      const devs = allDevices.filter(d => d.customerId === cid);
+      const reqs = allRequests.filter(r => r.customerId === cid);
+      const box = document.getElementById("cDetailBox");
+      box.innerHTML = `
+        <h3>👤 ملف العميل الكامل</h3>
+        <div><b>الاسم:</b> ${c.name}</div>
+        <div><b>التليفون:</b> ${c.phone || "—"}</div>
+        <div><b>العنوان الأساسي:</b> ${addressText(c.mainAddress)}</div>
+        ${c.extraAddress && (c.extraAddress.center || c.extraAddress.street) ? `<div><b>العنوان الإضافي:</b> ${addressText(c.extraAddress)}</div>` : ""}
+        <button id="cDetailEdit" class="small">✏️ تعديل</button>
+        <button id="cDetailDelete" class="danger small">🗑️ حذف</button>
+        <button id="cDetailClose" class="secondary small">إغلاق</button>
+        <h3 style="margin-top:14px">🔧 أجهزة العميل (${devs.length})</h3>
+        ${devs.length ? devs.map(d => `<div class="item" style="cursor:pointer" data-open-device="${d.id}"><b>${d.type || ""} — ${d.brand || ""}</b><div>${d.model || ""}</div></div>`).join("") : "<div class='hint'>لا يوجد أجهزة مسجلة.</div>"}
+        <h3 style="margin-top:14px">🛠️ أوامر الشغل (${reqs.length})</h3>
+        ${reqs.length ? reqs.map(r => `<div class="item" style="cursor:pointer" data-open-request="${r.id}"><b>${deviceLabel(r.deviceId)}</b> <span class="badge">${r.status || ""}</span><div>${r.fault || ""}</div></div>`).join("") : "<div class='hint'>لا يوجد أوامر شغل.</div>"}
+      `;
+      box.classList.remove("hidden");
+      document.getElementById("cDetailEdit").onclick = () => editCustomer(cid);
+      document.getElementById("cDetailDelete").onclick = () => deleteCustomer(cid, c.name);
+      document.getElementById("cDetailClose").onclick = () => box.classList.add("hidden");
+      box.querySelectorAll("[data-open-device]").forEach(el => el.onclick = () => { switchView("devices"); openDevice(el.dataset.openDevice); });
+      box.querySelectorAll("[data-open-request]").forEach(el => el.onclick = () => { switchView("requests"); openRequest(el.dataset.openRequest); });
+      box.scrollIntoView({ behavior: "smooth" });
+    }
+    function renderCustomersView() { renderCustomersList(); }
+    function renderCustomersList() {
+      const list = document.getElementById("cList"); if (!list) return;
+      const q = (document.getElementById("cSearch")?.value || "").toLowerCase();
+      const filtered = allCustomers.filter(c => (c.name + " " + c.phone).toLowerCase().includes(q));
+      document.getElementById("cCount").textContent = filtered.length;
+      list.innerHTML = filtered.length ? "" : "لا يوجد عملاء.";
+      filtered.forEach(c => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<b style="cursor:pointer;text-decoration:underline" data-open>👤 ${c.name}</b><div>📞 ${c.phone || "—"}</div><div>📍 ${addressText(c.mainAddress)}</div>`;
+        div.querySelector("[data-open]").onclick = () => openCustomer(c.id);
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editCustomer(c.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deleteCustomer(c.id, c.name);
+        div.appendChild(e); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة الأجهزة ==================== */
+    let editingDeviceId = null;
+    function initDevicesView() {
+      document.getElementById("view-devices").innerHTML = `
+        <div class="box">
+          <b id="dFormTitle">➕ إضافة جهاز جديد</b>
+          <label>العميل
+            <input id="dCustomerSearch" placeholder="🔍 دوّر على عميل...">
+            <div id="dCustomerResults" class="searchResults hidden"></div>
+            <input type="hidden" id="dCustomerId">
+          </label>
+          <div id="dSelectedCustomer" class="hint"></div>
+          <label>العنوان<select id="dAddress"><option value="">اختر العنوان</option></select></label>
+          <div class="row2">
+            <label>نوع الجهاز<select id="dType"><option value="">اختر النوع</option></select></label>
+            <label>التصنيف<select id="dCategory"><option value="">اختر التصنيف</option></select></label>
+          </div>
+          <label>الماركة<select id="dBrand"><option value="">اختر الماركة</option></select></label>
+          <label>الموديل<input id="dModel"></label>
+          <label>الوصف<textarea id="dDesc" rows="2"></textarea></label>
+          <label>📷 صورة الجهاز <small>اختياري</small><input id="dPhotoFile" type="file" accept="image/*"></label>
+          <div id="dPhotoPreview" class="hint"></div>
+          <button id="dSaveBtn">💾 حفظ</button>
+          <button id="dNewBtn" class="secondary">➕ جهاز جديد (تصفير)</button>
+          <div id="dSaveMsg"></div>
+        </div>
+        <div class="box">
+          <input id="dSearch" placeholder="🔍 بحث بالعميل أو النوع أو الماركة">
+          <b style="display:block;margin-top:10px">📋 قائمة الأجهزة — <span id="dCount">0</span></b>
+          <div id="dList">⏳</div>
+        </div>
+        <div id="dDetailBox" class="box hidden"></div>`;
+      fillTypeSelect(); fillBrandSelect();
+      document.getElementById("dType").onchange = fillCategorySelect;
+      document.getElementById("dCustomerSearch").addEventListener("input", function () {
+        const q = this.value.toLowerCase().trim();
+        const box = document.getElementById("dCustomerResults");
+        if (!q) { box.classList.add("hidden"); return; }
+        const matches = allCustomers.filter(c => (c.name + " " + c.phone).toLowerCase().includes(q)).slice(0, 8);
+        box.innerHTML = matches.length ? "" : "<div>لا يوجد نتائج.</div>";
+        matches.forEach(c => {
+          const row = document.createElement("div"); row.textContent = `👤 ${c.name} — 📞 ${c.phone || "—"}`;
+          row.onclick = () => {
+            document.getElementById("dCustomerId").value = c.id;
+            document.getElementById("dCustomerSearch").value = c.name;
+            document.getElementById("dSelectedCustomer").textContent = `العميل: ${c.name}`;
+            fillAddressSelectInto("dAddress", c.id, "");
+            box.classList.add("hidden");
+          };
+          box.appendChild(row);
+        });
+        box.classList.remove("hidden");
+      });
+      document.getElementById("dPhotoFile").addEventListener("change", function () {
+        const f = this.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => { document.getElementById("dPhotoPreview").innerHTML = `<img src="${reader.result}" style="max-width:120px;border-radius:6px;display:block;margin-top:6px">`; };
+        reader.readAsDataURL(f);
+      });
+      document.getElementById("dSaveBtn").onclick = saveDevice;
+      document.getElementById("dNewBtn").onclick = clearDeviceForm;
+      document.getElementById("dSearch").addEventListener("input", renderDevicesList);
+    }
+    function fillTypeSelect() { document.getElementById("dType").innerHTML = '<option value="">اختر النوع</option>' + Object.keys(settingsData.types || {}).map(t => `<option>${t}</option>`).join(""); }
+    function fillCategorySelect() {
+      const cats = (settingsData.types || {})[document.getElementById("dType").value] || [];
+      document.getElementById("dCategory").innerHTML = '<option value="">اختر التصنيف</option>' + cats.map(c => `<option>${c}</option>`).join("");
+    }
+    function fillBrandSelect() { document.getElementById("dBrand").innerHTML = '<option value="">اختر الماركة</option>' + (settingsData.brands || []).map(b => `<option>${b}</option>`).join(""); }
+    function fillAddressSelectInto(elId, customerId, selected) {
+      const c = allCustomers.find(x => x.id === customerId);
+      const el = document.getElementById(elId);
+      if (!c) { el.innerHTML = '<option value="">اختر العنوان</option>'; return; }
+      el.innerHTML = '<option value="">اختر العنوان</option>' + customerAddresses(c).map(a => `<option value="${a.key}" ${a.key === selected ? "selected" : ""}>${a.label} — ${addressText(a)}</option>`).join("");
+    }
+    let editingDevicePhoto = "";
+    function saveDevice() {
+      const msg = document.getElementById("dSaveMsg");
+      const customerId = document.getElementById("dCustomerId").value;
+      if (!customerId) { msg.innerHTML = "<span class='err'>اختر العميل.</span>"; return; }
+      const formData = {
+        customerId, addressKey: document.getElementById("dAddress").value,
+        type: document.getElementById("dType").value, category: document.getElementById("dCategory").value,
+        brand: document.getElementById("dBrand").value, model: document.getElementById("dModel").value.trim(),
+        desc: document.getElementById("dDesc").value.trim()
+      };
+      const file = document.getElementById("dPhotoFile").files[0];
+      msg.textContent = "⏳...";
+      const photoStep = file
+        ? resizeImageFile(file).then(blob => { msg.textContent = "⏳ جاري رفع الصورة..."; return uploadToCloudinary(blob); })
+        : Promise.resolve(editingDevicePhoto);
+      photoStep.then(photoUrl => {
+        formData.photo = photoUrl || "";
+        const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        const op = editingDeviceId ? db.collection("devices").doc(editingDeviceId).update(payload)
+          : db.collection("devices").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        return op;
+      }).then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearDeviceForm(); })
+        .catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearDeviceForm() {
+      document.getElementById("dCustomerId").value = ""; document.getElementById("dCustomerSearch").value = "";
+      document.getElementById("dSelectedCustomer").textContent = "";
+      document.getElementById("dAddress").innerHTML = '<option value="">اختر العنوان</option>';
+      document.getElementById("dPhotoFile").value = ""; document.getElementById("dPhotoPreview").innerHTML = "";
+      editingDevicePhoto = "";
+      document.getElementById("dType").value = ""; fillCategorySelect();
+      document.getElementById("dBrand").value = ""; document.getElementById("dModel").value = ""; document.getElementById("dDesc").value = "";
+      editingDeviceId = null;
+      document.getElementById("dFormTitle").textContent = "➕ إضافة جهاز جديد";
+    }
+    function editDevice(did) {
+      const d = allDevices.find(x => x.id === did); if (!d) return;
+      editingDeviceId = did;
+      const c = allCustomers.find(x => x.id === d.customerId);
+      document.getElementById("dCustomerId").value = d.customerId;
+      document.getElementById("dCustomerSearch").value = c ? c.name : "(محذوف)";
+      document.getElementById("dSelectedCustomer").textContent = c ? `العميل: ${c.name}` : "";
+      fillAddressSelectInto("dAddress", d.customerId, d.addressKey);
+      document.getElementById("dType").value = d.type || ""; fillCategorySelect();
+      document.getElementById("dCategory").value = d.category || "";
+      document.getElementById("dBrand").value = d.brand || "";
+      document.getElementById("dModel").value = d.model || ""; document.getElementById("dDesc").value = d.desc || "";
+      editingDevicePhoto = d.photo || "";
+      document.getElementById("dPhotoPreview").innerHTML = d.photo ? `<img src="${d.photo}" style="max-width:120px;border-radius:6px;display:block;margin-top:6px">` : "";
+      document.getElementById("dFormTitle").textContent = `✏️ تعديل جهاز: ${c ? c.name : ""}`;
+      window.scrollTo(0, 0);
+    }
+    function deleteDevice(did) {
+      const requests = allRequests.filter(r => r.deviceId === did);
+      let warning = "حذف الجهاز نهائيًا؟";
+      if (requests.length) {
+        warning = `⚠️ الجهاز ده ليه ${requests.length} أمر شغل مرتبط بيه.\n\nحذف الجهاز هيحذف أوامر الشغل دي معاه نهائيًا. متأكد إنك عايز تكمل؟`;
+      }
+      if (!confirm(warning)) return;
+      const batch = db.batch();
+      requests.forEach(r => batch.delete(db.collection("requests").doc(r.id)));
+      batch.delete(db.collection("devices").doc(did));
+      batch.commit().then(() => document.getElementById("dDetailBox")?.classList.add("hidden"))
+        .catch(err => alert("❌ تعذر الحذف: " + err.message));
+    }
+    function openDevice(did) {
+      const d = allDevices.find(x => x.id === did); if (!d) return;
+      const c = allCustomers.find(x => x.id === d.customerId);
+      const reqs = allRequests.filter(r => r.deviceId === did);
+      const box = document.getElementById("dDetailBox");
+      box.innerHTML = `
+        <h3>🔧 ملف الجهاز الكامل</h3>
+        ${d.photo ? `<img src="${d.photo}" style="max-width:220px;border-radius:8px;display:block;margin-bottom:8px">` : ""}
+        <div><b>النوع:</b> ${d.type || "—"} — <b>الماركة:</b> ${d.brand || "—"}</div>
+        <div><b>التصنيف:</b> ${d.category || "—"} • <b>الموديل:</b> ${d.model || "—"}</div>
+        <div><b>العميل:</b> ${c ? c.name : "—"}</div>
+        ${d.desc ? `<div><b>الوصف:</b> ${d.desc}</div>` : ""}
+        <button id="dDetailEdit" class="small">✏️ تعديل</button>
+        <button id="dDetailDelete" class="danger small">🗑️ حذف</button>
+        <button id="dDetailClose" class="secondary small">إغلاق</button>
+        <h3 style="margin-top:14px">🛠️ سجل أوامر الشغل لهذا الجهاز (${reqs.length})</h3>
+        ${reqs.length ? reqs.map(r => `<div class="item" style="cursor:pointer" data-open-request="${r.id}"><span class="badge">${r.status || ""}</span><div>${r.fault || ""}</div></div>`).join("") : "<div class='hint'>لا يوجد أوامر شغل لهذا الجهاز.</div>"}
+      `;
+      box.classList.remove("hidden");
+      document.getElementById("dDetailEdit").onclick = () => editDevice(did);
+      document.getElementById("dDetailDelete").onclick = () => deleteDevice(did);
+      document.getElementById("dDetailClose").onclick = () => box.classList.add("hidden");
+      box.querySelectorAll("[data-open-request]").forEach(el => el.onclick = () => { switchView("requests"); openRequest(el.dataset.openRequest); });
+      box.scrollIntoView({ behavior: "smooth" });
+    }
+    function renderDevicesView() { renderDevicesList(); }
+    function renderDevicesList() {
+      const list = document.getElementById("dList"); if (!list) return;
+      const q = (document.getElementById("dSearch")?.value || "").toLowerCase();
+      const filtered = allDevices.filter(d => (customerName(d.customerId) + " " + d.type + " " + d.brand).toLowerCase().includes(q));
+      document.getElementById("dCount").textContent = filtered.length;
+      list.innerHTML = filtered.length ? "" : "لا يوجد أجهزة.";
+      filtered.forEach(d => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `${d.photo ? `<img src="${d.photo}" style="max-width:80px;border-radius:6px;float:left;margin-inline-end:8px">` : ""}<b style="cursor:pointer;text-decoration:underline" data-open>🔧 ${d.type || ""} — ${d.brand || ""}</b><div>👤 ${customerName(d.customerId)}</div><div>${d.category || ""} • ${d.model || "—"}</div>`;
+        div.querySelector("[data-open]").onclick = () => openDevice(d.id);
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editDevice(d.id);
+        const del = document.createElement("button"); del.className = "danger small"; del.textContent = "🗑️ حذف"; del.onclick = () => deleteDevice(d.id);
+        div.appendChild(e); div.appendChild(del); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة المخزن (قطع الغيار) ==================== */
+    let editingPartId = null;
+    function initPartsView() {
+      document.getElementById("view-parts").innerHTML = `
+        <div class="box">
+          <b id="pFormTitle">➕ إضافة قطعة غيار</b>
+          <div class="row2">
+            <label>الاسم<input id="pName"></label>
+            <label>الكود <small>اختياري</small><input id="pCode"></label>
+          </div>
+          <div class="row2">
+            <label>التصنيف <small>اختياري</small><input id="pCategory"></label>
+            <label>الموقع <small>اختياري</small><input id="pLocation"></label>
+          </div>
+          <div class="row2">
+            <label>الكمية بالمخزن<input id="pQty" type="number" min="0"></label>
+            <label>حد أدنى للتنبيه <small>اختياري</small><input id="pMin" type="number" min="0"></label>
+          </div>
+          <div class="row2">
+            <label>سعر الشراء<input id="pBuy" type="number" min="0" step="0.01"></label>
+            <label>سعر البيع<input id="pUse" type="number" min="0" step="0.01"></label>
+          </div>
+          <div id="pDupHint" class="hint"></div>
+          <label>📷 صورة القطعة <small>اختياري</small><input id="pPhotoFile" type="file" accept="image/*"></label>
+          <div id="pPhotoPreview" class="hint"></div>
+          <button id="pSaveBtn">💾 حفظ</button>
+          <button id="pNewBtn" class="secondary">➕ قطعة جديدة (تصفير)</button>
+          <div id="pSaveMsg"></div>
+        </div>
+        <div class="box">
+          <input id="pSearch" placeholder="🔍 بحث بالاسم أو الكود">
+          <b style="display:block;margin-top:10px">📋 قائمة قطع الغيار — <span id="pCount">0</span></b>
+          <div id="pList">⏳</div>
+        </div>`;
+      document.getElementById("pName").addEventListener("input", () => {
+        const q = document.getElementById("pName").value.trim().toLowerCase();
+        const dup = q && allParts.find(p => p.id !== editingPartId && (p.name || "").trim().toLowerCase() === q);
+        document.getElementById("pDupHint").innerHTML = dup ? `⚠️ فيه قطعة بنفس الاسم بالظبط: <b>${dup.name}</b> (الكمية: ${dup.qty})` : "";
+      });
+      document.getElementById("pPhotoFile").addEventListener("change", function () {
+        const f = this.files[0]; if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => { document.getElementById("pPhotoPreview").innerHTML = `<img src="${reader.result}" style="max-width:120px;border-radius:6px;display:block;margin-top:6px">`; };
+        reader.readAsDataURL(f);
+      });
+      document.getElementById("pSaveBtn").onclick = savePart;
+      document.getElementById("pNewBtn").onclick = clearPartForm;
+      document.getElementById("pSearch").addEventListener("input", renderPartsList);
+    }
+    let editingPartPhoto = "";
+    function savePart() {
+      const msg = document.getElementById("pSaveMsg");
+      const name = document.getElementById("pName").value.trim();
+      if (!name) { msg.innerHTML = "<span class='err'>اكتب اسم القطعة.</span>"; return; }
+      const formData = {
+        name, code: document.getElementById("pCode").value.trim(), category: document.getElementById("pCategory").value.trim(),
+        location: document.getElementById("pLocation").value.trim(), qty: +document.getElementById("pQty").value || 0,
+        min: +document.getElementById("pMin").value || 0, buy: +document.getElementById("pBuy").value || 0, use: +document.getElementById("pUse").value || 0
+      };
+      const file = document.getElementById("pPhotoFile").files[0];
+      msg.textContent = "⏳...";
+      const photoStep = file
+        ? resizeImageFile(file).then(blob => { msg.textContent = "⏳ جاري رفع الصورة..."; return uploadToCloudinary(blob); })
+        : Promise.resolve(editingPartPhoto);
+      photoStep.then(photoUrl => {
+        formData.photo = photoUrl || "";
+        const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        return editingPartId ? db.collection("parts").doc(editingPartId).update(payload)
+          : db.collection("parts").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }).then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearPartForm(); })
+        .catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearPartForm() {
+      ["pName", "pCode", "pCategory", "pLocation", "pQty", "pMin", "pBuy", "pUse"].forEach(id => document.getElementById(id).value = "");
+      document.getElementById("pDupHint").textContent = "";
+      document.getElementById("pPhotoFile").value = ""; document.getElementById("pPhotoPreview").innerHTML = "";
+      editingPartPhoto = "";
+      editingPartId = null;
+      document.getElementById("pFormTitle").textContent = "➕ إضافة قطعة غيار";
+    }
+    function editPart(pid) {
+      const p = allParts.find(x => x.id === pid); if (!p) return;
+      editingPartId = pid;
+      document.getElementById("pName").value = p.name || ""; document.getElementById("pCode").value = p.code || "";
+      document.getElementById("pCategory").value = p.category || ""; document.getElementById("pLocation").value = p.location || "";
+      document.getElementById("pQty").value = p.qty || 0; document.getElementById("pMin").value = p.min || 0;
+      document.getElementById("pBuy").value = p.buy || 0; document.getElementById("pUse").value = p.use || 0;
+      editingPartPhoto = p.photo || "";
+      document.getElementById("pPhotoPreview").innerHTML = p.photo ? `<img src="${p.photo}" style="max-width:120px;border-radius:6px;display:block;margin-top:6px">` : "";
+      document.getElementById("pFormTitle").textContent = `✏️ تعديل: ${p.name}`;
+      window.scrollTo(0, 0);
+    }
+    function deletePart(pid, name) { if (confirm(`حذف القطعة «${name}»؟`)) db.collection("parts").doc(pid).delete(); }
+    function renderPartsView() { renderPartsList(); }
+    function renderPartsList() {
+      const list = document.getElementById("pList"); if (!list) return;
+      const q = (document.getElementById("pSearch")?.value || "").toLowerCase();
+      const filtered = allParts.filter(p => (p.name + " " + (p.code || "")).toLowerCase().includes(q));
+      document.getElementById("pCount").textContent = filtered.length;
+      list.innerHTML = filtered.length ? "" : "لا يوجد قطع غيار.";
+      filtered.forEach(p => {
+        const low = (+p.min || 0) > 0 && (+p.qty || 0) <= (+p.min || 0);
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `${p.photo ? `<img src="${p.photo}" style="max-width:70px;border-radius:6px;float:left;margin-inline-end:8px">` : ""}<b>📦 ${p.name}</b> ${low ? "<span class='err'>⚠️ كمية منخفضة</span>" : ""}<div>الكمية: ${p.qty || 0} • شراء ${p.buy || 0} ج • بيع ${p.use || 0} ج</div>${p.code ? `<div>كود: ${p.code}</div>` : ""}`;
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editPart(p.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deletePart(p.id, p.name);
+        div.appendChild(e); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة أوامر الشغل ==================== */
+    let editingRequestId = null;
+    function initRequestsView() {
+      document.getElementById("view-requests").innerHTML = `
+        <div class="box">
+          <b id="rFormTitle">➕ أمر شغل جديد</b>
+          <div id="rEditBanner" class="hidden" style="background:#e65100;color:#fff;padding:10px;border-radius:6px;margin-top:8px;font-weight:bold"></div>
+          <label>العميل
+            <input id="rCustomerSearch" placeholder="🔍 دوّر على عميل...">
+            <div id="rCustomerResults" class="searchResults hidden"></div>
+            <input type="hidden" id="rCustomerId">
+          </label>
+          <div id="rSelectedCustomer" class="hint"></div>
+          <label>الجهاز<select id="rDevice"><option value="">اختر الجهاز</option></select></label>
+          <label>العنوان<select id="rAddress"><option value="">اختر العنوان</option></select></label>
+          <label>موعد الزيارة<input id="rVisit" type="datetime-local"></label>
+          <div class="row2">
+            <label>مكان التنفيذ<select id="rExecutionPlace"></select></label>
+            <label>حالة الورشة<select id="rWorkshopStatus"></select></label>
+          </div>
+          <label>الحالة<select id="rStatus"></select></label>
+          <label>وصف العطل<textarea id="rFault" rows="2"></textarea></label>
+          <label>الشغل<textarea id="rWork" rows="2"></textarea></label>
+          <label>أجرة الفني <small>بدون قطع الغيار</small><input id="rLabor" type="number" min="0" step="0.01" value="0"></label>
+          <div class="row2">
+            <label>عربون مدفوع <small>اختياري</small><input id="rDeposit" type="number" min="0" step="0.01" value="0"></label>
+            <label>محفظة العربون<select id="rDepositWallet"><option value="">بدون</option></select></label>
+          </div>
+          <button id="rSaveBtn">💾 حفظ</button>
+          <button id="rNewBtn" class="secondary">➕ أمر جديد (تصفير)</button>
+          <div id="rSaveMsg"></div>
+        </div>
+        <div id="rDetailBox" class="box hidden"></div>
+        <div class="box">
+          <input id="rSearch" placeholder="🔍 بحث بالعميل أو الجهاز">
+          <select id="rStatusFilter"><option value="">كل الحالات</option></select>
+          <b style="display:block;margin-top:10px">📋 قائمة أوامر الشغل — <span id="rCount">0</span></b>
+          <div id="rList">⏳</div>
+        </div>`;
+      fillRequestStaticSelects();
+      document.getElementById("rCustomerSearch").addEventListener("input", function () {
+        const q = this.value.toLowerCase().trim();
+        const box = document.getElementById("rCustomerResults");
+        if (!q) { box.classList.add("hidden"); return; }
+        const matches = allCustomers.filter(c => (c.name + " " + c.phone).toLowerCase().includes(q)).slice(0, 8);
+        box.innerHTML = matches.length ? "" : "<div>لا يوجد نتائج.</div>";
+        matches.forEach(c => {
+          const row = document.createElement("div"); row.textContent = `👤 ${c.name} — 📞 ${c.phone || "—"}`;
+          row.onclick = () => {
+            document.getElementById("rCustomerId").value = c.id;
+            document.getElementById("rCustomerSearch").value = c.name;
+            document.getElementById("rSelectedCustomer").textContent = `العميل: ${c.name}`;
+            fillAddressSelectInto("rAddress", c.id, "main");
+            fillDeviceSelectFor(c.id, "");
+            box.classList.add("hidden");
+          };
+          box.appendChild(row);
+        });
+        box.classList.remove("hidden");
+      });
+      document.getElementById("rSaveBtn").onclick = saveRequest;
+      document.getElementById("rNewBtn").onclick = () => { clearRequestForm(); document.getElementById("rDetailBox").classList.add("hidden"); };
+      document.getElementById("rSearch").addEventListener("input", renderRequestsList);
+      document.getElementById("rStatusFilter").addEventListener("change", renderRequestsList);
+    }
+    function fillRequestStaticSelects() {
+      const ep = settingsData.executionPlaces || ["عند العميل", "الورشة"];
+      const ws = settingsData.workshopStatuses || ["غير مطلوب", "تم السحب", "تم التسليم"];
+      const os = settingsData.orderStatuses || ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"];
+      const wl = settingsData.wallets || [];
+      document.getElementById("rExecutionPlace").innerHTML = ep.map(x => `<option>${x}</option>`).join("");
+      document.getElementById("rWorkshopStatus").innerHTML = ws.map(x => `<option>${x}</option>`).join("");
+      document.getElementById("rStatusFilter").innerHTML = '<option value="">كل الحالات</option>' + os.map(x => `<option>${x}</option>`).join("");
+      document.getElementById("rDepositWallet").innerHTML = '<option value="">بدون</option>' + wl.map(x => `<option>${x}</option>`).join("");
+      setStatusOptions("جديد");
+    }
+    function setStatusOptions(current) {
+      document.getElementById("rStatus").innerHTML = nextStatusOptions(current).map(x => `<option ${x === current ? "selected" : ""}>${x}</option>`).join("");
+    }
+    function fillDeviceSelectFor(customerId, selected) {
+      const devs = allDevices.filter(d => d.customerId === customerId);
+      document.getElementById("rDevice").innerHTML = '<option value="">اختر الجهاز</option>' + devs.map(d => `<option value="${d.id}" ${d.id === selected ? "selected" : ""}>${d.type || ""} — ${d.brand || ""}</option>`).join("");
+    }
+    function saveRequest() {
+      const msg = document.getElementById("rSaveMsg");
+      const customerId = document.getElementById("rCustomerId").value;
+      const deviceId = document.getElementById("rDevice").value;
+      if (!customerId) { msg.innerHTML = "<span class='err'>اختر العميل.</span>"; return; }
+      if (!deviceId) { msg.innerHTML = "<span class='err'>اختر الجهاز.</span>"; return; }
+      const labor = +document.getElementById("rLabor").value || 0;
+      const deposit = +document.getElementById("rDeposit").value || 0;
+      const depositWallet = document.getElementById("rDepositWallet").value;
+      const formData = {
+        customerId, deviceId, addressKey: document.getElementById("rAddress").value,
+        visit: document.getElementById("rVisit").value, status: document.getElementById("rStatus").value,
+        executionPlace: document.getElementById("rExecutionPlace").value, workshopStatus: document.getElementById("rWorkshopStatus").value,
+        fault: document.getElementById("rFault").value.trim(), work: document.getElementById("rWork").value.trim(),
+        labor, deposit, depositWallet
+      };
+      msg.textContent = "⏳...";
+      const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      let op, targetId = editingRequestId;
+      if (editingRequestId) {
+        // لو بنعدّل أجرة الفني أو العربون لأمر موجود، لازم نعيد حساب الإجمالي مع قطع الغيار الحالية
+        const existing = allRequests.find(x => x.id === editingRequestId);
+        const partsTotal = existing?.partsTotal || 0;
+        payload.total = labor + partsTotal;
+        payload.remain = Math.max(0, payload.total - deposit);
+        op = db.collection("requests").doc(editingRequestId).update(payload);
+      } else {
+        payload.parts = []; payload.partsTotal = 0; payload.partsCost = 0; payload.total = labor;
+        payload.remain = Math.max(0, labor - deposit);
+        payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        const newRef = db.collection("requests").doc();
+        targetId = newRef.id;
+        op = newRef.set(payload);
+      }
+      op.then(() => upsertWalletTx("order-deposit-" + targetId, {
+        amount: deposit, wallet: depositWallet, category: "تحصيل عميل", reason: "💰 عربون أمر شغل"
+      })).then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearRequestForm(); })
+        .catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearRequestForm() {
+      document.getElementById("rCustomerId").value = ""; document.getElementById("rCustomerSearch").value = "";
+      document.getElementById("rSelectedCustomer").textContent = "";
+      document.getElementById("rDevice").innerHTML = '<option value="">اختر الجهاز</option>';
+      document.getElementById("rAddress").innerHTML = '<option value="">اختر العنوان</option>';
+      document.getElementById("rVisit").value = ""; document.getElementById("rFault").value = ""; document.getElementById("rWork").value = "";
+      document.getElementById("rLabor").value = 0;
+      document.getElementById("rDeposit").value = 0; document.getElementById("rDepositWallet").value = "";
+      setStatusOptions("جديد");
+      editingRequestId = null;
+      document.getElementById("rFormTitle").textContent = "➕ أمر شغل جديد";
+      document.getElementById("rEditBanner").classList.add("hidden");
+    }
+    function editRequest(rid) {
+      const r = allRequests.find(x => x.id === rid); if (!r) return;
+      editingRequestId = rid;
+      const c = allCustomers.find(x => x.id === r.customerId);
+      document.getElementById("rCustomerId").value = r.customerId;
+      document.getElementById("rCustomerSearch").value = c ? c.name : "(محذوف)";
+      document.getElementById("rSelectedCustomer").textContent = c ? `العميل: ${c.name}` : "";
+      fillAddressSelectInto("rAddress", r.customerId, r.addressKey);
+      fillDeviceSelectFor(r.customerId, r.deviceId);
+      document.getElementById("rVisit").value = r.visit || "";
+      document.getElementById("rExecutionPlace").value = r.executionPlace || "";
+      document.getElementById("rWorkshopStatus").value = r.workshopStatus || "";
+      setStatusOptions(r.status || "جديد");
+      document.getElementById("rFault").value = r.fault || ""; document.getElementById("rWork").value = r.work || "";
+      document.getElementById("rLabor").value = r.labor || 0;
+      document.getElementById("rDeposit").value = r.deposit || 0; document.getElementById("rDepositWallet").value = r.depositWallet || "";
+      document.getElementById("rFormTitle").textContent = "✏️ تعديل أمر الشغل";
+      const banner = document.getElementById("rEditBanner");
+      banner.textContent = `🔄 بتعدّل أمر شغل العميل «${c ? c.name : "—"}» (كود: ${rid.slice(0, 6)})`;
+      banner.classList.remove("hidden");
+      document.getElementById("rDetailBox").classList.add("hidden");
+      switchView("requests"); window.scrollTo(0, 0);
+    }
+    function deleteRequest(rid) { if (confirm("حذف أمر الشغل؟")) { db.collection("requests").doc(rid).delete(); document.getElementById("rDetailBox").classList.add("hidden"); } }
+    /* إغلاق أمر الشغل واستلام المبلغ المتبقي بحماية Transaction — تحديث
+       أمر الشغل (مغلق/مدفوع) + تسجيل حركة الحساب بيحصلوا مع بعض، أو
+       محدش فيهم يتغير خالص. */
+    function closeOrderTx(requestId, walletName) {
+      const reqRefLocal = db.collection("requests").doc(requestId);
+      const wtxRef = db.collection("walletTx").doc("order-final-" + requestId);
+      return db.runTransaction(async (tx) => {
+        const reqDoc = await tx.get(reqRefLocal);
+        if (!reqDoc.exists) throw new Error("أمر الشغل غير موجود.");
+        const req = reqDoc.data();
+        if (req.closed) throw new Error("الأمر مغلق بالفعل.");
+        if (req.status !== "مكتمل") throw new Error("لازم تكون الحالة (مكتمل) الأول.");
+        const collected = Math.max(0, (+req.total || 0) - (+req.deposit || 0));
+        const now = new Date().toISOString();
+        tx.update(reqRefLocal, { paid: true, remain: 0, paidAt: now, closed: true, closedAt: now, closeWallet: walletName });
+        if (collected > 0) {
+          tx.set(wtxRef, {
+            refKey: "order-final-" + requestId, manualOverride: false, deleted: false, type: "in",
+            amount: collected, wallet: walletName, category: "تحصيل عميل",
+            reason: "💳 تحصيل نهائي أمر الشغل", note: "", date: now.slice(0, 10), source: "order-link",
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      });
+    }
+
+    function partLabel(item) {
+      if (item.external) return `${item.name} (خارجي)`;
+      const p = allParts.find(x => x.id === item.partId);
+      return p ? p.name : "(قطعة محذوفة)";
+    }
+    function openRequest(rid) {
+      const r = allRequests.find(x => x.id === rid); if (!r) return;
+      const box = document.getElementById("rDetailBox");
+      const partsRows = (r.parts || []).map(item => `<div class="item"><b>${partLabel(item)}</b><div>الكمية: ${item.qty} • سعر: ${item.sell} ج • الإجمالي: ${(item.qty * item.sell).toFixed(2)} ج</div></div>`).join("") || "<div class='hint'>لسه مفيش قطع غيار مضافة.</div>";
+      box.innerHTML = `
+        <h3>📄 تفاصيل أمر الشغل <small>(كود: ${rid.slice(0, 6)})</small></h3>
+        <div><b>👤 العميل:</b> ${customerName(r.customerId)}</div>
+        <div><b>🔧 الجهاز:</b> ${deviceLabel(r.deviceId)}</div>
+        <div><b>الحالة:</b> <span class="badge">${r.status || "—"}</span></div>
+        <div><b>مكان التنفيذ:</b> ${r.executionPlace || "—"} • <b>حالة الورشة:</b> ${r.workshopStatus || "—"}</div>
+        <div><b>موعد الزيارة:</b> ${r.visit ? new Date(r.visit).toLocaleString("ar-EG") : "—"}</div>
+        <div><b>⚠️ العطل:</b> ${r.fault || "—"}</div>
+        <div><b>🛠️ الشغل:</b> ${r.work || "—"}</div>
+        <button id="rDetailEdit" class="small">✏️ تعديل</button>
+        <button id="rDetailDelete" class="danger small">🗑️ حذف</button>
+        <button id="rDetailClose" class="secondary small">إغلاق</button>
+
+        <h3 style="margin-top:16px">🧩 قطع الغيار</h3>
+        ${partsRows}
+        <div class="box" style="background:#111">
+          <b>💰 الإجمالي</b>
+          <label>أجرة الفني (مصنعية)
+            <input id="rLaborInline" type="number" min="0" step="0.01" value="${+r.labor || 0}">
+          </label>
+          <button id="rSaveLaborBtn" class="small">💾 حفظ الأجرة</button>
+          <div id="rLaborMsg"></div>
+          <div style="margin-top:8px">قطع الغيار: ${(+r.partsTotal || 0).toFixed(2)} ج</div>
+          <div><b>الإجمالي الكلي: ${(+r.total || 0).toFixed(2)} ج</b></div>
+          <div>العربون المدفوع: ${(+r.deposit || 0).toFixed(2)} ج ${r.depositWallet ? "(" + r.depositWallet + ")" : ""}</div>
+          <div><b>المتبقي: ${(+r.remain || 0).toFixed(2)} ج</b></div>
+        </div>
+
+        <div class="box" style="background:#111">
+          <b>🔒 إغلاق الأمر واستلام المبلغ</b>
+          ${r.closed
+            ? `<div class="ok" style="margin-top:6px">✅ الأمر مغلق ومُحصّل بالكامل (محفظة: ${r.closeWallet || "—"})</div>`
+            : r.status !== "مكتمل"
+              ? `<div class="hint">لازم تغيّر الحالة لـ"مكتمل" الأول قبل ما تقدر تقفل الأمر.</div>`
+              : `<label>المحفظة اللي هيتحصّل فيها الباقي (${(Math.max(0, (+r.total || 0) - (+r.deposit || 0))).toFixed(2)} ج)
+                  <select id="rCloseWallet"><option value="">اختر المحفظة</option>${(settingsData.wallets || []).map(w => `<option>${w}</option>`).join("")}</select>
+                </label>
+                <button id="rCloseBtn" class="danger">🔒 تأكيد الإغلاق والتحصيل النهائي</button>
+                <div id="rCloseMsg"></div>`}
+        </div>
+
+        <h4>➕ إضافة قطعة من المخزن</h4>
+        <input id="rPartSearch" placeholder="🔍 اكتب اسم أو كود القطعة">
+        <div id="rPartResults" class="searchResults hidden"></div>
+        <input type="hidden" id="rPartSelectedId">
+        <div id="rPartSelectedLabel" class="hint"></div>
+        <label>الكمية<input id="rPartQty" type="number" min="1" value="1"></label>
+        <button id="rAddStockPartBtn">➕ إضافة (بحماية Transaction)</button>
+        <div id="rAddPartMsg"></div>
+
+        <h4 style="margin-top:14px">➕ قطعة من برّه المخزن (خارجية)</h4>
+        <div class="row2">
+          <label>الاسم<input id="rExtName"></label>
+          <label>الكمية<input id="rExtQty" type="number" min="1" value="1"></label>
+        </div>
+        <div class="row2">
+          <label>سعر الشراء<input id="rExtBuy" type="number" min="0" step="0.01" value="0"></label>
+          <label>سعر البيع<input id="rExtSell" type="number" min="0" step="0.01" value="0"></label>
+        </div>
+        <button id="rAddExtPartBtn" class="secondary">➕ إضافة قطعة خارجية</button>
+        <div id="rAddExtMsg"></div>
+      `;
+      box.classList.remove("hidden");
+      document.getElementById("rDetailEdit").onclick = () => editRequest(rid);
+      document.getElementById("rDetailDelete").onclick = () => deleteRequest(rid);
+      document.getElementById("rDetailClose").onclick = () => box.classList.add("hidden");
+      if (document.getElementById("rCloseBtn")) {
+        document.getElementById("rCloseBtn").onclick = () => {
+          const wallet = document.getElementById("rCloseWallet").value;
+          const msg = document.getElementById("rCloseMsg");
+          if (!wallet) { msg.innerHTML = "<span class='err'>اختر المحفظة الأول.</span>"; return; }
+          if (!confirm("تأكيد استلام كامل المبلغ المتبقي وإغلاق الأمر نهائيًا؟ بعد كده مش هينفع تعدّله.")) return;
+          msg.textContent = "⏳ جاري الإغلاق بحماية Transaction...";
+          closeOrderTx(rid, wallet).then(() => reqRef(rid).get()).then(doc => {
+            const idx = allRequests.findIndex(x => x.id === rid);
+            if (idx > -1) allRequests[idx] = { id: rid, ...doc.data() };
+            msg.innerHTML = "<span class='ok'>✅ اتقفل واتحصّل.</span>";
+            openRequest(rid);
+          }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+        };
+      }
+      document.getElementById("rSaveLaborBtn").onclick = () => {
+        const labor = +document.getElementById("rLaborInline").value || 0;
+        const total = labor + (+r.partsTotal || 0);
+        const msg = document.getElementById("rLaborMsg");
+        msg.textContent = "⏳...";
+        reqRef(rid).update({ labor, total, remain: Math.max(0, total - (+r.deposit || 0)) }).then(() => reqRef(rid).get()).then(doc => {
+          const idx = allRequests.findIndex(x => x.id === rid);
+          if (idx > -1) allRequests[idx] = { id: rid, ...doc.data() };
+          msg.innerHTML = "<span class='ok'>✅ اتحفظت.</span>";
+          openRequest(rid);
+        }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+      };
+
+      document.getElementById("rPartSearch").addEventListener("input", function () {
+        const q = this.value.toLowerCase().trim();
+        const resBox = document.getElementById("rPartResults");
+        if (!q) { resBox.classList.add("hidden"); return; }
+        const matches = allParts.filter(p => (p.name + " " + (p.code || "")).toLowerCase().includes(q)).slice(0, 8);
+        resBox.innerHTML = matches.length ? "" : "<div>لا يوجد نتائج.</div>";
+        matches.forEach(p => {
+          const row = document.createElement("div");
+          row.textContent = `📦 ${p.name} — متاح: ${p.qty || 0} — ${p.use || 0} ج`;
+          row.onclick = () => {
+            document.getElementById("rPartSelectedId").value = p.id;
+            document.getElementById("rPartSearch").value = p.name;
+            document.getElementById("rPartSelectedLabel").textContent = `القطعة المختارة: ${p.name} (متاح ${p.qty || 0})`;
+            resBox.classList.add("hidden");
+          };
+          resBox.appendChild(row);
+        });
+        resBox.classList.remove("hidden");
+      });
+      document.getElementById("rAddStockPartBtn").onclick = () => {
+        const pid = document.getElementById("rPartSelectedId").value;
+        const qty = +document.getElementById("rPartQty").value || 0;
+        const msg = document.getElementById("rAddPartMsg");
+        if (!pid) { msg.innerHTML = "<span class='err'>اختر قطعة من نتائج البحث الأول.</span>"; return; }
+        if (qty < 1) { msg.innerHTML = "<span class='err'>اكتب كمية صحيحة.</span>"; return; }
+        msg.textContent = "⏳ جاري الإضافة بحماية Transaction...";
+        addPartToRequestTx(rid, pid, qty).then(() => reqRef(rid).get()).then(doc => {
+          const idx = allRequests.findIndex(x => x.id === rid);
+          if (idx > -1) allRequests[idx] = { id: rid, ...doc.data() };
+          msg.innerHTML = "<span class='ok'>✅ اتضافت — المخزون والحركة والأمر اتحدثوا مع بعض بأمان.</span>";
+          openRequest(rid);
+        }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+      };
+      document.getElementById("rAddExtPartBtn").onclick = () => {
+        const name = document.getElementById("rExtName").value.trim();
+        const qty = +document.getElementById("rExtQty").value || 1;
+        const buy = +document.getElementById("rExtBuy").value || 0;
+        const sell = +document.getElementById("rExtSell").value || 0;
+        const msg = document.getElementById("rAddExtMsg");
+        if (!name) { msg.innerHTML = "<span class='err'>اكتب اسم القطعة.</span>"; return; }
+        const updatedParts = (r.parts || []).map(x => ({ ...x })).concat([{ external: true, name, qty, sell, cost: buy }]);
+        const partsTotal = updatedParts.reduce((a, x) => a + (+x.qty || 0) * (+x.sell || 0), 0);
+        const partsCost = updatedParts.reduce((a, x) => a + (+x.qty || 0) * (+x.cost || 0), 0);
+        const total = (+r.labor || 0) + partsTotal;
+        db.collection("requests").doc(rid).update({ parts: updatedParts, partsTotal, partsCost, total, remain: Math.max(0, total - (+r.deposit || 0)) }).then(() => reqRef(rid).get()).then(doc => {
+          const idx = allRequests.findIndex(x => x.id === rid);
+          if (idx > -1) allRequests[idx] = { id: rid, ...doc.data() };
+          msg.innerHTML = "<span class='ok'>✅ اتضافت.</span>";
+          openRequest(rid);
+        }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+      };
+      box.scrollIntoView({ behavior: "smooth" });
+    }
+    /* إضافة قطعة من المخزن لأمر شغل بحماية Transaction حقيقية —
+       المخزون + حركة المخزن + إجمالي أمر الشغل بيتحدثوا مع بعض
+       كوحدة واحدة، أو محدش فيهم يتحدث خالص لو حصل أي خطأ. */
+    function addPartToRequestTx(requestId, partId, qty) {
+      const partRef = db.collection("parts").doc(partId);
+      const reqRef = db.collection("requests").doc(requestId);
+      const moveRef = db.collection("partMoves").doc();
+      return db.runTransaction(async (tx) => {
+        const partDoc = await tx.get(partRef);
+        const reqDoc = await tx.get(reqRef);
+        if (!partDoc.exists) throw new Error("القطعة غير موجودة.");
+        if (!reqDoc.exists) throw new Error("أمر الشغل غير موجود.");
+        const part = partDoc.data(), req = reqDoc.data();
+        if (req.closed) throw new Error("الأمر مغلق، لا يمكن إضافة قطع غيار.");
+        const available = +part.qty || 0;
+        if (available < qty) throw new Error(`الكمية المتاحة (${available}) أقل من المطلوب (${qty}).`);
+        const updatedParts = (req.parts || []).map(x => ({ ...x }));
+        const existing = updatedParts.find(x => !x.external && x.partId === partId && +x.sell === +part.use && +x.cost === +part.buy);
+        if (existing) existing.qty = (+existing.qty || 0) + qty;
+        else updatedParts.push({ partId, qty, sell: +part.use || 0, cost: +part.buy || 0 });
+        const partsTotal = updatedParts.reduce((a, x) => a + (+x.qty || 0) * (+x.sell || 0), 0);
+        const partsCost = updatedParts.reduce((a, x) => a + (+x.qty || 0) * (+x.cost || 0), 0);
+        const total = (+req.labor || 0) + partsTotal;
+        tx.update(partRef, { qty: available - qty });
+        tx.set(moveRef, { partId, type: "خروج بسبب إضافة قطعة لأمر شغل", qty, requestId, at: firebase.firestore.FieldValue.serverTimestamp() });
+        tx.update(reqRef, { parts: updatedParts, partsTotal, partsCost, total, remain: Math.max(0, total - (+req.deposit || 0)) });
+      });
+    }
+    function renderRequestsView() { renderRequestsList(); }
+    function renderRequestsList() {
+      const list = document.getElementById("rList"); if (!list) return;
+      const q = (document.getElementById("rSearch")?.value || "").toLowerCase();
+      const statusF = document.getElementById("rStatusFilter")?.value || "";
+      const filtered = allRequests.filter(r => (!statusF || r.status === statusF) && (customerName(r.customerId) + " " + deviceLabel(r.deviceId)).toLowerCase().includes(q));
+      document.getElementById("rCount").textContent = filtered.length;
+      list.innerHTML = filtered.length ? "" : "لا يوجد أوامر شغل.";
+      filtered.forEach(r => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<b style="cursor:pointer;text-decoration:underline" data-open>👤 ${customerName(r.customerId)}</b> <span class="badge">${r.status || ""}</span><div>🔧 ${deviceLabel(r.deviceId)}</div>${r.fault ? `<div>⚠️ ${r.fault}</div>` : ""}`;
+        div.querySelector("[data-open]").onclick = () => openRequest(r.id);
+        const del = document.createElement("button"); del.className = "danger small"; del.textContent = "🗑️ حذف"; del.onclick = () => deleteRequest(r.id);
+        div.appendChild(del); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة الحسابات (عرض بس دلوقتي) ==================== */
+    function initWalletsView() {
+      document.getElementById("view-wallets").innerHTML = `
+        <div class="box"><h2>💳 أرصدة المحافظ</h2><div id="wBalances"></div></div>
+        <div class="box"><h2>📋 آخر الحركات</h2><div id="wTxList"></div></div>`;
+    }
+    function renderWalletsView() {
+      const balBox = document.getElementById("wBalances"); if (!balBox) return;
+      const wallets = settingsData.wallets || [];
+      balBox.innerHTML = wallets.map(w => {
+        const bal = allWalletTx.filter(t => t.wallet === w).reduce((a, t) => a + (t.type === "in" ? (+t.amount || 0) : -(+t.amount || 0)), 0);
+        return `<div class="statCard"><b>${bal.toFixed(2)}</b>${w}</div>`;
+      }).join("");
+      const list = document.getElementById("wTxList");
+      const sorted = [...allWalletTx].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 30);
+      list.innerHTML = sorted.length ? "" : "لا يوجد حركات بعد.";
+      sorted.forEach(t => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<b>${t.type === "in" ? "⬅️" : "➡️"} ${(+t.amount || 0).toFixed(2)} ج</b> — ${t.wallet || ""}<div>${t.category || ""} • ${t.reason || ""}</div><div>${t.date || ""}</div>`;
+        list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة الخزنة (درج نقدي منفصل) ==================== */
+    let editingTreasuryId = null;
+    function initTreasuryView() {
+      document.getElementById("view-treasury").innerHTML = `
+        <div class="treasury-balance">
+          <span style="display:block;font-size:13px;opacity:.8;margin-bottom:4px">💵 رصيد الخزنة الحالي</span>
+          <b id="tBalance">0.00 ج</b>
+        </div>
+        <div class="box">
+          <b id="tFormTitle">➕ حركة خزنة جديدة</b>
+          <div class="row2">
+            <label>النوع<select id="tType"><option value="in">وارد ⬅️</option><option value="out">صادر ➡️</option></select></label>
+            <label>المبلغ<input id="tAmount" type="number" min="0" step="0.01"></label>
+          </div>
+          <label>السبب<input id="tReason"></label>
+          <label>ملاحظات <small>اختياري</small><input id="tNote"></label>
+          <button id="tSaveBtn">💾 حفظ</button>
+          <button id="tNewBtn" class="secondary">➕ حركة جديدة (تصفير)</button>
+          <div id="tSaveMsg"></div>
+        </div>
+        <div class="box">
+          <b>📋 حركات الخزنة</b>
+          <div id="tList" style="margin-top:10px">⏳</div>
+        </div>`;
+      document.getElementById("tSaveBtn").onclick = saveTreasury;
+      document.getElementById("tNewBtn").onclick = clearTreasuryForm;
+    }
+    function saveTreasury() {
+      const msg = document.getElementById("tSaveMsg");
+      const amount = +document.getElementById("tAmount").value || 0;
+      if (amount <= 0) { msg.innerHTML = "<span class='err'>اكتب مبلغ صحيح.</span>"; return; }
+      const formData = { type: document.getElementById("tType").value, amount, reason: document.getElementById("tReason").value.trim(), note: document.getElementById("tNote").value.trim(), date: new Date().toISOString().slice(0, 10) };
+      msg.textContent = "⏳...";
+      const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      const op = editingTreasuryId ? db.collection("treasury").doc(editingTreasuryId).update(payload)
+        : db.collection("treasury").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      op.then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearTreasuryForm(); }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearTreasuryForm() {
+      document.getElementById("tAmount").value = ""; document.getElementById("tReason").value = ""; document.getElementById("tNote").value = ""; document.getElementById("tType").value = "in";
+      editingTreasuryId = null;
+      document.getElementById("tFormTitle").textContent = "➕ حركة خزنة جديدة";
+    }
+    function editTreasury(tid) {
+      const t = allTreasury.find(x => x.id === tid); if (!t) return;
+      editingTreasuryId = tid;
+      document.getElementById("tType").value = t.type || "in"; document.getElementById("tAmount").value = t.amount || 0;
+      document.getElementById("tReason").value = t.reason || ""; document.getElementById("tNote").value = t.note || "";
+      document.getElementById("tFormTitle").textContent = "✏️ تعديل الحركة";
+      window.scrollTo(0, 0);
+    }
+    function deleteTreasury(tid) { if (confirm("حذف الحركة؟")) db.collection("treasury").doc(tid).delete(); }
+    function renderTreasuryView() {
+      const balEl = document.getElementById("tBalance"); if (!balEl) return;
+      const balance = allTreasury.reduce((a, t) => a + (t.type === "in" ? (+t.amount || 0) : -(+t.amount || 0)), 0);
+      balEl.textContent = balance.toFixed(2) + " ج";
+      const list = document.getElementById("tList");
+      list.innerHTML = allTreasury.length ? "" : "لا يوجد حركات.";
+      allTreasury.forEach(t => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<b>${t.type === "in" ? "⬅️" : "➡️"} ${(+t.amount || 0).toFixed(2)} ج</b><div>${t.reason || ""}</div><div>${t.date || ""}</div>`;
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editTreasury(t.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deleteTreasury(t.id);
+        div.appendChild(e); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة المهام ==================== */
+    let editingTaskId = null;
+    function initTasksView() {
+      document.getElementById("view-tasks").innerHTML = `
+        <div class="box">
+          <b id="skFormTitle">➕ مهمة جديدة</b>
+          <label>العنوان<input id="skTitle"></label>
+          <label>ملاحظات <small>اختياري</small><textarea id="skNote" rows="2"></textarea></label>
+          <div class="row2">
+            <label>التاريخ<input id="skDate" type="date"></label>
+            <label>الوقت <small>اختياري</small><input id="skTime" type="time"></label>
+          </div>
+          <label>الأولوية<select id="skPriority"><option value="عادية">عادية</option><option value="عالية">عالية</option><option value="عاجلة">عاجلة</option></select></label>
+          <button id="skSaveBtn">💾 حفظ</button>
+          <button id="skNewBtn" class="secondary">➕ مهمة جديدة (تصفير)</button>
+          <div id="skSaveMsg"></div>
+        </div>
+        <div class="box">
+          <b>📋 المهام</b>
+          <div id="skList" style="margin-top:10px">⏳</div>
+        </div>`;
+      document.getElementById("skSaveBtn").onclick = saveTask;
+      document.getElementById("skNewBtn").onclick = clearTaskForm;
+    }
+    function saveTask() {
+      const msg = document.getElementById("skSaveMsg");
+      const title = document.getElementById("skTitle").value.trim();
+      if (!title) { msg.innerHTML = "<span class='err'>اكتب عنوان المهمة.</span>"; return; }
+      const formData = {
+        title, note: document.getElementById("skNote").value.trim(), date: document.getElementById("skDate").value,
+        time: document.getElementById("skTime").value, priority: document.getElementById("skPriority").value, completed: false
+      };
+      msg.textContent = "⏳...";
+      const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      const op = editingTaskId ? db.collection("tasks").doc(editingTaskId).update(payload)
+        : db.collection("tasks").add({ ...payload, deleted: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      op.then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظت.</span>"; clearTaskForm(); }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearTaskForm() {
+      document.getElementById("skTitle").value = ""; document.getElementById("skNote").value = ""; document.getElementById("skDate").value = ""; document.getElementById("skTime").value = ""; document.getElementById("skPriority").value = "عادية";
+      editingTaskId = null;
+      document.getElementById("skFormTitle").textContent = "➕ مهمة جديدة";
+    }
+    function editTask(tid) {
+      const t = allTasks.find(x => x.id === tid); if (!t) return;
+      editingTaskId = tid;
+      document.getElementById("skTitle").value = t.title || ""; document.getElementById("skNote").value = t.note || "";
+      document.getElementById("skDate").value = t.date || ""; document.getElementById("skTime").value = t.time || ""; document.getElementById("skPriority").value = t.priority || "عادية";
+      document.getElementById("skFormTitle").textContent = "✏️ تعديل المهمة";
+      window.scrollTo(0, 0);
+    }
+    function toggleTask(tid, completed) { db.collection("tasks").doc(tid).update({ completed, completedAt: completed ? new Date().toISOString() : null }); }
+    function deleteTask(tid) { if (confirm("حذف المهمة؟")) db.collection("tasks").doc(tid).update({ deleted: true }); }
+    function renderTasksView() {
+      const list = document.getElementById("skList"); if (!list) return;
+      const sorted = [...allTasks].sort((a, b) => (a.completed === b.completed) ? 0 : (a.completed ? 1 : -1));
+      list.innerHTML = sorted.length ? "" : "لا يوجد مهام.";
+      sorted.forEach(t => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<label style="cursor:pointer"><input type="checkbox" ${t.completed ? "checked" : ""} style="width:auto"> <b style="${t.completed ? "text-decoration:line-through;color:#888" : ""}">${t.title}</b></label><div>${t.priority || ""} • ${t.date || ""} ${t.time || ""}</div>${t.note ? `<div>${t.note}</div>` : ""}`;
+        div.querySelector("input").onchange = (e) => toggleTask(t.id, e.target.checked);
+        const e2 = document.createElement("button"); e2.className = "secondary small"; e2.textContent = "✏️ تعديل"; e2.onclick = () => editTask(t.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deleteTask(t.id);
+        div.appendChild(e2); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة أكواد الأعطال ==================== */
+    let editingFaultId = null;
+    function initFaultCodesView() {
+      document.getElementById("view-faultcodes").innerHTML = `
+        <div class="box">
+          <b id="fFormTitle">➕ كود عطل جديد</b>
+          <div class="row2">
+            <label>نوع الجهاز<select id="fType"><option value="">كل الأنواع</option></select></label>
+            <label>الماركة<select id="fBrand"><option value="">كل الماركات</option></select></label>
+          </div>
+          <div class="row2">
+            <label>الكود<input id="fCode"></label>
+            <label>وصف قصير<input id="fTitle"></label>
+          </div>
+          <label>السبب المحتمل<textarea id="fCause" rows="2"></textarea></label>
+          <label>خطوات الحل<textarea id="fFix" rows="2"></textarea></label>
+          <button id="fSaveBtn">💾 حفظ</button>
+          <button id="fNewBtn" class="secondary">➕ كود جديد (تصفير)</button>
+          <div id="fSaveMsg"></div>
+        </div>
+        <div class="box">
+          <input id="fSearch" placeholder="🔍 بحث بالكود أو الوصف">
+          <b style="display:block;margin-top:10px">📋 قائمة أكواد الأعطال</b>
+          <div id="fList" style="margin-top:10px">⏳</div>
+        </div>`;
+      fillFaultCodeSelects();
+      document.getElementById("fSaveBtn").onclick = saveFaultCode;
+      document.getElementById("fNewBtn").onclick = clearFaultForm;
+      document.getElementById("fSearch").addEventListener("input", renderFaultCodesList);
+    }
+    function fillFaultCodeSelects() {
+      const typeEl = document.getElementById("fType"), brandEl = document.getElementById("fBrand");
+      if (!typeEl || !brandEl) return;
+      typeEl.innerHTML = '<option value="">كل الأنواع</option>' + Object.keys(settingsData.types || {}).map(t => `<option>${t}</option>`).join("");
+      brandEl.innerHTML = '<option value="">كل الماركات</option>' + (settingsData.brands || []).map(b => `<option>${b}</option>`).join("");
+    }
+    function saveFaultCode() {
+      const msg = document.getElementById("fSaveMsg");
+      const code = document.getElementById("fCode").value.trim();
+      if (!code) { msg.innerHTML = "<span class='err'>اكتب الكود.</span>"; return; }
+      const formData = {
+        deviceType: document.getElementById("fType").value, brand: document.getElementById("fBrand").value, code,
+        title: document.getElementById("fTitle").value.trim(), cause: document.getElementById("fCause").value.trim(), fix: document.getElementById("fFix").value.trim()
+      };
+      msg.textContent = "⏳...";
+      const payload = { ...formData, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      const op = editingFaultId ? db.collection("faultCodes").doc(editingFaultId).update(payload)
+        : db.collection("faultCodes").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      op.then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظ.</span>"; clearFaultForm(); }).catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearFaultForm() {
+      document.getElementById("fType").value = ""; document.getElementById("fBrand").value = ""; document.getElementById("fCode").value = "";
+      document.getElementById("fTitle").value = ""; document.getElementById("fCause").value = ""; document.getElementById("fFix").value = "";
+      editingFaultId = null;
+      document.getElementById("fFormTitle").textContent = "➕ كود عطل جديد";
+    }
+    function editFaultCode(fid) {
+      const f = allFaultCodes.find(x => x.id === fid); if (!f) return;
+      editingFaultId = fid;
+      document.getElementById("fType").value = f.deviceType || ""; document.getElementById("fBrand").value = f.brand || "";
+      document.getElementById("fCode").value = f.code || ""; document.getElementById("fTitle").value = f.title || "";
+      document.getElementById("fCause").value = f.cause || ""; document.getElementById("fFix").value = f.fix || "";
+      document.getElementById("fFormTitle").textContent = "✏️ تعديل الكود";
+      window.scrollTo(0, 0);
+    }
+    function deleteFaultCode(fid) { if (confirm("حذف الكود؟")) db.collection("faultCodes").doc(fid).delete(); }
+    function renderFaultCodesView() { renderFaultCodesList(); }
+    function renderFaultCodesList() {
+      const list = document.getElementById("fList"); if (!list) return;
+      const q = (document.getElementById("fSearch")?.value || "").toLowerCase();
+      const filtered = allFaultCodes.filter(f => (f.code + " " + f.title).toLowerCase().includes(q));
+      list.innerHTML = filtered.length ? "" : "لا يوجد أكواد.";
+      filtered.forEach(f => {
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `<b>🧯 ${f.code} — ${f.title || ""}</b><div>${f.deviceType || "كل الأنواع"} • ${f.brand || "كل الماركات"}</div>${f.cause ? `<div>السبب: ${f.cause}</div>` : ""}`;
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editFaultCode(f.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deleteFaultCode(f.id);
+        div.appendChild(e); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== شاشة الفواتير ==================== */
+    let editingInvoiceId = null, editingInvoicePhoto = "";
+    function initInvoicesView() {
+      document.getElementById("view-invoices").innerHTML = `
+        <div class="box">
+          <b id="ivFormTitle">➕ فاتورة جديدة</b>
+          <label>📷 صورة الفاتورة ${editingInvoiceId ? "<small>سيبها فاضية لو مش عايز تغيّرها</small>" : ""}<input id="ivPhotoFile" type="file" accept="image/*"></label>
+          <div id="ivPhotoPreview" class="hint"></div>
+          <label>ملاحظات <small>اختياري</small><input id="ivNote"></label>
+          <label>القطع المرتبطة بالفاتورة <small>اختياري</small></label>
+          <div id="ivPartOptions" style="max-height:180px;overflow:auto;border:1px solid #333;border-radius:6px;padding:8px"></div>
+          <button id="ivSaveBtn">💾 حفظ</button>
+          <button id="ivNewBtn" class="secondary">➕ فاتورة جديدة (تصفير)</button>
+          <div id="ivSaveMsg"></div>
+        </div>
+        <div class="box">
+          <b>📋 الفواتير — <span id="ivCount">0</span></b>
+          <div id="ivList" style="margin-top:10px">⏳</div>
+        </div>`;
+      document.getElementById("ivPhotoFile").addEventListener("change", function () {
+        const f = this.files[0]; if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => { document.getElementById("ivPhotoPreview").innerHTML = `<img src="${reader.result}" style="max-width:160px;border-radius:6px;display:block;margin-top:6px">`; };
+        reader.readAsDataURL(f);
+      });
+      document.getElementById("ivSaveBtn").onclick = saveInvoice;
+      document.getElementById("ivNewBtn").onclick = clearInvoiceForm;
+      fillInvoicePartOptions();
+    }
+    function fillInvoicePartOptions(checkedIds) {
+      const box = document.getElementById("ivPartOptions"); if (!box) return;
+      const checked = new Set(checkedIds || []);
+      box.innerHTML = allParts.length ? allParts.map(p => `<label style="display:block"><input type="checkbox" class="inv-part-cb" value="${p.id}" ${checked.has(p.id) ? "checked" : ""} style="width:auto"> ${p.name}</label>`).join("") : "<div class='hint'>لا يوجد قطع غيار في المخزن بعد.</div>";
+    }
+    function saveInvoice() {
+      const msg = document.getElementById("ivSaveMsg");
+      const file = document.getElementById("ivPhotoFile").files[0];
+      const note = document.getElementById("ivNote").value.trim();
+      const partIds = Array.from(document.querySelectorAll("#ivPartOptions .inv-part-cb:checked")).map(x => x.value);
+      if (!editingInvoiceId && !file) { msg.innerHTML = "<span class='err'>اختر صورة الفاتورة الأول.</span>"; return; }
+      msg.textContent = "⏳...";
+      const photoStep = file
+        ? resizeImageFile(file, 1400, 0.75).then(blob => { msg.textContent = "⏳ جاري رفع الصورة..."; return uploadToCloudinary(blob); })
+        : Promise.resolve(editingInvoicePhoto);
+      photoStep.then(photoUrl => {
+        const payload = { photo: photoUrl || "", note, partIds, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        return editingInvoiceId ? db.collection("invoices").doc(editingInvoiceId).update(payload)
+          : db.collection("invoices").add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }).then(() => { msg.innerHTML = "<span class='ok'>✅ اتحفظت.</span>"; clearInvoiceForm(); })
+        .catch(err => msg.innerHTML = `<span class='err'>❌ ${err.message}</span>`);
+    }
+    function clearInvoiceForm() {
+      document.getElementById("ivPhotoFile").value = ""; document.getElementById("ivPhotoPreview").innerHTML = "";
+      document.getElementById("ivNote").value = "";
+      fillInvoicePartOptions();
+      editingInvoiceId = null; editingInvoicePhoto = "";
+      document.getElementById("ivFormTitle").textContent = "➕ فاتورة جديدة";
+    }
+    function editInvoice(ivid) {
+      const inv = allInvoices.find(x => x.id === ivid); if (!inv) return;
+      editingInvoiceId = ivid; editingInvoicePhoto = inv.photo || "";
+      document.getElementById("ivNote").value = inv.note || "";
+      document.getElementById("ivPhotoPreview").innerHTML = inv.photo ? `<img src="${inv.photo}" style="max-width:160px;border-radius:6px;display:block;margin-top:6px">` : "";
+      fillInvoicePartOptions(inv.partIds || []);
+      document.getElementById("ivFormTitle").textContent = "✏️ تعديل الفاتورة";
+      window.scrollTo(0, 0);
+    }
+    function deleteInvoice(ivid) { if (confirm("حذف الفاتورة؟ (مش هيأثر على كميات القطع، مجرد الصورة والربط هيتشال)")) db.collection("invoices").doc(ivid).delete(); }
+    function invoicePartNames(inv) { return (inv.partIds || []).map(pid => allParts.find(p => p.id === pid)?.name).filter(Boolean); }
+    function renderInvoicesView() {
+      const list = document.getElementById("ivList"); if (!list) return;
+      document.getElementById("ivCount").textContent = allInvoices.length;
+      list.innerHTML = allInvoices.length ? "" : "لا يوجد فواتير.";
+      allInvoices.forEach(inv => {
+        const names = invoicePartNames(inv);
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `${inv.photo ? `<img src="${inv.photo}" style="max-width:90px;border-radius:6px;float:left;margin-inline-end:8px">` : ""}<b>🧾 ${inv.note || "بدون ملاحظات"}</b><div>${names.length ? "مرتبطة بـ: " + names.join("، ") : "غير مرتبطة بأي قطعة"}</div>`;
+        const e = document.createElement("button"); e.className = "secondary small"; e.textContent = "✏️ تعديل"; e.onclick = () => editInvoice(inv.id);
+        const d = document.createElement("button"); d.className = "danger small"; d.textContent = "🗑️ حذف"; d.onclick = () => deleteInvoice(inv.id);
+        div.appendChild(e); div.appendChild(d); list.appendChild(div);
+      });
+    }
+
+    /* ==================== خط السير ==================== */
+    let selectedRouteDay = new Date().toISOString().slice(0, 10);
+    function initRouteView() {
+      document.getElementById("view-route").innerHTML = `
+        <div class="box">
+          <b>🗺️ خط سير الورشة</b>
+          <div id="routeDayPicker" style="display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px"></div>
+        </div>
+        <div class="box">
+          <div id="routeList">⏳</div>
+        </div>`;
+      const picker = document.getElementById("routeDayPicker");
+      const names = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(); d.setDate(d.getDate() + i);
+        const key = d.toISOString().slice(0, 10);
+        const btn = document.createElement("button");
+        btn.className = "small" + (i === 0 ? "" : " secondary");
+        btn.style.flex = "0 0 auto";
+        btn.textContent = (i === 0 ? "اليوم" : i === 1 ? "بكرة" : names[d.getDay()]) + " " + d.getDate() + "/" + (d.getMonth() + 1);
+        btn.dataset.day = key;
+        btn.onclick = () => { selectedRouteDay = key; renderRouteView(); };
+        picker.appendChild(btn);
+      }
+    }
+    function requestsForDay(dayKey) {
+      return allRequests.filter(r => r.visit && r.visit.slice(0, 10) === dayKey && r.status !== "ملغي" && !r.closed);
+    }
+    function routeOrdered(list) {
+      const order = settingsData.routeOrder || [];
+      return [...list].sort((a, b) => {
+        const ia = order.indexOf(a.id), ib = order.indexOf(b.id);
+        if (ia === -1 && ib === -1) return (a.visit || "").localeCompare(b.visit || "");
+        if (ia === -1) return 1; if (ib === -1) return -1;
+        return ia - ib;
+      });
+    }
+    function saveRouteOrder(ids) {
+      const order = (settingsData.routeOrder || []).filter(id => !ids.includes(id)).concat(ids);
+      settingsData.routeOrder = order;
+      db.collection("settings").doc("global").set({ routeOrder: order }, { merge: true });
+    }
+    function moveRouteItem(dayKey, rid, dir) {
+      const list = routeOrdered(requestsForDay(dayKey)).map(r => r.id);
+      const idx = list.indexOf(rid);
+      const swapWith = idx + dir;
+      if (swapWith < 0 || swapWith >= list.length) return;
+      [list[idx], list[swapWith]] = [list[swapWith], list[idx]];
+      saveRouteOrder(list);
+      renderRouteView();
+    }
+    function setContactStatus(rid, status) { db.collection("requests").doc(rid).update({ contactStatus: status || firebase.firestore.FieldValue.delete() }); }
+    function routeBadge(r) {
+      if (r.contactStatus === "unavailable") return { cls: "err", text: "📵 غير متاح" };
+      if (r.contactStatus === "no-answer") return { cls: "err", text: "📞 لم يرد" };
+      if (r.contactStatus === "needs-part") return { cls: "hint", text: "🔁 محتاج زيارة تانية" };
+      return null;
+    }
+    function renderRouteView() {
+      const picker = document.getElementById("routeDayPicker"); if (!picker) return;
+      picker.querySelectorAll("button").forEach(b => b.classList.toggle("secondary", b.dataset.day !== selectedRouteDay));
+      const list = routeOrdered(requestsForDay(selectedRouteDay));
+      const box = document.getElementById("routeList");
+      box.innerHTML = list.length ? "" : "<div class='hint'>لا يوجد زيارات مجدولة في اليوم ده.</div>";
+      list.forEach((r, i) => {
+        const badge = routeBadge(r);
+        const div = document.createElement("div"); div.className = "item";
+        div.innerHTML = `
+          <b>👤 ${customerName(r.customerId)}</b> ${badge ? `<span class="${badge.cls}">${badge.text}</span>` : ""}
+          <div>🔧 ${deviceLabel(r.deviceId)}</div>
+          ${r.fault ? `<div>⚠️ ${r.fault}</div>` : ""}
+          <div>🕐 ${r.visit ? new Date(r.visit).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }) : "—"}</div>
+        `;
+        const openBtn = document.createElement("button"); openBtn.className = "small"; openBtn.textContent = "📄 فتح الأمر"; openBtn.onclick = () => { switchView("requests"); openRequest(r.id); };
+        div.appendChild(openBtn);
+        if (badge) {
+          const revertBtn = document.createElement("button"); revertBtn.className = "secondary small"; revertBtn.textContent = "↩️ تراجع"; revertBtn.onclick = () => setContactStatus(r.id, null);
+          div.appendChild(revertBtn);
+        } else {
+          const naBtn = document.createElement("button"); naBtn.className = "secondary small"; naBtn.textContent = "📞 لم يرد"; naBtn.onclick = () => setContactStatus(r.id, "no-answer");
+          const unBtn = document.createElement("button"); unBtn.className = "secondary small"; unBtn.textContent = "📵 غير متاح"; unBtn.onclick = () => setContactStatus(r.id, "unavailable");
+          div.appendChild(naBtn); div.appendChild(unBtn);
+        }
+        const upBtn = document.createElement("button"); upBtn.className = "secondary small"; upBtn.textContent = "⬆️"; upBtn.disabled = i === 0; upBtn.onclick = () => moveRouteItem(selectedRouteDay, r.id, -1);
+        const downBtn = document.createElement("button"); downBtn.className = "secondary small"; downBtn.textContent = "⬇️"; downBtn.disabled = i === list.length - 1; downBtn.onclick = () => moveRouteItem(selectedRouteDay, r.id, 1);
+        div.appendChild(upBtn); div.appendChild(downBtn);
+        box.appendChild(div);
+      });
+    }
+
+    /* ==================== الإقلاع النهائي ==================== */
+    function initAllViews() { initCustomersView(); initDevicesView(); initPartsView(); initRequestsView(); initRouteView(); initWalletsView(); initTreasuryView(); initTasksView(); initFaultCodesView(); initInvoicesView(); }
+  </script>
+</body>
+</html>
