@@ -1,0 +1,34 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"></script><script src="firebase-sync.js"></script><script src="theme.js" defer></script><meta name="viewport" content="width=device-width,initial-scale=1"><title>إدارة بوابة العملاء</title><link rel="stylesheet" href="style.css"></head>
+<body><script src="app-lock.js"></script><main class="page">
+<div class="page-topbar"><a class="back" href="index.html">← الرئيسية</a></div>
+<div class="page-head"><div><h1>🌐 إدارة بوابة العملاء</h1><p class="hint">اقتراحات الإضافة والشكاوى وأوامر العملاء، وتحكم في اللي العميل يشوفه.</p></div></div>
+<section class="panel"><h2>➕ اقتراحات إضافة (بتستنى موافقتك)</h2><div id="sg">…</div></section>
+<section class="panel"><h2>📣 شكاوى العملاء</h2><div id="cp">…</div></section>
+<section class="panel"><h2>🧾 أوامر شغل عن طريق العملاء</h2><p class="hint">الطلبات الجديدة بتتحول لأوامر تلقائيًا لما تفتح الرئيسية. من هنا تخصّص اللي يظهر للعميل في كل أمر.</p><div id="po">…</div></section>
+<section class="panel"><h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2><div id="vis"></div><button type="button" onclick="saveVis()">حفظ</button> <span id="visMsg" class="hint"></span></section>
+</main>
+<script src="shared-data.js"></script>
+<script>
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+var KIND={village:"قرية",brand:"ماركة"},VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
+var SG=[],CP=[],db=null;
+function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K){return setTimeout(ready,300)}db=firebase.firestore();
+firebase.auth().onAuthStateChanged(function(u){if(!u)return;
+db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=s.docs.map(function(d){return Object.assign({id:d.id},d.data())});rSg()});
+db.collection("portalComplaints").onSnapshot(function(s){CP=s.docs.map(function(d){return Object.assign({id:d.id},d.data())}).filter(function(c){return c.status!=="مغلقة"});rCp()})});rPo();rVis()}
+function rSg(){document.getElementById("sg").innerHTML=SG.length?SG.map(function(g){return'<div class="card" style="padding:10px;margin:6px 0"><b>'+esc(KIND[g.kind]||g.kind)+': '+esc(g.value)+'</b>'+(g.parent?' <span class="hint">('+esc(g.parent)+')</span>':"")+'<div style="margin-top:6px"><button onclick="sgOk(\''+g.id+'\')">✅ موافقة</button> <button class="secondary" onclick="sgEdit(\''+g.id+'\')">✏️ تعديل وموافقة</button> <button class="secondary" onclick="sgNo(\''+g.id+'\')">❌ رفض</button></div></div>'}).join(""):'<p class="hint">مفيش اقتراحات جديدة.</p>'}
+function addOpt(g,v){var s=window.settings();if(g.kind==="village"){if(Array.isArray(s.villages)){if(s.villages.indexOf(v)<0)s.villages.push(v)}else{s.villages=s.villages||{};var a=s.villages[g.parent]=s.villages[g.parent]||[];if(a.indexOf(v)<0)a.push(v)}}else if(g.kind==="brand"){s.brands=s.brands||[];if(s.brands.indexOf(v)<0)s.brands.push(v)}localStorage.setItem(window.K.s,JSON.stringify(s))}
+function sgFind(id){return SG.find(function(x){return x.id===id})}
+function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;addOpt(g,v);db.collection("portalSuggestions").doc(id).update({status:"approved",value:v})}
+function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإضافة:",g.value);if(v)sgOk(id,v)}
+function sgNo(id){if(confirm("ترفض الاقتراح ده؟"))db.collection("portalSuggestions").doc(id).update({status:"rejected"})}
+function rCp(){document.getElementById("cp").innerHTML=CP.length?CP.sort(function(a,b){return(b.createdAt&&b.createdAt.seconds||0)-(a.createdAt&&a.createdAt.seconds||0)}).map(function(c){return'<div class="card" style="padding:10px;margin:6px 0"><b>أمر #'+esc(c.orderNo)+'</b> <span class="hint">['+esc(c.status)+']</span><div>'+esc(c.text)+'</div>'+(c.reply?'<div class="hint">ردك: '+esc(c.reply)+'</div>':"")+'<button onclick="cpReply(\''+c.id+'\')">💬 رد</button> <button class="secondary" onclick="cpClose(\''+c.id+'\')">إغلاق</button></div>'}).join(""):'<p class="hint">مفيش شكاوى مفتوحة.</p>'}
+function cpReply(id){var t=prompt("اكتب ردك للعميل:");if(t)db.collection("portalComplaints").doc(id).update({reply:t.slice(0,1000),status:"تم الرد"})}
+function cpClose(id){if(confirm("تقفل الشكوى؟"))db.collection("portalComplaints").doc(id).update({status:"مغلقة"})}
+function rPo(){var cs={};window.arr(window.K.c).forEach(function(c){cs[c.id]=c});var rs=window.arr(window.K.r).filter(function(r){return r.source==="portal"}).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt))});
+document.getElementById("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{};return'<div class="card" style="padding:10px;margin:6px 0"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a> — '+esc((cs[r.customerId]||{}).name||"")+' — <span class="hint">'+esc(r.status)+'</span><div>'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" '+(v.price===false?"checked":"")+' onchange="ov(\''+r.id+'\',[\'price\'],this.checked)"> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" '+(v.work===false?"checked":"")+' onchange="ov(\''+r.id+'\',[\'labor\',\'parts\',\'work\'],this.checked)"> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">لسه مفيش أوامر جاية من البوابة.</p>'}
+function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
+function rVis(){var s=window.settings(),v=s.portalVis||{};document.getElementById("vis").innerHTML=VIS.map(function(x){return'<label style="display:block;margin:6px 0"><input type="checkbox" id="v_'+x[0]+'" '+(v[x[0]]===false?"":"checked")+'> '+x[1]+'</label>'}).join("")}
+function saveVis(){var s=window.settings();s.portalVis={};VIS.forEach(function(x){s.portalVis[x[0]]=document.getElementById("v_"+x[0]).checked});localStorage.setItem(window.K.s,JSON.stringify(s));document.getElementById("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
+ready();
+</script></body></html>

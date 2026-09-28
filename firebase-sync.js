@@ -73,7 +73,7 @@
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));
       if (SB.x[k] === h(snapshotRaw)) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
+      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); projectOrders(); return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
     }
     var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
     if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
@@ -120,11 +120,20 @@
   function projectOrders() { // نسخة آمنة من أوامر عملاء البوابة (من غير تكلفة القطع) عشان العميل يتابع حالته
     if (!online() || poBusy) return Promise.resolve();
     var cs = local("wf_c") || [], ds = local("wf_d") || [], rs = local("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
+    var pm = {}; (local("wf_p") || []).forEach(function (x) { if (x && x.id) pm[x.id] = x; });
     cs.forEach(function (c) { if (c && c.portal === true) portal[c.id] = 1; });
     rs.forEach(function (r) {
       if (!r || !r.id || !portal[r.customerId]) return; seen[r.id] = 1;
       var d = ds.find(function (x) { return x.id === r.deviceId; }) || {};
-      var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: r.status || "", visit: r.visit || "", executionPlace: r.executionPlace || "", workshopStatus: r.workshopStatus || "", partsWaiting: !!r.partsWaiting, total: +r.total || 0, deposit: +r.deposit || 0, remain: +r.remain || 0, closed: !!r.closed, createdAt: r.createdAt || "" };
+      var V = Object.assign({ price: true, labor: true, parts: true, work: true, history: true, workshopStatus: true, visit: true }, (local(SETTINGS) || {}).portalVis || {}, r.portalVis || {});
+      var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: r.status || "", executionPlace: r.executionPlace || "", closed: !!r.closed, partsWaiting: !!r.partsWaiting, source: r.source || "", createdAt: r.createdAt || "" };
+      if (V.visit) p.visit = r.visit || "";
+      if (V.workshopStatus) p.workshopStatus = r.workshopStatus || "";
+      if (V.price) { p.total = +r.total || 0; p.deposit = +r.deposit || 0; p.remain = +r.remain || 0; }
+      if (V.labor) p.labor = +r.labor || 0;
+      if (V.work) p.work = r.work || "";
+      if (V.parts) p.parts = (r.parts || []).map(function (i) { var pt = pm[i.partId] || {}; var o = { name: pt.name || pt.title || i.name || "قطعة", qty: +i.qty || 1 }; if (V.price) o.price = +i.sell || 0; return o; });
+      if (V.history) p.history = (r.statusHistory || []).map(function (x) { return { to: x.to || "", at: x.at || "" }; });
       var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
     Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });
@@ -138,6 +147,28 @@
     if (SB.x.pc === x) return;
     db.collection("portal").doc("config").set(c).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
   }
+  var inboxN = { a: 0, b: 0, c: 0 };
+  function pill() {
+    var t = inboxN.a + inboxN.b + inboxN.c, el = document.getElementById("wfPortalPill");
+    if (!t) { if (el) el.remove(); return; }
+    if (!el) { if (!document.body) return; el = document.createElement("a"); el.id = "wfPortalPill"; el.href = "portal-admin.html"; el.style.cssText = "position:fixed;top:8px;left:8px;z-index:9997;background:#c62828;color:#fff;padding:5px 12px;border-radius:16px;font:700 13px sans-serif;text-decoration:none;direction:rtl"; document.body.appendChild(el); }
+    el.textContent = "🔔 " + t + " من بوابة العملاء";
+  }
+  var inboxOn = false;
+  function watchInbox() {
+    if (inboxOn) return; inboxOn = true;
+    try {
+      db.collection("portalRequests").where("handled", "==", false).onSnapshot(function (s) { inboxN.a = s.size; pill(); convertPortal(); }, function () {});
+      db.collection("portalComplaints").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.b = s.size; pill(); }, function () {});
+      db.collection("portalSuggestions").where("status", "==", "pending").onSnapshot(function (s) { inboxN.c = s.size; pill(); }, function () {});
+    } catch (e) {}
+  }
+  window.wfChangePassword = function () { // تغيير كلمة سر الموظف/المدير
+    var u = firebase.auth().currentUser; if (!u || !u.email) return alert("لازم تكون مسجّل دخول.");
+    var o = prompt("كلمة المرور الحالية:"); if (o === null) return;
+    var n = prompt("كلمة المرور الجديدة (6 حروف على الأقل):"); if (!n || n.length < 6) return alert("كلمة المرور الجديدة قصيرة.");
+    u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, o)).then(function () { return u.updatePassword(n); }).then(function () { alert("✅ اتغيّرت كلمة المرور"); }).catch(function () { alert("تعذّر التغيير — تأكد من كلمة المرور الحالية."); });
+  };
   var converting = false;
   function convertPortal() { // حوّل طلبات البوابة الجديدة لأوامر شغل حقيقية
     var fns = ["orderNo", "recordStatusHistory", "applyStatusTimestamp", "saveJSONSafe", "arr", "settings"];
@@ -233,7 +264,7 @@
       ready = true; uncover(); badge();
       if (reload) { location.reload(); return; }
       pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); }, 1500);
-      try { db.collection("portalRequests").where("handled", "==", false).onSnapshot(function () { convertPortal(); }, function () {}); } catch (e) {}
+      watchInbox();
     }
     if (!online()) { // أوفلاين: اشتغل على النسخة المحلية
       if (hydrated) { ready = true; uncover(); badge(); return; }
