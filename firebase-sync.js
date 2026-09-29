@@ -277,7 +277,7 @@
     var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) {
       if (d.exists) { origSet.call(ls, STAFF, user.uid); return true; }
       // مفيش مستند موظف: نرفض بس لو الحساب ده عميل بوابة (وإلا نعتبره موظف قديم لحد ما القواعد الجديدة تتنشر)
-      return withTimeout(db.collection("customers").doc(user.uid).get()).then(function (c) { return !(c.exists && c.data().portal === true); }).catch(function () { return true; });
+      return withTimeout(db.collection("customers").doc(user.uid).get()).then(function (c) { if (c.exists && c.data().portal === true) return false; return withTimeout(db.collection("portalLinks").doc(user.uid).get()).then(function (l) { return !l.exists; }); }).catch(function () { return true; });
     }).catch(function () { return true; });
     staffCheck.then(function (isStaff) {
       if (isStaff) return continueBoot();

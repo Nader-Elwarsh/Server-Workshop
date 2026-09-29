@@ -84,6 +84,21 @@
 <div class="panel"><h2>➕ اقتراحات إضافة (بتستنى موافقتك)</h2><div id="sg">…</div></div>
 </section>
 
+<section class="pa-sec" id="t_ac">
+<div class="panel"><h2>🔗 رابط البوابة</h2>
+<div class="pa-row"><input id="acLink" type="text" readonly style="flex:1;min-width:0"><button type="button" data-act="copyLink">📋 نسخ</button></div>
+<p class="hint">ابعت الرابط للعميل أو انشره. وتقدر تضيفه كمان في رسائل واتساب جوه أمر الشغل.</p>
+<button type="button" class="secondary" data-act="addWaTpl">➕ أضف قالب «رابط متابعة الأمر» لرسائل واتساب أمر الشغل</button></div>
+<div class="panel"><h2>✉️ نص دعوة العميل</h2><textarea id="acTpl" rows="7"></textarea>
+<p class="hint">المتغيرات: {الاسم} {الرابط} {الرقم} {كلمة_المرور} — بيتحفظ تلقائي.</p></div>
+<div class="panel"><h2>🔑 حسابات العملاء</h2>
+<p class="hint">العميل بيدخل برقم تليفونه وكلمة المرور المبدئية نفس الرقم، وبيتطلب منه يغيّرها أول دخول.</p>
+<div id="acSum" class="pa-row"></div>
+<div class="pa-actions"><button type="button" data-act="actAll">⚡ تفعيل حسابات كل العملاء</button><span id="acMsg" class="hint"></span></div>
+<input id="acs" type="search" placeholder="🔍 ابحث بالاسم أو التليفون...">
+<div id="acl"></div></div>
+</section>
+
 <section class="pa-sec" id="t_ps">
 <div class="panel">
 <h2>📰 مقالات ونصايح للعملاء</h2>
@@ -115,7 +130,7 @@
 <script>
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
-var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ps","📰 المقالات"],["vs","👁️ الظهور"]];
+var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["vs","👁️ الظهور"]];
 var SG=[],CP=[],PT=[],QS=[],RQ=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
 function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -216,10 +231,42 @@ document.addEventListener("change",function(e){var t=e.target;if(t.dataset&&t.da
 document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
 document.addEventListener("focusout",function(){if(qDefer)setTimeout(rQs,150)});
 $("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("qf").addEventListener("change",rQs);
-function rAll(){rTabs();rStats();rOv();rCl();rRq();rPo();rQs();rCp();rSg();rPt()}
+
+/* ---- الدعوات والحسابات ---- */
+var LK={},SEC=null,busy=false,TPL_KEY="wf_portal_invite_tpl";
+var TPL_DEF="أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة الورشة الفنية:\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
+function normPhone(s){var d=String(s||"").replace(/[٠-٩]/g,function(x){return x.charCodeAt(0)-1632}).replace(/[۰-۹]/g,function(x){return x.charCodeAt(0)-1776}).replace(/\D/g,"");if(d.indexOf("0020")===0)d=d.slice(4);if(d.length===12&&d.indexOf("20")===0)d="0"+d.slice(2);if(d.length===10&&d[0]==="1")d="0"+d;return/^01[0125]\d{8}$/.test(d)?d:""}
+function portalUrl(){return new URL("portal.html",location.href).href}
+function tpl(){try{return localStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
+function inviteText(c){var p=normPhone(c.phone),l=LK[c.id],pw=(l&&l.mustChange===false)?"":"كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";return $("acTpl").value.replace(/\{الاسم\}/g,c.name||"").replace(/\{الرابط\}/g,portalUrl()).replace(/\{الرقم\}/g,p).replace(/\{كلمة_المرور\}/g,pw).trim()}
+function waHref(c){return"https://wa.me/2"+normPhone(c.phone)+"?text="+encodeURIComponent(inviteText(c))}
+function syncFlags(){var all=window.arr(window.K.c),ch=false;all.forEach(function(c){var l=c&&LK[c.id];if(l&&(c.portal!==true||c.portalUid!==l.uid)){c.portal=true;c.portalUid=l.uid;ch=true}});if(ch)localStorage.setItem(window.K.c,JSON.stringify(all))}
+function acStatus(c,dupe){var l=LK[c.id];if(l)return l.mustChange===false?["ok","✅ دخل وغيّر كلمته"]:["wait","🟡 الحساب جاهز — لسه ما دخلش"];if(c.portal===true)return["ok","✅ سجّل بنفسه"];var p=normPhone(c.phone);if(!p)return["bad","⚠️ رقم التليفون ناقص/غلط"];if(dupe[p]>1)return["bad","⚠️ الرقم متكرر عند أكتر من عميل"];return["none","⚪ ملوش حساب"]}
+function acRows(){var cs=window.arr(window.K.c).filter(function(c){return c&&c.id}),dupe={};cs.forEach(function(c){var p=normPhone(c.phone);if(p)dupe[p]=(dupe[p]||0)+1});return cs.map(function(c){return{c:c,s:acStatus(c,dupe)}})}
+function rAc(){if(!window.K)return;var rows=acRows(),n={ok:0,wait:0,bad:0,none:0},q=($("acs").value||"").trim();rows.forEach(function(r){n[r.s[0]]++});
+$("acSum").innerHTML='<span>✅ '+n.ok+' عندهم حساب</span><span>🟡 '+n.wait+' جاهزين</span><span>⚪ '+n.none+' بدون حساب</span><span>⚠️ '+n.bad+' محتاجين تصحيح رقم</span>';
+var ord={none:0,bad:1,wait:2,ok:3},l=rows.filter(function(r){return!q||[r.c.name,r.c.phone].join(" ").indexOf(q)>-1}).sort(function(a,b){return ord[a.s[0]]-ord[b.s[0]]});
+$("acl").innerHTML=l.slice(0,80).map(function(r){var c=r.c,k=r.s[0],has=k==="wait"||k==="ok";return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">'+esc(r.s[1])+'</span></div><div class="hint">📞 '+esc(c.phone||"—")+'</div><div class="pa-actions">'+(k==="none"?'<button type="button" data-act="actC" data-id="'+esc(c.id)+'">⚡ تفعيل الحساب</button>':"")+(has&&normPhone(c.phone)?'<a class="btn secondary" target="_blank" rel="noopener" href="'+esc(waHref(c))+'">📲 ابعت دعوة واتساب</a>':"")+'</div></div>'}).join("")+(l.length>80?'<p class="hint">معروض أول 80 — استخدم البحث.</p>':"")||'<p class="hint">مفيش عملاء.</p>'}
+function secApp(){if(!SEC)SEC=firebase.apps.filter(function(a){return a.name==="sec"})[0]||firebase.initializeApp(firebase.app().options,"sec");return SEC}
+function actOne(c){var p=normPhone(c.phone);if(!p)return Promise.resolve("bad");var em=p+"@phone.elwarsha.app",sa=secApp().auth();
+return db.collection("phoneIndex").doc(p).get().then(function(d){if(d.exists)return"dup";
+return sa.createUserWithEmailAndPassword(em,p).then(function(cr){var uid=cr.user.uid;return secApp().firestore().collection("phoneIndex").doc(p).set({email:em,uid:uid}).then(function(){return db.collection("portalLinks").doc(uid).set({customerId:c.id,phone:p,mustChange:true,createdAt:SV})}).then(function(){return sa.signOut()}).then(function(){return"ok"})})}).catch(function(e){try{sa.signOut()}catch(x){}return(e&&e.code)||"err"})}
+function actList(list){if(busy)return;if(!list.length)return alert("مفيش عملاء محتاجين تفعيل.");if(!confirm("هتتفعّل حسابات "+list.length+" عميل: الدخول برقم التليفون وكلمة المرور نفس الرقم، ويتطلب تغييرها أول دخول. تكمّل؟"))return;busy=true;var ok=0,fail={},i=0;
+function next(){if(i>=list.length){busy=false;var f=Object.keys(fail).map(function(k){return k+": "+fail[k]}).join(" | ");$("acMsg").textContent="✅ اتفعّل "+ok+(f?" — مشاكل: "+f:"");rAc();return}
+$("acMsg").textContent="جاري التفعيل… "+i+"/"+list.length;var c=list[i++];actOne(c).then(function(r){if(r==="ok")ok++;else fail[r]=(fail[r]||0)+1;if(r==="auth/too-many-requests"||r==="auth/operation-not-allowed")i=list.length;setTimeout(next,350)})}next()}
+function addWaTpl(){var s=window.settings();s.waTemplates=s.waTemplates||[];if(s.waTemplates.some(function(t){return t.id==="portal-link"}))return alert("القالب موجود بالفعل في رسائل أمر الشغل.");s.waTemplates.push({id:"portal-link",name:"🌐 رابط متابعة الأمر",text:"مرحباً {اسم_العميل}، أمرك رقم {رقم_الأمر} ({اسم_الجهاز}) حالته: {الحالة}.\nتقدر تتابعه من بوابة الورشة:\n{رابط_البوابة}\nالدخول برقم تليفونك: {رقم_الدخول}",enabled:true});localStorage.setItem(window.K.s,JSON.stringify(s));alert("✅ اتضاف — هيظهر في أزرار رسائل واتساب جوه أمر الشغل.")}
+ACT.actC=function(b){var c=window.arr(window.K.c).find(function(x){return x.id===b.dataset.id});if(c)actList([c])};
+ACT.actAll=function(){actList(acRows().filter(function(r){return r.s[0]==="none"}).map(function(r){return r.c}))};
+ACT.copyLink=function(){var l=$("acLink");l.select();try{navigator.clipboard.writeText(l.value)}catch(e){document.execCommand("copy")}};
+ACT.addWaTpl=addWaTpl;
+$("acLink").value=portalUrl();$("acTpl").value=tpl();
+$("acTpl").addEventListener("input",function(){try{localStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
+$("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
+function rAll(){rTabs();rStats();rOv();rCl();rRq();rPo();rQs();rCp();rSg();rPt();rAc()}
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"){return setTimeout(ready,300)}db=firebase.firestore();SV=firebase.firestore.FieldValue.serverTimestamp();
 go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
+db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
 db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).sort(byNew);rTabs();rStats();rOv();rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});
