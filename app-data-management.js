@@ -212,6 +212,9 @@ async function restoreBackupFile(input){
   };reader.readAsText(file);
 }
 
+function integrityIgnored(){try{const v=JSON.parse(localStorage.getItem("wf_integrity_ignored")||"[]");return new Set(Array.isArray(v)?v:[])}catch(_){return new Set()}}
+function ignoreIntegrityIssue(key){const s=integrityIgnored();s.add(key);try{localStorage.setItem("wf_integrity_ignored",JSON.stringify([...s].slice(-500)))}catch(_){}window.auditLog?.("تجاهل ملاحظة سلامة بيانات","سجل",key,"");runDataIntegrityCheck()}
+function resetIntegrityIgnored(){try{localStorage.removeItem("wf_integrity_ignored")}catch(_){}runDataIntegrityCheck()}
 function dataIntegrityReport(){
   const issues=[],seen=new Set(),collections=[[K.c,"العملاء"],[K.d,"الأجهزة"],[K.r,"أوامر الشغل"],[K.p,"قطع المخزن"],[K.m,"حركات المخزن"],[K.wtx,"حركات الحسابات"],[K.tr,"حركات الخزنة"]];
   const push=(o)=>{if(!issues.some(x=>x.key===o.key))issues.push(o)};
@@ -244,13 +247,20 @@ function dataIntegrityReport(){
   // مع #move-<id> يفتح ويظلّل الحركة بعينها (شوف shared-data.js وapp-part-moves.js).
   // لو القطعة اتمسحت خالص مفيش صفحة تفصيلية تتفتح للحركة، فبنوضّح كل التفاصيل
   // في الرسالة نفسها بدل الرابط.
+  const trashAll=arr(K.trash),audits=typeof window.getAuditLog==="function"?window.getAuditLog():[];
+  const fmtT=(iso)=>iso?new Date(iso).toLocaleString("ar-EG"):"";
+  const trashReq=(rid)=>{for(const e of trashAll){const pl=e.payload||{},list=e.type==="request"?[pl.request]:(Array.isArray(pl.requests)?pl.requests:[]);const r=list.find(x=>x&&x.id===rid);if(r)return{e,r}}return null};
+  const auditNote=(eid)=>{const a=audits.find(x=>x.entityId===eid);return a?`سجل العمليات بيقول: ${a.action} ${a.entity}${a.details?" ("+a.details+")":""} يوم ${fmtT(a.at)}.`:""};
   arr(K.m).forEach(m=>{
     const partOk=!!(m?.partId&&parts.has(m.partId));
     const moveLink=partOk?`part-moves.html?id=${m.partId}#move-${m.id}`:null;
     const whenText=m.at?new Date(m.at).toLocaleString("ar-EG"):"تاريخ غير معروف";
-    if(!partOk)push({key:`move-part:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): القطعة المرتبطة بيها (رقم ${m.partId||"غير معروف"}) اتمسحت من المخزن، فمفيش صفحة تفصيلية تقدر تفتحها للحركة دي تحديدًا.`,link:null,linkLabel:null,fix:null});
+    if(!partOk){const rq=m.requestId?arr(K.r).find(x=>x.id===m.requestId):null,pa=auditNote(m.partId);
+      push({key:`move-part:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): القطعة المرتبطة بيها (رقم ${m.partId||"غير معروف"}) مش موجودة في المخزن حاليًا. ${pa||"مفيش أثر لحذفها في سجل العمليات (ممكن تكون اتمسحت قبل تفعيل السجل أو من جهاز تاني)."}${rq?` الحركة دي تابعة لأمر الشغل ${rq.no||rq.id} الموجود.`:""} الحركة نفسها سجل تاريخي ومش بتأثر على كميات المخزن الحالية.`,link:rq?`request.html?id=${rq.id}`:null,linkLabel:rq?"فتح أمر الشغل المرتبط":null,fix:{type:"removeOrphanMove",args:{moveId:m.id},detail:"هيمسح حركة المخزن دي بس من السجل (هي سجل تاريخي لقطعة مش موجودة، ومش بتأثر على كميات المخزن الحالية). أي بيانات تانية مش هتتغير."}})}
     if(!Number.isFinite(+m.qty)||+m.qty<=0)push({key:`move-qty:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — ${whenText}): الكمية المسجلة (${m.qty}) غير صالحة. المفروض تكون رقم أكبر من صفر.`,link:moveLink,linkLabel:moveLink?"فتح الحركة نفسها":null,fix:null});
-    if(m.requestId&&!requestIds.has(m.requestId))push({key:`move-req:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): أمر الشغل المرتبط بيها (رقم ${m.requestId}) اتمسح.`,link:moveLink,linkLabel:moveLink?"فتح الحركة نفسها":null,fix:null});
+    if(m.requestId&&!requestIds.has(m.requestId)){const tr=trashReq(m.requestId),pa=tr?"":auditNote(m.requestId),head=`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): أمر الشغل المرتبط بيها (رقم ${m.requestId}) مش موجود. `;
+      const body=tr?`لقيته في سلة المهملات: «${tr.e.label}»${tr.r.no?` (أمر رقم ${tr.r.no})`:""} — اتحذف يوم ${fmtT(tr.e.deletedAt)}. لو الحذف كان غلط اضغط «استرجاع» وهيرجع بحركاته، ولو الحذف مقصود (زي عميل تجربة) اضغط «مش خطأ».`:`ومش موجود في سلة المهملات. ${pa||"مفيش أثر لحذفه في سجل العمليات، فغالبًا اتحذف حذف نهائي أو من جهاز تاني."} لو الحذف مقصود اضغط «مش خطأ»، أو امسح الحركة اليتيمة.`;
+      push({key:`move-req:${m.id}`,message:head+body,link:tr?"settings.html#trash-panel":moveLink,linkLabel:tr?"فتح سلة المهملات":(moveLink?"فتح الحركة نفسها":null),fix:tr?{type:"restoreTrash",args:{trashId:tr.e.id},detail:`هيرجّع «${tr.e.label}» من سلة المهملات بكل بياناته.`}:{type:"removeOrphanMove",args:{moveId:m.id},detail:"هيمسح حركة المخزن دي بس من السجل (الأمر المرتبط بيها مش موجود). كميات المخزن الحالية مش هتتغير."}})}
   });
   // حركات الحسابات/الخزنة: الرابط بيودّي لصفحة المحفظة/الخزنة نفسها مع
   // #tx-<id> يفتح ويظلّل الحركة بعينها (شوف wallets.js وtreasury.js).
@@ -280,21 +290,23 @@ function dataIntegrityReport(){
     if(w.length!==1||t.length!==1)push({key:`transfer-parts:${tid}`,message:`التحويل ${tid}: عدد أطرافه غير صحيح (${w.length} في المحفظة، ${t.length} في الخزنة). المفروض طرف واحد بالظبط في كل جانب.`,link:anchor.link,linkLabel:anchor.label,fix:null});
     else if(+w[0].amount!==+t[0].amount)push({key:`transfer-amt:${tid}`,message:`التحويل ${tid}: المبلغ مختلف بين طرفَي التحويل (${(+w[0].amount).toFixed(2)} ج في المحفظة مقابل ${(+t[0].amount).toFixed(2)} ج في الخزنة). المفروض يكونوا نفس المبلغ في الطرفين.`,link:anchor.link,linkLabel:anchor.label,fix:null});
   });
-  return {issues,counts:{customers:arr(K.c).length,devices:arr(K.d).length,requests:arr(K.r).length,parts:arr(K.p).length,moves:arr(K.m).length,wallets:activeWallet.length,treasury:activeTreasury.length}};
+  const ign=integrityIgnored(),shown=issues.filter(x=>!ign.has(x.key));
+  return {issues:shown,ignored:issues.length-shown.length,counts:{customers:arr(K.c).length,devices:arr(K.d).length,requests:arr(K.r).length,parts:arr(K.p).length,moves:arr(K.m).length,wallets:activeWallet.length,treasury:activeTreasury.length}};
 }
 function runDataIntegrityCheck(){
   const host=document.getElementById("dataIntegrityResult");if(!host)return;
-  const report=dataIntegrityReport(),c=report.counts;
-  if(!report.issues.length){host.innerHTML=`<div class="hint">✅ لم يتم العثور على تعارضات واضحة. تم فحص ${c.customers} عميل، ${c.devices} جهاز، ${c.requests} أمر، ${c.parts} قطعة، و${c.moves} حركة مخزن.</div>`;return}
+  const report=dataIntegrityReport(),c=report.counts,ignNote=report.ignored?`<div class="hint">🙈 فيه ${report.ignored} ملاحظة اخترت تجاهلها. <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="resetIntegrityIgnored()">إظهارها من تاني</button></div>`:"";
+  if(!report.issues.length){host.innerHTML=`<div class="hint">✅ لم يتم العثور على تعارضات واضحة. تم فحص ${c.customers} عميل، ${c.devices} جهاز، ${c.requests} أمر، ${c.parts} قطعة، و${c.moves} حركة مخزن.</div>${ignNote}`;return}
   host.innerHTML=`<div class="hint">⚠️ تم العثور على ${report.issues.length} ملاحظة. لم يتم تعديل أي بيانات تلقائيًا. اضغط على أي ملاحظة عشان تفتح السجل نفسه وتشوف اللي ناقص، وكل ملاحظة قابلة للإصلاح ليها زرار خاص بيها بيقولك هيعمل إيه بالظبط قبل ما ينفّذ.</div>
   <ul class="integrity-list">${report.issues.slice(0,80).map(x=>`<li>
     <span>${esc(x.message)}</span>
-    <span class="compact-actions">${x.link?`<a class="secondary mini-action" href="${esc(x.link)}">${esc(x.linkLabel||"فتح")} ›</a>`:""}${x.fix?`<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="applyIntegrityFix('${x.key}')">🔧 إصلاح</button>`:""}</span>
-  </li>`).join("")}</ul>${report.issues.length>80?`<div class="hint">تم عرض أول 80 ملاحظة فقط.</div>`:""}`;
+    <span class="compact-actions">${x.link?`<a class="secondary mini-action" href="${esc(x.link)}">${esc(x.linkLabel||"فتح")} ›</a>`:""}${x.fix?`<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="applyIntegrityFix('${x.key}')">${x.fix.type==="restoreTrash"?"♻️ استرجاع":x.fix.type==="removeOrphanMove"?"🧹 مسح الحركة":"🔧 إصلاح"}</button>`:""}<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="ignoreIntegrityIssue('${x.key}')">✔️ مش خطأ</button></span>
+  </li>`).join("")}</ul>${report.issues.length>80?`<div class="hint">تم عرض أول 80 ملاحظة فقط.</div>`:""}${ignNote}`;
 }
 function applyIntegrityFix(key){
   const issue=dataIntegrityReport().issues.find(x=>x.key===key);
   if(!issue||!issue.fix){runDataIntegrityCheck();return}
+  if(issue.fix.type==="restoreTrash"){if(typeof restoreFromTrash!=="function"){alert("سلة المهملات مش متاحة في الصفحة دي.");return}restoreFromTrash(issue.fix.args.trashId);runDataIntegrityCheck();return}
   if(!confirm(issue.fix.detail+"\n\nمتأكد إنك عايز تنفّذ الإصلاح ده؟"))return;
   const {type,args}=issue.fix;
   if(type==="unlinkDeviceCustomer"){
@@ -323,6 +335,9 @@ function applyIntegrityFix(key){
     if(+r.deposit>r.total)r.deposit=r.total;
     if(!saveJSONSafe(K.r,all))return;
     renderRequests?.();
+  }else if(type==="removeOrphanMove"){
+    const all=arr(K.m);if(!all.some(x=>x.id===args.moveId))return runDataIntegrityCheck();
+    if(!saveJSONSafe(K.m,all.filter(x=>x.id!==args.moveId)))return;
   }else if(type==="clampOrderDeposit"){
     const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r)return runDataIntegrityCheck();
     const expectedTotal=+r.total||0;

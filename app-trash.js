@@ -29,19 +29,20 @@ function restoreFromTrash(trashId) {
   if (!confirm(`استرجاع "${entry.label}"؟ هيرجع بكل بياناته وحركاته المرتبطة زي ما كانت قبل الحذف.`)) return;
   const p = entry.payload || {};
   const values = {};
+  const addNew = (cur, add) => { const have = new Set(cur.map(x => x && x.id)); return cur.concat((add || []).filter(x => x && !have.has(x.id))); };
 
   if (entry.type === "request") {
-    values[K.r] = arr(K.r).concat([p.request]);
-    values[K.m] = arr(K.m).concat(p.moves || []);
+    values[K.r] = addNew(arr(K.r), [p.request]);
+    values[K.m] = addNew(arr(K.m), p.moves);
   } else if (entry.type === "device") {
-    values[K.d] = arr(K.d).concat([p.device]);
-    values[K.r] = arr(K.r).concat(p.requests || []);
-    values[K.m] = arr(K.m).concat(p.moves || []);
+    values[K.d] = addNew(arr(K.d), [p.device]);
+    values[K.r] = addNew(arr(K.r), p.requests);
+    values[K.m] = addNew(arr(K.m), p.moves);
   } else if (entry.type === "customer") {
-    values[K.c] = arr(K.c).concat([p.customer]);
-    values[K.d] = arr(K.d).concat(p.devices || []);
-    values[K.r] = arr(K.r).concat(p.requests || []);
-    values[K.m] = arr(K.m).concat(p.moves || []);
+    values[K.c] = addNew(arr(K.c), [p.customer]);
+    values[K.d] = addNew(arr(K.d), p.devices);
+    values[K.r] = addNew(arr(K.r), p.requests);
+    values[K.m] = addNew(arr(K.m), p.moves);
   } else return;
 
   // رجّع القطع اللي كانت اتحطت في المخزون وقت الحذف — بننقص بالظبط نفس
