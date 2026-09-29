@@ -129,7 +129,7 @@
       // خيارات أدق: الإجمالي / العربون / المتبقي / أجرة اليد (سعر) / أسماء القطع / أسعار القطع — القيم القديمة (price, labor) بتفضل شغالة كأصل
       function vv(k, base) { return V[k] === undefined ? !!V[base] : !!V[k]; }
       var showTotal = vv("total", "price"), showDep = vv("deposit", "price"), showRemain = vv("remain", "price"), showLabor = vv("labor", "labor"), showPartPrice = vv("partPrices", "price"), showQty = V.partQty !== false;
-      var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: r.status || "", executionPlace: r.executionPlace || "", closed: !!r.closed, partsWaiting: !!r.partsWaiting, source: r.source || "", createdAt: r.createdAt || "" };
+      var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: (r.status === "مكتمل" || r.closed ? "مكتمل" : (r.status || "جديد")), executionPlace: r.executionPlace || "", closed: !!r.closed, partsWaiting: !!r.partsWaiting, source: r.source || "", createdAt: r.createdAt || "" };
       if (V.visit) p.visit = r.visit || "";
       if (V.workshopStatus) p.workshopStatus = r.workshopStatus || "";
       if (showTotal) p.total = +r.total || 0;

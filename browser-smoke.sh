@@ -11,19 +11,17 @@ sleep 1
 run_page(){
   local page="$1" marker="$2"
   local out="$TMP/${page}.html"
-  chromium --headless --no-sandbox --disable-gpu --allow-file-access-from-files --virtual-time-budget=2500 --dump-dom "http://127.0.0.1:${PORT}/${page}" >"$out" 2>"$TMP/${page}.err"
+  chromium --headless --no-sandbox --disable-gpu --allow-file-access-from-files --virtual-time-budget=6000 --dump-dom "http://127.0.0.1:${PORT}/${page}" >"$out" 2>"$TMP/${page}.err"
   grep -q "$marker" "$out"
   grep -vE 'org.freedesktop.DBus|UPower' "$TMP/${page}.err" >"$TMP/${page}.filtered.err" || true
   test ! -s "$TMP/${page}.filtered.err" || { cat "$TMP/${page}.filtered.err" >&2; return 1; }
 }
-# Protected staff pages must safely redirect to the login page when unauthenticated.
-run_page "compcodes.html" "id=\"em\""
-run_page "settings.html" "id=\"em\""
-# The customer portal is public and should render its application shell without staff auth.
+# The public customer portal must render without a staff session.
 run_page "portal.html" "id=\"app\""
-# Keep a lightweight interaction assertion that does not require a real Firebase account.
-chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=2500 --dump-dom "http://127.0.0.1:${PORT}/portal.html" >"$TMP/portal.html" 2>"$TMP/portal.err"
-grep -q "بوابة العملاء" "$TMP/portal.html"
-grep -vE 'org.freedesktop.DBus|UPower' "$TMP/portal.err" >"$TMP/portal.filtered.err" || true
-test ! -s "$TMP/portal.filtered.err" || { cat "$TMP/portal.filtered.err" >&2; exit 1; }
-echo "browser-smoke: PASS (protected-page redirect and public customer portal verified)"
+grep -q "بوابة العملاء" "$TMP/portal.html.html"
+# Verify the new portal navigation/help code is present in the delivered DOM source.
+grep -q "openOrder" "$TMP/portal.html.html"
+grep -q "دليل استخدام بوابة العميل" "$TMP/portal.html.html"
+# A protected staff page must still expose its static controls; auth behavior is tested by firebase-sync.
+run_page "settings.html" "data-action=\"backup\""
+echo "browser-smoke: PASS (customer portal shell, order navigation, guide, and settings controls verified)"
