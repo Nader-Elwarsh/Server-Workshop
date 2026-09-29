@@ -436,9 +436,10 @@ function renderFollowup(){
   let templates=(settings().followupWaTemplates||[]).map((t,i)=>({...t,i})).filter(t=>t.enabled!==false);
   let rows=arr(K.c).map(cu=>{
     let orders=arr(K.r).filter(x=>x.customerId===cu.id);
-    let last=orders.reduce((a,x)=>{let d=x.createdAt||"";return d>a?d:a},"");
+    let latest=orders.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")))[0]||null;
+    let last=latest?.createdAt||"";
     let daysSince=last?Math.floor((now-new Date(last))/86400000):null;
-    return {c:cu,ordersCount:orders.length,last,daysSince};
+    return {c:cu,ordersCount:orders.length,last,latest,daysSince};
   }).filter(x=>x.ordersCount>0&&x.daysSince!==null&&x.daysSince>=days);
   rows.sort((a,b)=>b.daysSince-a.daysSince);
   el.innerHTML=rows.length?rows.map(x=>{
@@ -447,7 +448,7 @@ function renderFollowup(){
     // وتاريخ الإرسال، مع إمكانية فتح نفس النص تاني في واتساب وعرضه كامل.
     let lastSend=lastFollowupSendFor(x.c.id);
     let lastSendHtml=lastSend?`<div class="setting-row" style="margin-top:4px"><details><summary>📨 آخر رسالة اتبعتت: ${esc(lastSend.templateName)} — ${esc(new Date(lastSend.sentAt).toLocaleString("ar-EG"))}</summary><div class="hint" style="white-space:pre-wrap">${esc(lastSend.text)}</div><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="reopenFollowupSend('${x.c.id}','${lastSend.id}')">↩️ فتحها تاني في واتساب</button></details></div>`:"";
-    return `<div class="item record-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span></div><div>${contactLinksHtml(x.c.phone)}</div><div>📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div>🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
+    return `<div class="item record-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span></div><div>${contactLinksHtml(x.c.phone)}</div><div>📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div>🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${x.latest ? `<a href="request.html?id=${x.latest.id}">${esc(x.latest.no||"فتح الأمر")}</a> — ` : ""}${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
   }).join(""):'<div class="item">لا يوجد عملاء ساكتين ضمن المدة المختارة 🎉</div>';
 }
 function initFollowupPage(){
