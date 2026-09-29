@@ -28,7 +28,7 @@
 .pa-item textarea,.pa-item input[type=text]{width:100%;margin:4px 0}
 .pa-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .pa-bar{height:8px;border-radius:5px;background:var(--bg-sunken);overflow:hidden}.pa-bar i{display:block;height:100%;background:#0b57d0}
-.pa-sec{display:none}.pa-sec.on{display:block}
+.pa-pre{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.pa-pre button,.sm{padding:6px 10px;font-size:12.5px}.pa-vg{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:6px 12px;margin:8px 0}.pa-vg h3{font-size:14px;margin:6px 0 2px}.pa-vrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px;cursor:pointer}.pa-vg h3+.pa-vrow{border-top:0}.pa-vrow b{font-weight:600;font-size:14px}.pa-vrow small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:1px}.pa-vrow input{width:22px;height:22px;flex:0 0 auto;margin:0}.pa-sum{background:var(--bg-sunken);border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}.pa-sec{display:none}.pa-sec.on{display:block}
 </style>
 </head>
 <body>
@@ -121,15 +121,18 @@
 <section class="pa-sec" id="t_vs">
 <div class="panel">
 <h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2>
+<p class="hint">اختار الشكل الجاهز أو ظبّط كل خيار بنفسك. تقدر تخفي أسعار أمر معيّن من تبويب «الأوامر».</p>
 <div id="vis"></div>
-<button type="button" data-act="saveVis">حفظ</button> <span id="visMsg" class="hint"></span>
+<div id="visSum" class="pa-sum"></div>
+<button type="button" data-act="saveVis">💾 حفظ</button> <span id="visMsg" class="hint"></span>
 </div>
 </section>
 </main>
 <script src="shared-data.js"></script>
 <script>
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
-var VIS=[["price","الأسعار (الإجمالي والعربون والمتبقي)"],["labor","أجرة اليد"],["parts","قطع الغيار المستخدمة"],["work","وصف اللي اتعمل"],["history","مراحل الأمر والتواريخ"],["workshopStatus","حالة الورشة (سحب/تسليم)"],["visit","موعد الزيارة"]];
+var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
+var PRE=[["👁️ كل حاجة",{total:1,deposit:1,remain:1,labor:1,partPrices:1,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["💰 الإجمالي بدون تفصيل",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:0,partQty:0,work:1,history:1,visit:1,workshopStatus:1}],["🔩 القطع بدون أسعار",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["🚫 بدون أي أسعار",{total:0,deposit:0,remain:0,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}]];
 var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["vs","👁️ الظهور"]];
 var SG=[],CP=[],PT=[],QS=[],RQ=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
 function $(i){return document.getElementById(i)}
@@ -171,7 +174,7 @@ $("cl").innerHTML=h||'<p class="hint">مفيش عملاء مطابقين.</p>'}
 /* ---- الأوامر ---- */
 function rRq(){$("rq").innerHTML=RQ.length?RQ.sort(byNew).map(function(r){var c=custs().find(function(x){return x.id===r.customerId})||{};return'<div class="pa-item"><b>'+esc(c.name||"عميل")+'</b> — <span class="hint">'+esc(devLabel(r.deviceId))+'</span><div>'+esc((r.fault||"").slice(0,120))+'</div><span class="hint">'+esc(fdt(r.createdAt))+'</span></div>'}).join(""):'<p class="hint">مفيش طلبات معلّقة.</p>'}
 function rPo(){var cs={};custs().forEach(function(c){cs[c.id]=c});var f=$("of").value,rs=ordsAll().filter(function(r){return f==="open"?isOpen(r):f==="done"?r.status==="مكتمل":f==="portal"?r.source==="portal":true}).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt))});
-$("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{};return'<div class="pa-item"><div class="pa-row"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a><span class="pa-tag">'+esc(r.status)+'</span></div><div>'+esc((cs[r.customerId]||{}).name||"")+(r.source==="portal"?' 🌐':'')+' — <span class="hint">'+esc(devLabel(r.deviceId))+'</span></div><div class="hint">'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="price" '+(v.price===false?"checked":"")+'> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="labor,parts,work" '+(v.work===false?"checked":"")+'> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">مفيش أوامر مطابقة.</p>'}
+$("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{};return'<div class="pa-item"><div class="pa-row"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a><span class="pa-tag">'+esc(r.status)+'</span></div><div>'+esc((cs[r.customerId]||{}).name||"")+(r.source==="portal"?' 🌐':'')+' — <span class="hint">'+esc(devLabel(r.deviceId))+'</span></div><div class="hint">'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="price,total,deposit,remain,partPrices,labor" '+(v.price===false?"checked":"")+'> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="parts,partQty,work" '+(v.work===false?"checked":"")+'> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">مفيش أوامر مطابقة.</p>'}
 function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
 /* ---- الأسئلة ---- */
 function dv(id,k,d){var x=DR[id];return x&&x[k]!==undefined?x[k]:d}
@@ -222,12 +225,19 @@ function savePost(){var t=$("pt").value.trim(),b=$("pb").value.trim();if(!t||!b)
 (f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:SV};
 if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=SV;return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
 /* ---- الظهور ---- */
-function rVis(){var s=window.settings(),v=s.portalVis||{};$("vis").innerHTML=VIS.map(function(x){return'<label style="display:block;margin:6px 0"><input type="checkbox" id="v_'+x[0]+'" '+(v[x[0]]===false?"":"checked")+'> '+x[1]+'</label>'}).join("")}
-function saveVis(){var s=window.settings();s.portalVis={};VIS.forEach(function(x){s.portalVis[x[0]]=$("v_"+x[0]).checked});localStorage.setItem(window.K.s,JSON.stringify(s));$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
+function vget(v,k){if(v[k]!==undefined)return v[k]!==false;var b=({total:1,deposit:1,remain:1,partPrices:1})[k];return b&&v.price!==undefined?v.price!==false:true}
+function rVis(){var v=window.settings().portalVis||{};$("vis").innerHTML='<div class="pa-pre">'+PRE.map(function(p,i){return'<button type="button" class="secondary" data-act="vpre" data-i="'+i+'">'+p[0]+'</button>'}).join("")+'</div>'+VG.map(function(g){return'<div class="pa-vg"><h3>'+g[0]+'</h3>'+g[1].map(function(x){return'<label class="pa-vrow"><span><b>'+x[1]+'</b>'+(x[2]?'<small>'+x[2]+'</small>':"")+'</span><input type="checkbox" id="v_'+x[0]+'"'+(vget(v,x[0])?" checked":"")+'></label>'}).join("")+'</div>'}).join("");vSum()}
+function vOn(k){var e=$("v_"+k);return!!(e&&e.checked)}
+function vSum(){var t=[];if(vOn("total"))t.push("الإجمالي");if(vOn("deposit"))t.push("العربون");if(vOn("remain"))t.push("المتبقي");if(vOn("labor"))t.push("المصنعية");
+var pt=vOn("parts")?("أسماء القطع"+(vOn("partQty")?" بالكمية":"")+(vOn("partPrices")?" وأسعارها":" بدون أسعار")):(vOn("partPrices")?"":"");if(pt)t.push(pt);
+if(vOn("work"))t.push("وصف الشغل");if(vOn("history"))t.push("مراحل الأمر");if(vOn("visit"))t.push("موعد الزيارة");if(vOn("workshopStatus"))t.push("حالة الورشة");
+$("visSum").innerHTML="👁️ العميل هيشوف: "+(t.length?t.join(" • "):"حالة الأمر والعطل بس")}
+function vpre(i){var p=PRE[i][1];Object.keys(p).forEach(function(k){var e=$("v_"+k);if(e)e.checked=!!p[k]});vSum()}
+function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;localStorage.setItem(window.K.s,JSON.stringify(s));$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
 /* ---- ربط الأحداث ---- */
-var ACT={tab:function(b){go(b.dataset.k)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis};
+var ACT={tab:function(b){go(b.dataset.k)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
-document.addEventListener("change",function(e){var t=e.target;if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
+document.addEventListener("change",function(e){var t=e.target;if(t.id&&t.id.indexOf("v_")===0&&$("visSum"))vSum();if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
 document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
 document.addEventListener("focusout",function(){if(qDefer)setTimeout(rQs,150)});
 $("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("qf").addEventListener("change",rQs);

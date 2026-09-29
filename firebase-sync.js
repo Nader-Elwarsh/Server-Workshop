@@ -126,13 +126,18 @@
       if (!r || !r.id || !portal[r.customerId]) return; seen[r.id] = 1;
       var d = ds.find(function (x) { return x.id === r.deviceId; }) || {};
       var V = Object.assign({ price: true, labor: true, parts: true, work: true, history: true, workshopStatus: true, visit: true }, (local(SETTINGS) || {}).portalVis || {}, r.portalVis || {});
+      // خيارات أدق: الإجمالي / العربون / المتبقي / أجرة اليد (سعر) / أسماء القطع / أسعار القطع — القيم القديمة (price, labor) بتفضل شغالة كأصل
+      function vv(k, base) { return V[k] === undefined ? !!V[base] : !!V[k]; }
+      var showTotal = vv("total", "price"), showDep = vv("deposit", "price"), showRemain = vv("remain", "price"), showLabor = vv("labor", "labor"), showPartPrice = vv("partPrices", "price"), showQty = V.partQty !== false;
       var p = { customerId: r.customerId, no: r.no || "", deviceId: r.deviceId || "", deviceLabel: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: r.fault || "", status: r.status || "", executionPlace: r.executionPlace || "", closed: !!r.closed, partsWaiting: !!r.partsWaiting, source: r.source || "", createdAt: r.createdAt || "" };
       if (V.visit) p.visit = r.visit || "";
       if (V.workshopStatus) p.workshopStatus = r.workshopStatus || "";
-      if (V.price) { p.total = +r.total || 0; p.deposit = +r.deposit || 0; p.remain = +r.remain || 0; }
-      if (V.labor) p.labor = +r.labor || 0;
+      if (showTotal) p.total = +r.total || 0;
+      if (showDep) p.deposit = +r.deposit || 0;
+      if (showRemain) p.remain = +r.remain || 0;
+      if (showLabor) p.labor = +r.labor || 0;
       if (V.work) p.work = r.work || "";
-      if (V.parts) p.parts = (r.parts || []).map(function (i) { var pt = pm[i.partId] || {}; var o = { name: pt.name || pt.title || i.name || "قطعة", qty: +i.qty || 1 }; if (V.price) o.price = +i.sell || 0; return o; });
+      if (V.parts) p.parts = (r.parts || []).map(function (i) { var pt = pm[i.partId] || {}; var o = { name: pt.name || pt.title || i.name || "قطعة" }; if (showQty) o.qty = +i.qty || 1; if (showPartPrice) o.price = +i.sell || 0; return o; });
       if (V.history) p.history = (r.statusHistory || []).map(function (x) { return { to: x.to || "", at: x.at || "" }; });
       var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
