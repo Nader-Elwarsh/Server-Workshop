@@ -277,6 +277,11 @@
     return true;
   }
 
+  function dupGroupsBar() {
+    const g = window.wfCustomerDupGroups ? window.wfCustomerDupGroups() : [];
+    return g.length ? `<a class="simple-line-bar simple-line-warn" href="merge-customers.html" style="text-decoration:none"><span>⚠️ ${g.length} رقم تليفون مكرر عند أكتر من عميل</span><b>دمج ←</b></a>` : "";
+  }
+
   defineOverride("renderCustomers", "workshop-mini-simple-ui.js", function () {
     const el = $("customerList");
     if (!el) return;
@@ -288,6 +293,7 @@
       el.innerHTML = `
         <section class="simple-home ps-context-target" data-ps-title="ملخص العملاء">
           <div class="simple-summary-title"><b>👤 العملاء</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
+          ${dupGroupsBar()}
           ${unpaidCount > 0
             ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showCustomerBucket('unpaid')" role="button" tabindex="0"><span>💰 ${unpaidCount} عميل عليه متبقي غير محصل</span><b>عرض ›</b></div>`
             : `<div class="simple-line-bar simple-line-ok"><span>✅ لا يوجد عملاء عليهم متبقي غير محصل حاليًا</span></div>`}
@@ -355,7 +361,7 @@
         const remain = customerRemainingTotal(c.id);
         const age = worstRequestAgeInfo(ao);
         return `<div class="simple-record${age ? " " + age.cls : ""}"><div class="simple-record-icon">👤</div><div class="simple-record-main">
-          <a href="customer.html?id=${c.id}"><b>${esc2(c.name)}</b></a><span>${c.phone?`<a class="tel-link" href="tel:${esc2(c.phone)}" target="_blank" rel="noopener" data-wf-event="click" data-wf-code="event.stopPropagation()">📞 ${esc2(c.phone)}</a>`:"📞 —"}</span>
+          <a href="customer.html?id=${c.id}"><b>${esc2(c.name)}</b></a>${(c.portal||c.portalUid)?' <small title="عنده حساب بوابة">🌐</small>':""}<span>${c.phone?`<a class="tel-link" href="tel:${esc2(c.phone)}" target="_blank" rel="noopener" data-wf-event="click" data-wf-code="event.stopPropagation()">📞 ${esc2(c.phone)}</a>`:"📞 —"}</span>
           <small>📍 ${esc2(addressText(c.mainAddress || {}) || "بدون عنوان")}</small>
           <small>🔧 ${ds} أجهزة • 🛠️ ${rs} أوامر${ao.length ? ` • 🔴 ${ao.length} فعال` : ""}${hw ? " • 🏭 جهاز في الورشة" : ""}</small>
           <small>${lastDate ? `📅 آخر تعامل: ${lastDate.toLocaleDateString("ar-EG",{day:"2-digit",month:"2-digit",year:"2-digit"})}` : "📅 بدون تعامل سابق"}${remain > 0 ? ` • 💰 متبقي ${remain.toFixed(2)} ج` : ""}${age ? ` • <span class="age-badge ${age.cls}" title="⏱️ أقدم أمر مفتوح: ${esc2(age.range)}">${age.dot} ${esc2(age.label)}</span>` : ""}</small>

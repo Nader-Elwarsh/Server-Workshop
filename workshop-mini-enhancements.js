@@ -126,6 +126,7 @@
           <h1 class="profile-title">👤 ${esc(c.name)}</h1>
           <div class="compact-actions">
             <button class="secondary" data-wf-event="click" data-wf-code="editCustomer('${c.id}')">✏️ تعديل</button>
+            <button class="secondary" data-wf-event="click" data-wf-code="wfInviteCustomer('${c.id}')">📲 دعوة البوابة</button>
             ${typeof psActions==="function"?psActions("كشف حساب العميل "+(c.name||"")):""}
             <a class="primary" href="devices.html?customer=${c.id}">➕ جهاز</a>
             <a class="primary" href="requests.html?customer=${c.id}">➕ أمر شغل</a>
@@ -133,6 +134,7 @@
         </div>
         <div class="profile-grid">
           <div class="kv"><b>📞 التليفون</b>${typeof contactLinksHtml==="function"?contactLinksHtml(c.phone):esc(c.phone||"—")}</div>
+          <div class="kv"><b>🌐 حساب البوابة</b>${(c.portalUid||c.portal)?"✅ مفعّل":"⚪ غير مفعّل"}</div>
           <div class="kv"><b>📍 العنوان الأساسي</b>${esc(main || "—")}</div>
           <div class="kv"><b>📍 العنوان الإضافي</b>${esc(extra || "—")}</div>
           <div class="kv"><b>🔧 عدد الأجهزة</b>${ds.length}</div>

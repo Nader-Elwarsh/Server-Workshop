@@ -252,19 +252,24 @@
     return s;
   }
 
+  // مفتاح موحّد للرقم: أرقام عربية/هندية → لاتينية، شيل أي رموز، +20 / 0020 / 20 → 0
+  function phoneKey(v) {
+    let d = String(v || "").replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 1632).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 1776).replace(/\D/g, "");
+    if (d.startsWith("0020")) d = d.slice(4);
+    if (d.length === 12 && d.startsWith("20")) d = "0" + d.slice(2);
+    if (d.length === 10 && d[0] === "1") d = "0" + d;
+    return d.length >= 7 ? d : "";
+  }
   function duplicateCustomerByPhone(phone, excludeId) {
-    // توحيد الرقم: أرقام عربية/هندية → لاتينية، شيل أي رموز، +20 / 0020 / 20 → 0
-    // (قبل كده كان بيقارن نصًا بعد شيل المسافات بس، فـ "+20100..." و"0100..." كانوا مختلفين).
-    const norm = v => {
-      let d = String(v || "").replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 1632).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 1776).replace(/\D/g, "");
-      if (d.startsWith("0020")) d = d.slice(4);
-      if (d.length === 12 && d.startsWith("20")) d = "0" + d.slice(2);
-      if (d.length === 10 && d[0] === "1") d = "0" + d;
-      return d;
-    };
-    let normalized = norm(phone);
+    let normalized = phoneKey(phone);
     if (!normalized) return null;
-    return arr(K.c).find(c => String(c.id) !== String(excludeId || "") && norm(c.phone) === normalized) || null;
+    return arr(K.c).find(c => String(c.id) !== String(excludeId || "") && phoneKey(c.phone) === normalized) || null;
+  }
+  // مجموعات العملاء اللي ليهم نفس الرقم (أكتر من سجل)
+  function customerDupGroups() {
+    const g = {};
+    arr(K.c).forEach(c => { const k = c && phoneKey(c.phone); if (k) (g[k] = g[k] || []).push(c); });
+    return Object.keys(g).filter(k => g[k].length > 1).map(k => ({ phone: k, list: g[k] }));
   }
 
   // customerName/deviceName بيتناديلهم من جوه map() لقوايم طويلة (عملاء،
@@ -333,6 +338,8 @@
   window.put = put;
   window.commitStorage = commitStorage;
   window.arr = arr;
+  window.wfPhoneKey = phoneKey;
+  window.wfCustomerDupGroups = customerDupGroups;
   window.arrCached = arrCached;
   window.debounce = debounce;
   // بعض الشاشات (استرجاع/حذف كل البيانات في app-data-management.js) بتكتب

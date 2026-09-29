@@ -277,7 +277,8 @@
     return d.length >= 7 ? d : "";
   }
   var CUST_REF_KEYS = ["d", "r", "tasks", "inv", "pc", "wtx", "tr", "followupLog"];
-  var PORTAL_CUST_COLS = ["portalRequests", "portalComplaints", "portalQuestions", "portalSuggestions", "portalOrders"];
+  // اسم الحقل اللي بيشاور على العميل في كل مجموعة (portalSuggestions بتستخدم by)
+  var PORTAL_CUST_COLS = { portalRequests: "customerId", portalComplaints: "customerId", portalQuestions: "customerId", portalOrders: "customerId", portalSuggestions: "by" };
   var merging = false;
   function saveLocal(key, a) { if (typeof window.saveJSONSafe === "function") return window.saveJSONSafe(key, a); origSet.call(ls, key, JSON.stringify(a)); return true; }
   function refCount(id) {
@@ -285,14 +286,24 @@
     ["d", "r"].forEach(function (k) { window.arr(K[k]).forEach(function (x) { if (x && x.customerId === id) n++; }); });
     return n;
   }
+  //  سجل اتعمل من تسجيل العميل بنفسه في البوابة (id = uid الحساب، من غير سجل ورشة أصلي)
+  function isSelfReg(c) { return !!c && c.portal === true && (!c.portalUid || c.portalUid === c.id); }
   function applyMergeLocal(dupId, keepId) {
     var K = window.K, cs = window.arr(K.c);
     var keep = cs.find(function (x) { return x.id === keepId; }), dup = cs.find(function (x) { return x.id === dupId; });
     if (!keep || !dup) return false;
+    var snapshot = ""; try { snapshot = JSON.stringify(dup).slice(0, 600); } catch (e) {}
     if (!keep.email && dup.email) keep.email = dup.email;
+    if (!keep.phone2 && dup.phone2) keep.phone2 = dup.phone2;
     var ma = keep.mainAddress || {};
     if (!(ma.center || ma.village || ma.street || ma.address) && dup.mainAddress) keep.mainAddress = dup.mainAddress;
-    keep.portalUid = dupId; keep.updatedAt = new Date().toISOString();
+    var ea = keep.extraAddress || {};
+    if (!(ea.center || ea.village || ea.street || ea.address) && dup.extraAddress) keep.extraAddress = dup.extraAddress;
+    if (!keep.portalUid) {
+      if (isSelfReg(dup)) { keep.portal = true; keep.portalUid = dupId; }
+      else if (dup.portalUid) { keep.portal = true; keep.portalUid = dup.portalUid; }
+    }
+    keep.updatedAt = new Date().toISOString();
     CUST_REF_KEYS.forEach(function (rk) {
       var key = K[rk]; if (!key) return;
       var a = window.arr(key), ch = false;
@@ -300,21 +311,38 @@
       if (ch) saveLocal(key, a);
     });
     saveLocal(K.c, cs.filter(function (x) { return x.id !== dupId; }));
-    try { window.auditLog && window.auditLog("دمج", "عميل", keepId, "دمج سجل بوابة العميل المكرر (" + (dup.name || "") + ") في السجل الأصلي"); } catch (e) {}
+    try { window.auditLog && window.auditLog("دمج", "عميل", keepId, "دمج سجل مكرر (" + (dup.name || "") + " / " + (dup.phone || "") + ") — نسخة: " + snapshot); } catch (e) {}
     return true;
   }
-  function doMerge(j) {
-    var dupId = j.dup.id, keepId = j.keep.id;
-    return withTimeout(db.collection("portalLinks").doc(dupId).set({ customerId: keepId, phone: j.phone, mustChange: false, mergedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }))
-      .then(function () {
-        return Promise.all(PORTAL_CUST_COLS.map(function (c) {
-          return withTimeout(db.collection(c).where("customerId", "==", dupId).get()).then(function (sn) {
-            return Promise.all(sn.docs.map(function (d) { return d.ref.update({ customerId: keepId }); }));
+  //  دمج dup في keep: يربط حسابات البوابة بالسجل الباقي وينقل كل السجلات المرتبطة. لو dup عنده حساب بوابة لازم نت.
+  function mergeCustomers(keepId, dupId) {
+    var W = window;
+    if (!W.K || typeof W.arr !== "function" || !keepId || !dupId || keepId === dupId) return Promise.reject({ code: "bad-args" });
+    var cs = W.arr(W.K.c), keep = cs.find(function (x) { return x.id === keepId; }), dup = cs.find(function (x) { return x.id === dupId; });
+    if (!keep || !dup) return Promise.reject({ code: "missing" });
+    var cloud = online() && ready;
+    if ((dup.portal === true || dup.portalUid) && !cloud) return Promise.reject({ code: "offline" });
+    var chain = Promise.resolve();
+    if (cloud) {
+      chain = chain.then(function () {
+        if (!isSelfReg(dup)) return;
+        return withTimeout(db.collection("portalLinks").doc(dupId).set({ customerId: keepId, phone: nph(dup.phone), mustChange: false, mergedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }));
+      }).then(function () {
+        return withTimeout(db.collection("portalLinks").where("customerId", "==", dupId).get()).then(function (sn) {
+          return Promise.all(sn.docs.map(function (d) { return d.ref.update({ customerId: keepId }); }));
+        });
+      }).then(function () {
+        return Promise.all(Object.keys(PORTAL_CUST_COLS).map(function (c) {
+          var f = PORTAL_CUST_COLS[c];
+          return withTimeout(db.collection(c).where(f, "==", dupId).get()).then(function (sn) {
+            return Promise.all(sn.docs.map(function (d) { var u = {}; u[f] = keepId; return d.ref.update(u); }));
           }).catch(function (e) { console.warn("merge repoint", c, e && e.message); });
         }));
-      })
-      .then(function () { return applyMergeLocal(dupId, keepId); });
+      });
+    }
+    return chain.then(function () { var ok = applyMergeLocal(dupId, keepId); try { projectOrders(); } catch (e) {} return ok; });
   }
+  function doMerge(j) { return mergeCustomers(j.keep.id, j.dup.id); }
   function mergePortalDuplicates() {
     var W = window;
     if (!online() || !ready || merging || !W.K || typeof W.arr !== "function") return Promise.resolve(0);
@@ -322,7 +350,7 @@
     W.arr(W.K.c).forEach(function (c) { var p = c && nph(c.phone); if (p) (by[p] = by[p] || []).push(c); });
     Object.keys(by).forEach(function (p) {
       var g = by[p]; if (g.length < 2) return;
-      var ports = g.filter(function (c) { return c.portal === true; }), others = g.filter(function (c) { return c.portal !== true; });
+      var ports = g.filter(isSelfReg), others = g.filter(function (c) { return !isSelfReg(c); });
       if (!ports.length || !others.length) return;
       others.sort(function (a, b) { return (refCount(b.id) - refCount(a.id)) || byCreated(a, b); });
       ports.forEach(function (d) { jobs.push({ dup: d, keep: others[0], phone: p }); });
@@ -330,9 +358,82 @@
     if (!jobs.length) return Promise.resolve(0);
     merging = true; var done = 0, chain = Promise.resolve();
     jobs.forEach(function (j) { chain = chain.then(function () { return doMerge(j); }).then(function (ok) { if (ok) done++; }).catch(function (e) { console.warn("portal merge failed", e && e.message); }); });
-    return chain.then(function () { merging = false; if (done) { try { projectOrders(); } catch (e) {} banner(); } return done; });
+    return chain.then(function () { merging = false; if (done) banner(); return done; });
   }
+  window.wfMergeCustomers = mergeCustomers;
   window.wfMergePortalDuplicates = mergePortalDuplicates;
+  /* ----------  دعوة العميل للبوابة بضغطة واحدة  ----------
+     بتفعّل حساب البوابة للعميل (الدخول برقم تليفونه) وتربطه بسجله الحالي، وبعدين
+     تجهّز رسالة واتساب فيها لينك بيفتح على شاشة الدخول برقم العميل مكتوب. */
+  var INV_KEY = "wf_portal_invite_tpl", SEC = null;
+  var INV_DEF = "أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة الورشة الفنية:\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
+  function portalPhone(x) { var d = nph(x); return /^01[0125]\d{8}$/.test(d) ? d : ""; }
+  function secApp() { if (!SEC) SEC = firebase.apps.filter(function (a) { return a.name === "sec"; })[0] || firebase.initializeApp(firebase.app().options, "sec"); return SEC; }
+  function inviteText(c, p, mustChange) {
+    var tpl = ls.getItem(INV_KEY) || INV_DEF;
+    var link = new URL("portal.html", location.href).href + "?p=" + p;
+    var pw = mustChange === false ? "" : "كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";
+    return tpl.replace(/\{الاسم\}/g, c.name || "").replace(/\{الرابط\}/g, link).replace(/\{الرقم\}/g, p).replace(/\{كلمة_المرور\}/g, pw).trim();
+  }
+  function invModal(html) {
+    var m = document.getElementById("wfInviteModal");
+    if (!m) { m = document.createElement("div"); m.id = "wfInviteModal"; m.style.cssText = "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl"; document.body.appendChild(m); m.addEventListener("click", function (e) { if (e.target === m) m.remove(); }); }
+    m.innerHTML = '<div style="background:#fff;color:#111;max-width:420px;width:100%;border-radius:14px;padding:16px;font:15px/1.6 sans-serif;max-height:90vh;overflow:auto">' + html + '</div>';
+    return m;
+  }
+  function invError(code) {
+    return ({ "auth/email-already-in-use": "فيه حساب دخول بالرقم ده بس مش متسجّل صح. جرّب من لوحة البوابة.", "permission-denied": "مش مسموح لك بالعملية دي (صلاحيات Firestore).", "linked-other": "الرقم ده مربوط بعميل تاني. ادمج العملاء المكررين الأول من شاشة العملاء.", "bad-phone": "رقم التليفون غير صالح (لازم 01xxxxxxxxx).", "offline": "محتاج نت لتفعيل الحساب.", "timeout": "النت ضعيف، جرّب تاني." })[code] || "حصل خطأ (" + code + ")، جرّب تاني.";
+  }
+  function createPortalAccount(c, p) {
+    var em = p + "@phone.elwarsha.app", sa = secApp().auth();
+    return sa.createUserWithEmailAndPassword(em, p).then(function (cr) {
+      var uid = cr.user.uid;
+      return secApp().firestore().collection("phoneIndex").doc(p).set({ email: em, uid: uid })
+        .then(function () { return db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); })
+        .then(function () { return sa.signOut(); }).then(function () { return uid; });
+    }).catch(function (e) { try { sa.signOut(); } catch (x) {} throw e; });
+  }
+  function resolveInvite(c, p) {
+    return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
+      if (!d.exists) return createPortalAccount(c, p).then(function (uid) { return { uid: uid, mustChange: true, created: true }; });
+      var uid = d.data().uid;
+      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false } : null; };
+      return withTimeout(db.collection("portalLinks").doc(uid).get()).then(function (l) {
+        var r = linkOk(l); if (r) return r;
+        // فيه حساب بنفس الرقم اتسجّل بنفسه (مش مربوط بسجلك): ادمج الأول بعد ما نسحب آخر بيانات
+        return hydrateFull().catch(function () {}).then(function () { return mergePortalDuplicates(); })
+          .then(function () { return withTimeout(db.collection("portalLinks").doc(uid).get()); })
+          .then(function (l2) {
+            var r2 = linkOk(l2); if (r2) return r2;
+            if (l2.exists) throw { code: "linked-other" };
+            return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() })).then(function () { return { uid: uid, mustChange: false, created: false }; });
+          });
+      });
+    });
+  }
+  function inviteCustomer(cid) {
+    if (!window.K || typeof window.arr !== "function") return;
+    var c = window.arr(window.K.c).find(function (x) { return x.id === cid; });
+    if (!c) return alert("العميل مش موجود.");
+    var p = portalPhone(c.phone);
+    if (!p) return alert(invError("bad-phone"));
+    if (!online() || !ready) return alert(invError("offline"));
+    invModal('<b>جاري تجهيز الدعوة…</b>');
+    return resolveInvite(c, p).then(function (r) {
+      var all = window.arr(window.K.c), cc = all.find(function (x) { return x.id === cid; });
+      if (cc && (cc.portalUid !== r.uid || cc.portal !== true)) { cc.portal = true; cc.portalUid = r.uid; saveLocal(window.K.c, all); }
+      var msg = inviteText(c, p, r.mustChange), wa = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
+      var m = invModal('<b style="font-size:17px">' + (r.created ? "✅ تم تفعيل حساب البوابة" : "✅ الحساب متفعّل") + '</b><div style="margin:6px 0;color:#444">' + (r.mustChange ? "العميل هيدخل برقمه وهيغيّر كلمة المرور أول مرة." : "العميل دخل قبل كده وعنده كلمة مرور.") + '</div><textarea id="wfInvText" readonly rows="8" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfInvWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 افتح واتساب</a><button id="wfInvCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfInvClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
+      m.querySelector("#wfInvText").value = msg; m.querySelector("#wfInvWa").href = wa;
+      m.querySelector("#wfInvCopy").onclick = function () { var t = m.querySelector("#wfInvText"); t.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).catch(function () { document.execCommand("copy"); }); } catch (e) { document.execCommand("copy"); } this.textContent = "✅ اتنسخت"; };
+      m.querySelector("#wfInvClose").onclick = function () { m.remove(); if (typeof window.customerProfile === "function") try { window.customerProfile(); } catch (e) {} };
+    }).catch(function (e) {
+      var m = invModal('<b>⚠️ ' + invError((e && (e.code || e.message)) || "err") + '</b><div style="margin-top:10px"><button id="wfInvClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
+      m.querySelector("#wfInvClose").onclick = function () { m.remove(); };
+    });
+  }
+  window.wfInviteCustomer = inviteCustomer;
+
   //  أول ما عميل بوابة جديد يظهر في السحابة ومش موجود محليًا، اسحب وادمج فورًا (بدون انتظار فتح التطبيق)
   var kickAt = 0, custWatch = false;
   function watchPortalCustomers() {

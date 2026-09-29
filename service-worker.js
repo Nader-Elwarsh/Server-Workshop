@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-150-offline-fix";
+const CACHE_NAME = "workshop-v11-151-dedupe";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -13,6 +13,8 @@ const CORE_FILES = [
   "./followup.html",
   "./warranty.html",
   "./customers.html",
+  "./merge-customers.html",
+  "./merge-customers.js",
   "./customer.html",
   "./devices.html",
   "./device.html",
