@@ -61,6 +61,9 @@ db.collection("staff").doc(u.uid).get().then(function(s){if(s.exists){stop();app
 return db.collection("portalLinks").doc(u.uid).get().then(function(l){lk=l.exists?l.data():null;CID=(lk&&lk.customerId)||u.uid}).catch(function(){CID=u.uid}).then(function(){return db.collection("portal").doc("config").get()}).then(function(c){if(c.exists){var d=c.data();Object.keys(d).forEach(function(k){if(d[k]&&(Array.isArray(d[k])?d[k].length:Object.keys(d[k]).length))cfg[k]=d[k]})}}).catch(function(){}).then(function(){return db.collection("customers").doc(CID).get()}).then(function(c){if(!c.exists){app.innerHTML='<div class="card">حسابك مش مكتمل. سجّل خروج وأنشئ حساب جديد.</div>';return}
 me=c.data();stop();var q=function(col){return db.collection(col).where("customerId","==",CID)},L=function(col,fn){unsubs.push(q(col).onSnapshot(function(s){fn(s.docs.map(function(d){return Object.assign({id:d.id},d.data())}));render()},function(){}))};
 L("devices",function(x){devs=x});L("portalRequests",function(x){pend=x});L("portalOrders",function(x){orders=x});L("portalComplaints",function(x){comps=x});L("portalQuestions",function(x){qs=x});render()})}).catch(function(e){app.innerHTML='<div class="card err">تعذّر تحميل حسابك ('+esc(errText(e))+')</div>'})}
+try{history.replaceState({t:"home"},"")}catch(e){}
+window.addEventListener("popstate",function(e){if(!me)return;popping=true;tab=(e.state&&e.state.t)||"home";hT=tab;msg="";newDevOpen=false;render();popping=false;scrollTo(0,0)});
+try{auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(){})}catch(e){}
 auth.onAuthStateChanged(function(u){if(signingUp)return;if(!u){stop();U=null;me=null;loadPosts().then(showAuth);return}loadPosts();start(u)});
 
 /* ---- تثبيت التطبيق ---- */
@@ -93,7 +96,8 @@ return h}
 function dev(id){return devs.find(function(d){return d.id===id})||{}}
 function label(d){return[d.type,d.brand,d.model].filter(Boolean).join(" ")||"جهاز"}
 function isP(o){return o.source==="portal"}
-function render(){if(!me)return;if(lk&&lk.mustChange){app.innerHTML=forcePw();return}var t=[["home","🏠 ملفي"],["shop","📋 أوامر الورشة"],["mine","🧾 طلباتي"],["devices","🔧 أجهزتي"],["ask","❓ اسأل الورشة"],["learn","📰 نصايح"],["me","👤 حسابي"]];
+var hT="home",popping=false;
+function render(){if(!me)return;if(tab!==hT){hT=tab;if(!popping)try{history.pushState({t:tab},"")}catch(e){}}if(lk&&lk.mustChange){app.innerHTML=forcePw();return}var t=[["home","🏠 ملفي"],["shop","📋 أوامر الورشة"],["mine","🧾 طلباتي"],["devices","🔧 أجهزتي"],["ask","❓ اسأل الورشة"],["learn","📰 نصايح"],["me","👤 حسابي"]];
 app.innerHTML='<nav>'+t.map(function(x){var pp=x[1].split(" ");return'<button class="'+(tab===x[0]?"":"off")+'" onclick="tab=\''+x[0]+'\';msg=\'\';render()"><i>'+pp[0]+'</i><span>'+pp.slice(1).join(" ")+'</span></button>'}).join("")+'</nav>'+({home:vHome,shop:vShop,mine:vMine,devices:vDevices,ask:vAsk,learn:vLearn,me:vMe,dev:vDev})[tab]()}
 function sorted(a){return a.slice().sort(function(x,y){return ms(y.createdAt)-ms(x.createdAt)})}
 function money(n){return(+n||0).toLocaleString("ar-EG")}
