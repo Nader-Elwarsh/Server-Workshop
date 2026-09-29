@@ -253,9 +253,18 @@
   }
 
   function duplicateCustomerByPhone(phone, excludeId) {
-    let normalized = String(phone || "").replace(/\s+/g, "").trim();
+    // توحيد الرقم: أرقام عربية/هندية → لاتينية، شيل أي رموز، +20 / 0020 / 20 → 0
+    // (قبل كده كان بيقارن نصًا بعد شيل المسافات بس، فـ "+20100..." و"0100..." كانوا مختلفين).
+    const norm = v => {
+      let d = String(v || "").replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 1632).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 1776).replace(/\D/g, "");
+      if (d.startsWith("0020")) d = d.slice(4);
+      if (d.length === 12 && d.startsWith("20")) d = "0" + d.slice(2);
+      if (d.length === 10 && d[0] === "1") d = "0" + d;
+      return d;
+    };
+    let normalized = norm(phone);
     if (!normalized) return null;
-    return arr(K.c).find(c => String(c.id) !== String(excludeId || "") && String(c.phone || "").replace(/\s+/g, "").trim() === normalized) || null;
+    return arr(K.c).find(c => String(c.id) !== String(excludeId || "") && norm(c.phone) === normalized) || null;
   }
 
   // customerName/deviceName بيتناديلهم من جوه map() لقوايم طويلة (عملاء،

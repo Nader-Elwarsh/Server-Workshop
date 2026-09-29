@@ -263,6 +263,93 @@
     return { arr: out.sort(byCreated), base: nb };
   }
 
+  /* ----------  دمج العميل المكرر (سجل الورشة + سجل البوابة) ----------
+     لما عميل مسجّل عندك بالفعل يفتح لينك البوابة ويسجّل بنفسه، البوابة بتنشئ
+     customers/{uid} بعلامة portal:true بنفس رقم التليفون. هنا بنكتشف الحالة دي
+     ونربط حساب البوابة بالسجل الأصلي (portalLinks) وننقل أي أجهزة/أوامر/طلبات
+     اتسجلت على السجل الجديد، وبعدين نشيل السجل المكرر. العملية idempotent. */
+  function nph(x) {
+    var d = String(x || "").replace(/[\u0660-\u0669]/g, function (c) { return c.charCodeAt(0) - 1632; })
+      .replace(/[\u06F0-\u06F9]/g, function (c) { return c.charCodeAt(0) - 1776; }).replace(/\D/g, "");
+    if (d.indexOf("0020") === 0) d = d.slice(4);
+    if (d.length === 12 && d.indexOf("20") === 0) d = "0" + d.slice(2);
+    if (d.length === 10 && d[0] === "1") d = "0" + d;
+    return d.length >= 7 ? d : "";
+  }
+  var CUST_REF_KEYS = ["d", "r", "tasks", "inv", "pc", "wtx", "tr", "followupLog"];
+  var PORTAL_CUST_COLS = ["portalRequests", "portalComplaints", "portalQuestions", "portalSuggestions", "portalOrders"];
+  var merging = false;
+  function saveLocal(key, a) { if (typeof window.saveJSONSafe === "function") return window.saveJSONSafe(key, a); origSet.call(ls, key, JSON.stringify(a)); return true; }
+  function refCount(id) {
+    var K = window.K, n = 0;
+    ["d", "r"].forEach(function (k) { window.arr(K[k]).forEach(function (x) { if (x && x.customerId === id) n++; }); });
+    return n;
+  }
+  function applyMergeLocal(dupId, keepId) {
+    var K = window.K, cs = window.arr(K.c);
+    var keep = cs.find(function (x) { return x.id === keepId; }), dup = cs.find(function (x) { return x.id === dupId; });
+    if (!keep || !dup) return false;
+    if (!keep.email && dup.email) keep.email = dup.email;
+    var ma = keep.mainAddress || {};
+    if (!(ma.center || ma.village || ma.street || ma.address) && dup.mainAddress) keep.mainAddress = dup.mainAddress;
+    keep.portalUid = dupId; keep.updatedAt = new Date().toISOString();
+    CUST_REF_KEYS.forEach(function (rk) {
+      var key = K[rk]; if (!key) return;
+      var a = window.arr(key), ch = false;
+      a.forEach(function (x) { if (x && x.customerId === dupId) { x.customerId = keepId; ch = true; } });
+      if (ch) saveLocal(key, a);
+    });
+    saveLocal(K.c, cs.filter(function (x) { return x.id !== dupId; }));
+    try { window.auditLog && window.auditLog("دمج", "عميل", keepId, "دمج سجل بوابة العميل المكرر (" + (dup.name || "") + ") في السجل الأصلي"); } catch (e) {}
+    return true;
+  }
+  function doMerge(j) {
+    var dupId = j.dup.id, keepId = j.keep.id;
+    return withTimeout(db.collection("portalLinks").doc(dupId).set({ customerId: keepId, phone: j.phone, mustChange: false, mergedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }))
+      .then(function () {
+        return Promise.all(PORTAL_CUST_COLS.map(function (c) {
+          return withTimeout(db.collection(c).where("customerId", "==", dupId).get()).then(function (sn) {
+            return Promise.all(sn.docs.map(function (d) { return d.ref.update({ customerId: keepId }); }));
+          }).catch(function (e) { console.warn("merge repoint", c, e && e.message); });
+        }));
+      })
+      .then(function () { return applyMergeLocal(dupId, keepId); });
+  }
+  function mergePortalDuplicates() {
+    var W = window;
+    if (!online() || !ready || merging || !W.K || typeof W.arr !== "function") return Promise.resolve(0);
+    var by = {}, jobs = [];
+    W.arr(W.K.c).forEach(function (c) { var p = c && nph(c.phone); if (p) (by[p] = by[p] || []).push(c); });
+    Object.keys(by).forEach(function (p) {
+      var g = by[p]; if (g.length < 2) return;
+      var ports = g.filter(function (c) { return c.portal === true; }), others = g.filter(function (c) { return c.portal !== true; });
+      if (!ports.length || !others.length) return;
+      others.sort(function (a, b) { return (refCount(b.id) - refCount(a.id)) || byCreated(a, b); });
+      ports.forEach(function (d) { jobs.push({ dup: d, keep: others[0], phone: p }); });
+    });
+    if (!jobs.length) return Promise.resolve(0);
+    merging = true; var done = 0, chain = Promise.resolve();
+    jobs.forEach(function (j) { chain = chain.then(function () { return doMerge(j); }).then(function (ok) { if (ok) done++; }).catch(function (e) { console.warn("portal merge failed", e && e.message); }); });
+    return chain.then(function () { merging = false; if (done) { try { projectOrders(); } catch (e) {} banner(); } return done; });
+  }
+  window.wfMergePortalDuplicates = mergePortalDuplicates;
+  //  أول ما عميل بوابة جديد يظهر في السحابة ومش موجود محليًا، اسحب وادمج فورًا (بدون انتظار فتح التطبيق)
+  var kickAt = 0, custWatch = false;
+  function watchPortalCustomers() {
+    if (custWatch) return; custWatch = true;
+    try {
+      db.collection("customers").where("portal", "==", true).onSnapshot(function (sn) {
+        if (!window.K || typeof window.arr !== "function" || hydrating || Date.now() - kickAt < 60000) return;
+        var have = {}; window.arr(window.K.c).forEach(function (c) { have[c.id] = 1; });
+        var base = SB.c.wf_c || {};
+        var missing = sn.docs.some(function (d) { return !have[d.id] && base[d.id] === undefined; });
+        if (!missing) return;
+        kickAt = Date.now();
+        hydrateFull().then(function () { return mergePortalDuplicates(); }).catch(function () {});
+      }, function () {});
+    } catch (e) {}
+  }
+
   var CURRENT_UID = null, denied = false;
   function boot(user) {
     CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
@@ -270,7 +357,7 @@
     function goReady(reload) {
       ready = true; uncover(); badge();
       if (reload) { location.reload(); return; }
-      pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); }, 1500);
+      pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);
       watchInbox();
     }
     if (!online()) { // أوفلاين: اشتغل على النسخة المحلية
@@ -311,7 +398,7 @@
     meta.onSnapshot(function (d) {
       if (!d.exists || d.metadata.hasPendingWrites) return;
       var x = d.data(); if (x.dev === DEV || String(x.ts) === ls.getItem(SEEN)) return;
-      hydrateFull().then(function (r) { origSet.call(ls, SEEN, String(x.ts)); if (r && r.changed) { banner(); } pushAll(false); }).catch(function () {});
+      hydrateFull().then(function (r) { origSet.call(ls, SEEN, String(x.ts)); if (r && r.changed) { banner(); } pushAll(false); mergePortalDuplicates(); }).catch(function () {});
     }, function () {});
   }
 

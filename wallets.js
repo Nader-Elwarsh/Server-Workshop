@@ -151,7 +151,23 @@ function deleteWalletTx(txId){
    المبلغ النهائي مع تحديد محفظة، بتتسجل/تتحدّث حركة واحدة مرتبطة
    بنفس refKey (بدل ما تتكرر الحركة في كل مرة يتعدل فيها الأمر).
 --------------------------------------------------------------------- */
+// بيشيل التكرار: أي حركتين مربوطتين بنفس refKey (نفس عربون/تحصيل نفس الأمر)
+// بيتساب واحدة بس (اللي اتعدلت يدويًا أولًا، وإلا الأقدم) والباقي بيتعلّم deleted.
+function dedupeWalletTxByRef(){
+  try{
+    let a=arr(K.wtx),groups={},changed=false;
+    a.forEach((x,i)=>{if(x&&x.refKey&&!x.deleted)(groups[x.refKey]??=[]).push(i)});
+    Object.values(groups).forEach(ix=>{
+      if(ix.length<2)return;
+      ix.sort((p,q)=>((a[q].manualOverride?1:0)-(a[p].manualOverride?1:0))||String(a[p].createdAt||"").localeCompare(String(a[q].createdAt||"")));
+      ix.slice(1).forEach(i=>{a[i]={...a[i],deleted:true};changed=true});
+    });
+    if(changed)put(K.wtx,a);
+    return changed;
+  }catch(e){console.warn("dedupeWalletTxByRef",e);return false}
+}
 function upsertWalletTxForRef(refKey,data){
+  dedupeWalletTxByRef();
   let a=arr(K.wtx),idx=a.findIndex(x=>x.refKey===refKey&&!x.deleted);
   // لو المستخدم عدّل الحركة دي يدويًا من صفحة المحفظة (editWalletTx بيحط
   // manualOverride:true)، معناها بقى بيديرها بنفسه — فمينفعش أي حفظ تاني
@@ -168,7 +184,9 @@ function upsertWalletTxForRef(refKey,data){
     Object.assign(a[idx],{amount,wallet,category:data.category||a[idx].category,reason:data.reason||a[idx].reason,date:data.date||a[idx].date});
   }else{
     a.push({
-      id:id(),refKey,manualOverride:false,deleted:false,type:"in",amount,wallet,
+      // id ثابت مشتق من refKey: لو جهازين سجلوا نفس التحصيل أوفلاين، المزامنة
+      // هتدمجهم في سجل واحد بدل ما تطلع حركتين (كان ده سبب التكرار).
+      id:refKey,refKey,manualOverride:false,deleted:false,type:"in",amount,wallet,
       category:data.category||"تحصيل عميل",reason:data.reason||"",note:data.note||"",
       date:data.date||localDateKey(new Date()),time:new Date().toTimeString().slice(0,5),
       source:"order-link",createdAt:new Date().toISOString()
@@ -302,7 +320,7 @@ function walletManualFromDetail(type,walletName){
   window.auditLog?.(type==="in"?"إضافة وارد":"إضافة صرف", "محفظة", entry.id, `${walletName} ${amount.toFixed(2)} ج - ${reason}`);
   renderWalletDetail();
 }
-function renderWalletDetail(){
+function renderWalletDetail(){dedupeWalletTxByRef();
   let el=document.getElementById("walletDetailPage");if(!el)return;
   let {type,name}=walletDetailParams();
   if(!name){el.innerHTML="<div class='item'>الحساب غير محدد.</div>";return}
@@ -359,7 +377,7 @@ function renderWalletDetail(){
 /* ---------------------------------------------------------------------
    العرض: صفحة المحافظ الكاملة
 --------------------------------------------------------------------- */
-function renderWallets(){
+function renderWallets(){dedupeWalletTxByRef();
   let el=document.getElementById("walletsPage");if(!el)return;
   let wallets=settings().wallets||[],categories=settings().walletCategories||[];
   let overview=walletsOverview(),catTotals=walletCategoryTotals(),pvw=personalVsWorkshopTotals();

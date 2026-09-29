@@ -1,6 +1,11 @@
-const CACHE_NAME = "workshop-v11-149-portal";
+const CACHE_NAME = "workshop-v11-150-offline-fix";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
+const FIREBASE_FILES = [
+  "https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js",
+  "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js"
+];
 const CORE_FILES = [
   "./",
   "./index.html",
@@ -83,13 +88,32 @@ const CORE_FILES = [
   "./notif-shared.js"
 ];
 
+// تثبيت ذري: لو أي ملف أساسي فشل بسبب النت (مش 404)، التثبيت كله بيفشل
+// والنسخة القديمة (بكاشها الكامل) تفضل شغالة، والمتصفح يعيد المحاولة لاحقًا.
+// قبل كده كانت الأخطاء بتتبلع، والكاش القديم بيتمسح، فالتطبيق يفضل بملفات ناقصة.
+async function precacheOne(cache, f, required) {
+  try {
+    const res = await fetch(f, { cache: "reload" });
+    if (res && res.ok) await cache.put(f, res);
+    else if (res && res.type === "opaque") await cache.put(f, res);
+  } catch (e) {
+    if (required) throw e;
+    console.warn("[SW] precache skip", f, e);
+  }
+}
 self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      // كل ملف لوحده: لو ملف واحد ناقص على الاستضافة ما يبوّظش تثبيت باقي الصفحات للأوفلاين
-      .then(cache => Promise.all(CORE_FILES.map(f => cache.add(f).catch(e => console.warn("[SW] precache skip", f, e)))))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    // ملفات فايربيز من gstatic: بنحاول ناخدها من أي كاش قديم الأول عشان مانحتاجش نت
+    const olds = (await caches.keys()).filter(k => k !== CACHE_NAME);
+    for (const f of FIREBASE_FILES) {
+      let hit = null;
+      for (const k of olds) { hit = await (await caches.open(k)).match(f); if (hit) break; }
+      if (hit) await cache.put(f, hit); else await precacheOne(cache, f, true);
+    }
+    await Promise.all(CORE_FILES.map(f => precacheOne(cache, f, true)));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", event => {
