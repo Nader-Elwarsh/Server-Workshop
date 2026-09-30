@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-152-ticker";
+const CACHE_NAME = "workshop-v11-153-auth";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -39,6 +39,8 @@ const CORE_FILES = [
   "./login.html",
   "./portal-admin.html",
   "./portal-ticker.js",
+  "./pw-eye.js",
+  "./wf-session.js",
   "./audit-log.js",
   "./global-search.js",
   "./bottom-nav.js",

@@ -21,6 +21,15 @@
   /* ---------- واجهة ---------- */
   function cover(msg) { var ex = document.getElementById("wfCloudCover"); if (ex) { ex.textContent = msg; return; } var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
   function uncover() { var c = document.getElementById("wfCloudCover"); if (c) c.remove(); }
+  var scripts = {};
+  function loadScript(src) { // تحميل ملف مساعد عند الحاجة (مرة واحدة)
+    if (scripts[src]) return scripts[src];
+    return (scripts[src] = new Promise(function (res) { var t = document.createElement("script"); t.src = src; t.onload = t.onerror = function () { res(); }; document.head.appendChild(t); }));
+  }
+  function rememberLogin(email, pw) { // حفظ الدخول في مدير كلمات المرور بتاع المتصفح (مش في تخزين الموقع)
+    try { if (window.PasswordCredential && navigator.credentials && email && pw) navigator.credentials.store(new PasswordCredential({ id: email, password: pw })).catch(function () {}); } catch (e) {}
+  }
+  function forgetLogin() { try { if (navigator.credentials && navigator.credentials.preventSilentAccess) navigator.credentials.preventSilentAccess().catch(function () {}); } catch (e) {} }
   function banner() { if (document.getElementById("wfCloudBanner")) return; var b = document.createElement("div"); b.id = "wfCloudBanner"; b.style.cssText = "position:fixed;bottom:70px;left:12px;right:12px;z-index:9999;background:#0b57d0;color:#fff;padding:12px;border-radius:10px;text-align:center;direction:rtl;font:600 15px sans-serif;cursor:pointer"; b.textContent = "🔄 فيه تحديث من جهاز تاني — اضغط لإعادة التحميل"; b.onclick = function () { location.reload(); }; (document.body || document.documentElement).appendChild(b); }
   function badge() {
     if (isLogin || !document.body) return;
@@ -185,11 +194,29 @@
       db.collection("portalQuestions").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.q = s.size; pill(); }, function () {});
     } catch (e) {}
   }
-  window.wfChangePassword = function () { // تغيير كلمة سر الموظف/المدير
+  window.wfChangePassword = function () { // تغيير كلمة سر الموظف/المدير (مع تأكيد وزر إظهار)
     var u = firebase.auth().currentUser; if (!u || !u.email) return alert("لازم تكون مسجّل دخول.");
-    var o = prompt("كلمة المرور الحالية:"); if (o === null) return;
-    var n = prompt("كلمة المرور الجديدة (6 حروف على الأقل):"); if (!n || n.length < 6) return alert("كلمة المرور الجديدة قصيرة.");
-    u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, o)).then(function () { return u.updatePassword(n); }).then(function () { alert("✅ اتغيّرت كلمة المرور"); }).catch(function () { alert("تعذّر التغيير — تأكد من كلمة المرور الحالية."); });
+    var inp = function (id, label, ac) { return '<label style="display:block;margin-top:10px;font-weight:600">' + label + '<input id="' + id + '" type="password" autocomplete="' + ac + '" style="display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:10px;border:1px solid #999;border-radius:8px;background:#fff;color:#111;font-size:16px"></label>'; };
+    var m = invModal('<b style="font-size:17px">🔑 تغيير كلمة المرور</b>' + inp("wfPw0", "كلمة المرور الحالية", "current-password") + inp("wfPw1", "كلمة المرور الجديدة (6 حروف على الأقل)", "new-password") + inp("wfPw2", "تأكيد كلمة المرور الجديدة", "new-password") +
+      '<p id="wfPwMsg" role="alert" style="color:#b00020;min-height:22px;margin:8px 0 4px"></p><div style="display:flex;gap:8px"><button id="wfPwGo" type="button" style="flex:1;padding:11px;border-radius:10px;border:0;background:#0b57d0;color:#fff;font-size:16px">حفظ</button><button id="wfPwX" type="button" style="padding:11px 16px;border-radius:10px;border:1px solid #999;background:#fff;color:#111;font-size:16px">إلغاء</button></div>');
+    loadScript("pw-eye.js").then(function () { if (window.PwEye) PwEye.scan(m); });
+    var $ = function (id) { return m.querySelector("#" + id); }, say = function (t, ok) { var p = $("wfPwMsg"); p.style.color = ok ? "#0a7a2f" : "#b00020"; p.textContent = t; };
+    $("wfPwX").onclick = function () { m.remove(); };
+    $("wfPwGo").onclick = function () {
+      var o = $("wfPw0").value, n = $("wfPw1").value, c = $("wfPw2").value;
+      if (!o) return say("اكتب كلمة المرور الحالية.");
+      if (n.length < 6) return say("كلمة المرور الجديدة لازم تكون 6 حروف على الأقل.");
+      if (n !== c) return say("كلمة المرور الجديدة وتأكيدها مش متطابقين.");
+      if (n === o) return say("الجديدة لازم تختلف عن الحالية.");
+      var b = $("wfPwGo"); b.disabled = true; say("جاري الحفظ…", true);
+      u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, o)).then(function () { return u.updatePassword(n); }).then(function () {
+        rememberLogin(u.email, n); say("✅ اتغيّرت كلمة المرور", true); setTimeout(function () { m.remove(); }, 1200);
+      }).catch(function (e) {
+        b.disabled = false; var code = e && e.code || "";
+        say(/wrong-password|invalid-credential/.test(code) ? "كلمة المرور الحالية غير صحيحة." : /too-many/.test(code) ? "محاولات كتير — استنى شوية وجرّب تاني." : /network/.test(code) ? "مفيش اتصال بالإنترنت." : "تعذّر التغيير — جرّب تاني.");
+      });
+    };
+    setTimeout(function () { var f = $("wfPw0"); if (f) f.focus(); }, 50);
   };
   var converting = false;
   function convertPortal() { // حوّل طلبات البوابة الجديدة لأوامر شغل حقيقية
@@ -489,7 +516,7 @@
     }).catch(function () { return true; });
     staffCheck.then(function (isStaff) {
       if (isStaff) return continueBoot();
-      denied = true; cover("الحساب ده مش حساب موظف. لو أنت عميل ادخل من بوابة العملاء."); var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; document.getElementById("wfCloudCover").appendChild(a); firebase.auth().signOut();
+      denied = true; cover("الحساب ده مش حساب موظف. لو أنت عميل ادخل من بوابة العملاء."); var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so); /* مافيش خروج تلقائي: الجلسة بتنتهي بس لما المستخدم يختار */
     });
     function continueBoot() {
     var quick = hydrated && recent;
@@ -518,7 +545,7 @@
     }, function () {});
   }
 
-  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); sessionStorage.removeItem("wf_hyd_reload"); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
+  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
   window.addEventListener("online", function () { badge(); pushAll(false); });
   window.addEventListener("offline", badge);
@@ -528,10 +555,14 @@
   document.addEventListener("DOMContentLoaded", badge);
 
   firebase.initializeApp(CFG);
+  try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {}); } catch (e) {}
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {} // اطلب تخزين دائم عشان المتصفح مايمسحش الجلسة
   if (!isLogin && !ls.getItem(HYD)) cover("جاري تحميل بيانات الورشة…"); // أول مرة بس
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
-    if (!u) { if (denied) return; if (navigator.onLine === false && ls.getItem(HYD)) { ready = false; uncover(); return; } location.replace("login.html"); return; }
+    if (!u) { if (denied) return; if (navigator.onLine === false && ls.getItem(HYD)) { ready = false; uncover(); return; }
+      // الجلسة اتمسحت من المتصفح بدون ما المستخدم يعمل خروج؟ جرّب الدخول الصامت من مدير كلمات المرور قبل ما نروح لصفحة الدخول
+      loadScript("wf-session.js").then(function () { return window.WfSession ? WfSession.silent(firebase.auth()) : null; }).then(function (r) { if (!r) location.replace("login.html"); }); return; }
     boot(u);
   });
 })();
