@@ -476,6 +476,70 @@
   }
   window.wfInviteCustomer = inviteCustomer;
 
+  /* ----------  إعادة تعيين كلمة سر عميل نسيها (حساب من غير إيميل)  ----------
+     الموظف مايقدرش يغيّر باسورد حساب Firebase لعميل (ده محتاج صلاحيات سيرفر). فبنعمل بدل كده:
+     1) نفتح حساب دخول جديد بنفس رقم العميل وكلمة مؤقتة عشوائية (من تطبيق ثانوي، زي تفعيل الحساب بالظبط).
+     2) نحوّل فهرس الرقم (phoneIndex) للحساب الجديد، ونربطه بنفس سجل العميل (portalLinks) فكل أجهزته وأوامره وطلباته تفضل زي ما هي.
+     3) الحساب القديم بيتعلّم «معطّل» فلو حد عنده جلسة قديمة مايدخلش على بيانات العميل.
+     العميل بيدخل بالكلمة المؤقتة وبيتطلب منه يغيّرها فورًا. */
+  function tempPassword() { var a = new Uint32Array(1); (window.crypto || window.msCrypto).getRandomValues(a); return String(10000000 + (a[0] % 90000000)); }
+  function resetError(code) {
+    return ({ "no-account": "العميل ده ملوش حساب بوابة لسه. استخدم «📲 دعوة البوابة» الأول.", "linked-other": "الرقم ده مربوط بعميل تاني. ادمج العملاء المكررين الأول.", "cancel": "", "permission-denied": "مش مسموح بالعملية دي (صلاحيات Firestore): لازم قواعد phoneIndex تسمح للموظف بالتعديل أو الحذف، ولـ portalLinks بالكتابة.", "auth/operation-not-allowed": "تسجيل الدخول بالإيميل/الباسورد مقفول في إعدادات Firebase." })[code] || invError(code);
+  }
+  function resetCustomerPassword(cid) {
+    if (!window.K || typeof window.arr !== "function") return;
+    var c = window.arr(window.K.c).find(function (x) { return x.id === cid; });
+    if (!c) return alert("العميل مش موجود.");
+    var p = portalPhone(c.phone);
+    if (!p) return alert(invError("bad-phone"));
+    if (!online()) return alert(invError("offline"));
+    if (!confirm("إعادة تعيين كلمة مرور بوابة «" + (c.name || "") + "»؟\nهيتعمل للعميل كلمة مؤقتة جديدة (بيغيّرها أول دخول)، والكلمة القديمة هتتلغي.")) return;
+    invModal("<b>جاري إعادة التعيين…</b>");
+    var sa = secApp().auth(), temp = tempPassword(), em = p + "." + Date.now().toString(36) + SYNMAIL, idx = null, oldUid = null, newUid = null, swapped = false, SV = firebase.firestore.FieldValue.serverTimestamp();
+    var pi = db.collection("phoneIndex").doc(p);
+    withTimeout(pi.get()).then(function (d) {
+      if (!d.exists) throw { code: "no-account" };
+      idx = d.data(); oldUid = idx.uid;
+      return withTimeout(db.collection("portalLinks").doc(oldUid).get());
+    }).then(function (l) {
+      var owner = l.exists ? l.data().customerId : oldUid;
+      if (owner !== c.id) throw { code: "linked-other" };
+      if (String(idx.email || "").slice(-SYNMAIL.length) !== SYNMAIL && !confirm("العميل ده مسجّل بإيميل (" + idx.email + ").\nالأفضل يستخدم «نسيت كلمة المرور» ويوصله رابط على إيميله.\nلو كمّلت هيدخل بعد كده برقم التليفون والكلمة المؤقتة. تكمّل؟")) throw { code: "cancel" };
+      return withTimeout(sa.createUserWithEmailAndPassword(em, temp));
+    }).then(function (cr) {
+      newUid = cr.user.uid;
+      return withTimeout(pi.set({ email: em, uid: newUid })).catch(function (e) { // لو القواعد بتسمح بالإنشاء بس: امسح وأنشئ من الحساب الجديد
+        return withTimeout(pi.delete()).then(function () { return withTimeout(secApp().firestore().collection("phoneIndex").doc(p).set({ email: em, uid: newUid })); }).catch(function (e2) { throw e2 && e2.code ? e2 : e; });
+      });
+    }).then(function () {
+      swapped = true;
+      return withTimeout(db.collection("portalLinks").doc(newUid).set({ customerId: c.id, phone: p, mustChange: true, resetAt: SV, createdAt: SV }));
+    }).then(function () {
+      return withTimeout(db.collection("portalLinks").doc(oldUid).set({ customerId: "_reset", phone: p, disabled: true, replacedBy: newUid, resetAt: SV })).catch(function () {});
+    }).then(function () {
+      try { sa.signOut(); } catch (e) {}
+      var all = window.arr(window.K.c), cc = all.find(function (x) { return x.id === cid; });
+      if (cc) { cc.portal = true; cc.portalUid = newUid; saveLocal(window.K.c, all); }
+      if (typeof window.auditLog === "function") try { window.auditLog("إعادة تعيين كلمة سر بوابة", "عميل", cid, c.name || ""); } catch (e) {}
+      var link = new URL("portal.html", location.href).href + "?p=" + p;
+      var msg = "أهلاً " + (c.name || "") + " 👋\nتم إعادة تعيين كلمة مرورك في بوابة الورشة الفنية.\n" + link + "\nالدخول برقم تليفونك: " + p + "\nكلمة المرور المؤقتة: " + temp + "\n(هتطلب منك تغييرها أول دخول)";
+      var m = invModal('<b style="font-size:17px">✅ اتعمل إعادة تعيين</b><div style="margin:6px 0;color:#444">كلمة المرور المؤقتة للعميل:</div><div id="wfRsPw" dir="ltr" style="font:700 26px/1.4 monospace;text-align:center;background:#f3f6ff;border:1px dashed #0b57d0;border-radius:10px;padding:8px;letter-spacing:2px;user-select:all">' + temp + '</div><div style="margin:6px 0;color:#a15c00;font-size:13px">الكلمة دي بتظهر مرة واحدة هنا — ابعتها للعميل دلوقتي. (لو ضاعت اعمل إعادة تعيين تاني.)</div><textarea id="wfRsText" readonly rows="6" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfRsWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 ابعت واتساب</a><button id="wfRsCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfRsClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
+      m.querySelector("#wfRsText").value = msg; m.querySelector("#wfRsWa").href = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
+      m.querySelector("#wfRsCopy").onclick = function () { var t = m.querySelector("#wfRsText"); t.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).catch(function () { document.execCommand("copy"); }); } catch (e) { document.execCommand("copy"); } this.textContent = "✅ اتنسخت"; };
+      m.querySelector("#wfRsClose").onclick = function () { m.remove(); if (typeof window.customerProfile === "function") try { window.customerProfile(); } catch (e) {} };
+    }).catch(function (e) {
+      try { sa.signOut(); } catch (x) {}
+      // فشل قبل تحويل الفهرس: امسح الحساب الجديد اللي اتفتح عشان مايفضلش حساب يتيم
+      if (newUid && !swapped) { try { var u = sa.currentUser; if (u) u.delete().catch(function () {}); } catch (x) {} }
+      var code = (e && (e.code || e.message)) || "err", txt = resetError(code);
+      if (code === "cancel") { var mm = document.getElementById("wfInviteModal"); if (mm) mm.remove(); return; }
+      var m = invModal('<b>⚠️ ' + txt + '</b><div style="margin-top:10px"><button id="wfRsClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
+      m.querySelector("#wfRsClose").onclick = function () { m.remove(); };
+    });
+  }
+  var SYNMAIL = "@phone.elwarsha.app";
+  window.wfResetCustomerPassword = resetCustomerPassword;
+
   //  أول ما عميل بوابة جديد يظهر في السحابة ومش موجود محليًا، اسحب وادمج فورًا (بدون انتظار فتح التطبيق)
   var kickAt = 0, custWatch = false;
   function watchPortalCustomers() {

@@ -127,6 +127,7 @@
           <div class="compact-actions">
             <button class="secondary" data-wf-event="click" data-wf-code="editCustomer('${c.id}')">✏️ تعديل</button>
             <button class="secondary" data-wf-event="click" data-wf-code="wfInviteCustomer('${c.id}')">📲 دعوة البوابة</button>
+            ${c.portal===true?`<button class="secondary" data-wf-event="click" data-wf-code="wfResetCustomerPassword('${c.id}')">🔑 إعادة كلمة سر البوابة</button>`:""}
             ${typeof psActions==="function"?psActions("كشف حساب العميل "+(c.name||"")):""}
             <a class="primary" href="devices.html?customer=${c.id}">➕ جهاز</a>
             <a class="primary" href="requests.html?customer=${c.id}">➕ أمر شغل</a>
