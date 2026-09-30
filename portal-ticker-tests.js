@@ -49,7 +49,7 @@ const T=require('./portal-ticker.js');
   const html=T.buildHtml(c,c.items,{clickable:true,dismissible:true});
   assert.ok(html.includes('&quot;خاص&quot; &amp; أكتر'),'text escaped');
   assert.ok(html.includes('data-l="https://wa.me/201000000000"'));
-  assert.ok(html.includes('class="tk-x"'));
+  assert.ok(html.includes('data-a="x"'));
   assert.ok(html.includes('aria-hidden="true"'),'duplicated loop set hidden from assistive tech');
   assert.ok(/tabindex="-1"/.test(html),'links in the duplicated set are not focusable');
   const plain=T.buildHtml(c,c.items,{clickable:false});
@@ -64,5 +64,18 @@ const T=require('./portal-ticker.js');
   assert.strictEqual(T.signature(c,c.items),T.signature(T.sanitize(c),T.sanitize(c).items));
   const d=T.sanitize({enabled:true,rev:5,items:[{text:'أ!'}]});
   assert.notStrictEqual(T.signature(c,c.items),T.signature(d,d.items));
+}
+// العميل يقدر يقفل الشريط افتراضيًا، والأدمن يقدر يمنع ده
+{
+  assert.strictEqual(T.sanitize({enabled:true,items:[{text:'أ'}]}).dismissible,true,'dismissible by default');
+  assert.strictEqual(T.sanitize({enabled:true,dismissible:false,items:[{text:'أ'}]}).dismissible,false,'admin can disable closing');
+  const c=T.sanitize({enabled:true,items:[{text:'أ'},{text:'ب'}]});
+  const h=T.buildHtml(c,c.items,{dismissible:true});
+  ['pp','next','prev','x'].forEach(a=>assert.ok(h.includes('data-a="'+a+'"'),'control '+a));
+  const hn=T.buildHtml(c,c.items,{dismissible:false});
+  assert.ok(!hn.includes('data-a="x"'),'no close button when closing is disabled');
+  const one=T.sanitize({enabled:true,mode:'rotate',items:[{text:'وحيدة'}]});
+  const ho=T.buildHtml(one,one.items,{});
+  assert.ok(ho.includes('data-a="pp"')&&!ho.includes('data-a="next"'),'a single rotating message needs no next/prev');
 }
 console.log('portal-ticker-tests: PASS');

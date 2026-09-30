@@ -153,9 +153,19 @@
     // ومع mergeFields أدناه ده معناه إن الشريط المنشور من جهاز تاني مايتمسحش.
     if (s.portalTicker && typeof s.portalTicker === "object") c.ticker = window.PortalTicker ? (window.PortalTicker.sanitize(s.portalTicker) || s.portalTicker) : s.portalTicker;
     var x = h(stable(c));
+    publishTicker(c.ticker); // لها بصمة مستقلة: تتنشر حتى لو بقية إعدادات البوابة ماتغيّرتش
     if (SB.x.pc === x) return;
     // mergeFields: نستبدل الحقول اللي بنبعتها بالكامل (زي set القديمة بالظبط) من غير ما نلمس أي حقل تاني في المستند.
     db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
+  }
+  // الشريط الإعلاني لازم يظهر للزوار قبل تسجيل الدخول كمان: portal/config ممكن يكون مقفول على المسجّلين،
+  // فبننشره كمان في portalPosts (نفس المكان اللي الزوار بيقروا منه المقالات أصلًا) بمعرّف ثابت وبيتفلتر بره قايمة المقالات.
+  function publishTicker(t) {
+    if (!t) return;
+    var x = h(stable(t));
+    if (SB.x.pt === x) return;
+    db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      .then(function () { SB.x.pt = x; saveBase(); }).catch(function (e) { console.warn("ticker publish pending", e && e.message); });
   }
   var inboxN = { a: 0, b: 0, c: 0, q: 0 };
   window.wfPortalInbox = inboxN;

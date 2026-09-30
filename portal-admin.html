@@ -132,7 +132,7 @@
 <label>طريقة العرض<select id="tkMode" data-tkm="mode"><option value="scroll">شريط متحرك (زي الأخبار)</option><option value="rotate">رسالة بعد رسالة</option></select></label>
 <label>السرعة (للشريط المتحرك)<select id="tkSpeed" data-tkm="speed"><option value="slow">بطيء</option><option value="normal">عادي</option><option value="fast">سريع</option></select></label>
 </div>
-<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkDis" data-tkm="dismissible" style="width:22px;height:22px;margin:0"> يقدر العميل يقفل الشريط (بيرجع لما تتغيّر الرسائل)</label>
+<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkDis" data-tkm="dismissible" style="width:22px;height:22px;margin:0"> يقدر العميل يقفل الشريط بزر ✕ (بيرجع لما تتغيّر الرسائل). ملحوظة: العميل دايمًا يقدر يوقفه مؤقتًا بلمسة ويحرّكه بإصبعه أو الأسهم</label>
 <h3 style="font-size:14px;margin:12px 0 4px">📝 الرسائل</h3>
 <div id="tkItems"></div>
 <div class="pa-actions"><button type="button" class="secondary" data-act="tkAdd" data-t="">➕ رسالة جديدة</button><button type="button" class="secondary" data-act="tkAdd" data-t="welcome">👋 ترحيب جاهز</button><button type="button" class="secondary" data-act="tkAdd" data-t="offer">🎁 عرض</button><button type="button" class="secondary" data-act="tkAdd" data-t="alert">⚠️ تنبيه</button></div>
@@ -301,7 +301,7 @@ $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
 var TKD=null,tkDirty=false,tkT=null,PTK=null;
 var TK_LINKS=[["","بدون رابط"],["tab:mine","🧾 يفتح «طلباتي» (طلب صيانة)"],["tab:learn","📰 يفتح «نصايح»"],["tab:devices","🔧 يفتح «أجهزتي»"],["tab:ask","❓ يفتح «اسأل الورشة»"],["signup","📝 يفتح شاشة التسجيل (للزوار)"],["custom","🔗 رابط خارجي / واتساب / اتصال…"]];
 var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في الورشة الفنية — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
-function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:false,rev:0,items:[]}}
+function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:true,rev:0,items:[]}}
 function tkLoad(){TKD=PTK.sanitize(window.settings().portalTicker)||tkBlank();tkDirty=false}
 function tkNew(tpl){return Object.assign({id:"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:"",icon:"",type:"info",enabled:true,audience:"all",start:"",end:"",link:""},tpl||{})}
 function tkOpts(map,sel){return Object.keys(map).map(function(k){var l=typeof map[k]==="string"?map[k]:(map[k].icon+" "+map[k].label);return'<option value="'+esc(k)+'"'+(k===sel?" selected":"")+'>'+esc(l)+'</option>'}).join("")}
@@ -329,10 +329,10 @@ TKD=PTK.sanitize(c);tkDirty=false;rTk();tkVerify(c.rev,0)}
 function tkQuick(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank();c.enabled=!c.enabled;c.rev=Date.now();var s=window.settings();s.portalTicker=c;if(!window.put(window.K.s,s)){$("tkMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}
 if(TKD){TKD.enabled=c.enabled;TKD.rev=c.rev}rTk();tkVerify(c.rev,0)}
 function tkVerify(rev,n){var m=$("tkMsg");if(!n)m.textContent="💾 اتحفظ على الجهاز — بيتنشر للعملاء…";
-setTimeout(function(){db.collection("portal").doc("config").get({source:"server"}).then(function(d){var t=d.exists&&d.data().ticker;
+setTimeout(function(){db.collection("portalPosts").doc("wf-ticker").get({source:"server"}).then(function(d){var t=d.exists&&d.data().ticker;
 if(t&&+t.rev===rev){m.textContent="✅ منشور للعملاء ("+(t.enabled?"الشريط شغّال":"الشريط مقفول حاليًا")+")";return}
-if(n<4)return tkVerify(rev,n+1);m.textContent="⏳ اتحفظ على الجهاز لكن لسه ماوصلش للعملاء — اتأكد إن النت شغال وافتح الرئيسية مرة، وهيترفع تلقائيًا."
-}).catch(function(e){m.textContent=(e&&e.code==="permission-denied")?"⚠️ اتحفظ محليًا لكن Firestore رفض النشر — راجع صلاحيات الكتابة على المستند portal/config.":"⚠️ اتحفظ محليًا. تعذّر التأكد من النشر — "+(navigator.onLine===false?"النت مقطوع.":"جرّب تاني بعد شوية.")})},n?2500:1800)}
+if(n<4)return tkVerify(rev,n+1);m.textContent="⏳ اتحفظ على الجهاز لكن لسه ماوصلش للعملاء والزوار — اتأكد إن النت شغال وافتح الرئيسية مرة، وهيترفع تلقائيًا."
+}).catch(function(e){m.textContent=(e&&e.code==="permission-denied")?"⚠️ اتحفظ محليًا لكن Firestore رفض النشر — راجع صلاحيات الكتابة على المجموعة portalPosts والمستند portal/config.":"⚠️ اتحفظ محليًا. تعذّر التأكد من النشر — "+(navigator.onLine===false?"النت مقطوع.":"جرّب تاني بعد شوية.")})},n?2500:1800)}
 ACT.tkAdd=function(b){if(TKD.items.length>=PTK.MAX_ITEMS)return alert("الحد الأقصى "+PTK.MAX_ITEMS+" رسالة.");TKD.items.push(tkNew(TK_TPL[b.dataset.t]));rTkItems();tkTouch()};
 ACT.tkDel=function(b){if(!confirm("تحذف الرسالة دي؟"))return;TKD.items=TKD.items.filter(function(x){return x.id!==b.dataset.id});rTkItems();tkTouch()};
 ACT.tkMove=function(b){var i=TKD.items.findIndex(function(x){return x.id===b.dataset.id}),j=i+(+b.dataset.d);if(i<0||j<0||j>=TKD.items.length)return;var a=TKD.items;var t=a[i];a[i]=a[j];a[j]=t;rTkItems();tkTouch()};
@@ -346,7 +346,7 @@ go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
-db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).sort(byNew);rTabs();rStats();rOv();rPt()});
+db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).filter(function(p){return p.id!=="wf-ticker"}).sort(byNew);rTabs();rStats();rOv();rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});
 db.collection("portalQuestions").onSnapshot(function(s){QS=docs(s);rTabs();rStats();rOv();rQs()});
 db.collection("portalRequests").where("handled","==",false).onSnapshot(function(s){RQ=docs(s);rTabs();rStats();rRq()})})}
