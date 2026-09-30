@@ -437,6 +437,89 @@ function renderWalletDetail(){dedupeWalletTxByRef();
 }
 
 /* ---------------------------------------------------------------------
+   مطابقة الرصيد: "ليه رصيد المحفظة في التطبيق مختلف عن اللي في جيبي؟"
+   =========================================================
+   بتفحص كل حركة مربوطة بأمر شغل مقابل الأمر نفسه، وبتطلّع أي حاجة ممكن تفرّق
+   الرصيد المعروض عن الفعلي. مفيش أي تعديل بيتم هنا — عرض بس. كل بند له اتجاه:
+   up = بيرفع الرصيد المعروض (الأرقام في التطبيق أعلى من الفعلي)
+   down = بيخفضه، info = للعلم.
+--------------------------------------------------------------------- */
+function walletAudit(){
+  const orders=arr(K.r),byId=new Map(orders.map(r=>[String(r.id),r]));
+  const all=arr(K.wtx),active=all.filter(x=>x&&!x.deleted);
+  const known=new Set(settings().wallets||[]);
+  const issues=[];
+  const add=(o)=>issues.push(o);
+  const money=n=>(+n||0);
+  active.forEach(x=>{
+    const m=String(x.refKey||"").match(/^order-(deposit|final)-(.+)$/);
+    const isIn=x.type==="in",amt=money(x.amount);
+    if(!known.has(x.wallet))add({kind:"unknown-wallet",dir:"info",tx:x,amount:amt,text:"الحركة على محفظة «"+(x.wallet||"—")+"» مش موجودة في الإعدادات، فمش داخلة في إجمالي أي محفظة معروضة."});
+    if(!m)return;
+    const r=byId.get(m[2]),kind=m[1];
+    if(!r){add({kind:"order-missing",dir:isIn?"up":"down",tx:x,amount:amt,text:"حركة مربوطة بأمر شغل مش موجود (اتحذف؟) — لسه محسوبة في الرصيد."});return}
+    if(r.status==="ملغي")add({kind:"order-cancelled",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" ملغي لكن حركته لسه محسوبة. لو رجّعت الفلوس للعميل لازم تسجّل صرف."});
+    if(kind==="final"&&!r.closed)add({kind:"final-on-open",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" اتفتح تاني (مرتجع/تعديل) وتحصيله النهائي لسه محسوب. لو رجّعت الفلوس سجّل صرف، ولو لأ سيبه لحد ما تقفله تاني."});
+    const expect=kind==="deposit"?money(r.deposit):Math.max(0,money(r.total)-money(r.deposit));
+    if(Math.abs(expect-amt)>0.005)add({kind:"amount-mismatch",dir:amt>expect?"up":"down",tx:x,order:r,amount:amt-expect,text:"أمر "+(r.no||"")+": الحركة "+amt.toFixed(2)+" لكن "+(kind==="deposit"?"العربون":"المتبقي (الإجمالي − العربون)")+" على الأمر "+expect.toFixed(2)+(x.manualOverride?" (انت معدّل الحركة بإيدك).":".")});
+    const w=String((kind==="deposit"?r.depositWallet:r.closeWallet)||"").trim();
+    if(w&&w!==x.wallet)add({kind:"wallet-mismatch",dir:"info",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+": المحفظة على الأمر «"+w+"» لكن الحركة على «"+(x.wallet||"—")+"»."});
+    const lag=x.createdAt&&r.createdAt?new Date(x.createdAt)-new Date(r.createdAt):0;
+    if(x.source==="order-link"&&lag>2*86400000)add({kind:"late-entry",dir:"info",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+": الحركة اتسجلت بعد إنشاء الأمر بـ "+Math.round(lag/86400000)+" يوم (أمر قديم اتسجّل متأخر؟)."});
+  });
+  // أوامر ليها محفظة ومبلغ لكن مفيش حركة خالص (ولا حتى محذوفة بقصد) => الرصيد المعروض أقل
+  orders.forEach(r=>{
+    if(r.status==="ملغي")return;
+    const has=(ref)=>all.some(x=>x&&x.refKey===ref);
+    if(money(r.deposit)>0&&String(r.depositWallet||"").trim()&&!has("order-deposit-"+r.id))add({kind:"missing-deposit",dir:"down",order:r,amount:money(r.deposit),text:"أمر "+(r.no||"")+": عربون "+money(r.deposit).toFixed(2)+" على الأمر ومحفظته متحددة، لكن مفيش حركة في المحفظة."});
+    const coll=Math.max(0,money(r.total)-money(r.deposit));
+    if(r.closed&&coll>0&&String(r.closeWallet||"").trim()&&!has("order-final-"+r.id))add({kind:"missing-final",dir:"down",order:r,amount:coll,text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" لكن مفيش حركة تحصيل في المحفظة."});
+    if(r.closed&&coll>0&&!String(r.closeWallet||"").trim())add({kind:"closed-no-wallet",dir:"info",order:r,amount:coll,text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" من غير تحديد محفظة (مش محسوب في أي رصيد)."});
+  });
+  // احتمال تكرار: نفس المحفظة/النوع/المبلغ/اليوم/السبب أكتر من مرة
+  const groups={};
+  active.forEach(x=>{const k=[x.wallet,x.type,money(x.amount).toFixed(2),x.date,String(x.reason||"").trim()].join("|");(groups[k]=groups[k]||[]).push(x)});
+  Object.values(groups).forEach(g=>{if(g.length>1)add({kind:"possible-duplicate",dir:g[0].type==="in"?"up":"down",tx:g[0],amount:money(g[0].amount)*(g.length-1),text:g.length+" حركات متطابقة ("+(g[0].reason||"بدون سبب")+" — "+money(g[0].amount).toFixed(2)+" ج) — هل دي حركة واحدة اتسجلت أكتر من مرة؟"})});
+  // وارد يدوي بنفس مبلغ حركة أمر شغل في نفس المحفظة وبفارق يوم أو أقل: غالبًا نفس الفلوس اتسجلت مرتين
+  // (مرة تلقائي من الأمر ومرة بإيدك) => الرصيد المعروض أعلى من الفعلي.
+  const linked=active.filter(x=>/^order-(deposit|final)-/.test(String(x.refKey||""))&&x.type==="in");
+  const day=x=>new Date((x.date||"1970-01-01")+"T00:00:00").getTime();
+  active.filter(x=>!x.refKey&&x.type==="in"&&x.source!=="transfer"&&x.source!=="migrated-expense").forEach(x=>{
+    const twin=linked.find(l=>l.wallet===x.wallet&&Math.abs(money(l.amount)-money(x.amount))<0.005&&Math.abs(day(l)-day(x))<=86400000);
+    if(twin)add({kind:"manual-vs-order",dir:"up",tx:x,amount:money(x.amount),text:"وارد يدوي "+money(x.amount).toFixed(2)+" ج ("+(x.reason||"بدون سبب")+") بنفس مبلغ «"+(twin.reason||"")+"» في نفس اليوم تقريبًا — هل اتسجل مرتين؟"});
+  });
+  // تحويل ناقص طرف
+  const tr=arr(K.tr).filter(x=>x&&!x.deleted);
+  active.filter(x=>x.source==="transfer"&&x.transferId).forEach(x=>{if(!tr.some(t=>t.transferId===x.transferId))add({kind:"transfer-orphan",dir:"info",tx:x,amount:money(x.amount),text:"تحويل "+money(x.amount).toFixed(2)+" ج ليه طرف في المحفظة بس ومفيش طرف مقابل في الخزنة."})});
+  // الحد الأقصى
+  const wallets=(settings().wallets||[]).map(name=>{
+    const raw=walletRawBalance(name),bal=walletBalance(name),cap=walletCapOf(name);
+    if(cap!==null&&raw>cap)add({kind:"cap",dir:"down",wallet:name,amount:raw-cap,text:"محفظة «"+name+"» عليها حد أقصى "+cap.toFixed(2)+" فالمعروض أقل من الفعلي من الحركات بـ "+(raw-cap).toFixed(2)+"."});
+    const txs=walletTxFor(name);
+    return{name,raw,balance:bal,cap,count:txs.length,inSum:txs.filter(x=>x.type==="in").reduce((a,x)=>a+money(x.amount),0),outSum:txs.filter(x=>x.type!=="in").reduce((a,x)=>a+money(x.amount),0)};
+  });
+  const sum=d=>issues.filter(i=>i.dir===d).reduce((a,i)=>a+Math.abs(+i.amount||0),0);
+  return{wallets,issues,upTotal:sum("up"),downTotal:sum("down")};
+}
+const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر اتحذفت","order-cancelled":"أوامر ملغية وحركاتها لسه محسوبة","final-on-open":"تحصيل نهائي على أوامر اتفتحت تاني","amount-mismatch":"مبلغ الحركة غير مطابق للأمر","possible-duplicate":"احتمال حركات مكررة","manual-vs-order":"وارد يدوي بنفس مبلغ حركة أمر","missing-deposit":"عرابين على أوامر ومفيش حركة ليها","missing-final":"تحصيلات مقفولة ومفيش حركة ليها","closed-no-wallet":"أوامر اتقفلت من غير محفظة","wallet-mismatch":"محفظة الحركة غير محفظة الأمر","late-entry":"حركات أوامر قديمة اتسجلت متأخر","unknown-wallet":"حركات على محفظة غير معروفة","transfer-orphan":"تحويلات ناقصة","cap":"حد أقصى بيخفّض المعروض"};
+function renderWalletAudit(){
+  const box=document.getElementById("walletAuditBody");if(!box)return;
+  const a=walletAudit(),fmt=n=>(+n||0).toFixed(2);
+  const order=["order-missing","order-cancelled","final-on-open","amount-mismatch","possible-duplicate","manual-vs-order","missing-deposit","missing-final","closed-no-wallet","wallet-mismatch","late-entry","unknown-wallet","transfer-orphan","cap"];
+  const link=i=>i.tx?(i.tx.wallet?'wallet.html?type=wallet&name='+encodeURIComponent(i.tx.wallet)+'#tx-'+encodeURIComponent(i.tx.id):"wallets.html"):(i.order?'request.html?id='+encodeURIComponent(i.order.id):"");
+  const dirIcon={up:"⬆️",down:"⬇️",info:"ℹ️"};
+  let html='<div class="profile-grid">'+a.wallets.map(w=>'<div class="kv"><b>'+esc(w.name)+'</b>وارد '+fmt(w.inSum)+' − صادر '+fmt(w.outSum)+' = <b>'+fmt(w.raw)+'</b>'+(w.cap!==null&&w.raw>w.cap?' (المعروض '+fmt(w.balance)+')':'')+' <small>('+w.count+' حركة)</small></div>').join("")+'</div>';
+  html+='<div class="hint" style="margin:8px 0">⬆️ بنود بتخلّي الرصيد المعروض <b>أعلى</b> من الفعلي: '+fmt(a.upTotal)+' ج محتمل · ⬇️ بنود بتخليه <b>أقل</b>: '+fmt(a.downTotal)+' ج محتمل. مجرد مؤشرات للمراجعة — مفيش حاجة اتغيّرت.</div>';
+  if(!a.issues.length)html+='<div class="hint">✅ مفيش أي حاجة مريبة: كل الحركات المربوطة بأوامر مطابقة لأوامرها. فالفرق غالبًا في حركات يدوية (مصروف/وارد) أو فلوس اتحصّلت ومتسجلتش — راجع كشف المحفظة يدويًا.</div>';
+  order.forEach(k=>{
+    const l=a.issues.filter(i=>i.kind===k);if(!l.length)return;
+    const tot=l.reduce((s,i)=>s+Math.abs(+i.amount||0),0);
+    html+='<details class="expense-panel" '+(l[0].dir==="up"?"open":"")+'><summary>'+dirIcon[l[0].dir]+' '+esc(WALLET_AUDIT_TITLES[k])+' — '+l.length+' ('+fmt(tot)+' ج)</summary>'+l.slice(0,50).map(i=>{const h=link(i);return'<div class="treasury-row '+(i.tx?i.tx.type:"")+'"><div class="treasury-row-main"><small>'+esc(i.text)+'</small></div>'+(h?'<div class="treasury-row-actions"><a class="mini-action" href="'+h+'">فتح</a></div>':"")+'</div>'}).join("")+(l.length>50?'<div class="hint">معروض أول 50.</div>':"")+'</details>';
+  });
+  box.innerHTML=html;
+}
+
+/* ---------------------------------------------------------------------
    العرض: صفحة المحافظ الكاملة
 --------------------------------------------------------------------- */
 function renderWallets(){dedupeWalletTxByRef();
@@ -459,6 +542,12 @@ function renderWallets(){dedupeWalletTxByRef();
     ${overview.length?"":`<div class="hint">لا توجد حسابات بعد. أضفها من ⚙️ الإعدادات ← الحسابات.</div>`}
     ${renderSpendingStatsHtml()}
     ${walletTransferWidgetHtml()}
+    <details class="expense-panel" id="walletAuditPanel">
+      <summary>🔎 مطابقة الرصيد — ليه الرصيد في التطبيق مختلف عن الفعلي؟</summary>
+      <div class="hint" style="margin:8px 0">بيفحص كل حركة مربوطة بأمر شغل مقابل الأمر نفسه ويطلّع أي حاجة ممكن تفرّق الأرقام (أوامر ملغية/مرتجعة، مبالغ مش متطابقة، تكرار...). عرض بس، مش بيغيّر حاجة.</div>
+      <button type="button" class="secondary" data-wf-event="click" data-wf-code="renderWalletAudit()">🔎 افحص دلوقتي</button>
+      <div id="walletAuditBody"></div>
+    </details>
     <details class="expense-panel">
       <summary>📊 ملخص كل تصنيف حركة على حدة (شخصي / تشغيل / تحصيل عميل...)</summary>
       <div class="profile-grid">
