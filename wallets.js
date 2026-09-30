@@ -119,14 +119,35 @@ function toggleExpenseSubCategory(prefix){
   let labelNode=wrap.querySelector(".subcat-label");
   if(labelNode)labelNode.textContent=subCategoryLabelFor(catEl.value);
 }
+// يقبل أرقام عربية/هندية وفاصلة عشرية عربية، ويرجّع 0 لو المدخل مش رقم مفهوم.
+function parseAmountInput(v){
+  let t=String(v??"").replace(/[\u0660-\u0669]/g,c=>c.charCodeAt(0)-1632).replace(/[\u06F0-\u06F9]/g,c=>c.charCodeAt(0)-1776).replace(/[٬,]/g,"").replace(/٫/g,".").trim();
+  return /^\d+(\.\d+)?$/.test(t)?parseFloat(t):0;
+}
 function editWalletTx(txId){
   let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return;
   let newAmount=prompt("المبلغ:",e.amount);if(newAmount===null)return;
+  // قبل كده أي مدخل مش رقم (أو فاضي) كان بيتحوّل بصمت لـ 0 وتفضل الحركة موجودة بمبلغ صفر.
+  let amt=parseAmountInput(newAmount);
+  if(amt<=0)return alert("أدخل مبلغ صحيح أكبر من صفر.");
   let newReason=prompt("سبب الحركة:",e.reason||"");if(newReason===null)return;
   let newNote=prompt("تفاصيل إضافية:",e.note||"");if(newNote===null)return;
   let oldAmount=+e.amount||0;
-  e.amount=Math.abs(+newAmount)||0;e.reason=(newReason||"").trim()||e.reason;e.note=(newNote||"").trim();
+  e.amount=amt;e.reason=(newReason||"").trim()||e.reason;e.note=(newNote||"").trim();
   if(e.refKey)e.manualOverride=true;
+  // حركة التحويل ليها حركة مقابلة في الخزنة: لازم تتعدّل معاها في نفس العملية،
+  // وإلا الطرفين يبقوا بمبلغين مختلفين (المحفظة نقصت 100 والخزنة زادت 80 مثلًا).
+  if(e.source==="transfer"&&e.transferId){
+    let t=arr(K.tr),tx=t.find(x=>x.transferId===e.transferId&&x.source==="transfer");
+    if(tx){
+      tx.amount=e.amount;tx.reason=e.reason;tx.note=e.note;
+      if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return;
+      window.auditLog?.("تعديل حركة", "محفظة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج (مع حركة الخزنة المقابلة)`);
+      renderWallets();renderWalletDetail();
+      if(typeof renderTreasury==="function")renderTreasury();
+      return;
+    }
+  }
   if(!saveJSONSafe(K.wtx,a))return;
   window.auditLog?.("تعديل حركة", "محفظة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج`);
   renderWallets();renderWalletDetail();
@@ -137,6 +158,14 @@ function deleteWalletTx(txId){
   let msg=isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في الخزنة. حذف الحركتين معًا (من المحفظة والخزنة)؟":(e.refKey?"هذه الحركة مرتبطة بأمر شغل. حذفها من هنا لن يعدّل أمر الشغل نفسه، بس هتختفي من كشف المحفظة. تأكيد الحذف؟":"حذف هذه الحركة من كشف المحفظة؟");
   if(!confirm(msg))return;
   e.deleted=true;
+  // علامة "اتحذفت بقصد": من غيرها أول حفظ تاني للأمر (أي تعديل بسيط زي إضافة قطعة)
+  // كان بيعيد إنشاء الحركة اللي انت مسحتها. بنفتكر المبلغ/المحفظة وقت الحذف عشان
+  // لو غيّرت العربون أو المحفظة في الأمر بعدها تتسجل حركة جديدة عادي.
+  if(e.refKey){
+    let snap=orderSnapshotForRef(e.refKey);
+    e.userDeleted=true;e.deletedAmount=snap?snap.amount:(+e.amount||0);e.deletedWallet=snap?snap.wallet:(e.wallet||"");
+    e.deletedAt=new Date().toISOString();
+  }
   if(isTransfer){
     let t=arr(K.tr),tidx=t.findIndex(x=>x.transferId===e.transferId&&x.source==="transfer");
     if(tidx>=0){t.splice(tidx,1);if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return}else if(!saveJSONSafe(K.wtx,a))return;
@@ -156,6 +185,15 @@ function deleteWalletTx(txId){
 function dedupeWalletTxByRef(){
   try{
     let a=arr(K.wtx),groups={},changed=false;
+    // سجلين بنفس الـ id (كان بيحصل لما حركة عربون محذوفة تتعمل من جديد): نسيب الفعّال
+    // بالـ id الأصلي وننقل التاني لـ id تاني، عشان الحذف/التعديل/المزامنة تشتغل على السجل الصح.
+    let byId={};
+    a.forEach((x,i)=>{
+      if(!x||x.id==null)return;
+      if(byId[x.id]===undefined){byId[x.id]=i;return}
+      let j=byId[x.id],loser=(a[j].deleted&&!x.deleted)?j:i,keeper=loser===j?i:j;
+      a[loser]={...a[loser],id:String(x.id)+"~dup"+loser};byId[x.id]=keeper;changed=true;
+    });
     a.forEach((x,i)=>{if(x&&x.refKey&&!x.deleted)(groups[x.refKey]??=[]).push(i)});
     Object.values(groups).forEach(ix=>{
       if(ix.length<2)return;
@@ -165,6 +203,15 @@ function dedupeWalletTxByRef(){
     if(changed)put(K.wtx,a);
     return changed;
   }catch(e){console.warn("dedupeWalletTxByRef",e);return false}
+}
+// المبلغ/المحفظة الحاليين على أمر الشغل المرتبطة بيه الحركة (عربون أو تحصيل نهائي)،
+// بنفس الطريقة اللي syncWalletForOrderDeposit/Close بيحسبوا بيها.
+function orderSnapshotForRef(refKey){
+  let m=String(refKey||"").match(/^order-(deposit|final)-(.+)$/);if(!m)return null;
+  let r=arr(K.r).find(x=>String(x.id)===m[2]);if(!r)return null;
+  return m[1]==="deposit"
+    ?{amount:+r.deposit||0,wallet:String(r.depositWallet||"").trim()}
+    :{amount:Math.max(0,(+r.total||0)-(+r.deposit||0)),wallet:String(r.closeWallet||"").trim()};
 }
 function upsertWalletTxForRef(refKey,data){
   dedupeWalletTxByRef();
@@ -183,6 +230,21 @@ function upsertWalletTxForRef(refKey,data){
   if(idx>=0){
     Object.assign(a[idx],{amount,wallet,category:data.category||a[idx].category,reason:data.reason||a[idx].reason,date:data.date||a[idx].date});
   }else{
+    // فيه حركة قديمة بنفس المرجع اتعلّمت deleted؟ (مسحتها أنت، أو اتشالت لما العربون بقى صفر).
+    // - لو مسحتها أنت والأمر لسه بنفس المبلغ/المحفظة: نحترم الحذف ومانعيدهاش.
+    // - غير كده: نعيد تفعيل نفس السجل مكانه بدل ما نضيف سجل تاني بنفس الـ id
+    //   (id بيتشتق من refKey، والتكرار كان بيبوّظ المزامنة وأي عرض بيعتمد على الـ id).
+    let ti=a.findIndex(x=>x&&x.refKey===refKey&&x.deleted&&x.id===refKey);
+    if(ti<0)ti=a.map((x,i)=>x&&x.refKey===refKey&&x.deleted?i:-1).filter(i=>i>=0).pop()??-1;
+    if(ti>=0){
+      let t=a[ti];
+      if(t.userDeleted&&Math.abs((+t.deletedAmount||0)-amount)<0.005&&String(t.deletedWallet||"")===wallet)return true;
+      let {userDeleted,deletedAmount,deletedWallet,deletedAt,...rest}=t;
+      a[ti]={...rest,id:t.id||refKey,deleted:false,manualOverride:false,type:"in",amount,wallet,
+        category:data.category||t.category||"تحصيل عميل",reason:data.reason||t.reason||"",note:data.note||t.note||"",
+        date:data.date||t.date||localDateKey(new Date()),time:new Date().toTimeString().slice(0,5)};
+      return put(K.wtx,a);
+    }
     a.push({
       // id ثابت مشتق من refKey: لو جهازين سجلوا نفس التحصيل أوفلاين، المزامنة
       // هتدمجهم في سجل واحد بدل ما تطلع حركتين (كان ده سبب التكرار).

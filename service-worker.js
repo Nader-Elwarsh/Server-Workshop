@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-151-dedupe";
+const CACHE_NAME = "workshop-v11-152-ticker";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -38,6 +38,7 @@ const CORE_FILES = [
   "./firebase-sync.js",
   "./login.html",
   "./portal-admin.html",
+  "./portal-ticker.js",
   "./audit-log.js",
   "./global-search.js",
   "./bottom-nav.js",

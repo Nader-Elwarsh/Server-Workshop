@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js" defer></script>
 <script src="firebase-sync.js" defer></script>
 <script src="theme.js" defer></script>
+<script src="portal-ticker.js" defer></script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>بوابة العملاء | الورشة الفنية</title>
 <link rel="stylesheet" href="style.css">
@@ -118,6 +119,29 @@
 </div>
 </section>
 
+<section class="pa-sec" id="t_tk">
+<div class="panel">
+<h2>📢 الشريط الإعلاني (زي شريط الأخبار)</h2>
+<p class="hint">شريط بيظهر أعلى بوابة العميل (للزائر قبل الدخول وللعميل بعد الدخول) وتكتب فيه ترحيب أو عرض أو تنبيه. تتحكم في كل حاجة: تقفل الشريط كله أو أي رسالة لوحدها، تعدّل النص، وتحدد مين يشوفها ومن إمتى لإمتى.</p>
+<div id="tkStatus" class="pa-sum"></div>
+<h3 style="font-size:14px;margin:10px 0 4px">👀 معاينة</h3>
+<div id="tkPrev" style="border:1px solid var(--border);border-radius:10px;overflow:hidden"></div>
+<p id="tkPrevHint" class="hint"></p>
+<div class="pa-row" style="margin:10px 0"><label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column"><input type="checkbox" id="tkOn" data-tkm="enabled" style="width:22px;height:22px;margin:0"> <b>الشريط شغّال (ظاهر للعملاء)</b></label></div>
+<div class="form-grid">
+<label>طريقة العرض<select id="tkMode" data-tkm="mode"><option value="scroll">شريط متحرك (زي الأخبار)</option><option value="rotate">رسالة بعد رسالة</option></select></label>
+<label>السرعة (للشريط المتحرك)<select id="tkSpeed" data-tkm="speed"><option value="slow">بطيء</option><option value="normal">عادي</option><option value="fast">سريع</option></select></label>
+</div>
+<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkDis" data-tkm="dismissible" style="width:22px;height:22px;margin:0"> يقدر العميل يقفل الشريط (بيرجع لما تتغيّر الرسائل)</label>
+<h3 style="font-size:14px;margin:12px 0 4px">📝 الرسائل</h3>
+<div id="tkItems"></div>
+<div class="pa-actions"><button type="button" class="secondary" data-act="tkAdd" data-t="">➕ رسالة جديدة</button><button type="button" class="secondary" data-act="tkAdd" data-t="welcome">👋 ترحيب جاهز</button><button type="button" class="secondary" data-act="tkAdd" data-t="offer">🎁 عرض</button><button type="button" class="secondary" data-act="tkAdd" data-t="alert">⚠️ تنبيه</button></div>
+<div class="pa-actions" style="margin-top:12px"><button type="button" data-act="tkSave">💾 حفظ ونشر</button><button type="button" class="secondary" id="tkQuick" data-act="tkQuick">⏸ إخفاء الشريط الآن</button></div>
+<p id="tkMsg" class="hint" role="status"></p>
+<p class="hint">الزر الأخير بيقفل/يفتح الشريط المنشور فورًا من غير ما يحفظ تعديلاتك الحالية. المعاينة بتعرض كل الرسائل المفعّلة بغض النظر عن الجمهور والتاريخ. التاريخ بيتحسب بتوقيت موبايل العميل.</p>
+</div>
+</section>
+
 <section class="pa-sec" id="t_vs">
 <div class="panel">
 <h2>👁️ اللي العميل يشوفه في أوامره (إعداد عام)</h2>
@@ -133,7 +157,7 @@
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
 var PRE=[["👁️ كل حاجة",{total:1,deposit:1,remain:1,labor:1,partPrices:1,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["💰 الإجمالي بدون تفصيل",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:0,partQty:0,work:1,history:1,visit:1,workshopStatus:1}],["🔩 القطع بدون أسعار",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["🚫 بدون أي أسعار",{total:0,deposit:0,remain:0,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}]];
-var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["vs","👁️ الظهور"]];
+var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["tk","📢 الشريط الإعلاني"],["vs","👁️ الظهور"]];
 var SG=[],CP=[],PT=[],QS=[],RQ=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
 function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -150,7 +174,7 @@ function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id=
 /* ---- الأرقام والتبويبات ---- */
 function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
 rq:RQ.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
-function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis()}
+function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
 function rTabs(){var c=counts(),bd={or:c.rq,q:c.qn,cp:c.cp,sg:c.sg};
 $("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
 function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
@@ -175,7 +199,7 @@ $("cl").innerHTML=h||'<p class="hint">مفيش عملاء مطابقين.</p>'}
 function rRq(){$("rq").innerHTML=RQ.length?RQ.sort(byNew).map(function(r){var c=custs().find(function(x){return x.id===r.customerId})||{};return'<div class="pa-item"><b>'+(c.id?'<a href="customer.html?id='+esc(c.id)+'">👤 '+esc(c.name||"عميل")+'</a>':esc(c.name||"عميل"))+'</b> — '+(r.deviceId?'<a class="hint" href="device.html?id='+esc(r.deviceId)+'">🔧 '+esc(devLabel(r.deviceId))+'</a>':'<span class="hint">جهاز غير محدد</span>')+'<div>'+esc((r.fault||"").slice(0,120))+'</div><span class="hint">'+esc(fdt(r.createdAt))+'</span></div>'}).join(""):'<p class="hint">مفيش طلبات معلّقة.</p>'}
 function rPo(){var cs={};custs().forEach(function(c){cs[c.id]=c});var f=$("of").value,rs=ordsAll().filter(function(r){return f==="open"?isOpen(r):f==="done"?r.status==="مكتمل":f==="portal"?r.source==="portal":true}).sort(function(a,b){return String(b.createdAt).localeCompare(String(a.createdAt))});
 $("po").innerHTML=rs.length?rs.map(function(r){var v=r.portalVis||{},c=cs[r.customerId];return'<div class="pa-item"><div class="pa-row"><a href="request.html?id='+esc(r.id)+'"><b>#'+esc(r.no)+'</b></a><span class="pa-tag">'+esc(r.status)+'</span></div><div>'+(c?'<a href="customer.html?id='+esc(r.customerId)+'">👤 '+esc(c.name||"")+'</a>':"")+(r.source==="portal"?' 🌐':"")+' — '+(r.deviceId?'<a class="hint" href="device.html?id='+esc(r.deviceId)+'">🔧 '+esc(devLabel(r.deviceId))+'</a>':'<span class="hint">جهاز غير محدد</span>')+'</div><div class="hint">'+esc((r.fault||"").slice(0,80))+'</div><label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="price,total,deposit,remain,partPrices,labor" '+(v.price===false?"checked":"")+'> إخفاء الأسعار عن العميل</label> <label><input type="checkbox" data-ov="'+esc(r.id)+'" data-keys="parts,partQty,work" '+(v.work===false?"checked":"")+'> إخفاء التفاصيل الفنية</label></div>'}).join(""):'<p class="hint">مفيش أوامر مطابقة.</p>'}
-function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});localStorage.setItem(window.K.r,JSON.stringify(all))}
+function ov(id,keys,hide){var all=window.arr(window.K.r),r=all.find(function(x){return x.id===id});if(!r)return;r.portalVis=r.portalVis||{};keys.forEach(function(k){if(hide)r.portalVis[k]=false;else delete r.portalVis[k]});window.put(window.K.r,all)}
 /* ---- الأسئلة ---- */
 function dv(id,k,d){var x=DR[id];return x&&x[k]!==undefined?x[k]:d}
 function rQs(){var a=document.activeElement;if(a&&a.closest&&a.closest("#qs")&&/TEXTAREA|INPUT/.test(a.tagName)){qDefer=true;return}qDefer=false;
@@ -209,9 +233,9 @@ else if(g.kind==="village"){ec(g.parent);if(Array.isArray(s.villages)){if(s.vill
 else if(g.kind==="brand"){s.brands=s.brands||[];if(s.brands.indexOf(v)<0)s.brands.push(v)}
 else if(g.kind==="type"){s.types=s.types||{};if(!s.types[v])s.types[v]=[]}
 else if(g.kind==="category"){s.types=s.types||{};var c=s.types[g.parent]=s.types[g.parent]||[];if(c.indexOf(v)<0)c.push(v)}
-localStorage.setItem(window.K.s,JSON.stringify(s))}
+return window.put(window.K.s,s)}
 function sgFind(id){return SG.find(function(x){return x.id===id})}
-function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;addOpt(g,v);db.collection("portalSuggestions").doc(id).update({status:"approved",value:v})}
+function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;if(!addOpt(g,v))return;db.collection("portalSuggestions").doc(id).update({status:"approved",value:v})}
 function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإضافة:",g.value);if(v)sgOk(id,v)}
 function sgNo(id){if(confirm("ترفض الاقتراح ده؟"))db.collection("portalSuggestions").doc(id).update({status:"rejected"})}
 /* ---- المقالات ---- */
@@ -234,7 +258,7 @@ var pt=vOn("parts")?("أسماء القطع"+(vOn("partQty")?" بالكمية":"
 if(vOn("work"))t.push("وصف الشغل");if(vOn("history"))t.push("مراحل الأمر");if(vOn("visit"))t.push("موعد الزيارة");if(vOn("workshopStatus"))t.push("حالة الورشة");
 $("visSum").innerHTML="👁️ العميل هيشوف: "+(t.length?t.join(" • "):"حالة الأمر والعطل بس")}
 function vpre(i){var p=PRE[i][1];Object.keys(p).forEach(function(k){var e=$("v_"+k);if(e)e.checked=!!p[k]});vSum()}
-function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;localStorage.setItem(window.K.s,JSON.stringify(s));$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
+function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;if(!window.put(window.K.s,s)){$("visMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
 /* ---- ربط الأحداث ---- */
 var ACT={tab:function(b){go(b.dataset.k)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
@@ -251,7 +275,7 @@ function portalUrl(){return new URL("portal.html",location.href).href}
 function tpl(){try{return localStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
 function inviteText(c){var p=normPhone(c.phone),l=LK[c.id],pw=(l&&l.mustChange===false)?"":"كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";return $("acTpl").value.replace(/\{الاسم\}/g,c.name||"").replace(/\{الرابط\}/g,portalUrl()).replace(/\{الرقم\}/g,p).replace(/\{كلمة_المرور\}/g,pw).trim()}
 function waHref(c){return"https://wa.me/2"+normPhone(c.phone)+"?text="+encodeURIComponent(inviteText(c))}
-function syncFlags(){var all=window.arr(window.K.c),ch=false;all.forEach(function(c){var l=c&&LK[c.id];if(l&&(c.portal!==true||c.portalUid!==l.uid)){c.portal=true;c.portalUid=l.uid;ch=true}});if(ch)localStorage.setItem(window.K.c,JSON.stringify(all))}
+function syncFlags(){var all=window.arr(window.K.c),ch=false;all.forEach(function(c){var l=c&&LK[c.id];if(l&&(c.portal!==true||c.portalUid!==l.uid)){c.portal=true;c.portalUid=l.uid;ch=true}});if(ch)window.put(window.K.c,all)}
 function acStatus(c,dupe){var l=LK[c.id];if(l)return l.mustChange===false?["ok","✅ دخل وغيّر كلمته"]:["wait","🟡 الحساب جاهز — لسه ما دخلش"];if(c.portal===true)return["ok","✅ سجّل بنفسه"];var p=normPhone(c.phone);if(!p)return["bad","⚠️ رقم التليفون ناقص/غلط"];if(dupe[p]>1)return["bad","⚠️ الرقم متكرر عند أكتر من عميل"];return["none","⚪ ملوش حساب"]}
 function acRows(){var cs=window.arr(window.K.c).filter(function(c){return c&&c.id}),dupe={};cs.forEach(function(c){var p=normPhone(c.phone);if(p)dupe[p]=(dupe[p]||0)+1});return cs.map(function(c){return{c:c,s:acStatus(c,dupe)}})}
 function rAc(){if(!window.K)return;var rows=acRows(),n={ok:0,wait:0,bad:0,none:0},q=($("acs").value||"").trim();rows.forEach(function(r){n[r.s[0]]++});
@@ -265,7 +289,7 @@ return sa.createUserWithEmailAndPassword(em,p).then(function(cr){var uid=cr.user
 function actList(list){if(busy)return;if(!list.length)return alert("مفيش عملاء محتاجين تفعيل.");if(!confirm("هتتفعّل حسابات "+list.length+" عميل: الدخول برقم التليفون وكلمة المرور نفس الرقم، ويتطلب تغييرها أول دخول. تكمّل؟"))return;busy=true;var ok=0,fail={},i=0;
 function next(){if(i>=list.length){busy=false;var f=Object.keys(fail).map(function(k){return k+": "+fail[k]}).join(" | ");$("acMsg").textContent="✅ اتفعّل "+ok+(f?" — مشاكل: "+f:"");rAc();return}
 $("acMsg").textContent="جاري التفعيل… "+i+"/"+list.length;var c=list[i++];actOne(c).then(function(r){if(r==="ok")ok++;else fail[r]=(fail[r]||0)+1;if(r==="auth/too-many-requests"||r==="auth/operation-not-allowed")i=list.length;setTimeout(next,350)})}next()}
-function addWaTpl(){var s=window.settings();s.waTemplates=s.waTemplates||[];if(s.waTemplates.some(function(t){return t.id==="portal-link"}))return alert("القالب موجود بالفعل في رسائل أمر الشغل.");s.waTemplates.push({id:"portal-link",name:"🌐 رابط متابعة الأمر",text:"مرحباً {اسم_العميل}، أمرك رقم {رقم_الأمر} ({اسم_الجهاز}) حالته: {الحالة}.\nتقدر تتابعه من بوابة الورشة:\n{رابط_البوابة}\nالدخول برقم تليفونك: {رقم_الدخول}",enabled:true});localStorage.setItem(window.K.s,JSON.stringify(s));alert("✅ اتضاف — هيظهر في أزرار رسائل واتساب جوه أمر الشغل.")}
+function addWaTpl(){var s=window.settings();s.waTemplates=s.waTemplates||[];if(s.waTemplates.some(function(t){return t.id==="portal-link"}))return alert("القالب موجود بالفعل في رسائل أمر الشغل.");s.waTemplates.push({id:"portal-link",name:"🌐 رابط متابعة الأمر",text:"مرحباً {اسم_العميل}، أمرك رقم {رقم_الأمر} ({اسم_الجهاز}) حالته: {الحالة}.\nتقدر تتابعه من بوابة الورشة:\n{رابط_البوابة}\nالدخول برقم تليفونك: {رقم_الدخول}",enabled:true});if(!window.put(window.K.s,s))return;alert("✅ اتضاف — هيظهر في أزرار رسائل واتساب جوه أمر الشغل.")}
 ACT.actC=function(b){var c=window.arr(window.K.c).find(function(x){return x.id===b.dataset.id});if(c)actList([c])};
 ACT.actAll=function(){actList(acRows().filter(function(r){return r.s[0]==="none"}).map(function(r){return r.c}))};
 ACT.copyLink=function(){var l=$("acLink");l.select();try{navigator.clipboard.writeText(l.value)}catch(e){document.execCommand("copy")}};
@@ -273,8 +297,51 @@ ACT.addWaTpl=addWaTpl;
 $("acLink").value=portalUrl();$("acTpl").value=tpl();
 $("acTpl").addEventListener("input",function(){try{localStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
 $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
+/* ---- الشريط الإعلاني ---- */
+var TKD=null,tkDirty=false,tkT=null,PTK=null;
+var TK_LINKS=[["","بدون رابط"],["tab:mine","🧾 يفتح «طلباتي» (طلب صيانة)"],["tab:learn","📰 يفتح «نصايح»"],["tab:devices","🔧 يفتح «أجهزتي»"],["tab:ask","❓ يفتح «اسأل الورشة»"],["signup","📝 يفتح شاشة التسجيل (للزوار)"],["custom","🔗 رابط خارجي / واتساب / اتصال…"]];
+var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في الورشة الفنية — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
+function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:false,rev:0,items:[]}}
+function tkLoad(){TKD=PTK.sanitize(window.settings().portalTicker)||tkBlank();tkDirty=false}
+function tkNew(tpl){return Object.assign({id:"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:"",icon:"",type:"info",enabled:true,audience:"all",start:"",end:"",link:""},tpl||{})}
+function tkOpts(map,sel){return Object.keys(map).map(function(k){var l=typeof map[k]==="string"?map[k]:(map[k].icon+" "+map[k].label);return'<option value="'+esc(k)+'"'+(k===sel?" selected":"")+'>'+esc(l)+'</option>'}).join("")}
+function tkItemHtml(it,i,n){var id=esc(it.id),lk=it.link||"",pre=TK_LINKS.some(function(l){return l[0]===lk&&l[0]!=="custom"}),sel=pre?lk:(lk?"custom":"");
+return'<div class="pa-item"><div class="pa-row"><label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column"><input type="checkbox" data-tk="'+id+'" data-f="enabled" style="width:22px;height:22px;margin:0"'+(it.enabled!==false?" checked":"")+'> <b>رسالة رقم '+(i+1)+' — ظاهرة</b></label><span class="pa-actions" style="margin:0"><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="-1" aria-label="تحريك لفوق"'+(i===0?" disabled":"")+'>⬆</button><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="1" aria-label="تحريك لتحت"'+(i===n-1?" disabled":"")+'>⬇</button><button type="button" class="secondary sm" data-act="tkDel" data-id="'+id+'" aria-label="حذف الرسالة">🗑️</button></span></div>'+
+'<label>النص<textarea rows="2" maxlength="'+PTK.MAX_TEXT+'" data-tk="'+id+'" data-f="text" placeholder="اكتب الرسالة هنا...">'+esc(it.text)+'</textarea></label><small class="hint" data-cnt="'+id+'">'+String(it.text||"").length+'/'+PTK.MAX_TEXT+'</small>'+
+'<div class="form-grid"><label>النوع (اللون)<select data-tk="'+id+'" data-f="type">'+tkOpts(PTK.TYPES,it.type)+'</select></label><label>يظهر لـ<select data-tk="'+id+'" data-f="audience">'+tkOpts(PTK.AUDIENCES,it.audience)+'</select></label>'+
+'<label>أيقونة (اختياري)<input type="text" maxlength="4" data-tk="'+id+'" data-f="icon" value="'+esc(it.icon)+'" placeholder="مثال: 🎁"></label><label>عند الضغط عليها<select data-tk="'+id+'" data-f="linksel">'+TK_LINKS.map(function(l){return'<option value="'+esc(l[0])+'"'+(l[0]===sel?" selected":"")+'>'+esc(l[1])+'</option>'}).join("")+'</select></label>'+
+'<label class="wide'+(sel==="custom"?"":" hidden")+'" data-clw="'+id+'">الرابط (https://… أو tel:+20…)<input type="text" dir="ltr" data-tk="'+id+'" data-f="link" value="'+esc(sel==="custom"?lk:"")+'" placeholder="https://wa.me/20100XXXXXXX"></label>'+
+'<label>تظهر من تاريخ (اختياري)<input type="date" data-tk="'+id+'" data-f="start" value="'+esc(it.start)+'"></label><label>وتختفي بعد تاريخ (اختياري)<input type="date" data-tk="'+id+'" data-f="end" value="'+esc(it.end)+'"></label></div></div>'}
+function rTkItems(){var n=TKD.items.length;$("tkItems").innerHTML=n?TKD.items.map(function(it,i){return tkItemHtml(it,i,n)}).join(""):'<p class="hint">مفيش رسائل لسه — اضغط «➕ رسالة جديدة» أو اختار قالب جاهز.</p>'}
+function tkPreview(){var el=$("tkPrev");PTK.mount(el,TKD,{forceShow:true,preview:true,force:true});var any=TKD.items.some(function(i){return i.enabled!==false&&String(i.text||"").trim()});el.style.display=any?"":"none";$("tkPrevHint").textContent=any?"":"مفيش رسائل مفعّلة ليها نص لمعاينتها."}
+function tkStatus(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank(),g=PTK.visible(c,{member:false}).length,m=PTK.visible(c,{member:true}).length;
+$("tkStatus").innerHTML=c.enabled?"🟢 <b>الشريط شغّال</b> — ظاهر دلوقتي: "+g+" رسالة للزوار، "+m+" رسالة للعملاء المسجّلين":"⚪ <b>الشريط مقفول</b> — العملاء مش شايفين أي حاجة"+(c.items.length?" ("+c.items.length+" رسالة محفوظة)":"");
+$("tkQuick").textContent=c.enabled?"⏸ إخفاء الشريط الآن":"▶ تشغيل الشريط الآن"}
+function rTk(){if(!PTK)return;if(!TKD)tkLoad();$("tkOn").checked=!!TKD.enabled;$("tkMode").value=TKD.mode;$("tkSpeed").value=TKD.speed;$("tkDis").checked=!!TKD.dismissible;rTkItems();tkPreview();tkStatus()}
+function tkTouch(){tkDirty=true;$("tkMsg").textContent="⚠️ فيه تعديلات لسه ما اتحفظتش — اضغط «حفظ ونشر».";clearTimeout(tkT);tkT=setTimeout(tkPreview,150)}
+function tkField(t){var f=t.dataset.f,it=TKD.items.find(function(x){return x.id===t.dataset.tk});if(!it)return;var v=t.type==="checkbox"?t.checked:t.value;
+if(f==="linksel"){var w=[].slice.call(document.querySelectorAll("[data-clw]")).filter(function(x){return x.dataset.clw===it.id})[0];if(v==="custom"){it.link="";if(w){w.classList.remove("hidden");var i=w.querySelector("input");if(i)i.value=""}}else{it.link=v;if(w)w.classList.add("hidden")}}
+else{it[f]=v;if(f==="text"){var c=[].slice.call(document.querySelectorAll("[data-cnt]")).filter(function(x){return x.dataset.cnt===it.id})[0];if(c)c.textContent=String(v).length+"/"+PTK.MAX_TEXT}}
+tkTouch()}
+function tkSave(){var c=PTK.sanitize(TKD),drop=TKD.items.length-c.items.length;if(drop>0&&!confirm("فيه "+drop+" رسالة من غير نص هتتشال. تكمّل؟"))return;
+c.rev=Date.now();var s=window.settings();s.portalTicker=c;if(!window.put(window.K.s,s)){$("tkMsg").textContent="⚠️ تعذّر الحفظ على الجهاز (المساحة ممتلئة؟).";return}
+TKD=PTK.sanitize(c);tkDirty=false;rTk();tkVerify(c.rev,0)}
+function tkQuick(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank();c.enabled=!c.enabled;c.rev=Date.now();var s=window.settings();s.portalTicker=c;if(!window.put(window.K.s,s)){$("tkMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}
+if(TKD){TKD.enabled=c.enabled;TKD.rev=c.rev}rTk();tkVerify(c.rev,0)}
+function tkVerify(rev,n){var m=$("tkMsg");if(!n)m.textContent="💾 اتحفظ على الجهاز — بيتنشر للعملاء…";
+setTimeout(function(){db.collection("portal").doc("config").get({source:"server"}).then(function(d){var t=d.exists&&d.data().ticker;
+if(t&&+t.rev===rev){m.textContent="✅ منشور للعملاء ("+(t.enabled?"الشريط شغّال":"الشريط مقفول حاليًا")+")";return}
+if(n<4)return tkVerify(rev,n+1);m.textContent="⏳ اتحفظ على الجهاز لكن لسه ماوصلش للعملاء — اتأكد إن النت شغال وافتح الرئيسية مرة، وهيترفع تلقائيًا."
+}).catch(function(e){m.textContent=(e&&e.code==="permission-denied")?"⚠️ اتحفظ محليًا لكن Firestore رفض النشر — راجع صلاحيات الكتابة على المستند portal/config.":"⚠️ اتحفظ محليًا. تعذّر التأكد من النشر — "+(navigator.onLine===false?"النت مقطوع.":"جرّب تاني بعد شوية.")})},n?2500:1800)}
+ACT.tkAdd=function(b){if(TKD.items.length>=PTK.MAX_ITEMS)return alert("الحد الأقصى "+PTK.MAX_ITEMS+" رسالة.");TKD.items.push(tkNew(TK_TPL[b.dataset.t]));rTkItems();tkTouch()};
+ACT.tkDel=function(b){if(!confirm("تحذف الرسالة دي؟"))return;TKD.items=TKD.items.filter(function(x){return x.id!==b.dataset.id});rTkItems();tkTouch()};
+ACT.tkMove=function(b){var i=TKD.items.findIndex(function(x){return x.id===b.dataset.id}),j=i+(+b.dataset.d);if(i<0||j<0||j>=TKD.items.length)return;var a=TKD.items;var t=a[i];a[i]=a[j];a[j]=t;rTkItems();tkTouch()};
+ACT.tkSave=tkSave;ACT.tkQuick=tkQuick;
+document.addEventListener("input",function(e){var t=e.target;if(TKD&&t.dataset&&t.dataset.tk&&t.type!=="checkbox"&&t.tagName!=="SELECT")tkField(t)});
+document.addEventListener("change",function(e){var t=e.target;if(!TKD||!t.dataset)return;if(t.dataset.tk)tkField(t);else if(t.dataset.tkm){TKD[t.dataset.tkm]=t.type==="checkbox"?t.checked:t.value;tkTouch()}});
+window.addEventListener("beforeunload",function(e){if(tkDirty){e.preventDefault();e.returnValue=""}});
 function rAll(){rTabs();rStats();rOv();rCl();rRq();rPo();rQs();rCp();rSg();rPt();rAc()}
-function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"){return setTimeout(ready,300)}db=firebase.firestore();SV=firebase.firestore.FieldValue.serverTimestamp();
+function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
 go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});

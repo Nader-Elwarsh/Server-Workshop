@@ -148,9 +148,14 @@
   }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
     if (!online() || typeof window.settings !== "function") return;
-    var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] }, x = h(stable(c));
+    var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] };
+    // شريط الإعلانات: بيتنشر مع نفس المستند. لو الجهاز ده ماعندوش إعداد شريط (نسخة قديمة) مانبعتش الحقل خالص،
+    // ومع mergeFields أدناه ده معناه إن الشريط المنشور من جهاز تاني مايتمسحش.
+    if (s.portalTicker && typeof s.portalTicker === "object") c.ticker = window.PortalTicker ? (window.PortalTicker.sanitize(s.portalTicker) || s.portalTicker) : s.portalTicker;
+    var x = h(stable(c));
     if (SB.x.pc === x) return;
-    db.collection("portal").doc("config").set(c).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
+    // mergeFields: نستبدل الحقول اللي بنبعتها بالكامل (زي set القديمة بالظبط) من غير ما نلمس أي حقل تاني في المستند.
+    db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
   }
   var inboxN = { a: 0, b: 0, c: 0, q: 0 };
   window.wfPortalInbox = inboxN;

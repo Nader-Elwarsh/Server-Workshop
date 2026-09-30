@@ -120,7 +120,6 @@ function saveRequest(e,existing=null){
   if(!result.ok)return alert(result.error);
   location.href=`request.html?id=${result.request.id}`
 }
-function workshopBadge(r){return r.workshopStatus&&r.workshopStatus!=="غير مطلوب"?`<span class="badge workshop-badge">🏭 ${esc(r.workshopStatus)}</span>`:""}
 function requestBucketMatch(r,b){
   const today=dayKeyLocal(new Date()), visit=dayKeyLocal(r.visit);
   if(b==="completed") return !!r.closed || r.status==="مكتمل";

@@ -76,4 +76,3 @@ function deleteAllRequests(){
 function resolveRequestAddress(r){const c=arr(K.c).find(x=>x.id===r.customerId);if(!c)return{};const list=addresses(c);return list.find(a=>a.key===r.addressKey)||list[0]||{}}
 
 // خط سير اليوم: تجميع أوامر الشغل التي لها موعد زيارة حسب المركز والقرية.
-function requestRouteAddress(r){return resolveRequestAddress(r)}
