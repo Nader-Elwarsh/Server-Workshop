@@ -577,6 +577,17 @@
   }
 
   var CURRENT_UID = null, denied = false;
+  /* فتح فوري: بعد أول تحقق ناجح من السيرفر بنحفظ (uid + وقت التحقق). خلال STAFF_TTL الصفحة بتفتح فورًا من البيانات المحلية،
+     والتحقق من السيرفر بيتكرر في الخلفية (مش أكتر من مرة كل STAFF_RECHECK) ولو الحساب اتسحبت عضويته بيتقفل فورًا.
+     الحماية الفعلية للبيانات السحابية هي قواعد Firestore (isStaff) مش الواجهة. */
+  var STAFF = "wf_is_staff_uid", STAFF_AT = "wf_staff_ok_at", STAFF_TTL = 12 * 3600 * 1000, STAFF_RECHECK = 10 * 60 * 1000;
+  function staffFresh(uid) { return !!uid && ls.getItem(STAFF) === uid && Date.now() - (+ls.getItem(STAFF_AT) || 0) < STAFF_TTL; }
+  function fastHint() { var u = ls.getItem(HYD); return !!u && staffFresh(u); } // قبل ما الجلسة ترجع: هل نتوقع فتح فوري؟
+  function lockDenied(unavailable) {
+    denied = true; ready = false;
+    cover(unavailable ? "تعذّر التحقق من عضوية الموظف من الخادم. اتصل بالإنترنت ثم أعد المحاولة." : "الحساب ده غير مصرح له بدخول لوحة الورشة. لو أنت عميل ادخل من بوابة العملاء.");
+    var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so);
+  }
   function boot(user) {
     CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
     var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
@@ -590,22 +601,30 @@
       if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid) { ready = true; uncover(); badge(); return; }
       cover("اتصل بالإنترنت للتحقق من حساب الموظف قبل فتح بيانات النظام."); return;
     }
+    // مسار سريع: عضوية موظف متحقق منها حديثًا لنفس الحساب + بيانات متزامنة → افتح فورًا بدون أي انتظار للشبكة
+    if (hydrated && staffFresh(user.uid)) {
+      goReady(false); // بيشيل الغطاء، ويشغّل الرفع ومراقبة تحديثات الأجهزة التانية (watchMeta) في الخلفية
+      if (Date.now() - (+ls.getItem(STAFF_AT) || 0) > STAFF_RECHECK) {
+        withTimeout(db.collection("staff").doc(user.uid).get({ source: "server" })).then(function (d) {
+          if (d.exists) { origSet.call(ls, STAFF_AT, String(Date.now())); return; }
+          origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT); lockDenied(false); // العضوية اتسحبت فعلًا
+        }).catch(function () { /* مفيش نت/تأخير: نكمل بالتحقق السابق لحد انتهاء مهلته */ });
+      }
+      return;
+    }
     if (hydrated) uncover();
-    var STAFF = "wf_is_staff_uid";
     cover("جارٍ التحقق من صلاحيات حساب الموظف…");
-    // لا نثق بعلامة STAFF المحلية؛ قد تبقى بعد سحب العضوية. يجب تأكيد المستند من الخادم.
+    // لا نثق بعلامة STAFF المحلية وحدها؛ لازم تأكيد المستند من الخادم (بعد أول دخول أو انتهاء مهلة التحقق).
     var staffCheck = withTimeout(db.collection("staff").doc(user.uid).get({ source: "server" })).then(function (d) {
-      if (d.exists) { origSet.call(ls, STAFF, user.uid); return { staff: true }; }
-      origRemove.call(ls, STAFF); return { staff: false };
+      if (d.exists) { origSet.call(ls, STAFF, user.uid); origSet.call(ls, STAFF_AT, String(Date.now())); return { staff: true }; }
+      origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT); return { staff: false };
     }).catch(function (e) {
-      origRemove.call(ls, STAFF);
+      origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT);
       return { staff: false, unavailable: true, error: e };
     });
     staffCheck.then(function (result) {
       if (result.staff) return continueBoot();
-      denied = true;
-      cover(result.unavailable ? "تعذّر التحقق من عضوية الموظف من الخادم. اتصل بالإنترنت ثم أعد المحاولة." : "الحساب ده غير مصرح له بدخول لوحة الورشة. لو أنت عميل ادخل من بوابة العملاء.");
-      var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so); /* لا تُفتح البيانات عند تعذر إثبات العضوية */
+      lockDenied(result.unavailable); /* لا تُفتح البيانات عند تعذر إثبات العضوية */
     });
     function continueBoot() {
     var quick = hydrated && recent;
@@ -634,7 +653,7 @@
     }, function () {});
   }
 
-  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
+  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
   window.addEventListener("online", function () { badge(); pushAll(false); });
   window.addEventListener("offline", badge);
@@ -646,10 +665,11 @@
   firebase.initializeApp(CFG);
   try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {}); } catch (e) {}
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {} // اطلب تخزين دائم عشان المتصفح مايمسحش الجلسة
-  if (!isLogin) cover("جارٍ التحقق من صلاحيات حساب الموظف…");
+  if (!isLogin && !fastHint()) cover("جارٍ التحقق من صلاحيات حساب الموظف…");
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
     if (!u) { if (denied) return; if (navigator.onLine === false) { ready = false; cover("يلزم اتصال الإنترنت والتحقق من حساب الموظف قبل فتح بيانات النظام."); return; }
+      cover("جارٍ التحقق من صلاحيات حساب الموظف…"); // مفيش جلسة: غطّي الشاشة لحد التحويل لصفحة الدخول
       // الجلسة اتمسحت من المتصفح بدون ما المستخدم يعمل خروج؟ جرّب الدخول الصامت من مدير كلمات المرور قبل ما نروح لصفحة الدخول
       loadScript("wf-session.js").then(function () { return window.WfSession ? WfSession.silent(firebase.auth()) : null; }).then(function (r) { if (!r) location.replace("login.html"); }); return; }
     boot(u);

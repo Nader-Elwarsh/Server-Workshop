@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-155-firestore-security";
+const CACHE_NAME = "workshop-v11-156-fast-open";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

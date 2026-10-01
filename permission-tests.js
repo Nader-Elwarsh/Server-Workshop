@@ -91,7 +91,10 @@ assert(/collection\("staff"\)\.doc\(user\.uid\)\.get\(\{\s*source:\s*"server"\s*
 assert(!/ls\.getItem\(STAFF\)\s*===\s*user\.uid\s*\?\s*Promise\.resolve\(true\)/.test(sync), 'a cached employee UID must not bypass server authorization');
 assert(!/consider old employee|نعتبره موظف قديم/.test(sync), 'unknown/authenticated users must not be promoted to staff by fallback');
 assert(/if\s*\(hydrated\s*&&\s*ls\.getItem\("wf_is_staff_uid"\)\s*===\s*user\.uid\)/.test(sync), 'offline cached data must at least be bound to the previously verified staff UID');
-assert(/if\s*\(!isLogin\)\s*cover\(/.test(sync), 'internal app pages must stay covered while staff membership is checked');
+assert(/if\s*\(!isLogin\s*&&\s*!fastHint\(\)\)\s*cover\(/.test(sync), 'internal app pages must stay covered unless a fresh server-verified staff check exists');
+assert(/STAFF_TTL\s*=/.test(sync) && /function\s+staffFresh\s*\(/.test(sync), 'instant-open path must be bounded by a staff verification TTL');
+assert(/lockDenied\(false\)/.test(sync), 'background staff re-check must lock the UI when membership was revoked');
+assert(/if\s*\(hydrated\s*&&\s*staffFresh\(user\.uid\)\)/.test(sync), 'instant open must require hydrated data and a fresh verification for the same uid');
 assert(/typeof firebase === "undefined"[\s\S]*?wfCloudCover/.test(sync), 'missing Firebase SDK must fail closed on internal pages');
 assert(!/navigator\.onLine\s*===\s*false\s*&&\s*ls\.getItem\(HYD\)\)\s*\{\s*ready\s*=\s*false;\s*uncover\(\)/.test(sync), 'anonymous offline sessions must never uncover the staff data');
 console.log('permission-tests: PASS (PIN, delete gate, cooldown, Firestore owner rules, staff allowlist, server-verified UI gate)');
