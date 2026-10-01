@@ -683,3 +683,19 @@ input,select,textarea{min-height:40px;box-sizing:border-box}
 .receipt-table td{padding:6px 4px;border-bottom:1px solid #ddd;vertical-align:top}
 .receipt-label{font-weight:bold;white-space:nowrap;width:35%}
 .receipt-footer{text-align:center;margin-top:14px;font-size:12px;color:#555;border-top:1px dashed #ccc;padding-top:8px}
+/* تقارير: بطاقات الملخص قابلة للتنقل، ورسائل الهاتف واضحة وقابلة لإعادة المحاولة. */
+.report-card-link{color:inherit;text-decoration:none;min-width:0;transition:transform .12s,box-shadow .12s}
+.report-card-link:hover,.report-card-link:focus-visible{transform:translateY(-2px);box-shadow:0 5px 16px #0002;outline:2px solid var(--accent-text);outline-offset:2px}
+.report-card-link small{color:var(--text-muted);font-size:11px}
+.report-status{min-height:1.3em;margin-top:7px}
+.report-status:empty{display:none}
+.report-status-error{color:var(--danger-text);font-weight:700}
+.report-section{scroll-margin-top:16px}
+.report-table-wrap{overscroll-behavior-x:contain;touch-action:pan-x pan-y}
+.report-table-full a{display:inline-block;min-height:24px}
+.report-filter-actions button:disabled{opacity:.6;cursor:wait}
+[aria-invalid="true"]{border-color:var(--danger-text)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--danger-text) 22%,transparent)}
+@media(max-width:650px){.report-summary-cards{grid-template-columns:1fr 1fr}.report-card-link{min-height:96px;justify-content:center;padding:10px 7px}.report-card-link b{font-size:15px}.report-filter-actions button{min-height:44px}.report-table-wrap{max-width:calc(100vw - 32px)}}
+.report-shortcuts{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 1px 8px;margin:0 0 8px;-webkit-overflow-scrolling:touch}
+.report-shortcuts a{flex:0 0 auto;display:inline-flex;align-items:center;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:999px;background:var(--bg-elevated);color:var(--accent-text);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
+.report-shortcuts a:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
