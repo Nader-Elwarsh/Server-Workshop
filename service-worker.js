@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-156-fast-open";
+const CACHE_NAME = "workshop-v11-157-fast-lists";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -129,6 +129,18 @@ self.addEventListener("activate", event => {
   );
 });
 
+// تحديث الملفات المحفوظة في الخلفية بحد أقصى مرة كل REVALIDATE_MS لكل ملف.
+// قبل كده كل ضغطة/فتح صفحة كانت بتطلب ~40 ملف من النت تاني (JS/CSS/HTML) وتزاحم تحميل البيانات،
+// خصوصًا على النت الضعيف. الملفات متحمّلة أصلًا مع كل إصدار (install + اسم الكاش بيتغيّر)، فالتحديث الدوري كفاية.
+const REVALIDATE_MS = 10 * 60 * 1000;
+const lastRevalidate = new Map();
+function shouldRevalidate(key) {
+  const now = Date.now(), last = lastRevalidate.get(key) || 0;
+  if (now - last < REVALIDATE_MS) return false;
+  lastRevalidate.set(key, now);
+  return true;
+}
+
 self.addEventListener("fetch", event => {
   const request = event.request;
   const url = new URL(request.url);
@@ -184,6 +196,7 @@ self.addEventListener("fetch", event => {
     event.respondWith(
       caches.open(CACHE_NAME).then(cache =>
         cache.match(cacheKey).then(hit => hit || cache.match(request, { ignoreSearch: true })).then(cached => {
+          if (cached && !shouldRevalidate(cacheKey.url)) return cached; // فتح فوري بدون أي طلب شبكة
           const networkUpdate = fetch(request)
             .then(response => {
               if (response && response.ok) cache.put(cacheKey, response.clone());
@@ -207,6 +220,7 @@ self.addEventListener("fetch", event => {
   event.respondWith(
     caches.open(CACHE_NAME).then(cache =>
       cache.match(request).then(cached => {
+        if (cached && !shouldRevalidate(request.url)) return cached; // من الكاش مباشرة
         const networkUpdate = fetch(request)
           .then(response => {
             if (response && response.ok) cache.put(request, response.clone());

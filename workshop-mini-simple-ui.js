@@ -47,7 +47,8 @@
   // rows/save/esc2: كانت بتعيد تعريف نفس منطق القراءة/الكتابة والـ escaping
   // اللي في app.js بالظبط (JSON.parse/localStorage مباشرة). دلوقتي بتنادي
   // على النسخة الموحّدة في shared-data.js (لازم يتحمّل قبل الملف ده).
-  const rows = (key) => arr(key);
+  // قراءة مخزّنة: نفس المصفوفة تتعاد طالما محتوى التخزين ما اتغيّرش (بدل JSON.parse جديد في كل نداء)
+  const rows = (key) => (typeof arrCached === "function" ? arrCached(key) : arr(key));
   const save = (key, value) => put(key, value);
   const esc2 = (v) => esc(v);
   const customerRows = () => rows("wf_c");
@@ -55,6 +56,24 @@
   const requestRows = () => rows("wf_r");
   const partRows = () => rows("wf_p");
   const moveRows = () => rows("wf_m");
+
+  /* فهرس الأوامر/الأجهزة: بيتبني مرة واحدة لكل تغيير في البيانات (مش لكل عميل/جهاز).
+     كان كل عميل بيعمل filter على كل الأوامر عدة مرات، وفحص "جهاز في الورشة" كان بيدور على كل الأجهزة × كل الأوامر. */
+  const EMPTY = Object.freeze([]);
+  let IX = { r: null, d: null, byC: null, byD: null, devsByC: null };
+  function ix() {
+    const r = requestRows(), d = deviceRows();
+    if (IX.r === r && IX.d === d) return IX;
+    const byC = new Map(), byD = new Map(), devsByC = new Map();
+    for (const x of r) {
+      if (x.customerId != null) { let a = byC.get(x.customerId); if (!a) byC.set(x.customerId, a = []); a.push(x); }
+      if (x.deviceId != null) { let a = byD.get(x.deviceId); if (!a) byD.set(x.deviceId, a = []); a.push(x); }
+    }
+    for (const x of d) { let a = devsByC.get(x.customerId); if (!a) devsByC.set(x.customerId, a = []); a.push(x); }
+    return (IX = { r, d, byC, byD, devsByC });
+  }
+  const ordersOfCustomer = (cid) => ix().byC.get(cid) || EMPTY;
+  const ordersOfDevice = (did) => ix().byD.get(did) || EMPTY;
 
   /* حركات "الخروج" بس (استهلاك فعلي من المخزن) — بتُستخدم لحساب "عدد مرات
      استخدام الصنف" في كروت/جدول المخزن. حركات الإرجاع أو التعديل ما بتتحسبش
@@ -174,21 +193,19 @@
   }
 
   function activeOrdersForCustomer(cid) {
-    return requestRows().filter(r => r.customerId === cid && !orderIsCompleted(r) && r.status !== "ملغي");
+    return ordersOfCustomer(cid).filter(r => !orderIsCompleted(r) && r.status !== "ملغي");
   }
 
   function activeOrdersForDevice(did) {
-    return requestRows().filter(r => r.deviceId === did && !orderIsCompleted(r) && r.status !== "ملغي");
+    return ordersOfDevice(did).filter(r => !orderIsCompleted(r) && r.status !== "ملغي");
   }
 
   function hasWorkshopDeviceForCustomer(cid) {
-    return deviceRows().some(d => d.customerId === cid && requestRows().some(r =>
-      r.deviceId === d.id && orderIsWorkshop(r) && !orderIsCompleted(r)
-    ));
+    return (ix().devsByC.get(cid) || EMPTY).some(d => hasWorkshopDevice(d.id));
   }
 
   function hasWorkshopDevice(did) {
-    return requestRows().some(r => r.deviceId === did && orderIsWorkshop(r) && !orderIsCompleted(r));
+    return ordersOfDevice(did).some(r => orderIsWorkshop(r) && !orderIsCompleted(r));
   }
 
   function customerCityGroup(c) {
@@ -197,18 +214,19 @@
   }
 
   function customerHasUnpaid(cid) {
-    return requestRows().some(r => r.customerId === cid && !r.closed && Math.max(0, (+r.total || 0) - (+r.deposit || 0)) > 0);
+    return ordersOfCustomer(cid).some(r => !r.closed && Math.max(0, (+r.total || 0) - (+r.deposit || 0)) > 0);
   }
 
   function lastOrderTime(list) {
-    const dates = list.map(r => new Date(r.closedAt || r.visit || r.createdAt || 0).getTime()).filter(t => !Number.isNaN(t) && t > 0);
-    return dates.length ? Math.max(...dates) : null;
+    let best = 0;
+    for (const r of list) { const t = new Date(r.closedAt || r.visit || r.createdAt || 0).getTime(); if (t > best) best = t; }
+    return best > 0 ? best : null;
   }
 
   const STALE_DAYS = 60;
 
   function customerIsStale(c) {
-    const orders = requestRows().filter(r => r.customerId === c.id);
+    const orders = ordersOfCustomer(c.id);
     if (!orders.length) return false;
     const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
     if (active) return false;
@@ -218,11 +236,11 @@
   }
 
   function deviceIsRecurring(d) {
-    return requestRows().filter(r => r.deviceId === d.id).length >= 2;
+    return ordersOfDevice(d.id).length >= 2;
   }
 
   function deviceIsStale(d) {
-    const orders = requestRows().filter(r => r.deviceId === d.id);
+    const orders = ordersOfDevice(d.id);
     if (!orders.length) return false;
     const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
     if (active) return false;
@@ -232,12 +250,12 @@
   }
 
   function customerRemainingTotal(cid) {
-    return requestRows().filter(r => r.customerId === cid && !r.closed)
+    return ordersOfCustomer(cid).filter(r => !r.closed)
       .reduce((a, r) => a + Math.max(0, (+r.total || 0) - (+r.deposit || 0)), 0);
   }
 
   function customerLastContactDate(cid) {
-    const orders = requestRows().filter(r => r.customerId === cid);
+    const orders = ordersOfCustomer(cid);
     const t = lastOrderTime(orders);
     return t === null ? null : new Date(t);
   }
@@ -263,7 +281,7 @@
   };
 
   function customerBucketMatch(c, bucket) {
-    const orders = requestRows().filter(r => r.customerId === c.id);
+    const orders = ordersOfCustomer(c.id);
     const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
     const workshop = hasWorkshopDeviceForCustomer(c.id);
     if (bucket === "active") return active;
@@ -386,7 +404,7 @@
   };
 
   function deviceBucketMatch(d, bucket) {
-    const orders = requestRows().filter(r => r.deviceId === d.id);
+    const orders = ordersOfDevice(d.id);
     const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
     const workshop = hasWorkshopDevice(d.id);
     if (bucket === "active") return active;
