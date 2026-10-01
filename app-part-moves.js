@@ -48,6 +48,7 @@
 
     const totalOut = moves.filter(m => isOutType(m.type)).reduce((a, m) => a + (+m.qty || 0), 0);
     const totalIn = moves.filter(m => isInType(m.type)).reduce((a, m) => a + (+m.qty || 0), 0);
+    const totalSupply = moves.filter(m => /توريد/.test(m.type || "")).reduce((a, m) => a + (+m.qty || 0), 0);
 
     // لو رابط دخل الصفحة يشاور على حركة معيّنة (زي فحص سلامة البيانات
     // #move-<id>) بس هي أقدم من أول 20 حركة، نوسّع الحد اللي بيتعرض عشان
@@ -73,6 +74,7 @@
           <div class="report-card"><span>🔄 عدد الحركات المطابقة</span><b>${moves.length}</b></div>
           <div class="report-card"><span>⬇️ إجمالي الخارج</span><b>${totalOut}</b></div>
           <div class="report-card"><span>⬆️ إجمالي الداخل (إرجاع)</span><b>${totalIn}</b></div>
+          <div class="report-card"><span>📥 إجمالي التوريد</span><b>${totalSupply}</b></div>
         </div>
 
         <div class="form-grid" style="margin-top:12px">

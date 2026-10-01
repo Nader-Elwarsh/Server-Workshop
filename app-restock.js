@@ -183,24 +183,31 @@ function hideRestockPartResults() {
   setTimeout(() => document.getElementById("stkPartResults")?.classList.add("hidden"), 150);
 }
 
+let _restockBusy = false;
 async function saveRestock() {
+  if (_restockBusy) return; // ضغطة مزدوجة أثناء معالجة صورة الفاتورة كانت بتسجّل التوريد مرتين
   const pid = document.getElementById("stkPart")?.value || "";
   if (!pid) return alert("اختر قطعة موجودة من نتائج البحث، أو استخدم خيار «صنف جديد» لو مش موجودة.");
   const qty = +(document.getElementById("stkQty")?.value || 0);
   if (!Number.isFinite(qty) || qty < 1) return alert("اكتب كمية واردة صحيحة (أكبر من صفر).");
   const buyEl = document.getElementById("stkBuy"), note = (document.getElementById("stkNote")?.value || "").trim();
   const invoiceFile = document.getElementById("stkInvoice")?.files?.[0] || null;
+  _restockBusy = true;
+  try {
+  let invoice = "";
+  if (invoiceFile) {
+    try {
+      const dataURL = await imageToDataURL(invoiceFile, 1400, 0.72);
+      invoice = window.ImageStore ? await window.ImageStore.save(dataURL) : dataURL;
+    } catch (err) { return alert("تعذّر حفظ صورة الفاتورة. جرّب صورة أصغر أو سجّل التوريد من غير صورة."); }
+  }
+  // بنقرا المخزن بعد معالجة الصورة عشان الكمية تكون آخر نسخة.
   const all = arr(K.p), p = all.find(x => x.id === pid);
   if (!p) return alert("القطعة غير موجودة (ربما اتحذفت). جرّب تدور تاني.");
   p.qty = (+p.qty || 0) + qty;
   if (buyEl?.value !== "" && buyEl?.value != null) {
     const nb = +buyEl.value;
     if (Number.isFinite(nb) && nb >= 0) p.buy = nb;
-  }
-  let invoice = "";
-  if (invoiceFile) {
-    const dataURL = await imageToDataURL(invoiceFile, 1400, 0.72);
-    invoice = window.ImageStore ? await window.ImageStore.save(dataURL) : dataURL;
   }
   const result=withRollback([K.p,K.m],()=>{
     if(!put(K.p,all))return{ok:false};
@@ -213,4 +220,5 @@ async function saveRestock() {
   renderParts?.();
   alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.`);
   toggleRestockBox();
+  } finally { _restockBusy = false; }
 }

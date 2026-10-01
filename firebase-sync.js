@@ -429,11 +429,14 @@
   var INV_KEY = "wf_portal_invite_tpl", SEC = null;
   var INV_DEF = "أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة الورشة الفنية:\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
   function portalPhone(x) { var d = nph(x); return /^01[0125]\d{8}$/.test(d) ? d : ""; }
+  // كلمة مؤقتة عشوائية من 8 أرقام (crypto) للحسابات الجديدة وإعادة التعيين.
+  function tempPassword() { var a = new Uint32Array(1); (window.crypto || window.msCrypto).getRandomValues(a); return String(10000000 + (a[0] % 90000000)); }
   function secApp() { if (!SEC) SEC = firebase.apps.filter(function (a) { return a.name === "sec"; })[0] || firebase.initializeApp(firebase.app().options, "sec"); return SEC; }
-  function inviteText(c, p, mustChange) {
+  // temp: كلمة مؤقتة اتولّدت دلوقتي. legacy: حساب قديم كلمته نفس رقم التليفون. غير كده (كلمة اتبعتت قبل كده) مانكتبش كلمة.
+  function inviteText(c, p, mustChange, temp, legacy) {
     var tpl = ls.getItem(INV_KEY) || INV_DEF;
     var link = new URL("portal.html", location.href).href + "?p=" + p;
-    var pw = mustChange === false ? "" : "كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";
+    var pw = mustChange === false ? "" : temp ? "كلمة المرور المؤقتة: " + temp + " (هتطلب منك تغييرها أول دخول)." : legacy ? "كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول)." : "";
     return tpl.replace(/\{الاسم\}/g, c.name || "").replace(/\{الرابط\}/g, link).replace(/\{الرقم\}/g, p).replace(/\{كلمة_المرور\}/g, pw).trim();
   }
   function invModal(html) {
@@ -446,19 +449,20 @@
     return ({ "auth/email-already-in-use": "فيه حساب دخول بالرقم ده بس مش متسجّل صح. جرّب من لوحة البوابة.", "permission-denied": "مش مسموح لك بالعملية دي (صلاحيات Firestore).", "linked-other": "الرقم ده مربوط بعميل تاني. ادمج العملاء المكررين الأول من شاشة العملاء.", "bad-phone": "رقم التليفون غير صالح (لازم 01xxxxxxxxx).", "offline": "محتاج نت لتفعيل الحساب.", "timeout": "النت ضعيف، جرّب تاني." })[code] || "حصل خطأ (" + code + ")، جرّب تاني.";
   }
   function createPortalAccount(c, p) {
-    var em = p + "@phone.elwarsha.app", sa = secApp().auth();
-    return sa.createUserWithEmailAndPassword(em, p).then(function (cr) {
+    // كلمة مؤقتة عشوائية (مش نفس رقم التليفون): أي حد يعرف رقم العميل مايقدرش يدخل بحسابه قبله.
+    var em = p + "@phone.elwarsha.app", sa = secApp().auth(), temp = tempPassword();
+    return sa.createUserWithEmailAndPassword(em, temp).then(function (cr) {
       var uid = cr.user.uid;
       return secApp().firestore().collection("phoneIndex").doc(p).set({ email: em, uid: uid })
-        .then(function () { return db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: true, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); })
-        .then(function () { return sa.signOut(); }).then(function () { return uid; });
+        .then(function () { return db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: true, pwKind: "random", createdAt: firebase.firestore.FieldValue.serverTimestamp() }); })
+        .then(function () { return sa.signOut(); }).then(function () { return { uid: uid, temp: temp }; });
     }).catch(function (e) { try { sa.signOut(); } catch (x) {} throw e; });
   }
   function resolveInvite(c, p) {
     return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
-      if (!d.exists) return createPortalAccount(c, p).then(function (uid) { return { uid: uid, mustChange: true, created: true }; });
+      if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp }; });
       var uid = d.data().uid;
-      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false } : null; };
+      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false, legacy: !l.data().pwKind } : null; };
       return withTimeout(db.collection("portalLinks").doc(uid).get()).then(function (l) {
         var r = linkOk(l); if (r) return r;
         // فيه حساب بنفس الرقم اتسجّل بنفسه (مش مربوط بسجلك): ادمج الأول بعد ما نسحب آخر بيانات
@@ -483,8 +487,8 @@
     return resolveInvite(c, p).then(function (r) {
       var all = window.arr(window.K.c), cc = all.find(function (x) { return x.id === cid; });
       if (cc && (cc.portalUid !== r.uid || cc.portal !== true)) { cc.portal = true; cc.portalUid = r.uid; saveLocal(window.K.c, all); }
-      var msg = inviteText(c, p, r.mustChange), wa = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
-      var m = invModal('<b style="font-size:17px">' + (r.created ? "✅ تم تفعيل حساب البوابة" : "✅ الحساب متفعّل") + '</b><div style="margin:6px 0;color:#444">' + (r.mustChange ? "العميل هيدخل برقمه وهيغيّر كلمة المرور أول مرة." : "العميل دخل قبل كده وعنده كلمة مرور.") + '</div><textarea id="wfInvText" readonly rows="8" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfInvWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 افتح واتساب</a><button id="wfInvCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfInvClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
+      var msg = inviteText(c, p, r.mustChange, r.temp, r.legacy), wa = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
+      var m = invModal('<b style="font-size:17px">' + (r.created ? "✅ تم تفعيل حساب البوابة" : "✅ الحساب متفعّل") + '</b><div style="margin:6px 0;color:#444">' + (r.mustChange ? (r.temp || r.legacy ? "العميل هيدخل برقمه وهيغيّر كلمة المرور أول مرة." : "الكلمة المؤقتة اتبعتت للعميل قبل كده ومش بتتعرض تاني. لو ضاعت اضغط «🔑 إعادة تعيين كلمة السر» في صفحة العميل.") : "العميل دخل قبل كده وعنده كلمة مرور.") + '</div><textarea id="wfInvText" readonly rows="8" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfInvWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 افتح واتساب</a><button id="wfInvCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfInvClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
       m.querySelector("#wfInvText").value = msg; m.querySelector("#wfInvWa").href = wa;
       m.querySelector("#wfInvCopy").onclick = function () { var t = m.querySelector("#wfInvText"); t.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).catch(function () { document.execCommand("copy"); }); } catch (e) { document.execCommand("copy"); } this.textContent = "✅ اتنسخت"; };
       m.querySelector("#wfInvClose").onclick = function () { m.remove(); if (typeof window.customerProfile === "function") try { window.customerProfile(); } catch (e) {} };
@@ -501,7 +505,6 @@
      2) نحوّل فهرس الرقم (phoneIndex) للحساب الجديد، ونربطه بنفس سجل العميل (portalLinks) فكل أجهزته وأوامره وطلباته تفضل زي ما هي.
      3) الحساب القديم بيتعلّم «معطّل» فلو حد عنده جلسة قديمة مايدخلش على بيانات العميل.
      العميل بيدخل بالكلمة المؤقتة وبيتطلب منه يغيّرها فورًا. */
-  function tempPassword() { var a = new Uint32Array(1); (window.crypto || window.msCrypto).getRandomValues(a); return String(10000000 + (a[0] % 90000000)); }
   function resetError(code) {
     return ({ "no-account": "العميل ده ملوش حساب بوابة لسه. استخدم «📲 دعوة البوابة» الأول.", "linked-other": "الرقم ده مربوط بعميل تاني. ادمج العملاء المكررين الأول.", "cancel": "", "permission-denied": "مش مسموح بالعملية دي (صلاحيات Firestore): لازم قواعد phoneIndex تسمح للموظف بالتعديل أو الحذف، ولـ portalLinks بالكتابة.", "auth/operation-not-allowed": "تسجيل الدخول بالإيميل/الباسورد مقفول في إعدادات Firebase." })[code] || invError(code);
   }
@@ -532,7 +535,7 @@
       });
     }).then(function () {
       swapped = true;
-      return withTimeout(db.collection("portalLinks").doc(newUid).set({ customerId: c.id, phone: p, mustChange: true, resetAt: SV, createdAt: SV }));
+      return withTimeout(db.collection("portalLinks").doc(newUid).set({ customerId: c.id, phone: p, mustChange: true, pwKind: "random", resetAt: SV, createdAt: SV }));
     }).then(function () {
       return withTimeout(db.collection("portalLinks").doc(oldUid).set({ customerId: "_reset", phone: p, disabled: true, replacedBy: newUid, resetAt: SV })).catch(function () {});
     }).then(function () {

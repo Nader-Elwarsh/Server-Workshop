@@ -14,16 +14,16 @@ function mk(opts={}){
       set:(v,o)=>{ops.push(['set',c,id,v]);if(c==='portalLinks')links[id]={...links[id],...v};if(c==='phoneIndex')idx[id]=v;return Promise.resolve()}}),
     where:(f,o,v)=>({get:()=>Promise.resolve(snap(c==='portalLinks'?Object.keys(links).filter(k=>links[k].customerId===v).map(k=>({col:c,id:k})):[]))})})};
   const K={c:'wf_c',d:'wf_d',r:'wf_r',tasks:'wf_tasks',inv:'wf_inv',pc:'wf_pc',wtx:'wf_wtx',tr:'wf_tr',followupLog:'wf_fl'};
-  const W={K,arr:k=>JSON.parse(store[k]||'[]'),saveJSONSafe:(k,a)=>{store[k]=JSON.stringify(a);return true},auditLog:()=>{}};
-  const created=[];
-  const fbApp={auth:()=>({createUserWithEmailAndPassword:(em,pw)=>{created.push(em);return Promise.resolve({user:{uid:'NEWUID'}})},signOut:()=>Promise.resolve()}),firestore:()=>db};
+  const W={crypto:require('crypto').webcrypto,K,arr:k=>JSON.parse(store[k]||'[]'),saveJSONSafe:(k,a)=>{store[k]=JSON.stringify(a);return true},auditLog:()=>{}};
+  const created=[],pwds=[];
+  const fbApp={auth:()=>({createUserWithEmailAndPassword:(em,pw)=>{created.push(em);pwds.push(pw);return Promise.resolve({user:{uid:'NEWUID'}})},signOut:()=>Promise.resolve()}),firestore:()=>db};
   const firebase={apps:[fbApp&&{name:'sec',...fbApp}],app:()=>({options:{}}),initializeApp:()=>fbApp,firestore:{FieldValue:{serverTimestamp:()=>'ts'}}};
   firebase.apps[0].auth=fbApp.auth;firebase.apps[0].firestore=fbApp.firestore;
   const online=opts.offline?()=>false:()=>true;
   const fn=new Function('window','online','ready','withTimeout','db','firebase','ls','origSet','byCreated','banner','projectOrders','hydrateFull',
     block+'\nreturn {mergePortalDuplicates,mergeCustomers,resolveInvite,nph};');
   const api=fn(W,online,true,p=>p,db,firebase,ls,origSet,(x,y)=>Date.parse(x.createdAt||0)-Date.parse(y.createdAt||0),()=>{},()=>{},()=>Promise.resolve());
-  return {store,ops,links,idx,created,api};
+  return {store,ops,links,idx,created,pwds,api};
 }
 (async()=>{
  // 1 self-registered dup
@@ -48,6 +48,8 @@ function mk(opts={}){
  // invite: new account
  t=mk();let r=await t.api.resolveInvite({id:'c1'},'01005781925');
  assert.ok(r.created&&r.mustChange&&r.uid==='NEWUID');assert.strictEqual(t.created[0],'01005781925@phone.elwarsha.app');assert.strictEqual(t.links.NEWUID.customerId,'c1');assert.ok(t.idx['01005781925']);
+ // الكلمة المؤقتة عشوائية (8 أرقام) ومش نفس رقم التليفون، والرابط معلّم random وبيرجع في النتيجة
+ assert.ok(/^\d{8}$/.test(t.pwds[0])&&t.pwds[0]!=='01005781925','temp password must be random, not the phone');assert.strictEqual(r.temp,t.pwds[0]);assert.strictEqual(t.links.NEWUID.pwKind,'random');
  // invite: already linked to this customer
  t=mk({phoneIndex:{'01005781925':{uid:'U2'}},links:{U2:{customerId:'c1',mustChange:false}}});r=await t.api.resolveInvite({id:'c1'},'01005781925');
  assert.ok(!r.created&&r.mustChange===false&&t.created.length===0);

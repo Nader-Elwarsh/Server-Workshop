@@ -22,8 +22,22 @@ function restorePartRecord(pid){const all=arr(K.p),p=all.find(x=>x.id===pid);if(
 
 function initParts(){let f=document.getElementById("partForm");if(!f)return;let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.p).find(x=>x.id===editId):null;fillListSearch("pCategory","partCat",existing?.category||"");pPhoto.onchange=e=>previewPart(e);if(existing){pName.value=existing.name||"";pCode.value=existing.code||"";pLocation.value=existing.location||"";pQty.value=existing.qty||0;pMin.value=existing.min||0;pBuy.value=existing.buy||0;pUse.value=existing.use||0;if(existing.photo){(async()=>{let src=window.ImageStore?await window.ImageStore.resolveSrc(existing.photo):existing.photo;if(src)renderLivePhotoPreview("partPhotoPreview",src)})()}f.classList.remove("hidden");f.querySelector(".primary").textContent="💾 حفظ التعديلات وفتح الملف"}f.onsubmit=async e=>{e.preventDefault();const dup=findDuplicatePartName(pName.value,existing?.id);if(dup){alert(`⚠️ الصنف «${dup.name}» موجود بالفعل بنفس الاسم.\n\nاستخدم الصنف الموجود أو غيّر الاسم.`);pName.focus();return;}const dupCode=findDuplicatePartCode(pCode.value,existing?.id);if(dupCode){alert(`⚠️ كود الصنف «${dupCode.code}» مستخدم بالفعل مع «${dupCode.name}».\n\nاستخدم كودًا مختلفًا.`);pCode.focus();return;}await savePart(e,existing);};const partDuplicateHint=document.getElementById("partDuplicateHint");const checkPartDuplicate=()=>{if(!partDuplicateHint)return;const dn=findDuplicatePartName(pName.value,existing?.id),dc=findDuplicatePartCode(pCode.value,existing?.id);if(dn){partDuplicateHint.innerHTML=`⚠️ يوجد صنف بنفس الاسم بالضبط: <b>${esc(dn.name)}</b> — لن يسمح النظام بإضافة نسخة ثانية منه.`;partDuplicateHint.className="hint negative";return;}if(dc){partDuplicateHint.innerHTML=`⚠️ الكود مستخدم بالفعل مع: <b>${esc(dc.name)}</b> — اختر كودًا مختلفًا.`;partDuplicateHint.className="hint negative";return;}const similar=findSimilarPartNames(pName.value,existing?.id);if(similar.length){partDuplicateHint.innerHTML=`ℹ️ توجد أصناف بأسماء قريبة من هذا الاسم: ${similar.map(x=>`<b>${esc(x)}</b>`).join("، ")}. تأكد أن الصنف الذي تكتبه ليس نفسه قبل الحفظ.`;partDuplicateHint.className="hint";return;}partDuplicateHint.textContent="";partDuplicateHint.className="hint";};pName.addEventListener("input",checkPartDuplicate);pCode.addEventListener("input",checkPartDuplicate);partSearch.oninput=renderParts;renderParts()}
 function previewPart(e){let f=e.target.files[0];if(!f)return;imageToDataURL(f).then(x=>{renderLivePhotoPreview("partPhotoPreview",x);partPhotoPreview.dataset.image=x})}
-async function collectPartFormData(existing){let photo=existing?.photo||"";if(pPhoto.files[0]){let dataURL=await imageToDataURL(pPhoto.files[0]);photo=window.ImageStore?await window.ImageStore.save(dataURL,existing?.photo):dataURL}return{name:pName.value,code:pCode.value,category:pCategory.value,location:pLocation.value,qty:+pQty.value||0,min:+pMin.value||0,buy:+pBuy.value||0,use:+pUse.value||0,photo}}
-function persistPartRecord(formData,existing){let p=existing||{id:id(),createdAt:new Date().toISOString()};Object.assign(p,formData);let a=arr(K.p);if(!saveJSONSafe(K.p,existing?a.map(x=>x.id===p.id?p:x):a.concat(p)))return{ok:false};return{ok:true,part:p}}
+async function collectPartFormData(existing){let photo=existing?.photo||"";if(pPhoto.files[0]){let dataURL=await imageToDataURL(pPhoto.files[0]);photo=window.ImageStore?await window.ImageStore.save(dataURL,existing?.photo):dataURL}return{name:(pName.value||"").trim(),code:(pCode.value||"").trim(),category:pCategory.value,location:(pLocation.value||"").trim(),qty:Math.max(0,+pQty.value||0),min:Math.max(0,+pMin.value||0),buy:Math.max(0,+pBuy.value||0),use:Math.max(0,+pUse.value||0),photo}}
+function persistPartRecord(formData,existing){
+  let a=arr(K.p),cur=existing?a.find(x=>x.id===existing.id):null;
+  // الكمية بتتقارن بآخر نسخة محفوظة (مش بنسخة الفورم اللي ممكن تكون قديمة لو الأمر استهلك قطع في الوقت ده).
+  const oldQty=cur?(+cur.qty||0):0;
+  let p=existing||{id:id(),createdAt:new Date().toISOString()};Object.assign(p,formData);
+  const delta=existing?(+p.qty||0)-oldQty:0;
+  const r=withRollback([K.p,K.m],()=>{
+    if(!put(K.p,existing?a.map(x=>x.id===p.id?p:x):a.concat(p)))return{ok:false};
+    // تعديل الكمية يدويًا من ملف الصنف: بنسجّل حركة جرد عشان سجل الحركات يفضل مطابق للرصيد (النوع مش «خروج/إرجاع» فمايأثرش على إحصائيات الاستهلاك).
+    if(delta!==0){const mv=arr(K.m);mv.push({id:id(),partId:p.id,type:delta>0?"تعديل جرد بالزيادة":"تعديل جرد بالنقص",note:`من ${oldQty} إلى ${+p.qty||0}`,qty:Math.abs(delta),at:new Date().toISOString()});if(!put(K.m,mv))return{ok:false}}
+    return{ok:true};
+  });
+  if(!r?.ok)return{ok:false};
+  return{ok:true,part:p};
+}
 async function savePart(e,existing=null){e.preventDefault();if(!pCategory.value)return alert("اختر تصنيف القطعة.");try{let formData=await collectPartFormData(existing);let result=persistPartRecord(formData,existing);if(!result.ok)return;location.href=`part.html?id=${result.part.id}`}catch(err){alert("تعذر حفظ صورة القطعة. جرّب صورة أخرى أصغر.")}}
 // النسخة الأساسية — بيتم استبدالها في customers/devices/inventory/requests.html
 // بنسخة أغنى (تصنيفات ولوحة ملخص) في workshop-mini-simple-ui.js، وهي الشغالة
@@ -38,7 +52,9 @@ function partConsumptionForecast(p,allMoves){
   const inWindow=outMoves.filter(m=>{let t=new Date(m.at).getTime();return !Number.isNaN(t)&&t>=windowStart;});
   const firstMoveTime=Math.min(...outMoves.map(m=>new Date(m.at).getTime()).filter(t=>!Number.isNaN(t)));
   const effectiveDays=Math.max(1,Math.min(windowDays,(now-firstMoveTime)/86400000));
-  const totalOutInWindow=inWindow.reduce((a,m)=>a+(+m.qty||0),0);
+  // الإرجاع (إلغاء أمر / تعديله) بيتخصم من الاستهلاك، وإلا التوقع كان بيبالغ في سرعة النفاذ.
+  const returnedInWindow=allMoves.filter(m=>/إرجاع/.test(m.type||"")).filter(m=>{let t=new Date(m.at).getTime();return !Number.isNaN(t)&&t>=windowStart;}).reduce((a,m)=>a+(+m.qty||0),0);
+  const totalOutInWindow=inWindow.reduce((a,m)=>a+(+m.qty||0),0)-returnedInWindow;
   if(totalOutInWindow<=0)return null;
   const dailyRate=totalOutInWindow/effectiveDays;
   if(dailyRate<=0)return null;
