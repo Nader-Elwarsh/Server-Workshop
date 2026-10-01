@@ -1,8 +1,22 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v4";
+const CACHE = "portal-v5";
 const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./portal-manifest.json", "./icon-192-v12.png", "./icon-512-v12.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(f => c.add(f).catch(() => {})))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+// الشبكة أولًا لكن بمهلة: على النت الضعيف الصفحة كانت بتفضل معلّقة لحد ما الطلب يفشل. بعد المهلة بنفتح النسخة المحفوظة
+// والطلب يكمّل في الخلفية ويحدّث الكاش للمرة الجاية.
+function netFirst(r, key, ms) {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = v => { if (!settled) { settled = true; resolve(v); } };
+    const timer = setTimeout(() => { caches.match(key).then(h => { if (h) done(h); }); }, ms);
+    fetch(r).then(x => {
+      clearTimeout(timer);
+      if (x && x.ok) { const copy = x.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
+      done(x);
+    }).catch(() => { clearTimeout(timer); caches.match(key).then(h => done(h || Response.error())); });
+  });
+}
 self.addEventListener("fetch", e => {
   const r = e.request, u = new URL(r.url);
   if (r.method !== "GET") return;
@@ -15,10 +29,10 @@ self.addEventListener("fetch", e => {
   const helper = u.origin === location.origin && /\/(portal-ticker|pw-eye|wf-session)\.js$/.exec(u.pathname);
   if (helper) { // ملفات مساعدة: الشبكة أولًا ثم الكاش (عشان التحديثات توصل)
     const key = "./" + helper[1] + ".js";
-    e.respondWith(fetch(r).then(x => { if (x && x.ok) caches.open(CACHE).then(c => c.put(key, x.clone())); return x; }).catch(() => caches.match(key)));
+    e.respondWith(netFirst(r, key, 4000));
     return;
   }
   if (u.origin === location.origin && u.pathname.endsWith("/portal.html")) {
-    e.respondWith(fetch(r).then(x => { if (x && x.ok) caches.open(CACHE).then(c => c.put("./portal.html", x.clone())); return x; }).catch(() => caches.match("./portal.html")));
+    e.respondWith(netFirst(r, "./portal.html", 4000));
   }
 });
