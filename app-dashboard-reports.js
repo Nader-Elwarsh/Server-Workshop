@@ -14,7 +14,7 @@ ${pendingCallsCount>0?`<a class="stat" href="pending-calls.html">📞 <b>${pendi
 <a class="stat" href="requests.html?bucket=open">🛠️ <b>${openOrders.length}</b><span>أوامر مفتوحة</span></a>
 </div></div>
 <div class="dash-group"><div class="dash-group-title">💰 المالية</div><div class="compact-stats">
-<a class="stat stat-accent" href="wallets.html#reportSection">💰 <b>${monthRevenue.toFixed(0)} ج</b><span>إيراد الشهر</span></a>
+<a class="stat stat-accent" href="reports.html">💰 <b>${monthRevenue.toFixed(0)} ج</b><span>إيراد الشهر — فتح التقرير</span></a>
 <a class="stat" href="treasury.html">💵 <b>${treasuryBalance().toFixed(0)} ج</b><span>رصيد الخزنة</span></a>
 <a class="stat" href="requests.html?bucket=unpaid">🧾 <b>${unpaidRemain.toFixed(0)} ج</b><span>متبقي غير محصل</span></a>
 </div></div>

@@ -284,12 +284,23 @@ function markRequestReturned(i){
   if(reason===null)return;
   reason=reason.trim();
   if(!reason){alert("سبب/ملاحظة المرتجع مطلوبة.");return}
-  let from=r.status,wasClosed=!!r.closed;
+  let from=r.status,wasClosed=!!r.closed,previousCloseWallet=r.closeWallet||"";
   r.status="جاري التنفيذ";
-  if(wasClosed){r.closed=false;r.paid=false;r.remain=Math.max(0,(+r.total||0)-(+r.deposit||0));r.reopenedAt=new Date().toISOString()}
+  if(wasClosed){
+    r.closed=false;r.paid=false;r.remain=Math.max(0,(+r.total||0)-(+r.deposit||0));
+    r.reopenedAt=new Date().toISOString();r.reopenedFromClosedAt=r.closedAt||"";
+    r.closedAt=null;r.paidAt=null;r.closeWallet="";
+  }
   applyStatusTimestamp(r,r.status);
   recordStatusHistory(r,from,r.status,`مرتجع${wasClosed?" (كان مغلقًا)":""}: ${reason}`);
-  if(!saveJSONSafe(K.r,a))return;
+  const saved=withRollback([K.r,K.wtx],()=>{
+    if(!put(K.r,a))return{ok:false};
+    // التحصيل النهائي التلقائي لم يعد صالحًا بعد المرتجع؛ يُحذف من الحساب
+    // بنفس refKey بدل إنشاء حركة عكسية أو ترك الرصيد مرتفعًا.
+    if(wasClosed&&typeof syncWalletForOrderClose==="function"&&!syncWalletForOrderClose(r,0,previousCloseWallet))return{ok:false};
+    return{ok:true};
+  });
+  if(!saved?.ok){alert("تعذر حفظ المرتجع وتحديث الحركة المالية معًا؛ لم يتم تغيير الأمر.");return}
   window.auditLog?.("إرجاع أمر", "أمر شغل", r.id, reason);renderRequests();renderDash();requestProfile();
 }
 function changeRequestVisit(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.visit=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}

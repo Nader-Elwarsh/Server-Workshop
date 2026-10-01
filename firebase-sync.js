@@ -224,16 +224,24 @@
     if (!online() || converting || !ready || fns.some(function (f) { return typeof window[f] !== "function"; }) || !window.K) return Promise.resolve();
     converting = true;
     return db.collection("portalRequests").where("handled", "==", false).get().then(function (snap) {
-      var n = 0, marks = [];
+      var n = 0, marks = [], seenPortal = {};
       snap.docs.forEach(function (d) {
         var p = sanitize(clean(d.data())), id = d.id, ds = window.arr(window.K.d), cs = window.arr(window.K.c);
         var dev = ds.find(function (x) { return x.id === p.deviceId; }), cust = cs.find(function (x) { return x.id === p.customerId; });
         if (!dev || !cust) return; // لسه مانزلش على الجهاز: هنحاول تاني
         if (dev.customerId !== p.customerId) { marks.push(d.ref.update({ handled: true, rejected: true })); return; }
-        var exists = window.arr(window.K.r).find(function (x) { return x.id === id; });
+        // تنظيف الطلبات القديمة التي أُنشئت قبل استخدام doc id ثابت: نفس
+        // العميل والجهاز ونفس بيانات الطلب = طلب واحد، حتى لو اختلف معرّف
+        // Firestore بسبب الضغط على زر الإرسال أكثر من مرة.
+        var fp = [p.customerId, p.deviceId, p.fault, p.visit, p.executionPlace, p.note].map(function (x) { return String(x || "").trim().toLowerCase(); }).join("\u001f");
+        if (seenPortal[fp]) { marks.push(d.ref.update({ handled: true, duplicateOf: seenPortal[fp] })); return; }
+        seenPortal[fp] = id;
+        // هوية طلب البوابة هي مفتاح التكرار؛ لا نعتمد على رقم أمر جديد أو
+        // على دورة onSnapshot وحدها، لأن تبويبين قد يحاولا التحويل معًا.
+        var exists = window.arr(window.K.r).find(function (x) { return x.id === id || (x.source === "portal" && x.portalRequestId === id); });
         if (!exists) {
           var s = window.settings();
-          var r = { id: id, no: window.orderNo(), customerId: p.customerId, deviceId: p.deviceId, addressKey: "main", visit: p.visit || "", status: "جديد", executionPlace: p.executionPlace || (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault: p.fault || "", work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, source: "portal", customerNote: p.note || "", createdAt: new Date().toISOString() };
+          var r = { id: id, portalRequestId: id, no: window.orderNo(), customerId: p.customerId, deviceId: p.deviceId, addressKey: "main", visit: p.visit || "", status: "جديد", executionPlace: p.executionPlace || (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault: p.fault || "", work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, source: "portal", customerNote: p.note || "", createdAt: new Date().toISOString() };
           window.recordStatusHistory(r, "", r.status); window.applyStatusTimestamp(r, r.status);
           if (!window.saveJSONSafe(window.K.r, window.arr(window.K.r).concat(r))) return;
           exists = r; n++;
