@@ -35,4 +35,6 @@ back to "جاري التنفيذ". An optional freeze note can be recorded and i
 
 Priority is not used in the work-order flow.
 
-Financial calculations are intentionally unchanged.
+## Financial rules after closing
+
+After an order is closed, its ordinary financial fields are locked and its automatic wallet movements are keyed by a stable `refKey`, so saving the order again cannot create duplicates. A return during the configured return window reopens the order and removes the automatic final-collection movement; any actual refund must be recorded as a separate outgoing wallet transaction. A manual wallet correction marked `manualOverride` is not overwritten by automatic synchronization.
