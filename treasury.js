@@ -24,8 +24,9 @@ function addTreasuryManual(type){
       dateEl=document.getElementById("trDate"),timeEl=document.getElementById("trTime"),
       personEl=document.getElementById("trPerson"),placeEl=document.getElementById("trPlace"),
       categoryEl=document.getElementById("trCategory"),noteEl=document.getElementById("trNote");
-  let amount=+amountEl.value||0,reason=(reasonEl.value||"").trim(),
-      date=dateEl.value||localDateKey(new Date()),time=timeEl.value||new Date().toTimeString().slice(0,5);
+  if(!amountEl||!reasonEl)return;
+  let amount=typeof parseAmountInput==="function"?parseAmountInput(amountEl.value):(+amountEl.value||0),reason=(reasonEl.value||"").trim(),
+      date=dateEl?.value||localDateKey(new Date()),time=timeEl?.value||new Date().toTimeString().slice(0,5);
   if(amount<=0)return alert("أدخل مبلغ صحيح.");
   if(!reason)return alert("اكتب سبب الحركة.");
   let entry={
@@ -47,12 +48,28 @@ function saveOpeningBalance(){
 function editTreasuryEntry(entryId){
   let a=arr(K.tr),e=a.find(x=>x.id===entryId);if(!e)return;
   let newAmount=prompt("المبلغ:",e.amount);if(newAmount===null)return;
+  // قبل كده أي مدخل مش رقم كان بيتحوّل بصمت لـ 0 (وبيتحول السالب لموجب). دلوقتي بنرفضه ونقبل الأرقام العربية.
+  let amt=typeof parseAmountInput==="function"?parseAmountInput(newAmount):(+newAmount||0);
+  if(!(amt>0))return alert("أدخل مبلغ صحيح أكبر من صفر.");
   let newReason=prompt("سبب الحركة:",e.reason);if(newReason===null)return;
   let newPerson=prompt("لمن / من؟:",e.counterparty||"");if(newPerson===null)return;
   let newPlace=prompt("فين / المكان؟:",e.place||"");if(newPlace===null)return;
   let oldAmount=+e.amount||0;
-  e.amount=Math.abs(+newAmount)||0;e.reason=(newReason||"").trim()||e.reason;
+  e.amount=amt;e.reason=(newReason||"").trim()||e.reason;
   e.counterparty=(newPerson||"").trim();e.place=(newPlace||"").trim();e.manualOverride=true;
+  // حركة التحويل ليها حركة مقابلة في المحفظة: لازم تتعدّل معاها في نفس العملية، وإلا الطرفين يبقوا بمبلغين مختلفين.
+  if(e.source==="transfer"&&e.transferId){
+    let w=arr(K.wtx),wt=w.find(x=>x.transferId===e.transferId&&x.source==="transfer"&&!x.deleted);
+    if(wt){
+      wt.amount=e.amount;wt.reason=e.reason;
+      if(!commitStorage({[K.tr]:a,[K.wtx]:w}))return;
+      window.auditLog?.("تعديل حركة", "خزنة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج (مع حركة المحفظة المقابلة)`);
+      renderTreasury();
+      if(typeof renderWallets==="function")renderWallets();
+      if(typeof renderWalletDetail==="function")renderWalletDetail();
+      return;
+    }
+  }
   if(!saveJSONSafe(K.tr,a))return;
   window.auditLog?.("تعديل حركة", "خزنة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج`);
   renderTreasury();

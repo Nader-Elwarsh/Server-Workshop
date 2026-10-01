@@ -71,7 +71,7 @@ function addWalletManual(type,prefix="wt"){
       reasonEl=document.getElementById(prefix+"Reason"),
       dateEl=document.getElementById(prefix+"Date"),timeEl=document.getElementById(prefix+"Time"),
       noteEl=document.getElementById(prefix+"Note");
-  let amount=+amountEl?.value||0,wallet=(walletEl?.value||"").trim(),
+  let amount=parseAmountInput(amountEl?.value),wallet=(walletEl?.value||"").trim(),
       category=categoryEl?.value||"أخرى",reason=(reasonEl?.value||"").trim(),
       date=dateEl?.value||localDateKey(new Date()),time=timeEl?.value||new Date().toTimeString().slice(0,5);
   if(amount<=0)return alert("أدخل مبلغ صحيح.");
@@ -283,11 +283,15 @@ function syncWalletForOrderClose(order,collected,wallet){
    تلقائيًا بأي شكل تاني. الحركتان مربوطتان ببعض بس بـ transferId
    للعرض/المرجعية فقط.
 --------------------------------------------------------------------- */
+let _wfTransferLast=0;
 function transferBetweenWalletAndTreasury(direction,walletName,amount,date,time,reason,note){
-  amount=Math.abs(+amount)||0;
+  // منع الضغط المزدوج (كان بيسجّل تحويلين). والمبلغ السالب بيتم رفضه بدل ما يتحوّل لموجب بصمت.
+  if(Date.now()-_wfTransferLast<900)return;
+  amount=+amount||0;
   if(amount<=0)return alert("أدخل مبلغ صحيح.");
   if(!walletName)return alert("اختر المحفظة.");
   date=date||localDateKey(new Date());time=time||new Date().toTimeString().slice(0,5);
+  _wfTransferLast=Date.now();
   let transferId=id();
   let baseReason=(reason||"").trim()||(direction==="toTreasury"?`🔁 تحويل من ${walletName} إلى الخزنة`:`🔁 تحويل من الخزنة إلى ${walletName}`);
   let noteVal=(note||"").trim();
@@ -340,7 +344,7 @@ function walletTransferWidgetHtml(){
 function executeWalletTreasuryTransfer(){
   let dir=document.getElementById("wtrDirection")?.value||"toTreasury",
       wallet=document.getElementById("wtrWallet")?.value||"",
-      amount=+document.getElementById("wtrAmount")?.value||0,
+      amount=parseAmountInput(document.getElementById("wtrAmount")?.value),
       date=document.getElementById("wtrDate")?.value,
       time=document.getElementById("wtrTime")?.value,
       reason=document.getElementById("wtrReason")?.value||"",
@@ -371,7 +375,7 @@ function walletManualFromDetail(type,walletName){
       subCategoryEl=document.getElementById("wdSubCategory"),
       reasonEl=document.getElementById("wdReason"),dateEl=document.getElementById("wdDate"),
       timeEl=document.getElementById("wdTime"),noteEl=document.getElementById("wdNote");
-  let amount=+amountEl?.value||0,category=categoryEl?.value||"أخرى",reason=(reasonEl?.value||"").trim(),
+  let amount=parseAmountInput(amountEl?.value),category=categoryEl?.value||"أخرى",reason=(reasonEl?.value||"").trim(),
       date=dateEl?.value||localDateKey(new Date()),time=timeEl?.value||new Date().toTimeString().slice(0,5);
   if(amount<=0)return alert("أدخل مبلغ صحيح.");
   if(!reason)return alert("اكتب سبب الحركة.");

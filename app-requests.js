@@ -232,6 +232,8 @@ function changeRequestStatus(i,status){
     if(reason===null){renderRequests();requestProfile();return}
     reason=reason.trim();
     if(!reason){alert("سبب الإلغاء مطلوب لإلغاء أمر الشغل.");renderRequests();requestProfile();return}
+    // العربون المسجّل في المحفظة مابيتشالش بالإلغاء (ممكن يكون محتفظ بيه). نبّه عشان لو هيتردّ للعميل يتسجّل صرف يدوي.
+    if((+r.deposit||0)>0&&String(r.depositWallet||"").trim()&&!confirm(`الأمر عليه عربون ${(+r.deposit).toFixed(2)} ج في محفظة «${r.depositWallet}» وهيفضل محسوب في رصيدها بعد الإلغاء. لو هترجّعه للعميل سجّل صرف يدوي من المحفظة. تكمّل الإلغاء؟`)){renderRequests();requestProfile();return}
   }
   if(status==="مجمد"){
     freezeNote=prompt("ملاحظة التجميد (اختياري) — مثلاً: العميل مش بيرد بعد وصول القطعة:","");
@@ -243,8 +245,11 @@ function changeRequestStatus(i,status){
   // إلغاء الأمر يرجّع قطعه المستخدمة للمخزن (الشغل ماتمش فعليًا)، وإعادة
   // فتحه من إلغاء بترجع تخصمها تاني لو لسه متاحة بنفس الكمية.
   const stock=arr(K.p),moves=arr(K.m);
+  // لقطة قبل التعديل: لو حفظ الأمر نفسه فشل بعد ما المخزن اتعدّل، نرجّع المخزن (كان بيفضل متعدّل والأمر لا).
+  const stockTouched=status==="ملغي"||(from==="ملغي"&&status==="جديد");
+  const stockBefore=stockTouched?JSON.parse(JSON.stringify(stock)):null,movesBefore=stockTouched?JSON.parse(JSON.stringify(moves)):null;
   let stockResult=withRollback([K.p,K.m],()=>{
-    let touched=status==="ملغي"||(from==="ملغي"&&status==="جديد");
+    let touched=stockTouched;
     if(!touched)return{ok:true};
     let adjusted=status==="ملغي"?adjustStockForOrder(r.parts||[],[],r.id,stock,moves):adjustStockForOrder([],r.parts||[],r.id,stock,moves);
     if(!adjusted)return{ok:false};
@@ -265,7 +270,11 @@ function changeRequestStatus(i,status){
   if(status==="ملغي"){r.cancelReason=reason;r.cancelledAt=new Date().toISOString()}
   if(from==="ملغي"&&status==="جديد"){r.cancelReason="";r.cancelledAt=null;r.reopenedAt=new Date().toISOString()}
   recordStatusHistory(r,from,status,status==="مجمد"?freezeNote:(status==="ملغي"?reason:""));
-  if(!saveJSONSafe(K.r,a))return;window.auditLog?.("تغيير حالة", "أمر شغل", r.id, `${from} ← ${status}`);renderRequests();renderDash();requestProfile()
+  if(!saveJSONSafe(K.r,a)){
+    if(stockTouched){put(K.p,stockBefore);put(K.m,movesBefore)}
+    renderRequests();requestProfile();return;
+  }
+  window.auditLog?.("تغيير حالة", "أمر شغل", r.id, `${from} ← ${status}`);renderRequests();renderDash();requestProfile()
 }
 // إعادة فتح أمر شغل "مكتمل" كمرتجع: بيرجّعه لحالة "جاري التنفيذ" (نفس الانتقال
 // المعتمد في دورة الحالة) عشان تقدر تفعّله أو تعدّل عليه، مع تسجيل سبب/ملاحظة
