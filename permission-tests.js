@@ -77,7 +77,21 @@ for (const name of fs.readdirSync(__dirname).filter(name => name.endsWith('.html
 }
 
 const rules = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
+assert.strictEqual(fs.readFileSync(path.join(__dirname, 'firestore.rules.proposed'), 'utf8'), rules, 'the proposed rules file must not diverge from the canonical secured rules');
 assert(/function\s+isStaff\s*\(/.test(rules), 'Firestore rules must define a staff authorization predicate');
 assert(/allow\s+read,\s*write:\s*if\s+isStaff\(\)/.test(rules), 'staff-only cloud writes must remain protected by the staff predicate');
 assert(/match\s+\/staff\//.test(rules), 'staff membership must be represented in Firestore rules');
-console.log('permission-tests: PASS (PIN verification, protected delete, cooldown, employee-page guard, staff rules)');
+assert(/match\s+\/\{collection\}\/\{document=\*\*\}[\s\S]*?isStaff\(\)\s*&&\s*collection\s*!=\s*'staff'/.test(rules), 'the catch-all rule must never grant staff-document writes');
+assert(!/match\s+\/\{document=\*\*\}\s*\{\s*allow\s+read,\s*write:\s*if\s+isStaff\(\)/.test(rules), 'an unscoped catch-all must not overlap the staff allowlist');
+assert(/function\s+own\(customerId\)[\s\S]*?data\.get\('disabled',\s*false\)\s*!=\s*true/.test(rules), 'disabled linked identities must lose all customer-data access');
+assert(/function\s+completedOrderForCustomer/.test(rules) && /request\.resource\.data\.customerId\s*==\s*get\(orderRef\(request\.resource\.data\.orderId\)\)\.data\.customerId/.test(rules), 'complaints must reference a completed order belonging to the same customer');
+assert(/match\s+\/portalOrders\/\{id\}[\s\S]*?allow\s+read:\s*if\s+own\(resource\.data\.customerId\)\s*;/.test(rules), 'portal order projection must be read-only to the customer');
+const sync = fs.readFileSync(path.join(__dirname, 'firebase-sync.js'), 'utf8');
+assert(/collection\("staff"\)\.doc\(user\.uid\)\.get\(\{\s*source:\s*"server"\s*\}\)/.test(sync), 'employee UI must verify staff membership from the server');
+assert(!/ls\.getItem\(STAFF\)\s*===\s*user\.uid\s*\?\s*Promise\.resolve\(true\)/.test(sync), 'a cached employee UID must not bypass server authorization');
+assert(!/consider old employee|نعتبره موظف قديم/.test(sync), 'unknown/authenticated users must not be promoted to staff by fallback');
+assert(/if\s*\(hydrated\s*&&\s*ls\.getItem\("wf_is_staff_uid"\)\s*===\s*user\.uid\)/.test(sync), 'offline cached data must at least be bound to the previously verified staff UID');
+assert(/if\s*\(!isLogin\)\s*cover\(/.test(sync), 'internal app pages must stay covered while staff membership is checked');
+assert(/typeof firebase === "undefined"[\s\S]*?wfCloudCover/.test(sync), 'missing Firebase SDK must fail closed on internal pages');
+assert(!/navigator\.onLine\s*===\s*false\s*&&\s*ls\.getItem\(HYD\)\)\s*\{\s*ready\s*=\s*false;\s*uncover\(\)/.test(sync), 'anonymous offline sessions must never uncover the staff data');
+console.log('permission-tests: PASS (PIN, delete gate, cooldown, Firestore owner rules, staff allowlist, server-verified UI gate)');

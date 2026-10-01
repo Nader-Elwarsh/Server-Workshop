@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-154-report-links-mobile";
+const CACHE_NAME = "workshop-v11-155-firestore-security";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

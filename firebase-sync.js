@@ -4,7 +4,18 @@
    - أي دمج بين الجهاز والسحابة بيحافظ على البيانات: بنقارن بآخر حالة اتزامنت، فمفيش سجل بيتمسح من السحابة إلا لو انت مسحته. */
 (function () {
   "use strict";
-  if (typeof firebase === "undefined") { console.warn("Firebase SDK غير متاح (أوفلاين قبل أول تحميل) — التطبيق شغال محليًا"); return; }
+  if (typeof firebase === "undefined") {
+    console.warn("Firebase SDK غير متاح — تم إغلاق صفحات الموظفين حتى يمكن التحقق من الحساب.");
+    if (!/login\.html$/.test(location.pathname)) {
+      try {
+        var lock = document.createElement("div"); lock.id = "wfCloudCover";
+        lock.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px";
+        lock.textContent = "تعذّر تحميل Firebase والتحقق من حساب الموظف. أعد الاتصال بالإنترنت ثم حدّث الصفحة.";
+        (document.body || document.documentElement).appendChild(lock);
+      } catch (e) {}
+    }
+    return;
+  }
   var CFG = { apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8", authDomain: "elwarsha-elfanya.firebaseapp.com", projectId: "elwarsha-elfanya", storageBucket: "elwarsha-elfanya.firebasestorage.app", messagingSenderId: "916075814550", appId: "1:916075814550:web:90e6b0c01b58abc614ecb7" };
   var COLS = { wf_c: "customers", wf_d: "devices", wf_r: "requests", wf_p: "parts", wf_tr: "treasury", wf_tasks: "tasks", wf_wallet_tx: "walletTx", wf_fault_codes: "faultCodes", wf_inv: "invoices", wf_m: "partMoves" };
   var EXTRA = ["wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"];
@@ -575,20 +586,26 @@
       pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);
       watchInbox();
     }
-    if (!online()) { // أوفلاين: اشتغل على النسخة المحلية
-      if (hydrated) { ready = true; uncover(); badge(); return; }
-      cover("لازم تفتح الموقع أونلاين أول مرة على الجهاز ده"); return;
+    if (!online()) { // أوفلاين: لا تكشف نسخة الموظفين المحفوظة إلا لمعرّف سبق التحقق منه كموظف.
+      if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid) { ready = true; uncover(); badge(); return; }
+      cover("اتصل بالإنترنت للتحقق من حساب الموظف قبل فتح بيانات النظام."); return;
     }
     if (hydrated) uncover();
     var STAFF = "wf_is_staff_uid";
-    var staffCheck = ls.getItem(STAFF) === user.uid ? Promise.resolve(true) : withTimeout(db.collection("staff").doc(user.uid).get()).then(function (d) {
-      if (d.exists) { origSet.call(ls, STAFF, user.uid); return true; }
-      // مفيش مستند موظف: نرفض بس لو الحساب ده عميل بوابة (وإلا نعتبره موظف قديم لحد ما القواعد الجديدة تتنشر)
-      return withTimeout(db.collection("customers").doc(user.uid).get()).then(function (c) { if (c.exists && c.data().portal === true) return false; return withTimeout(db.collection("portalLinks").doc(user.uid).get()).then(function (l) { return !l.exists; }); }).catch(function () { return true; });
-    }).catch(function () { return true; });
-    staffCheck.then(function (isStaff) {
-      if (isStaff) return continueBoot();
-      denied = true; cover("الحساب ده مش حساب موظف. لو أنت عميل ادخل من بوابة العملاء."); var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so); /* مافيش خروج تلقائي: الجلسة بتنتهي بس لما المستخدم يختار */
+    cover("جارٍ التحقق من صلاحيات حساب الموظف…");
+    // لا نثق بعلامة STAFF المحلية؛ قد تبقى بعد سحب العضوية. يجب تأكيد المستند من الخادم.
+    var staffCheck = withTimeout(db.collection("staff").doc(user.uid).get({ source: "server" })).then(function (d) {
+      if (d.exists) { origSet.call(ls, STAFF, user.uid); return { staff: true }; }
+      origRemove.call(ls, STAFF); return { staff: false };
+    }).catch(function (e) {
+      origRemove.call(ls, STAFF);
+      return { staff: false, unavailable: true, error: e };
+    });
+    staffCheck.then(function (result) {
+      if (result.staff) return continueBoot();
+      denied = true;
+      cover(result.unavailable ? "تعذّر التحقق من عضوية الموظف من الخادم. اتصل بالإنترنت ثم أعد المحاولة." : "الحساب ده غير مصرح له بدخول لوحة الورشة. لو أنت عميل ادخل من بوابة العملاء.");
+      var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so); /* لا تُفتح البيانات عند تعذر إثبات العضوية */
     });
     function continueBoot() {
     var quick = hydrated && recent;
@@ -629,10 +646,10 @@
   firebase.initializeApp(CFG);
   try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {}); } catch (e) {}
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {} // اطلب تخزين دائم عشان المتصفح مايمسحش الجلسة
-  if (!isLogin && !ls.getItem(HYD)) cover("جاري تحميل بيانات الورشة…"); // أول مرة بس
+  if (!isLogin) cover("جارٍ التحقق من صلاحيات حساب الموظف…");
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
-    if (!u) { if (denied) return; if (navigator.onLine === false && ls.getItem(HYD)) { ready = false; uncover(); return; }
+    if (!u) { if (denied) return; if (navigator.onLine === false) { ready = false; cover("يلزم اتصال الإنترنت والتحقق من حساب الموظف قبل فتح بيانات النظام."); return; }
       // الجلسة اتمسحت من المتصفح بدون ما المستخدم يعمل خروج؟ جرّب الدخول الصامت من مدير كلمات المرور قبل ما نروح لصفحة الدخول
       loadScript("wf-session.js").then(function () { return window.WfSession ? WfSession.silent(firebase.auth()) : null; }).then(function (r) { if (!r) location.replace("login.html"); }); return; }
     boot(u);

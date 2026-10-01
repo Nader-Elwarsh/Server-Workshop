@@ -2,30 +2,74 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isStaff() { return signedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid)); }
-    function own(cid) {
-      return signedIn() && (cid == request.auth.uid
-        || (exists(/databases/$(database)/documents/portalLinks/$(request.auth.uid))
-            && cid == get(/databases/$(database)/documents/portalLinks/$(request.auth.uid)).data.customerId));
+
+    // وجود مستند العضوية هو مصدر التفويض الوحيد؛ لا تمنح القواعد أي عميل حق إنشاء هذا المستند.
+    function isStaff() {
+      return signedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
     }
 
-    match /staff/{uid} { allow read: if signedIn() && request.auth.uid == uid; }
+    function linkRef() {
+      return /databases/$(database)/documents/portalLinks/$(request.auth.uid);
+    }
 
-    match /portal/{doc} { allow read: if signedIn(); allow write: if isStaff(); }
+    // الحساب المرتبط يعتمد على portalLinks فقط. الرابط المعطل (بعد استعادة كلمة السر)
+    // لا يستطيع الرجوع إلى سجل customers/{uid} القديم لمجرد أن المعرّف يساوي UID.
+    function own(customerId) {
+      return signedIn() && (
+        exists(linkRef())
+          ? (get(linkRef()).data.get('disabled', false) != true
+              && get(linkRef()).data.customerId == customerId)
+          : customerId == request.auth.uid
+      );
+    }
+
+    function ownsDevice(customerId, deviceId) {
+      return deviceId == '' || (
+        deviceId is string
+        && exists(/databases/$(database)/documents/devices/$(deviceId))
+        && get(/databases/$(database)/documents/devices/$(deviceId)).data.customerId == customerId
+        && own(customerId)
+      );
+    }
+
+    function orderRef(orderId) {
+      return /databases/$(database)/documents/portalOrders/$(orderId);
+    }
+
+    function completedOrderForCustomer(customerId, orderId) {
+      return orderId is string
+        && exists(orderRef(orderId))
+        && get(orderRef(orderId)).data.customerId == customerId
+        && get(orderRef(orderId)).data.status == 'مكتمل'
+        && own(customerId);
+    }
+
+    // العضوية تُدار من بيئة موثوقة (Firebase Console/Admin SDK)، لا من عميل ولا من موظف عادي.
+    match /staff/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /portal/{doc} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
 
     match /portalLinks/{uid} {
       allow read, write: if isStaff();
       allow read: if signedIn() && request.auth.uid == uid;
+      // العميل يستطيع فقط إنهاء تغيير كلمة المرور الإجباري، ولا يغيّر هوية الربط أو تعطيله.
       allow update: if signedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChange'])
         && request.resource.data.mustChange == false;
     }
 
-    match /phoneIndex/{p} {
+    match /phoneIndex/{phone} {
+      // أبقينا البحث الدقيق مطلوبًا لمسار تسجيل الدخول بالهاتف الحالي؛ list محظور.
+      // ملاحظة: قيمة email/uid المقروءة مباشرة ستتطلب Cloud Function لإخفائها بالكامل.
       allow get: if true;
       allow list: if false;
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['email','uid']);
+        && request.resource.data.keys().hasOnly(['email', 'uid']);
       allow update, delete: if isStaff();
     }
 
@@ -33,36 +77,49 @@ service cloud.firestore {
       allow read, write: if isStaff();
       allow read: if own(id);
       allow create: if own(id) && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['name','phone','email','mainAddress','extraAddress','portal','createdAt','updatedAt']);
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'mainAddress', 'extraAddress', 'portal', 'createdAt', 'updatedAt']);
       allow update: if own(id) && resource.data.portal == true && request.resource.data.portal == true
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','email','mainAddress','extraAddress','updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'mainAddress', 'extraAddress', 'updatedAt']);
     }
+
     match /devices/{id} {
       allow read, write: if isStaff();
       allow read: if own(resource.data.customerId);
       allow create: if own(request.resource.data.customerId) && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['customerId','addressKey','type','category','brand','model','desc','photo','portal','createdAt','updatedAt']);
+        && request.resource.data.keys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt']);
       allow update: if own(resource.data.customerId) && own(request.resource.data.customerId) && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['customerId','addressKey','type','category','brand','model','desc','photo','portal','createdAt','updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt']);
     }
+
     match /portalRequests/{id} {
       allow read, write: if isStaff();
       allow read: if own(resource.data.customerId);
-      allow create: if own(request.resource.data.customerId) && request.resource.data.handled == false && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['customerId','deviceId','fault','visit','executionPlace','note','handled','portal','createdAt']);
+      allow create: if own(request.resource.data.customerId)
+        && request.resource.data.handled == false && request.resource.data.portal == true
+        && ownsDevice(request.resource.data.customerId, request.resource.data.get('deviceId', ''))
+        && request.resource.data.keys().hasOnly(['customerId', 'deviceId', 'fault', 'visit', 'executionPlace', 'note', 'handled', 'portal', 'createdAt']);
     }
+
     match /portalOrders/{id} {
+      // نسخة عرض من أمر الشغل؛ العميل قراءة فقط، والتطبيق (عميل الويب) لا ينشئها ولا يغيّرها.
       allow read, write: if isStaff();
       allow read: if own(resource.data.customerId);
     }
+
     match /portalComplaints/{id} {
       allow read, write: if isStaff();
       allow read: if own(resource.data.customerId);
-      allow create: if own(request.resource.data.customerId) && request.resource.data.status == 'جديد' && request.resource.data.portal == true
-        && own(get(/databases/$(database)/documents/portalOrders/$(request.resource.data.orderId)).data.customerId)
-        && get(/databases/$(database)/documents/portalOrders/$(request.resource.data.orderId)).data.status == 'مكتمل'
-        && request.resource.data.keys().hasOnly(['customerId','orderId','orderNo','text','status','reply','portal','createdAt']);
+      allow create: if own(request.resource.data.customerId)
+        && request.resource.data.status == 'جديد' && request.resource.data.portal == true
+        && request.resource.data.reply == ''
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 5 && request.resource.data.text.size() <= 1000
+        && completedOrderForCustomer(request.resource.data.customerId, request.resource.data.orderId)
+        && request.resource.data.customerId == get(orderRef(request.resource.data.orderId)).data.customerId
+        && request.resource.data.orderNo == get(orderRef(request.resource.data.orderId)).data.no
+        && request.resource.data.keys().hasOnly(['customerId', 'orderId', 'orderNo', 'text', 'status', 'reply', 'portal', 'createdAt']);
     }
+
     match /portalQuestions/{id} {
       allow read, write: if isStaff();
       allow read: if own(resource.data.customerId);
@@ -70,19 +127,27 @@ service cloud.firestore {
         && request.resource.data.status == 'جديد'
         && request.resource.data.published == false
         && request.resource.data.answer == ''
-        && request.resource.data.text is string && request.resource.data.text.size() <= 1500
-        && request.resource.data.keys().hasOnly(['customerId','customerName','deviceId','deviceLabel','text','status','answer','published','postId','portal','createdAt']);
+        && request.resource.data.text is string && request.resource.data.text.size() >= 5 && request.resource.data.text.size() <= 1500
+        && ownsDevice(request.resource.data.customerId, request.resource.data.get('deviceId', ''))
+        && request.resource.data.keys().hasOnly(['customerId', 'customerName', 'deviceId', 'deviceLabel', 'text', 'status', 'answer', 'published', 'postId', 'portal', 'createdAt']);
     }
+
     match /portalSuggestions/{id} {
       allow read, write: if isStaff();
       allow read: if own(resource.data.by);
       allow create: if own(request.resource.data.by) && request.resource.data.status == 'pending'
-        && request.resource.data.keys().hasOnly(['kind','value','parent','by','status','createdAt']);
+        && request.resource.data.keys().hasOnly(['kind', 'value', 'parent', 'by', 'status', 'createdAt']);
     }
+
     match /portalPosts/{id} {
       allow read: if resource.data.published == true;
       allow read, write: if isStaff();
     }
-    match /{document=**} { allow read, write: if isStaff(); }
+
+    // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من
+    // تصعيد صلاحياته أو إضافة موظف آخر عبر القاعدة العامة.
+    match /{collection}/{document=**} {
+      allow read, write: if isStaff() && collection != 'staff';
+    }
   }
 }
