@@ -98,8 +98,8 @@
   }
 
   // بصمة المحتوى: لو ماتغيّرتش مانعيدش رسم الشريط (عشان الحركة ماتتقطعش)
-  function signature(c, items) {
-    return JSON.stringify([c.mode, c.speed, c.dismissible, c.controls, c.rev, items.map(function (i) { return [i.text, i.icon, i.type, i.link]; })]);
+  function signature(c, items, simple) {
+    return JSON.stringify([!!simple, c.mode, c.speed, c.dismissible, c.controls, c.rev, items.map(function (i) { return [i.text, i.icon, i.type, i.link]; })]);
   }
 
   function chipHtml(it, o) {
@@ -111,10 +111,11 @@
     return '<span class="tk-i tk-t-' + it.type + '">' + inner + "</span>";
   }
 
-  function ctlHtml(mode, n, dismissible, controls) {
+  // simple=true (واجهة العميل): زر الإغلاق ✕ فقط، من غير إيقاف مؤقت ولا أسهم
+  function ctlHtml(mode, n, dismissible, controls, simple) {
     if (!controls) return "";
-    var b = '<button type="button" class="tk-b" data-a="pp" aria-pressed="false" aria-label="إيقاف مؤقت للقراءة">⏸</button>';
-    if (mode === "scroll" || n > 1) {
+    var b = simple ? "" : '<button type="button" class="tk-b" data-a="pp" aria-pressed="false" aria-label="إيقاف مؤقت للقراءة">⏸</button>';
+    if (!simple && (mode === "scroll" || n > 1)) {
       b += '<button type="button" class="tk-b" data-a="next" aria-label="التالي">‹</button><button type="button" class="tk-b" data-a="prev" aria-label="السابق">›</button>';
     }
     if (dismissible) b += '<button type="button" class="tk-b tk-x" data-a="x" aria-label="إخفاء الشريط">✕</button>';
@@ -124,7 +125,7 @@
   // HTML الشريط (نقي بدون DOM) — mode: scroll | rotate
   function buildHtml(c, items, o) {
     o = o || {};
-    var ctl = ctlHtml(c.mode, items.length, !!o.dismissible, o.controls !== false);
+    var ctl = ctlHtml(c.mode, items.length, !!o.dismissible, o.controls !== false, !!o.simple);
     if (c.mode === "rotate") {
       return '<div class="tk tk-rot" role="region" aria-label="إعلانات الورشة"><div class="tk-view" aria-live="polite">' +
         chipHtml(items[0], { clickable: o.clickable }) + "</div>" + ctl + "</div>";
@@ -193,9 +194,9 @@
     st.w = w;
   }
 
-  function startScroll(el, c) {
+  function startScroll(el, c, simple) {
     var view = el.querySelector(".tk-view"), track = el.querySelector(".tk-track");
-    var st = el._tk = { x: 0, w: 0, manual: false, hover: false, drag: null, until: 0, last: 0, raf: 0, suppress: false, speed: SPEEDS[c.speed] || SPEEDS.normal, mode: "scroll" };
+    var st = el._tk = { x: 0, w: 0, manual: false, hover: false, drag: null, until: 0, last: 0, raf: 0, suppress: false, speed: SPEEDS[c.speed] || SPEEDS.normal, mode: "scroll", simple: !!simple };
     function wrap() { if (st.w) { st.x = st.x % st.w; if (st.x > 0) st.x -= st.w; } }
     function apply() { track.style.transform = "translate3d(" + st.x.toFixed(1) + "px,0,0)"; }
     function frame(ts) {
@@ -217,7 +218,7 @@
     function end(e) {
       var d = st.drag; if (!d || d.id !== e.pointerId) return; st.drag = null;
       if (d.moved) { st.suppress = true; setTimeout(function () { st.suppress = false; }, 60); st.until = (root.performance ? root.performance.now() : 0) + GRACE; }
-      else if (e.type === "pointerup" && !(e.target.closest && e.target.closest("button"))) setPaused(el, !st.manual); // ضغطة على الشريط = إيقاف/متابعة
+      else if (!st.simple && e.type === "pointerup" && !(e.target.closest && e.target.closest("button"))) setPaused(el, !st.manual); // ضغطة على الشريط = إيقاف/متابعة
     }
     view.addEventListener("pointerup", end); view.addEventListener("pointercancel", end);
     el.addEventListener("pointerenter", function (e) { if (e.pointerType === "mouse") st.hover = true; });
@@ -229,9 +230,9 @@
     st.raf = root.requestAnimationFrame(frame);
   }
 
-  function startRotate(el, items, clickable, slow) {
+  function startRotate(el, items, clickable, slow, simple) {
     var view = el.querySelector(".tk-view");
-    var st = el._tk = { idx: 0, manual: false, hover: false, drag: null, raf: 0, mode: "rotate" };
+    var st = el._tk = { idx: 0, manual: false, hover: false, drag: null, raf: 0, mode: "rotate", simple: !!simple };
     function show(i) { st.idx = (i + items.length) % items.length; view.innerHTML = chipHtml(items[st.idx], { clickable: clickable }); }
     st.nudge = function (dir) { if (items.length > 1) show(st.idx + (dir > 0 ? 1 : -1)); };
     view.addEventListener("pointerdown", function (e) { st.drag = { id: e.pointerId, sx: e.clientX }; });
@@ -239,7 +240,7 @@
       var d = st.drag; if (!d || d.id !== e.pointerId) return; st.drag = null;
       var dx = e.clientX - d.sx;
       if (e.type === "pointerup" && Math.abs(dx) > SWIPE) { st.suppress = true; setTimeout(function () { st.suppress = false; }, 60); st.nudge(dx < 0 ? 1 : -1); }
-      else if (e.type === "pointerup" && Math.abs(dx) <= MOVE && !(e.target.closest && e.target.closest("button"))) setPaused(el, !st.manual);
+      else if (!st.simple && e.type === "pointerup" && Math.abs(dx) <= MOVE && !(e.target.closest && e.target.closest("button"))) setPaused(el, !st.manual);
     }
     view.addEventListener("pointerup", end); view.addEventListener("pointercancel", end);
     el.addEventListener("pointerenter", function (e) { if (e.pointerType === "mouse") st.hover = true; });
@@ -257,7 +258,8 @@
     var reduce = false;
     try { reduce = !!(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
     var eff = { mode: (reduce && c.mode === "scroll") ? "rotate" : c.mode, speed: c.speed, dismissible: c.dismissible, controls: c.controls, rev: c.rev };
-    var sig = signature(eff, items) + (ctx.preview ? "|p" : "");
+    var simple = ctx.simple !== false; // الافتراضي: واجهة العميل بدون إيقاف/أسهم (ctx.simple=false بس لو احتجنا التحكم الكامل)
+    var sig = signature(eff, items, simple) + (ctx.preview ? "|p" : "");
     if (el._tkSig === sig && !ctx.force) return;
     teardown(el);
     el._tkSig = sig;
@@ -266,8 +268,8 @@
     injectCss();
     el.style.display = ""; el.classList.remove("tk-paused");
     var clickable = typeof ctx.onLink === "function";
-    el.innerHTML = buildHtml(eff, items, { clickable: clickable, dismissible: dismissible });
-    if (eff.mode === "rotate") startRotate(el, items, clickable, reduce); else startScroll(el, eff);
+    el.innerHTML = buildHtml(eff, items, { clickable: clickable, dismissible: dismissible, simple: simple });
+    if (eff.mode === "rotate") startRotate(el, items, clickable, reduce, simple); else startScroll(el, eff, simple);
     el.onclick = function (e) {
       var tg = e.target && e.target.closest ? e.target : null; if (!tg || !el._tk) return;
       var st = el._tk, a = tg.closest("[data-a]");

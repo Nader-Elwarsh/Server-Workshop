@@ -82,4 +82,18 @@ const T=require('./portal-ticker.js');
   const ho=T.buildHtml(one,one.items,{});
   assert.ok(ho.includes('data-a="pp"')&&!ho.includes('data-a="next"'),'a single rotating message needs no next/prev');
 }
+
+// واجهة العميل (simple): زر الإغلاق فقط — بدون إيقاف مؤقت ولا أسهم
+{
+  const c=T.sanitize({enabled:true,mode:'scroll',items:[{text:'أ'},{text:'ب'}]});
+  const simple=T.buildHtml(c,c.items,{dismissible:true,simple:true});
+  assert.ok(!simple.includes('data-a="pp"')&&!simple.includes('data-a="next"')&&!simple.includes('data-a="prev"'),'customer view has no pause or arrows');
+  assert.ok(simple.includes('data-a="x"'),'customer view keeps the close button');
+  const full=T.buildHtml(c,c.items,{dismissible:true});
+  assert.ok(full.includes('data-a="pp"')&&full.includes('data-a="next"'),'full controls still available when simple is off');
+  assert.notStrictEqual(T.signature(c,c.items,true),T.signature(c,c.items,false),'signature differs by mode');
+  const portal=require('fs').readFileSync('portal.html','utf8');
+  assert.ok(/pendTab/.test(portal)&&/if\(pendTab\)\{tab=pendTab/.test(portal),'guest tab-link remembers target tab and opens it after login');
+  assert.ok(/else\{pendTab=tn;mode=INV\?"login":"signup";showAuth\(\)/.test(portal),'guest clicking a tab link gets the signup/login screen, not nothing');
+}
 console.log('portal-ticker-tests: PASS');
