@@ -17,8 +17,14 @@ function restorePartsIntoStock(stock,requests){
 function deleteCustomerRecord(cid){
   const c=arr(K.c).find(x=>x.id===cid);if(!c)return;
   if(arr(K.d).some(d=>d.customerId===cid)||arr(K.r).some(r=>r.customerId===cid)){alert("لا يمكن حذف العميل الآن لأن له أجهزة أو أوامر شغل مرتبطة به. احذف البيانات المرتبطة أولاً أو استخدم الحذف العام.");return}
-  if(!confirm(`حذف العميل «${c.name||""}» نهائيًا؟`))return;
-  if(!commitStorage({[K.c]:arr(K.c).filter(x=>x.id!==cid)}))return;
+  const linkedTasks=arr(K.tasks).filter(t=>t.customerId===cid);
+  // عميل عنده حساب بوابة: الحذف هيقفل عليه الدخول. نوضّح ده قبل التأكيد.
+  const portalNote=(c.portal===true||c.portalUid)?"\n\n🌐 العميل ده عنده حساب في بوابة العملاء، وبعد الحذف مش هيقدر يدخل ببياناته.":"";
+  if(!confirm(`حذف العميل «${c.name||""}» نهائيًا؟${linkedTasks.length?`\n(هيتفك ربط ${linkedTasks.length} مهمة بيه وتفضل موجودة.)`:""}${portalNote}`))return;
+  // المهام المرتبطة بالعميل بتتفك منه (بدل ما تفضل بتشاور على عميل مش موجود).
+  const values={[K.c]:arr(K.c).filter(x=>x.id!==cid)};
+  if(linkedTasks.length)values[K.tasks]=arr(K.tasks).map(t=>t.customerId===cid?{...t,customerId:"",requestId:""}:t);
+  if(!commitStorage(values))return;
   window.auditLog?.("حذف", "عميل", cid, c.name||"");
   renderCustomers();
 }

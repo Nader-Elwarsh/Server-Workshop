@@ -27,8 +27,9 @@ async function dismissPendingCall(callId){
   if(!confirm("متأكد إنك عايز تتجاهل المكالمة دي؟ لو فيها تسجيل صوتي هيتمسح.")) return;
   let list=arr(K.pc);
   let entry=list.find(x=>x.id===callId);
+  // نمسح السجل الأول، ولو نجح نمسح التسجيل الصوتي (قبل كده التسجيل كان بيتمسح حتى لو حفظ القايمة فشل).
+  if(!put(K.pc, list.filter(x=>x.id!==callId))) return;
   if(entry&&entry.audioRef&&window.ImageStore){try{await window.ImageStore.delete(entry.audioRef)}catch(e){}}
-  put(K.pc, list.filter(x=>x.id!==callId));
   renderPendingCalls();
 }
 document.addEventListener("DOMContentLoaded", async ()=>{ if(typeof runMigrations==="function") await runMigrations(); renderPendingCalls(); });

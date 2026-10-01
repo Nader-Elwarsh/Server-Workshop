@@ -25,7 +25,8 @@ function saveTask(){
     requestId:document.getElementById("taskRequest")?.value||"",
     completed:false,createdAt:new Date().toISOString()
   };
-  put(K.tasks,taskRows().concat(t));clearTaskForm();renderTasks();
+  // الفورم ماتتمسحش لو الحفظ فشل (قبل كده المستخدم كان بيخسر اللي كتبه).
+  if(!put(K.tasks,arr(K.tasks).concat(t)))return;clearTaskForm();renderTasks();
 }
 function clearTaskForm(){
   ["taskTitle","taskNote","taskTime","taskCustomer","taskRequest"].forEach(idv=>{let e=document.getElementById(idv);if(e)e.value=""});
@@ -33,12 +34,12 @@ function clearTaskForm(){
   let p=document.getElementById("taskPriority");if(p)p.value="عادية";
 }
 function toggleTask(idv){
-  let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;t.completed=!t.completed;t.completedAt=t.completed?new Date().toISOString():"";put(K.tasks,a);renderTasks();
+  let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;t.completed=!t.completed;t.completedAt=t.completed?new Date().toISOString():"";if(!put(K.tasks,a))return;renderTasks();
 }
 function deleteTask(idv){
   let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;
   if(!confirm(`حذف المهمة «${t.title||""}»؟`))return;
-  put(K.tasks,a.filter(x=>x.id!==idv));renderTasks();
+  if(!put(K.tasks,a.filter(x=>x.id!==idv)))return;renderTasks();
 }
 function editTask(idv){
   let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;
@@ -47,8 +48,14 @@ function editTask(idv){
   let date=prompt("التاريخ YYYY-MM-DD:",t.date||localDateKey(new Date()));if(date===null)return;
   let time=prompt("الوقت HH:MM (اختياري):",t.time||"");if(time===null)return;
   let priority=prompt("الأولوية (عادية / عالية / عاجلة):",t.priority||"عادية");if(priority===null)return;
-  t.title=title.trim()||t.title;t.note=note.trim();t.date=date.trim()||t.date;t.time=time.trim();t.priority=priority.trim()||t.priority;
-  put(K.tasks,a);renderTasks();
+  // قبل كده أي نص كان بيتحفظ كتاريخ/وقت/أولوية، فالمهمة كانت بتتلخبط في الترتيب وفلتر «متأخرة». دلوقتي بنتحقق ونقبل الأرقام العربية.
+  const digits=v=>String(v||"").replace(/[٠-٩]/g,c=>c.charCodeAt(0)-1632).replace(/[۰-۹]/g,c=>c.charCodeAt(0)-1776).trim();
+  date=digits(date);time=digits(time);priority=String(priority||"").trim();
+  if(date){const d=new Date(date+"T12:00:00");if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(d.getTime())||localDateKey(d)!==date)return alert("التاريخ غير صحيح. اكتبه بالشكل 2026-10-25.")}
+  if(time&&!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time))return alert("الوقت غير صحيح. اكتبه بالشكل 14:30 أو سيبه فاضي.");
+  if(priority&&!["عادية","عالية","عاجلة"].includes(priority))return alert("الأولوية لازم تكون: عادية أو عالية أو عاجلة.");
+  t.title=title.trim()||t.title;t.note=note.trim();t.date=date||t.date;t.time=time?time.padStart(5,"0"):"";t.priority=priority||t.priority;
+  if(!put(K.tasks,a))return;renderTasks();
 }
 function renderTasks(){
   let el=document.getElementById("taskList");if(!el)return;
