@@ -66,6 +66,7 @@
       mode: t.mode === "rotate" ? "rotate" : "scroll",
       speed: SPEEDS[t.speed] ? t.speed : "normal",
       dismissible: t.dismissible !== false, // الافتراضي: العميل يقدر يقفله
+      controls: t.controls !== false, // إظهار أزرار التوقيف/الأسهم افتراضيًا
       rev: Number(t.rev) || 0,
       items: items
     };
@@ -98,7 +99,7 @@
 
   // بصمة المحتوى: لو ماتغيّرتش مانعيدش رسم الشريط (عشان الحركة ماتتقطعش)
   function signature(c, items) {
-    return JSON.stringify([c.mode, c.speed, c.dismissible, c.rev, items.map(function (i) { return [i.text, i.icon, i.type, i.link]; })]);
+    return JSON.stringify([c.mode, c.speed, c.dismissible, c.controls, c.rev, items.map(function (i) { return [i.text, i.icon, i.type, i.link]; })]);
   }
 
   function chipHtml(it, o) {
@@ -110,7 +111,8 @@
     return '<span class="tk-i tk-t-' + it.type + '">' + inner + "</span>";
   }
 
-  function ctlHtml(mode, n, dismissible) {
+  function ctlHtml(mode, n, dismissible, controls) {
+    if (!controls) return "";
     var b = '<button type="button" class="tk-b" data-a="pp" aria-pressed="false" aria-label="إيقاف مؤقت للقراءة">⏸</button>';
     if (mode === "scroll" || n > 1) {
       b += '<button type="button" class="tk-b" data-a="next" aria-label="التالي">‹</button><button type="button" class="tk-b" data-a="prev" aria-label="السابق">›</button>';
@@ -122,7 +124,7 @@
   // HTML الشريط (نقي بدون DOM) — mode: scroll | rotate
   function buildHtml(c, items, o) {
     o = o || {};
-    var ctl = ctlHtml(c.mode, items.length, !!o.dismissible);
+    var ctl = ctlHtml(c.mode, items.length, !!o.dismissible, o.controls !== false);
     if (c.mode === "rotate") {
       return '<div class="tk tk-rot" role="region" aria-label="إعلانات الورشة"><div class="tk-view" aria-live="polite">' +
         chipHtml(items[0], { clickable: o.clickable }) + "</div>" + ctl + "</div>";
@@ -250,11 +252,11 @@
   function mount(el, t, ctx) {
     if (!el) return;
     ctx = ctx || {};
-    var c = sanitize(t) || { enabled: false, mode: "scroll", speed: "normal", dismissible: true, rev: 0, items: [] };
+    var c = sanitize(t) || { enabled: false, mode: "scroll", speed: "normal", dismissible: true, controls: true, rev: 0, items: [] };
     var items = ctx.forceShow ? c.items.filter(function (i) { return i.enabled !== false && i.text; }) : (c.enabled ? c.items.filter(function (i) { return isLive(i, ctx); }) : []);
     var reduce = false;
     try { reduce = !!(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
-    var eff = { mode: (reduce && c.mode === "scroll") ? "rotate" : c.mode, speed: c.speed, dismissible: c.dismissible, rev: c.rev };
+    var eff = { mode: (reduce && c.mode === "scroll") ? "rotate" : c.mode, speed: c.speed, dismissible: c.dismissible, controls: c.controls, rev: c.rev };
     var sig = signature(eff, items) + (ctx.preview ? "|p" : "");
     if (el._tkSig === sig && !ctx.force) return;
     teardown(el);

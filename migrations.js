@@ -110,14 +110,19 @@
     let s = get(K.s, null) || {};
     let fallbackWallet = (Array.isArray(s.wallets) && s.wallets[0]) || "محفظتي الشخصية";
     let existing = arr(K.wtx);
-    let migrated = oldExpenses.map(e => ({
-      id: id(), refKey: null, manualOverride: true, deleted: false, type: "out",
+    // مرجع ثابت يمنع خصم نفس المصروف مرتين إذا أُعيد تشغيل الترحيل
+    // بعد استرجاع نسخة احتياطية أو بسبب نسخة قديمة من التطبيق.
+    let migrated = oldExpenses.filter(e => !existing.some(x => x && x.source === "migrated-expense" && (x.legacyExpenseId === e.id || x.refKey === "legacy-expense-" + e.id))).map(e => {
+      let ref = "legacy-expense-" + (e.id || id());
+      return {
+      id: ref, refKey: ref, legacyExpenseId: e.id || "", manualOverride: true, deleted: false, type: "out",
       amount: +e.amount || 0, wallet: fallbackWallet, category: "مصروف تشغيل",
       subCategory: e.category || "أخرى",
       date: e.date || (e.createdAt || "").slice(0, 10) || localDateKey(new Date()),
       time: "00:00", reason: e.category || "مصروف تشغيل", note: e.note || "",
       source: "migrated-expense", createdAt: e.createdAt || new Date().toISOString()
-    }));
+      };
+    });
     put(K.wtx, existing.concat(migrated));
   }
 

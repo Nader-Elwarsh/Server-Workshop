@@ -132,7 +132,8 @@
 <label>طريقة العرض<select id="tkMode" data-tkm="mode"><option value="scroll">شريط متحرك (زي الأخبار)</option><option value="rotate">رسالة بعد رسالة</option></select></label>
 <label>السرعة (للشريط المتحرك)<select id="tkSpeed" data-tkm="speed"><option value="slow">بطيء</option><option value="normal">عادي</option><option value="fast">سريع</option></select></label>
 </div>
-<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkDis" data-tkm="dismissible" style="width:22px;height:22px;margin:0"> يقدر العميل يقفل الشريط بزر ✕ (بيرجع لما تتغيّر الرسائل). ملحوظة: العميل دايمًا يقدر يوقفه مؤقتًا بلمسة ويحرّكه بإصبعه أو الأسهم</label>
+<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkDis" data-tkm="dismissible" style="width:22px;height:22px;margin:0"> يقدر العميل يقفل الشريط بزر ✕ (بيرجع لما تتغيّر الرسائل)</label>
+<label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column;margin:8px 0"><input type="checkbox" id="tkCtl" data-tkm="controls" style="width:22px;height:22px;margin:0"> إظهار أزرار التحكم للعميل (إيقاف/متابعة والأسهم)</label>
 <h3 style="font-size:14px;margin:12px 0 4px">📝 الرسائل</h3>
 <div id="tkItems"></div>
 <div class="pa-actions"><button type="button" class="secondary" data-act="tkAdd" data-t="">➕ رسالة جديدة</button><button type="button" class="secondary" data-act="tkAdd" data-t="welcome">👋 ترحيب جاهز</button><button type="button" class="secondary" data-act="tkAdd" data-t="offer">🎁 عرض</button><button type="button" class="secondary" data-act="tkAdd" data-t="alert">⚠️ تنبيه</button></div>
@@ -302,7 +303,7 @@ $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
 var TKD=null,tkDirty=false,tkT=null,PTK=null;
 var TK_LINKS=[["","بدون رابط"],["tab:mine","🧾 يفتح «طلباتي» (طلب صيانة)"],["tab:learn","📰 يفتح «نصايح»"],["tab:devices","🔧 يفتح «أجهزتي»"],["tab:ask","❓ يفتح «اسأل الورشة»"],["signup","📝 يفتح شاشة التسجيل (للزوار)"],["custom","🔗 رابط خارجي / واتساب / اتصال…"]];
 var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في الورشة الفنية — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
-function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:true,rev:0,items:[]}}
+function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:true,controls:true,rev:0,items:[]}}
 function tkLoad(){TKD=PTK.sanitize(window.settings().portalTicker)||tkBlank();tkDirty=false}
 function tkNew(tpl){return Object.assign({id:"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:"",icon:"",type:"info",enabled:true,audience:"all",start:"",end:"",link:""},tpl||{})}
 function tkOpts(map,sel){return Object.keys(map).map(function(k){var l=typeof map[k]==="string"?map[k]:(map[k].icon+" "+map[k].label);return'<option value="'+esc(k)+'"'+(k===sel?" selected":"")+'>'+esc(l)+'</option>'}).join("")}
@@ -318,7 +319,7 @@ function tkPreview(){var el=$("tkPrev");PTK.mount(el,TKD,{forceShow:true,preview
 function tkStatus(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank(),g=PTK.visible(c,{member:false}).length,m=PTK.visible(c,{member:true}).length;
 $("tkStatus").innerHTML=c.enabled?"🟢 <b>الشريط شغّال</b> — ظاهر دلوقتي: "+g+" رسالة للزوار، "+m+" رسالة للعملاء المسجّلين":"⚪ <b>الشريط مقفول</b> — العملاء مش شايفين أي حاجة"+(c.items.length?" ("+c.items.length+" رسالة محفوظة)":"");
 $("tkQuick").textContent=c.enabled?"⏸ إخفاء الشريط الآن":"▶ تشغيل الشريط الآن"}
-function rTk(){if(!PTK)return;if(!TKD)tkLoad();$("tkOn").checked=!!TKD.enabled;$("tkMode").value=TKD.mode;$("tkSpeed").value=TKD.speed;$("tkDis").checked=!!TKD.dismissible;rTkItems();tkPreview();tkStatus()}
+function rTk(){if(!PTK)return;if(!TKD)tkLoad();$("tkOn").checked=!!TKD.enabled;$("tkMode").value=TKD.mode;$("tkSpeed").value=TKD.speed;$("tkDis").checked=!!TKD.dismissible;$("tkCtl").checked=TKD.controls!==false;rTkItems();tkPreview();tkStatus()}
 function tkTouch(){tkDirty=true;$("tkMsg").textContent="⚠️ فيه تعديلات لسه ما اتحفظتش — اضغط «حفظ ونشر».";clearTimeout(tkT);tkT=setTimeout(tkPreview,150)}
 function tkField(t){var f=t.dataset.f,it=TKD.items.find(function(x){return x.id===t.dataset.tk});if(!it)return;var v=t.type==="checkbox"?t.checked:t.value;
 if(f==="linksel"){var w=[].slice.call(document.querySelectorAll("[data-clw]")).filter(function(x){return x.dataset.clw===it.id})[0];if(v==="custom"){it.link="";if(w){w.classList.remove("hidden");var i=w.querySelector("input");if(i)i.value=""}}else{it.link=v;if(w)w.classList.add("hidden")}}

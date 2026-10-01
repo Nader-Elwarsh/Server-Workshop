@@ -69,11 +69,15 @@ const T=require('./portal-ticker.js');
 {
   assert.strictEqual(T.sanitize({enabled:true,items:[{text:'أ'}]}).dismissible,true,'dismissible by default');
   assert.strictEqual(T.sanitize({enabled:true,dismissible:false,items:[{text:'أ'}]}).dismissible,false,'admin can disable closing');
+  assert.strictEqual(T.sanitize({enabled:true,items:[{text:'أ'}]}).controls,true,'controls are visible by default');
+  assert.strictEqual(T.sanitize({enabled:true,controls:false,items:[{text:'أ'}]}).controls,false,'admin can hide controls');
   const c=T.sanitize({enabled:true,items:[{text:'أ'},{text:'ب'}]});
   const h=T.buildHtml(c,c.items,{dismissible:true});
   ['pp','next','prev','x'].forEach(a=>assert.ok(h.includes('data-a="'+a+'"'),'control '+a));
   const hn=T.buildHtml(c,c.items,{dismissible:false});
   assert.ok(!hn.includes('data-a="x"'),'no close button when closing is disabled');
+  const hidden=T.buildHtml(c,c.items,{controls:false});
+  assert.ok(!hidden.includes('data-a="pp"')&&!hidden.includes('data-a="next"'),'all controls can be hidden');
   const one=T.sanitize({enabled:true,mode:'rotate',items:[{text:'وحيدة'}]});
   const ho=T.buildHtml(one,one.items,{});
   assert.ok(ho.includes('data-a="pp"')&&!ho.includes('data-a="next"'),'a single rotating message needs no next/prev');
