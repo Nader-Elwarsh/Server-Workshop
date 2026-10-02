@@ -93,7 +93,7 @@
         ${visible.length ? `<div class="report-table-wrap"><table class="report-table-full">
           <tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>الأمر المرتبط</th><th>الفاتورة</th></tr>
           ${visible.map(m => {
-            const req = m.requestId ? arr(K.r).find(r => r.id === m.requestId) : null;
+            const req = m.requestId ? (byIdCached(K.r).get(m.requestId) || null) : null;
             return `<tr id="move-${m.id}">
               <td>${new Date(m.at).toLocaleString("ar-EG")}</td>
               <td>${esc(m.type || "—")}</td>

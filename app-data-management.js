@@ -151,6 +151,9 @@ function bytesToB64(bytes){let s="";bytes.forEach(b=>s+=String.fromCharCode(b));
 function b64ToBytes(s){const bin=atob(s),out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
 async function encryptBackupData(data,password){const enc=new TextEncoder(),salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),base=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:150000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt"]),cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,enc.encode(JSON.stringify(data)));return{_encrypted:true,algorithm:"AES-GCM",kdf:"PBKDF2-SHA-256",iterations:150000,salt:bytesToB64(salt),iv:bytesToB64(iv),ciphertext:bytesToB64(new Uint8Array(cipher))}}
 async function decryptBackupData(envelope,password){const dec=new TextDecoder(),base=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b64ToBytes(envelope.salt),iterations:envelope.iterations,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]),plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64ToBytes(envelope.iv)},key,b64ToBytes(envelope.ciphertext));return JSON.parse(dec.decode(plain))}
+// أسماء الأقسام اللي بتتفرّغ لو النسخة (القديمة) مفيهاش بياناتها: الاسترجاع استبدال كامل للبيانات، فمايفضلش جزء من الحالة الحالية متلخبط مع بيانات النسخة.
+const BACKUP_SECTION_LABELS={d:"الأجهزة",r:"أوامر الشغل",p:"قطع الغيار",m:"حركات المخزن",e:"المصاريف",tr:"الخزنة",tasks:"المهام",wtx:"حركات الحسابات",fc:"أكواد الأعطال",pc:"المكالمات المعلّقة",inv:"الفواتير",trash:"سلة المهملات",followupLog:"سجل المتابعة"};
+function backupMissingSections(data){return Object.entries(K).filter(([name,k])=>k!==K.s&&!(k in data)).map(([name,k])=>({key:k,label:BACKUP_SECTION_LABELS[name]||name}))}
 function backupSummary(data){const n=k=>Array.isArray(data[k])?data[k].length:0;return `المخطط: ${data._meta?.schemaVersion||1} — العملاء: ${n(K.c)} — الأجهزة: ${n(K.d)} — أوامر الشغل: ${n(K.r)} — قطع المخزن: ${n(K.p)} — حركات المخزن: ${n(K.m)} — حركات الحسابات: ${n(K.wtx)} — حركات الخزنة: ${n(K.tr)} — الصور/التسجيلات: ${data.images&&typeof data.images==="object"?Object.keys(data.images).length:0}`}
 function validateBackupData(data){
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("bad");
@@ -185,13 +188,14 @@ async function restoreBackupFile(input){
     try{
       let data=JSON.parse(reader.result);if(data?._encrypted){const password=prompt("اكتب كلمة مرور النسخة المشفرة:");if(!password)throw new Error("missing-password");data=await decryptBackupData(data,password)}validateBackupData(data);
       const backupSchema=data._meta?.schemaVersion||1;
-      const summary=backupSummary(data);
+      const missing=backupMissingSections(data);
+      const summary=backupSummary(data)+(missing.length?`\n\n⚠️ أقسام مش موجودة في النسخة دي وهتتفرّغ: ${missing.map(x=>x.label).join("، ")}`:"");
       oldState=captureLocalDataState();oldData=await snapshotAllData();oldImages=oldData.images;
       // ملف أمان مستقل يُنزّل قبل أي استبدال، ليظل متاحًا حتى لو حدث فشل غير متوقع.
       safetyDownloaded=downloadBackupData(oldData,"نسخة-أمان-قبل-الاسترجاع");
       if(!safetyDownloaded)throw new Error("safety-download");
       if(!confirm(`سيتم استبدال البيانات الحالية بالنسخة المختارة.\n\nمحتوى النسخة:\n${summary}\n\nتم تنزيل نسخة أمان تلقائية من الحالة الحالية قبل الاسترجاع. هل تريد المتابعة؟`)){input.value="";backupBusy=false;return} /* قبل كده الإلغاء هنا كان بيسيب backupBusy=true فالنسخ والاسترجاع بيتجمّدوا لحد ما الصفحة تتعمل لها تحديث */
-      const staged={},keys=Object.values(K);keys.forEach(k=>{if(k in data)staged[k]=data[k]});
+      const staged={},keys=Object.values(K);keys.forEach(k=>{if(k in data)staged[k]=data[k]});missing.forEach(x=>{staged[x.key]=[]});
       if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");
       if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");
       if(!commitStorage(staged))throw new Error("storage-failed");

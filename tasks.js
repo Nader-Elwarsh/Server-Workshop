@@ -75,7 +75,7 @@ function renderTasks(){
   let stats=document.getElementById("taskStats");if(stats)stats.innerHTML=`<div class="compact-stats"><div class="stat"><b>${open}</b><span>مفتوحة</span></div><div class="stat"><b>${done}</b><span>مكتملة</span></div><div class="stat"><b>${taskRows().filter(x=>!x.completed&&x.date===today).length}</b><span>مهام اليوم</span></div><div class="stat"><b>${taskRows().filter(x=>!x.completed&&x.date&&x.date<today).length}</b><span>متأخرة</span></div></div>`;
   el.innerHTML=rows.length?rows.map(t=>{
     let c=t.customerId?customerName(t.customerId):"";
-    let r=t.requestId?arr(K.r).find(x=>x.id===t.requestId):null;
+    let r=t.requestId?(byIdCached(K.r).get(t.requestId)||null):null;
     return `<div class="item record-card ${t.completed?"task-done":""}">
       <div class="card-side-actions">
         <button class="primary small-btn" type="button" data-wf-event="click" data-wf-code="toggleTask('${t.id}')">${t.completed?"↩️ إعادة فتح":"✅ مكتملة"}</button>

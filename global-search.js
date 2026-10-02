@@ -168,7 +168,7 @@
       if (!r.visit || r.closed || r.status === "مكتمل" || r.status === "ملغي") return;
       var cust = customerName(r.customerId);
       var main = "";
-      var custRec = (arr(K.c) || []).find(function (c) { return c.id === r.customerId; });
+      var custRec = window.byIdCached ? window.byIdCached(K.c).get(r.customerId) : (arr(K.c) || []).find(function (c) { return c.id === r.customerId; });
       if (custRec) main = addressText(r.addressKey === "extra" && custRec.extraAddress ? custRec.extraAddress : (custRec.mainAddress || {}));
       var hay = norm([cust, main, r.no].join(" "));
       if (hay.indexOf(q) === -1) return;

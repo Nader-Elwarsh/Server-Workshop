@@ -148,7 +148,7 @@ function renderInvoices() {
   host.innerHTML = list.map(inv => {
     const names = invoicePartNames(inv);
     return `<div class="item invoice-row">
-      <img class="invoice-thumb" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
+      <img class="invoice-thumb" loading="lazy" decoding="async" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
       <div class="invoice-meta">
         <small>${new Date(inv.at).toLocaleDateString("ar-EG")}${inv.note ? " • " + esc(inv.note) : ""}</small>
         <small>${names.length ? `🔗 ${names.map(esc).join("، ")}` : "بدون ربط بصنف"}</small>
@@ -165,7 +165,7 @@ function partLinkedInvoicesHtml(partId) {
   const linked = arr(K.inv).filter(inv => (inv.partIds || []).includes(partId)).slice().reverse();
   const linkedRows = linked.length ? linked.map(inv => `
     <div class="item invoice-row">
-      <img class="invoice-thumb" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
+      <img class="invoice-thumb" loading="lazy" decoding="async" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
       <div class="invoice-meta"><small>${new Date(inv.at).toLocaleDateString("ar-EG")}${inv.note ? " • " + esc(inv.note) : ""}</small></div>
       <button type="button" class="danger-btn mini-action" data-wf-event="click" data-wf-code="unlinkPartInvoice('${partId}','${inv.id}')">🗑️ إلغاء الربط</button>
     </div>`).join("") : `<div class="hint">لا توجد فواتير مرتبطة بهذا الصنف حتى الآن.</div>`;
@@ -189,7 +189,7 @@ function renderPartInvoiceLinkOptions(partId, filter) {
   const filtered = filter ? candidates.filter(inv => (inv.note || "").includes(filter) || new Date(inv.at).toLocaleDateString("ar-EG").includes(filter)) : candidates;
   host.innerHTML = filtered.length ? filtered.slice(0, 60).map(inv => `
     <div class="item invoice-row">
-      <img class="invoice-thumb" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
+      <img class="invoice-thumb" loading="lazy" decoding="async" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
       <div class="invoice-meta"><small>${new Date(inv.at).toLocaleDateString("ar-EG")}${inv.note ? " • " + esc(inv.note) : ""}</small></div>
       <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="linkPartInvoice('${partId}','${inv.id}')">🔗 ربط</button>
     </div>`).join("") : `<div class="hint">${filter ? "لا توجد فواتير مطابقة." : "كل الفواتير المسجّلة مرتبطة بالصنف ده فعلًا."}</div>`;

@@ -278,8 +278,23 @@
   // المتكررة على نفس البيانات (من غير أي تغيير في localStorage) ترجع من
   // كاش القراءة بدل إعادة التحليل، وده بيفرق بشكل ملموس في السرعة لما
   // يكون عدد العملاء/الأجهزة كبير.
-  function customerName(i) { return arrCached(K.c).find(x => x.id === i)?.name || "—"; }
-  function deviceName(i) { let d = arrCached(K.d).find(x => x.id === i); return d ? `${d.type} - ${d.brand}` : "—"; }
+  // فهرس id → سجل لنسخة القراءة المخزّنة. قبل كده customerName/deviceName (وكل بحث «find» جوه حلقة) كانوا بيعدّوا على كل السجلات
+  // لكل صف، يعني O(الصفوف × السجلات). الفهرس بيتبني مرة لكل نسخة بيانات ويتجدد لو الطول اتغير. للقراءة بس: ماتعدّلش السجل اللي بيرجع.
+  const idIndexCache = new WeakMap();
+  function byIdCached(k) {
+    const list = arrCached(k);
+    if (!Array.isArray(list)) return new Map();
+    let hit = idIndexCache.get(list);
+    if (!hit || hit.len !== list.length) {
+      const map = new Map();
+      for (const x of list) if (x && !map.has(x.id)) map.set(x.id, x);
+      hit = { len: list.length, map };
+      idIndexCache.set(list, hit);
+    }
+    return hit.map;
+  }
+  function customerName(i) { return byIdCached(K.c).get(i)?.name || "—"; }
+  function deviceName(i) { let d = byIdCached(K.d).get(i); return d ? `${d.type} - ${d.brand}` : "—"; }
   function addresses(c) {
     let e = c.extraAddress || {};
     let hasExtra = !!(e.center || e.village || e.street || e.address);
@@ -326,7 +341,7 @@
   }
 
   window.WorkshopData = {
-    K, get, put, commitStorage, arr, arrCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
+    K, get, put, commitStorage, arr, arrCached, byIdCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
     customerName, deviceName, addresses, addressText, defineOverride, refreshAllScreens,
     getSchemaVersion, setSchemaVersion, CURRENT_SCHEMA_VERSION, withRollback
   };
@@ -341,6 +356,7 @@
   window.wfPhoneKey = phoneKey;
   window.wfCustomerDupGroups = customerDupGroups;
   window.arrCached = arrCached;
+  window.byIdCached = byIdCached;
   window.debounce = debounce;
   // بعض الشاشات (استرجاع/حذف كل البيانات في app-data-management.js) بتكتب
   // في localStorage مباشرة برا put/commitStorage (عشان بترجع القيم الخام

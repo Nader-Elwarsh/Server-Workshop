@@ -49,5 +49,18 @@ function makeEnv(confirmAnswer){
     x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]).length,1,'restores when the customer exists');
     assert.strictEqual(JSON.parse(e.store[K.trash]).length,0);
   }
+  // 4) استرجاع نسخة قديمة (مفيهاش الخزنة ولا المحافظ): الأقسام الناقصة بتتفرّغ ومذكورة في رسالة التأكيد، والإعدادات الحالية بتفضل
+  {
+    const e=makeEnv(true),x=e.context,K=e.K;
+    e.store[K.tr]=JSON.stringify([{id:'t1',amount:50}]);e.store[K.wtx]=JSON.stringify([{id:'w1',amount:50}]);e.store[K.s]=JSON.stringify({centers:['مركز حالي']});
+    e.store[K.c]=JSON.stringify([{id:'cur',name:'عميل حالي'}]);
+    const file={text:JSON.stringify({[K.c]:[{id:'c9',name:'من النسخة'}],[K.d]:[],[K.r]:[],[K.p]:[],_meta:{schemaVersion:1}})};
+    x.restoreBackupFile({files:[file],value:'x'});await new Promise(r=>setTimeout(r,80));
+    assert.ok(/هتتفرّغ/.test(e.confirms[0])&&/الخزنة/.test(e.confirms[0])&&/حركات الحسابات/.test(e.confirms[0]),'confirmation lists the sections that will be emptied');
+    assert.strictEqual(JSON.parse(e.store[K.c])[0].id,'c9','data replaced by the backup');
+    assert.strictEqual(JSON.parse(e.store[K.tr]).length,0,'treasury emptied, not left mixed with the backup');
+    assert.strictEqual(JSON.parse(e.store[K.wtx]).length,0);
+    assert.strictEqual(JSON.parse(e.store[K.s]).centers[0],'مركز حالي','current settings are kept when the backup has none');
+  }
   console.log('backup-trash-tests: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});

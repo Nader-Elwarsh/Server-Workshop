@@ -880,7 +880,7 @@
         const loc = locationForOrder(r);
         const status = r.closed ? "مغلق" : (r.status || "—");
         const canEditStatus = !r.closed && !r.paid;
-        const cust = arr(K.c).find(x => x.id === r.customerId) || {};
+        const cust = byIdCached(K.c).get(r.customerId) || {};
         const ageInfo = requestAgeInfo(r);
         const age = ageInfo ? ageInfo.label : "";
         const totalMs=requestTotalCompletionMs(r);
