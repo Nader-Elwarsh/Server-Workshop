@@ -1,5 +1,9 @@
 {
   "name": "server-workshop",
   "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./" }
+  "assets": {
+    "directory": "./",
+    "html_handling": "none",
+    "not_found_handling": "single-page-application"
+  }
 }
