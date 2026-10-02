@@ -588,6 +588,7 @@
   function fastHint() { var u = ls.getItem(HYD); return !!u && staffFresh(u); } // قبل ما الجلسة ترجع: هل نتوقع فتح فوري؟
   function lockDenied(unavailable) {
     denied = true; ready = false;
+    if (!unavailable) { try { cover("جارٍ فتح بوابة العملاء…"); } catch (e) {} try { location.replace("portal.html"); return; } catch (e) {} }
     cover(unavailable ? "تعذّر التحقق من عضوية الموظف من الخادم. اتصل بالإنترنت ثم أعد المحاولة." : "الحساب ده غير مصرح له بدخول لوحة الورشة. لو أنت عميل ادخل من بوابة العملاء.");
     var a = document.createElement("a"); a.href = "portal.html"; a.textContent = "بوابة العملاء"; a.style.cssText = "display:block;margin-top:14px;color:#9cf"; var cv = document.getElementById("wfCloudCover"); cv.appendChild(a); var so = document.createElement("button"); so.type = "button"; so.textContent = "تسجيل الخروج والدخول بحساب موظف"; so.style.cssText = "display:block;margin:14px auto 0;padding:10px 16px;border-radius:10px;border:1px solid #9cf;background:transparent;color:#fff;font:600 15px sans-serif"; so.onclick = function () { window.wfCloudSignOut(); }; cv.appendChild(so);
   }
