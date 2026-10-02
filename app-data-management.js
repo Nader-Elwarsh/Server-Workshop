@@ -190,7 +190,7 @@ async function restoreBackupFile(input){
       // ملف أمان مستقل يُنزّل قبل أي استبدال، ليظل متاحًا حتى لو حدث فشل غير متوقع.
       safetyDownloaded=downloadBackupData(oldData,"نسخة-أمان-قبل-الاسترجاع");
       if(!safetyDownloaded)throw new Error("safety-download");
-      if(!confirm(`سيتم استبدال البيانات الحالية بالنسخة المختارة.\n\nمحتوى النسخة:\n${summary}\n\nتم تنزيل نسخة أمان تلقائية من الحالة الحالية قبل الاسترجاع. هل تريد المتابعة؟`)){input.value="";return}
+      if(!confirm(`سيتم استبدال البيانات الحالية بالنسخة المختارة.\n\nمحتوى النسخة:\n${summary}\n\nتم تنزيل نسخة أمان تلقائية من الحالة الحالية قبل الاسترجاع. هل تريد المتابعة؟`)){input.value="";backupBusy=false;return} /* قبل كده الإلغاء هنا كان بيسيب backupBusy=true فالنسخ والاسترجاع بيتجمّدوا لحد ما الصفحة تتعمل لها تحديث */
       const staged={},keys=Object.values(K);keys.forEach(k=>{if(k in data)staged[k]=data[k]});
       if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");
       if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");

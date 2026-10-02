@@ -27,6 +27,8 @@
     catch (_) { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
   }
   function now() { return Date.now(); }
+  // لوحة المفاتيح العربية بتكتب ١٢٣٤: بنوحّد الأرقام ونشيل المسافات. الأرقام السرية القديمة المتخزنة زي ما اتكتبت لسه بتتقبل (بنجرّب الصيغتين).
+  function normPin(p) { return String(p == null ? "" : p).replace(/[٠-٩]/g, function (d) { return d.charCodeAt(0) - 1632; }).replace(/[۰-۹]/g, function (d) { return d.charCodeAt(0) - 1776; }).trim(); }
   function readJSON(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || "null") || fallback; } catch (_) { return fallback; } }
   function writeJSON(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} }
   function audit(ok, reason) {
@@ -37,10 +39,17 @@
   }
   function attempts() { return readJSON(LK_ATTEMPTS, { count: 0, since: 0 }); }
   function resetAttempts() { localStorage.removeItem(LK_ATTEMPTS); }
+  // مدة الإيقاف بتتضاعف مع كل جولة محاولات خاطئة (30 ث ← دقيقة ← دقيقتين ... لحد 15 دقيقة). قبل كده كانت دايمًا 30 ثانية،
+  // يعني تخمين الرقم السري كان ممكن يتكرر كل نص دقيقة. بتتصفّر أول ما الرقم الصحيح يتكتب.
+  function cool(a) { return Math.min(900000, COOLDOWN_MS * Math.pow(2, Math.max(0, (a.level || 1) - 1))); }
+  function isLocked(a) { return a.count >= MAX_ATTEMPTS && now() - a.since < cool(a); }
+  function waitMsg(a) { var s = Math.ceil(cool(a) / 1000); return s >= 60 ? Math.round(s / 60) + " دقيقة" : s + " ثانية"; }
   function failedAttempt() {
-    var a = attempts();
-    if (!a.since || now() - a.since > COOLDOWN_MS) a = { count: 0, since: now() };
+    var a = attempts(), level = a.level || 0;
+    if (a.count >= MAX_ATTEMPTS) { if (now() - a.since < cool(a)) return a; a = { count: 0, since: now(), level: level }; }
+    else if (!a.since || now() - a.since > COOLDOWN_MS) a = { count: 0, since: now(), level: level };
     a.count++;
+    if (a.count >= MAX_ATTEMPTS) { a.level = level + 1; a.since = now(); }
     writeJSON(LK_ATTEMPTS, a);
     return a;
   }
@@ -70,7 +79,7 @@
     setPin: function (pin) {
       var salt = randSalt();
       localStorage.setItem(LK_SALT, salt);
-      localStorage.setItem(LK_HASH, wfHash(String(pin), salt));
+      localStorage.setItem(LK_HASH, wfHash(normPin(pin), salt));
       if (localStorage.getItem(LK_ENTRY) === null) localStorage.setItem(LK_ENTRY, "1");
       if (localStorage.getItem(LK_DELETE) === null) localStorage.setItem(LK_DELETE, "1");
       if (localStorage.getItem(LK_IDLE) === null) localStorage.setItem(LK_IDLE, "15");
@@ -79,7 +88,8 @@
     },
     verify: function (pin) {
       var salt = localStorage.getItem(LK_SALT) || "";
-      return wfHash(String(pin), salt) === localStorage.getItem(LK_HASH);
+      var stored = localStorage.getItem(LK_HASH), raw = String(pin == null ? "" : pin), norm = normPin(pin);
+      return wfHash(raw, salt) === stored || (norm !== raw && wfHash(norm, salt) === stored);
     },
     removePin: function () {
       [LK_HASH, LK_SALT, LK_ENTRY, LK_DELETE, LK_IDLE, LK_LEAVE, LK_ATTEMPTS, LK_AUDIT].forEach(function (k) { localStorage.removeItem(k); });
@@ -87,7 +97,11 @@
     },
     isUnlocked: function () { return sessionStorage.getItem(SK_UNLOCK) === "1"; },
     unlock: function () { sessionStorage.setItem(SK_UNLOCK, "1"); resetAttempts(); armIdle(); },
-    lock: function (reason) { sessionStorage.removeItem(SK_UNLOCK); clearTimeout(idleTimer); audit(false, "locked:" + (reason || "manual")); },
+    lock: function (reason) {
+      sessionStorage.removeItem(SK_UNLOCK); clearTimeout(idleTimer); audit(false, "locked:" + (reason || "manual"));
+      // القفل بسبب الخمول كان بيشيل علامة الفتح بس والشاشة تفضل ظاهرة ومتاحة لحد أول تنقل؛ دلوقتي بنطلب الرقم السري فورًا.
+      if (reason === "idle") setTimeout(function () { try { WFLock.ensureEntryUnlocked(); } catch (_) {} }, 0);
+    },
     entryLockEnabled: function () { return localStorage.getItem(LK_ENTRY) !== "0"; },
     setEntryLockEnabled: function (v) { localStorage.setItem(LK_ENTRY, v ? "1" : "0"); },
     deleteLockEnabled: function () { return localStorage.getItem(LK_DELETE) !== "0"; },
@@ -100,10 +114,10 @@
     requirePin: function (msg) {
       if (!this.isSet()) return true;
       var a = attempts();
-      if (a.count >= MAX_ATTEMPTS && now() - a.since < COOLDOWN_MS) { alert("تم إيقاف المحاولات مؤقتًا 30 ثانية."); return false; }
+      if (isLocked(a)) { alert("تم إيقاف المحاولات مؤقتًا " + waitMsg(a) + "."); return false; }
       var pin = prompt(msg || "🔒 اكتب الرقم السري للتأكيد:");
       if (pin === null) { audit(false, "cancel"); return false; }
-      if (!this.verify(pin)) { var f = failedAttempt(); audit(false, "wrong-pin"); alert(f.count >= MAX_ATTEMPTS ? "محاولات كثيرة خاطئة. انتظر 30 ثانية." : "رقم سري غير صحيح."); return false; }
+      if (!this.verify(pin)) { var f = failedAttempt(); audit(false, "wrong-pin"); alert(f.count >= MAX_ATTEMPTS ? "محاولات كثيرة خاطئة. انتظر " + waitMsg(f) + "." : "رقم سري غير صحيح."); return false; }
       resetAttempts(); audit(true, "verified"); return true;
     },
     requireDeletePin: function (msg) { if (!this.isSet() || !this.deleteLockEnabled()) return true; return this.requirePin(msg); },
@@ -111,12 +125,12 @@
       if (!this.isSet() || !this.entryLockEnabled() || this.isUnlocked()) { armIdle(); return; }
       while (true) {
         var a = attempts();
-        if (a.count >= MAX_ATTEMPTS && now() - a.since < COOLDOWN_MS) { alert("تم إيقاف الدخول مؤقتًا 30 ثانية."); denyAccess("تم إيقاف الدخول مؤقتًا بعد محاولات خاطئة كثيرة."); return; }
+        if (isLocked(a)) { alert("تم إيقاف الدخول مؤقتًا " + waitMsg(a) + "."); denyAccess("تم إيقاف الدخول مؤقتًا بعد محاولات خاطئة كثيرة."); return; }
         var pin = prompt("🔒 اكتب الرقم السري للدخول للنظام:");
         if (pin !== null && this.verify(pin)) { audit(true, "entry"); this.unlock(); return; }
         if (pin === null) { audit(false, "cancel-entry"); denyAccess("تم إلغاء الدخول. أعد فتح الصفحة وحاول باستخدام الرقم السري."); return; }
         var f = failedAttempt(); audit(false, "wrong-entry");
-        if (f.count >= MAX_ATTEMPTS) { alert("محاولات كثيرة خاطئة. انتظر 30 ثانية."); denyAccess("تم إيقاف الدخول مؤقتًا بعد محاولات خاطئة كثيرة."); return; }
+        if (f.count >= MAX_ATTEMPTS) { alert("محاولات كثيرة خاطئة. انتظر " + waitMsg(f) + "."); denyAccess("تم إيقاف الدخول مؤقتًا بعد محاولات خاطئة كثيرة."); return; }
         alert("رقم سري غير صحيح، حاول تاني.");
       }
     }
@@ -124,7 +138,12 @@
   window.WFLock = WFLock;
   WFLock.ensureEntryUnlocked();
   ["click", "keydown", "pointerdown", "touchstart"].forEach(function (type) { document.addEventListener(type, activity, { passive: true }); });
-  document.addEventListener("visibilitychange", function () { if (document.hidden && WFLock.lockOnLeave()) WFLock.lock("hidden"); });
+  // «قفل عند الخروج»: لما التطبيق يتخبّى بنقفل، ولما يرجع بنطلب الرقم السري فورًا (قبل كده كان الرقم بيتطلب في أول تنقل بس).
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { if (WFLock.lockOnLeave()) WFLock.lock("hidden"); }
+    else if (WFLock.isSet() && WFLock.entryLockEnabled() && !WFLock.isUnlocked()) WFLock.ensureEntryUnlocked();
+  });
+  window.addEventListener("pageshow", function (e) { if (e && e.persisted && WFLock.isSet() && WFLock.entryLockEnabled() && !WFLock.isUnlocked()) WFLock.ensureEntryUnlocked(); });
   window.addEventListener("pagehide", function () { if (WFLock.lockOnLeave()) WFLock.lock("pagehide"); });
   var guarded = { deleteAllCustomers: "حذف جميع العملاء وما يرتبط بهم", deleteAllDevices: "حذف جميع الأجهزة وأوامرها", deleteAllRequests: "حذف جميع أوامر الشغل", deleteAllOperationalData: "حذف كل البيانات التشغيلية (إعادة تهيئة النظام)" };
   document.addEventListener("DOMContentLoaded", function () { Object.keys(guarded).forEach(function (name) { var orig = window[name]; if (typeof orig !== "function") return; window[name] = function () { if (!WFLock.requireDeletePin("🔒 اكتب الرقم السري لتأكيد: " + guarded[name])) return; return orig.apply(this, arguments); }; }); });

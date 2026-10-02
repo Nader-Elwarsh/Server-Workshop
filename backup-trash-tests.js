@@ -1,0 +1,53 @@
+/* اختبارات النسخ الاحتياطي والسلة: إلغاء تأكيد الاسترجاع مايجمّدش النسخ بعد كده، واسترجاع أمر/جهاز لأب محذوف بيتمنع بدل ما يطلع سجل يتيم. */
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+function makeEnv(confirmAnswer){
+  const store={},alerts=[],confirms=[],downloads=[];
+  const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
+  const document={addEventListener:()=>{},getElementById:()=>null,querySelector:()=>null,createElement:()=>({click(){downloads.push(1)},remove(){}}),body:{appendChild(){}}};
+  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const readers=[];
+  function FileReader(){readers.push(this);this.readAsText=function(f){this.result=f.text;Promise.resolve().then(()=>this.onload())}}
+  const context={window,localStorage,document,location:{href:''},crypto:window.crypto,console:{log(){},error(){},warn(){}},
+    alert:m=>alerts.push(String(m)),confirm:m=>{confirms.push(String(m));return confirmAnswer},prompt:()=>null,
+    Blob:function(){},URL:{createObjectURL:()=>'blob:x',revokeObjectURL(){}},FileReader,TextEncoder,TextDecoder,btoa,atob,setTimeout,clearTimeout,
+    refreshAllScreens:()=>{},renderTrash:()=>{}};
+  const c=vm.createContext(context);
+  vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
+  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
+  context.id=window.id;
+  ['app-shared.js','app-data-management.js','app-trash.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
+  return {store,alerts,confirms,downloads,readers,context,K:window.K};
+}
+(async()=>{
+  // 1) إلغاء تأكيد الاسترجاع: بعدها نقدر نختار ملف تاني (مفيش تجمّد)
+  {
+    const e=makeEnv(false),x=e.context,K=e.K;
+    const file={text:JSON.stringify({[K.c]:[{id:'c9',name:'من النسخة'}],_meta:{schemaVersion:1}})};
+    const input={files:[file],value:'x'};
+    x.restoreBackupFile(input);await new Promise(r=>setTimeout(r,60));
+    assert.strictEqual(e.confirms.length,1,'confirmation shown');
+    assert.strictEqual(JSON.parse(e.store[K.c]||'[]').length,0,'cancel must not replace data');
+    x.restoreBackupFile({files:[file],value:'y'});await new Promise(r=>setTimeout(r,60));
+    assert.strictEqual(e.readers.length,2,'a second restore attempt must not be blocked after cancelling');
+  }
+  // 2) السلة: أمر أبوه اتحذف مايترجعش
+  {
+    const e=makeEnv(true),x=e.context,K=e.K;
+    e.store[K.trash]=JSON.stringify([{id:'t1',type:'request',label:'أمر 1',payload:{request:{id:'r1',deviceId:'d-gone',customerId:'c-gone'}},deletedAt:new Date().toISOString()}]);
+    x.restoreFromTrash('t1');
+    assert.strictEqual(JSON.parse(e.store[K.r]||'[]').length,0,'orphan request must not be restored');
+    assert.ok(/الجهاز/.test(e.alerts[0]),'tells the user to restore the device first');
+    assert.strictEqual(e.confirms.length,0,'no confirmation for a blocked restore');
+    assert.strictEqual(JSON.parse(e.store[K.trash]).length,1,'entry stays in trash');
+  }
+  // 3) جهاز أبوه اتحذف مايترجعش؛ ولو الأب موجود بيترجع
+  {
+    const e=makeEnv(true),x=e.context,K=e.K;
+    e.store[K.trash]=JSON.stringify([{id:'t2',type:'device',label:'غسالة',payload:{device:{id:'d1',customerId:'c1'},requests:[],moves:[]},deletedAt:new Date().toISOString()}]);
+    x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]||'[]').length,0);assert.ok(/العميل/.test(e.alerts[0]));
+    e.store[K.c]=JSON.stringify([{id:'c1',name:'أحمد'}]);
+    x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]).length,1,'restores when the customer exists');
+    assert.strictEqual(JSON.parse(e.store[K.trash]).length,0);
+  }
+  console.log('backup-trash-tests: PASS');
+})().catch(e=>{console.error(e);process.exit(1)});

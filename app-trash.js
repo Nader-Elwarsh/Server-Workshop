@@ -26,8 +26,14 @@ function restoreFromTrash(trashId) {
   const idx = list.findIndex(x => x.id === trashId);
   if (idx < 0) return;
   const entry = list[idx];
-  if (!confirm(`استرجاع "${entry.label}"؟ هيرجع بكل بياناته وحركاته المرتبطة زي ما كانت قبل الحذف.`)) return;
   const p = entry.payload || {};
+  // مانرجّعش أمر/جهاز لعميل أو جهاز اتحذف بعد كده: كان بيطلع سجل يتيم (عميل «—»). نقول يرجّع الأب الأول.
+  if (entry.type === "request" && p.request) {
+    if (p.request.deviceId && !arr(K.d).some(x => x.id === p.request.deviceId)) return alert("الجهاز اللي تبع الأمر ده اتحذف. استرجع الجهاز (أو العميل) من السلة الأول وبعدين استرجع الأمر.");
+    if (p.request.customerId && !arr(K.c).some(x => x.id === p.request.customerId)) return alert("العميل صاحب الأمر ده اتحذف. استرجع العميل من السلة الأول وبعدين استرجع الأمر.");
+  }
+  if (entry.type === "device" && p.device && p.device.customerId && !arr(K.c).some(x => x.id === p.device.customerId)) return alert("العميل صاحب الجهاز ده اتحذف. استرجع العميل من السلة الأول وبعدين استرجع الجهاز.");
+  if (!confirm(`استرجاع "${entry.label}"؟ هيرجع بكل بياناته وحركاته المرتبطة زي ما كانت قبل الحذف.`)) return;
   const values = {};
   const addNew = (cur, add) => { const have = new Set(cur.map(x => x && x.id)); return cur.concat((add || []).filter(x => x && !have.has(x.id))); };
 

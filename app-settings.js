@@ -167,16 +167,13 @@ function setAppPin(){
 }
 function changeAppPin(){
   if(!window.WFLock)return;
-  let cur=prompt("اكتب الرقم السري الحالي:");
-  if(cur===null)return;
-  if(!WFLock.verify(cur)){alert("الرقم السري الحالي غير صحيح.");return}
+  // requirePin بيحسب المحاولات الخاطئة ويوقف التخمين (verify لوحدها كانت بتسمح بمحاولات لا نهائية من هنا).
+  if(!WFLock.requirePin("اكتب الرقم السري الحالي:"))return;
   setAppPin();
 }
 function removeAppPin(){
   if(!window.WFLock)return;
-  let cur=prompt("اكتب الرقم السري الحالي لإلغاء الحماية:");
-  if(cur===null)return;
-  if(!WFLock.verify(cur)){alert("الرقم السري غير صحيح.");return}
+  if(!WFLock.requirePin("اكتب الرقم السري الحالي لإلغاء الحماية:"))return;
   if(!confirm("متأكد إنك عايز تلغي الحماية بالرقم السري؟"))return;
   WFLock.removePin();
   alert("تم إلغاء الحماية.");
@@ -238,14 +235,14 @@ function setOverdueAlertDays(){
 function setTypePosition(i,pos){let n=parseInt(pos,10),entries=Object.entries(settings().types||{});if(!Number.isFinite(n))return settingsPage();n=Math.max(1,Math.min(entries.length,n));if(i<0||i>=entries.length||i===n-1)return;let item=entries.splice(i,1)[0];entries.splice(n-1,0,item);let s=settings();s.types=Object.fromEntries(entries);put(K.s,s);settingsPage()}
 function addCenter(){let el=document.getElementById("newCenter"),v=el&&el.value?el.value:prompt("اسم المركز الجديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();if(!s.centers.includes(v)){s.centers.push(v);s.villages[v]=s.villages[v]||[]}put(K.s,s);if(el)el.value="";settingsPage()}
 function renameCenter(c){let n=prompt("الاسم الجديد للمركز",c);if(!n||n===c)return;n=n.trim();if(!n)return;let s=settings(),i=s.centers.indexOf(c);if(i<0)return;s.centers[i]=n;s.villages[n]=s.villages[c]||[];if(n!==c)delete s.villages[c];put(K.s,s);settingsPage()}
-function deleteCenter(c){if(!confirm(`حذف المركز «${c}» وكل قراه؟`))return;let s=settings();s.centers=s.centers.filter(x=>x!==c);delete s.villages[c];put(K.s,s);settingsPage()}
+function deleteCenter(c){let used=arr(K.c).filter(x=>x.mainAddress?.center===c||(x.extraAddresses||[]).some?.(a=>a?.center===c)).length;if(used&&!confirm(`⚠️ فيه ${used} عميل عنوانه في مركز «${c}». لو حذفته هتفضل عناوينهم مكتوبة بس المركز مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف المركز «${c}» وكل قراه؟`))return;let s=settings();s.centers=s.centers.filter(x=>x!==c);delete s.villages[c];put(K.s,s);settingsPage()}
 function addType(){let t=prompt("اسم نوع الجهاز الجديد");if(!t)return;t=t.trim();if(!t)return;let s=settings();if(!(t in s.types))s.types[t]=[];put(K.s,s);settingsPage()}
 function renameType(t){let n=prompt("الاسم الجديد للنوع",t);if(!n||n===t)return;n=n.trim();if(!n)return;let s=settings();if(!(t in s.types))return;if(n in s.types&&n!==t){alert("هذا النوع موجود بالفعل");return}let entries=Object.entries(s.types).map(([k,v])=>[k===t?n:k,v]);s.types=Object.fromEntries(entries);put(K.s,s);settingsPage()}
-function deleteType(t){if(!confirm(`حذف نوع الجهاز «${t}» وكل تصنيفاته؟`))return;let s=settings();delete s.types[t];put(K.s,s);settingsPage()}
+function deleteType(t){let used=arr(K.d).filter(x=>x.type===t).length;if(used&&!confirm(`⚠️ فيه ${used} جهاز من نوع «${t}». لو حذفت النوع هتفضل الأجهزة موجودة بس النوع مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف نوع الجهاز «${t}» وكل تصنيفاته؟`))return;let s=settings();delete s.types[t];put(K.s,s);settingsPage()}
 function addBrand(){let v=prompt("اسم الماركة الجديدة");if(!v)return;v=v.trim();if(!v)return;let s=settings();if(!s.brands.includes(v))s.brands.push(v);put(K.s,s);settingsPage()}
-function deleteBrand(b){if(!confirm(`حذف الماركة «${b}»؟`))return;let s=settings();s.brands=s.brands.filter(x=>x!==b);put(K.s,s);settingsPage()}
+function deleteBrand(b){let used=arr(K.d).filter(x=>x.brand===b).length;if(used&&!confirm(`⚠️ فيه ${used} جهاز ماركته «${b}». لو حذفتها هتفضل الأجهزة موجودة بس الماركة مش هتظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف الماركة «${b}»؟`))return;let s=settings();s.brands=s.brands.filter(x=>x!==b);put(K.s,s);settingsPage()}
 function addPartCategory(){let v=prompt("اسم تصنيف القطع الجديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();if(!s.partCats.includes(v))s.partCats.push(v);put(K.s,s);settingsPage()}
-function deletePartCategory(c){if(!confirm(`حذف تصنيف «${c}»؟`))return;let s=settings();s.partCats=s.partCats.filter(x=>x!==c);put(K.s,s);settingsPage()}
+function deletePartCategory(c){let used=arr(K.p).filter(x=>!x.archived&&x.category===c).length;if(used&&!confirm(`⚠️ فيه ${used} صنف في المخزن تحت تصنيف «${c}». لو حذفته هتفضل الأصناف موجودة بس التصنيف مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف تصنيف «${c}»؟`))return;let s=settings();s.partCats=s.partCats.filter(x=>x!==c);put(K.s,s);settingsPage()}
 function addSettingItem(key){let v=prompt("أضف عنصر جديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();s[key]=s[key]||[];if(!s[key].includes(v))s[key].push(v);put(K.s,s);settingsPage()}
 function renameSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;let n=prompt("الاسم الجديد",a[i]);if(!n||n===a[i])return;n=n.trim();if(!n)return;a[i]=n;s[key]=a;put(K.s,s);settingsPage()}
 function deleteSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;if(!confirm(`حذف «${a[i]}»؟`))return;a.splice(i,1);s[key]=a;put(K.s,s);settingsPage()}
