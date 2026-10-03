@@ -7,7 +7,7 @@
    - بيرسم قسم «🎨 الهوية والشعار» جوه الإعدادات (داخل <div id="brandingSettings">).
 
    مصادر الصور الافتراضية (تقدر تستبدل الملفات نفسها من غير أي تعديل في الكود):
-     branding/logo.svg  ← شعار الورشة الأفقي
+     workshop-logo.svg  ← شعار الورشة الأفقي
      app-icon.svg       ← أيقونة التطبيق
    الملفين دول فيهم 3 ألوان ثابتة بتتبدّل لحظيًا: الأساسي #082A54 / المميز #FAA822 / الفاتح #FFFFFF.
    (لو استبدلت الملفات بتصميم تاني ملوّن بغير الألوان دي هيظهر زي ما هو من غير تغيير ألوان.)
@@ -20,7 +20,7 @@
 
   var KEY = "wf_branding_v1";
   var DEF = { primary: "#082A54", accent: "#FAA822", light: "#FFFFFF" };
-  var SRC = { logo: "branding/logo.svg", icon: "app-icon.svg" };
+  var SRC = { logo: "workshop-logo.svg", icon: "app-icon.svg" };
   var HEX = /^#[0-9a-f]{6}$/i;
 
   /* ---------- الإعدادات ---------- */
@@ -396,6 +396,12 @@
     setColors: setColors, resetColors: resetColors, resetAll: resetAll,
     setLogo: function (dataUrl) { return setCustom("logo", dataUrl); },
     setIcon: function (dataUrl) { return setCustom("icon", dataUrl); },
+    logoDataUrl: function () {
+      return ensureUrls().then(function (u) {
+        if (/^data:/.test(u.logo)) return u.logo;
+        return fetchText(u.logo).then(svgUrl);
+      });
+    },
     refresh: refresh, exportData: exportData, importData: importData, downloadIcons: downloadIcons
   };
 

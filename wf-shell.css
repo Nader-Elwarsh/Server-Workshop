@@ -135,7 +135,7 @@ button:disabled { opacity: .6; cursor: progress; }
 .wf-links { display: flex; justify-content: center; gap: 6px 18px; flex-wrap: wrap; margin-bottom: 6px; }
 .wf-links a { color: var(--mut); }
 
-/* شعار الورشة الأفقي (branding/logo.svg): على لوح أبيض عشان يبان في الوضعين الفاتح والداكن */
+/* شعار الورشة الأفقي (workshop-logo.svg): على لوح أبيض عشان يبان في الوضعين الفاتح والداكن */
 .wf-hero-logo { display: block; width: 78%; max-width: 260px; height: auto; margin: 0 auto 12px; padding: 10px 14px; background: #fff; border-radius: 14px; }
 .wf-logo-band { max-width: 680px; margin: 12px auto 0; padding: 0 12px; }
 .wf-logo-band .wf-hero-logo { margin-bottom: 0; border: 1px solid var(--bd); }

@@ -419,7 +419,7 @@ function buildReceiptHtml(r){
     if(val===undefined||val==="")return "";
     return `<tr><td class="receipt-label">${esc(f.label||"")}</td><td class="receipt-value">${val}</td></tr>`;
   }).join("");
-  return `<div class="receipt-doc"><div class="receipt-head"><h2>${esc((info.name||"").trim()||"الورشة الفنية")}</h2>${(info.phone||"").trim()?`<div>📞 ${esc(info.phone.trim())}</div>`:""}${(info.address||"").trim()?`<div>📍 ${esc(info.address.trim())}</div>`:""}</div><table class="receipt-table">${rows}</table>${(info.footer||"").trim()?`<div class="receipt-footer">${esc(info.footer.trim())}</div>`:""}</div>`;
+  return `<div class="receipt-doc"><div class="receipt-head"><img class="receipt-logo" data-wf-brand="logo" src="workshop-logo.svg" alt=""><h2>${esc((info.name||"").trim()||"الورشة الفنية")}</h2>${(info.phone||"").trim()?`<div>📞 ${esc(info.phone.trim())}</div>`:""}${(info.address||"").trim()?`<div>📍 ${esc(info.address.trim())}</div>`:""}</div><table class="receipt-table">${rows}</table>${(info.footer||"").trim()?`<div class="receipt-footer">${esc(info.footer.trim())}</div>`:""}</div>`;
 }
 // نسخة نصية مخصّصة من الإيصال لمشاركة واتساب/الأنظمة التانية، بدل الاعتماد
 // على استخراج innerText من جدول receipt-table: الخلايا المتجاورة (td) في
@@ -550,6 +550,16 @@ async function buildAndShareReceiptImage(r){
   if(!ctx)throw new Error("canvas 2d context not available");
   ctx.direction="rtl";
 
+  // شعار الورشة (من الإعدادات ← الهوية والشعار). لو تعذّر تحميله الإيصال يترسم عادي من غيره.
+  let logoImg=null,logoW=0,logoH=0;
+  try{
+    const lu=(window.WFBrand&&WFBrand.logoDataUrl)?await WFBrand.logoDataUrl():"workshop-logo.svg";
+    logoImg=await new Promise((ok,no)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=no;im.src=lu;setTimeout(()=>no(new Error("timeout")),4000)});
+    const ratio=(logoImg.naturalWidth||logoImg.width||3)/(logoImg.naturalHeight||logoImg.height||1);
+    logoH=84;logoW=logoH*ratio;
+    if(logoW>contentWidth*0.7){logoW=contentWidth*0.7;logoH=logoW/ratio}
+  }catch(e){logoImg=null}
+
   // ===== تمريرة القياس: نحسب عدد الأسطر المطلوبة فعليًا لكل جزء =====
   ctx.font=nameFont;
   const nameLines=wrapCanvasText(ctx,(info.name||"").trim()||"الورشة الفنية",contentWidth);
@@ -566,6 +576,7 @@ async function buildAndShareReceiptImage(r){
   const footerLines=(info.footer||"").trim()?wrapCanvasText(ctx,info.footer.trim(),contentWidth):[];
 
   let y=PAD;
+  if(logoImg)y+=logoH+12;
   y+=nameLines.length*40;
   y+=phoneLines.length*26;
   y+=addrLines.length*26;
@@ -585,6 +596,7 @@ async function buildAndShareReceiptImage(r){
   ctx.textBaseline="top";
 
   let cy=PAD;
+  if(logoImg){try{ctx.drawImage(logoImg,(W-logoW)/2,cy,logoW,logoH)}catch(e){}cy+=logoH+12}
   ctx.font=nameFont;ctx.textAlign="center";
   nameLines.forEach(l=>{ctx.fillText(l,W/2,cy);cy+=40});
   ctx.font=subFont;
