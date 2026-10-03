@@ -67,7 +67,7 @@ assert.strictEqual(context.WFLock.requirePin('test'), false, 'cooldown must reje
 assert(alerts.some(message => message.includes('30 ثانية')), 'cooldown should provide a clear user notice');
 
 // Check each employee page uses the synchronous local guard; public/customer pages are excluded.
-const publicPages = new Set(['login.html', 'portal.html', 'portal-admin.html', 'share-target.html', 'browser-interactive.html', 'debug-check.html']);
+const publicPages = new Set(['login.html', 'privacy.html', 'terms.html', 'portal.html', 'portal-admin.html', 'share-target.html', 'browser-interactive.html', 'debug-check.html']);
 for (const name of fs.readdirSync(__dirname).filter(name => name.endsWith('.html') && !publicPages.has(name))) {
   const html = fs.readFileSync(path.join(__dirname, name), 'utf8');
   if (!html.includes('<body')) continue;

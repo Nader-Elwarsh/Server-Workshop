@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-164-batch8-perf-r2";
+const CACHE_NAME = "workshop-v11-165-login-refresh";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -37,6 +37,8 @@ const CORE_FILES = [
   "./shared-data.js",
   "./firebase-sync.js",
   "./login.html",
+  "./privacy.html",
+  "./terms.html",
   "./portal-admin.html",
   "./portal-ticker.js",
   "./pw-eye.js",
