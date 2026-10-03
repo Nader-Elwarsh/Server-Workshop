@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-166-brand-v13";
+const CACHE_NAME = "workshop-v11-167-brand-v14";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -94,6 +94,8 @@ const CORE_FILES = [
   "./icon-maskable-512-v13.png",
   "./apple-touch-icon-v13.png",
   "./app-icon.svg",
+  "./branding.js",
+  "./branding/logo.svg",
   "./wf-shell.css",
   "./notif-shared.js"
 ];

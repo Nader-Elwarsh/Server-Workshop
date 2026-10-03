@@ -82,3 +82,14 @@ if (document.readyState === "loading") {
 } else {
   updateThemeToggleIcons();
 }
+
+/* تحميل نظام الهوية (branding.js): ألوان وصور الشعار والأيقونة اللي بتتحكم فيها من الإعدادات. */
+(function () {
+  try {
+    if (window.WFBrand || document.getElementById("wf-branding-js")) return;
+    var s = document.createElement("script");
+    s.id = "wf-branding-js";
+    s.src = "branding.js";
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) {}
+})();
