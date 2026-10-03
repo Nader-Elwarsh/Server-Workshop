@@ -1,6 +1,6 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v5";
-const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./portal-manifest.json", "./icon-192-v12.png", "./icon-512-v12.png"];
+const CACHE = "portal-v6";
+const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(f => c.add(f).catch(() => {})))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 // الشبكة أولًا لكن بمهلة: على النت الضعيف الصفحة كانت بتفضل معلّقة لحد ما الطلب يفشل. بعد المهلة بنفتح النسخة المحفوظة
@@ -26,9 +26,9 @@ self.addEventListener("fetch", e => {
     return;
   }
   // صفحة البوابة: الشبكة أولًا ثم الكاش
-  const helper = u.origin === location.origin && /\/(portal-ticker|pw-eye|wf-session)\.js$/.exec(u.pathname);
+  const helper = u.origin === location.origin && /\/(portal-ticker\.js|pw-eye\.js|wf-session\.js|wf-shell\.css|app-icon\.svg)$/.exec(u.pathname);
   if (helper) { // ملفات مساعدة: الشبكة أولًا ثم الكاش (عشان التحديثات توصل)
-    const key = "./" + helper[1] + ".js";
+    const key = "./" + helper[1];
     e.respondWith(netFirst(r, key, 4000));
     return;
   }
