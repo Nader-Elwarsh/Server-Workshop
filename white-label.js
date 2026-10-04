@@ -64,7 +64,10 @@
     { id: "red", name: "أحمر", c: { primary: "#8f1d2c", primary2: "#c0392b", accent: "#f39c12", link: "#8f1d2c" } },
     { id: "purple", name: "بنفسجي", c: { primary: "#4a2a7a", primary2: "#8e44ad", accent: "#f1c40f", link: "#4a2a7a" } },
     { id: "orange", name: "برتقالي", c: { primary: "#b34b16", primary2: "#e07b39", accent: "#17324d", link: "#b34b16" } },
-    { id: "gold", name: "أسود وذهبي", c: { primary: "#111827", primary2: "#374151", accent: "#d4a017", link: "#111827" } }
+    { id: "gold", name: "أسود وذهبي", c: { primary: "#111827", primary2: "#374151", accent: "#d4a017", link: "#111827" } },
+    { id: "navyGold", name: "كحلي وذهبي (كامل)", c: { primary: "#17324d", primary2: "#245a7a", accent: "#b8903f", link: "#b8903f", bg: "#f5f7fa", surface: "#ffffff", sunken: "#f2f5f8", border: "#e2e6eb", text: "#18212b", muted: "#687583" } },
+    { id: "blueTeal", name: "أزرق وبترولي (كامل)", c: { primary: "#0f6a83", primary2: "#087e8b", accent: "#f2a93b", link: "#0c7188", bg: "#f2f8fa", surface: "#ffffff", sunken: "#e8f1f4", border: "#d6e2e6", text: "#172b36", muted: "#617780" } },
+    { id: "charcoalCopper", name: "فحمي ونحاسي (كامل)", c: { primary: "#42424a", primary2: "#785039", accent: "#a2542f", link: "#a2542f", bg: "#f7f5f3", surface: "#ffffff", sunken: "#f0ece8", border: "#ded9d3", text: "#222326", muted: "#6c6864" } }
   ];
 
   /* ---------- أدوات ألوان ---------- */
@@ -95,7 +98,10 @@
       COLOR_KEYS.forEach(function (k) { if (HEX.test(src[k] || "")) out.colors[m][k] = String(src[k]).toLowerCase(); });
     });
     var s = o.shape && typeof o.shape === "object" ? o.shape : {};
-    if (s.radius && Object.prototype.hasOwnProperty.call(RADII, s.radius) && s.radius !== "default") out.shape.radius = s.radius;
+    if (s.radius !== undefined && s.radius !== null && s.radius !== "" && s.radius !== "default") {
+      if (Object.prototype.hasOwnProperty.call(RADII, s.radius)) out.shape.radius = RADII[s.radius];
+      else { var rn = Number(s.radius); if (isFinite(rn) && rn >= 0 && rn <= 28) out.shape.radius = Math.round(rn); }
+    }
     if (s.font && Object.prototype.hasOwnProperty.call(FONTS, s.font) && s.font !== "default") out.shape.font = s.font;
     if (s.logoShape && Object.prototype.hasOwnProperty.call(LOGO_SHAPES, s.logoShape) && s.logoShape !== "default") out.shape.logoShape = s.logoShape;
     var ls = Number(s.logoSize); if (ls >= 28 && ls <= 120) out.shape.logoSize = Math.round(ls);
@@ -171,8 +177,8 @@
     css += block('html:root:not([data-theme="dark"])', modeVars("light"));
     css += block('html[data-theme="dark"]', modeVars("dark"));
     var sh = eff.shape;
-    if (sh.radius && RADII[sh.radius]) {
-      var r = RADII[sh.radius] + "px";
+    if (typeof sh.radius === "number") {
+      var r = sh.radius + "px";
       css += "html .panel,html .card,html .stat,html .dashboard,html .primary,html .secondary,html .danger-btn,html .btn,html input,html select,html textarea,html .quick-order-toggle,html .simple-tile,html .part-autocomplete-results{border-radius:" + r + "}";
     }
     if (sh.font && FONTS[sh.font] && FONTS[sh.font].stack) {
@@ -363,11 +369,36 @@
       return adoptRemote(r).then(function () { return { exists: true, changed: true }; });
     });
   }
+  /* تصغير الصور النقطية (PNG/JPG) قبل رفعها للسحابة: WebP بحد أقصى ~200KB عشان مستند Firestore يفضل خفيف */
+  function shrinkImage(dataUrl) {
+    return new Promise(function (res) {
+      if (typeof dataUrl !== "string" || !/^data:image\/(png|jpeg|webp);/.test(dataUrl) || dataUrl.length <= 200000) return res(dataUrl);
+      var im = new Image();
+      im.onerror = function () { res(dataUrl); };
+      im.onload = function () {
+        try {
+          var w = im.naturalWidth || 512, h = im.naturalHeight || 512, k = Math.min(1, 640 / Math.max(w, h)), q = 0.86, out = dataUrl, c = document.createElement("canvas");
+          for (var i = 0; i < 8; i++) {
+            c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+            c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+            out = c.toDataURL("image/webp", q);
+            if (out.length <= 200000) break;
+            q = Math.max(0.5, q - 0.07); k *= 0.88;
+          }
+          res(/^data:image\/webp/.test(out) && out.length < dataUrl.length ? out : dataUrl);
+        } catch (e) { res(dataUrl); }
+      };
+      im.src = dataUrl;
+    });
+  }
   function cloudPush() {
     return waitFor(fbReady, 8000).then(function (ok) {
       if (!ok) throw new Error("لازم تكون أونلاين");
       if (!firebase.auth().currentUser) throw new Error("سجّل الدخول الأول");
       return window.WFBrand && WFBrand.exportData ? WFBrand.exportData() : null;
+    }).then(function (brand) {
+      if (!brand) return brand;
+      return Promise.all([shrinkImage(brand.logo), shrinkImage(brand.icon)]).then(function (a) { brand.logo = a[0]; brand.icon = a[1]; return brand; });
     }).then(function (brand) {
       var warn = "";
       var bj = brand ? JSON.stringify(brand) : "";

@@ -133,7 +133,7 @@
       return '<button type="button" class="wl-chip" data-wla="preset" data-wlp="' + p.id + '"><i style="background:linear-gradient(135deg,' + c + ' 55%,' + c2 + ' 55%)"></i>' + esc(p.name) + "</button>";
     }).join("");
     $("wlColors").innerHTML =
-      '<h3>🎯 ثيمات جاهزة</h3><p class="hint">اختار ثيم بضغطة واحدة (بيغيّر الأساسي والثانوي والمميز والروابط)، وبعدها تقدر تعدّل أي لون لوحده.</p><div class="wl-chips">' + chips + "</div>" +
+      '<h3>🎯 ثيمات جاهزة</h3><p class="hint">اختار ثيم بضغطة واحدة (بيغيّر الأساسي والثانوي والمميز والروابط، والثيمات «الكاملة» بتغيّر كمان الخلفيات والنصوص والحدود للوضع الفاتح)، وبعدها تقدر تعدّل أي لون لوحده.</p><div class="wl-chips">' + chips + "</div>" +
       '<h3>🎨 ألوان تفصيلية</h3>' +
       '<div class="wl-seg" role="group" aria-label="الوضع"><button type="button" class="secondary' + (mode === "light" ? " on" : "") + '" data-wla="mode" data-wlm="light">☀️ الوضع الفاتح</button><button type="button" class="secondary' + (mode === "dark" ? " on" : "") + '" data-wla="mode" data-wlm="dark">🌙 الوضع الداكن</button></div>' +
       '<p class="hint">بتعدّل ألوان الوضع المختار (والصفحة بتتحوّل له عشان تشوف النتيجة فورًا). اللي ماتعدّلش بيفضل بلونه الأصلي.</p>' +
@@ -172,7 +172,7 @@
   function renderShape() {
     var s = WL.cfg().shape;
     $("wlShape").innerHTML =
-      '<label class="wl-fld">استدارة زوايا الأزرار والبطاقات<select data-wls="radius">' + opts(WL.RADII, s.radius || "default", function (k) { return RADIUS_LBL[k]; }) + "</select></label>" +
+      '<div class="wl-row"><span class="wl-lbl">استدارة زوايا الأزرار والبطاقات: <b id="wlRadiusV">' + (typeof s.radius === "number" ? s.radius + " px" : "الأصلي") + '</b></span><input type="range" min="0" max="28" step="1" data-wls="radius" value="' + (typeof s.radius === "number" ? s.radius : 12) + '" style="flex:1 1 160px"><button type="button" class="secondary" data-wla="reset-radius" aria-label="رجوع للأصلي">↩️</button></div>' +
       '<label class="wl-fld">الخط<select data-wls="font">' + opts(WL.FONTS, s.font || "default", function (k) { return WL.FONTS[k].label; }) + "</select></label>" +
       '<p class="hint">الخطوط المكتوب جنبها «أونلاين» بتتحمّل من Google Fonts لما يكون فيه نت، ولو مفيش نت بيستخدم النظام خط بديل تلقائيًا.</p>' +
       '<label class="wl-fld">شكل الهيدر (الشريط العلوي)<select data-wls="header"><option value="default"' + (s.header ? "" : " selected") + '>تدرج لوني (الأصلي)</option><option value="solid"' + (s.header === "solid" ? " selected" : "") + ">لون واحد ثابت</option></select></label>" +
@@ -262,6 +262,11 @@
       later(function () { setColor(k, t.value); refreshColorRows(true); });
       return;
     }
+    if (t.getAttribute("data-wls") === "radius") {
+      var rv = $("wlRadiusV"); if (rv) rv.textContent = t.value + " px";
+      later(function () { WL.mutate(function (l) { l.shape = l.shape || {}; l.shape.radius = Number(t.value); }); });
+      return;
+    }
     if (t.getAttribute("data-wls") === "logoSize") {
       var z = $("wlLogoSz"); if (z) z.textContent = t.value;
       later(function () { WL.mutate(function (l) { l.shape = l.shape || {}; l.shape.logoSize = Number(t.value); }); });
@@ -275,7 +280,7 @@
       setColor(k, v.toLowerCase()); refreshColorRows(); return;
     }
     var s = t.getAttribute && t.getAttribute("data-wls");
-    if (s && s !== "logoSize") { WL.mutate(function (l) { l.shape = l.shape || {}; l.shape[s] = t.value; }); return; }
+    if (s && s !== "logoSize" && s !== "radius") { WL.mutate(function (l) { l.shape = l.shape || {}; l.shape[s] = t.value; }); return; }
     if (t.id === "wlImport") {
       var file = t.files && t.files[0]; if (!file) return;
       var fr = new FileReader();
@@ -304,7 +309,8 @@
       var p = WL.PRESETS.filter(function (x) { return x.id === b.getAttribute("data-wlp"); })[0];
       WL.mutate(function (l) {
         l.colors = l.colors || { light: {}, dark: {} };
-        ["light", "dark"].forEach(function (m) { l.colors[m] = l.colors[m] || {}; ["primary", "primary2", "accent", "link"].forEach(function (k) { delete l.colors[m][k]; }); });
+        var wipe = ["primary", "primary2", "accent", "link"].concat(p && p.c ? Object.keys(p.c) : []);
+        ["light", "dark"].forEach(function (m) { l.colors[m] = l.colors[m] || {}; wipe.forEach(function (k) { delete l.colors[m][k]; }); });
         if (p && p.c) Object.keys(p.c).forEach(function (k) { l.colors.light[k] = p.c[k]; });
       });
       renderColors(); renderApp(); toast("✅ تم تطبيق ثيم «" + (p ? p.name : "") + "»");
@@ -320,6 +326,8 @@
       WL.mutate(function (l) { if (l.colors) l.colors[mode] = {}; }); renderColors();
     } else if (a === "reset-colors") {
       WL.mutate(function (l) { l.colors = { light: {}, dark: {} }; }); renderColors(); renderApp();
+    } else if (a === "reset-radius") {
+      WL.mutate(function (l) { if (l.shape) delete l.shape.radius; }); renderShape();
     } else if (a === "reset-logosize") {
       WL.mutate(function (l) { if (l.shape) delete l.shape.logoSize; }); renderShape();
     } else if (a === "reset-shape") {

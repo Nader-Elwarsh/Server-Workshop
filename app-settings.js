@@ -495,7 +495,7 @@ function receiptSettingHtml(){
   return `<section class="panel setting-list-panel" id="receipt-settings-panel"><details><summary>🧾 إعدادات الإيصال</summary><div class="panel-body">
     <div class="hint">البيانات دي بتظهر أعلى وأسفل أي إيصال تطبعه أو تشاركه من صفحة أمر الشغل.</div>
     <div class="form-grid">
-      <label>اسم الورشة<input type="text" id="receiptInfoNameInput" value="${esc(info.name||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('name',this.value)" data-wf-input="previewReceiptWorkshopName"></label>
+      <label>اسم الورشة (فاضي = يتبع هوية النظام)<input type="text" id="receiptInfoNameInput" value="${esc(info.name||"")}" placeholder="${esc(window.WL?WL.name():"")}" data-wf-event="change" data-wf-code="setReceiptInfo('name',this.value)" data-wf-input="previewReceiptWorkshopName"></label>
       <label>رقم الهاتف<input type="text" value="${esc(info.phone||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('phone',this.value)"></label>
       <label class="wide">العنوان<input type="text" value="${esc(info.address||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('address',this.value)"></label>
       <label class="wide">نص ثابت / توقيع (يُستخدم أسفل الإيصال، ومتاح كمان كـ {التوقيع} في أي رسالة واتساب)<input type="text" value="${esc(info.footer||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('footer',this.value)"></label>
