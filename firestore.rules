@@ -145,11 +145,16 @@ service cloud.firestore {
     // الموظفون وحدهم يقرؤون الطلبات ويحوّلونها لأوامر شغل (من لوحة بوابة العملاء).
     match /guestRequests/{id} {
       allow read, update, delete: if isStaff();
-      allow create: if request.resource.data.keys().hasOnly(['name', 'phone', 'address', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
-        && request.resource.data.keys().hasAll(['name', 'phone', 'address', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+      // رقم الطلب G-XXXXXX هو نفسه معرّف المستند (يتولّد عند الزائر)؛ لو اتكرر الإنشاء بيتحوّل لتعديل ويترفض.
+      allow create: if id.matches('^G-[A-HJ-NP-Z2-9]{6}$')
+        && request.resource.data.keys().hasOnly(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+        && request.resource.data.keys().hasAll(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+        && request.resource.data.ref == id
         && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
         && request.resource.data.phone is string && request.resource.data.phone.matches('^[0-9]{8,15}$')
-        && request.resource.data.address is string && request.resource.data.address.size() >= 3 && request.resource.data.address.size() <= 200
+        && request.resource.data.center is string && request.resource.data.center.size() >= 1 && request.resource.data.center.size() <= 80
+        && request.resource.data.village is string && request.resource.data.village.size() <= 80
+        && request.resource.data.street is string && request.resource.data.street.size() >= 3 && request.resource.data.street.size() <= 200
         && request.resource.data.deviceType is string && request.resource.data.deviceType.size() <= 60
         && request.resource.data.fault is string && request.resource.data.fault.size() >= 3 && request.resource.data.fault.size() <= 1000
         && request.resource.data.handled == false && request.resource.data.guest == true

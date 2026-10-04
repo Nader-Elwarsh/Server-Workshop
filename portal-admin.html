@@ -280,13 +280,14 @@ $("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("
 
 /* ---- طلبات الزوار (guestRequests) ---- */
 function guPhone(p){var d=String(p||"").replace(/\D/g,"");return d}
+function guAddr(g){var parts=[g.center,g.village,g.street||g.address].filter(function(x){return x&&String(x).trim()});return parts.join(" - ")}
 function guWa(p){var d=guPhone(p);return d.indexOf("0")===0?"2"+d:d}
 function guTypeKey(t){var T=(window.settings&&window.settings().types)||{},ks=Object.keys(T);for(var i=0;i<ks.length;i++){if(ks[i].replace(/_/g," ")===t)return ks[i]}return t||""}
 function rGu(){var el=$("gu");if(!el)return;
 el.innerHTML=GR.length?GR.slice().sort(byNew).map(function(g){var ph=guPhone(g.phone);
-return'<div class="pa-item"><div class="pa-row"><b>👤 '+esc(g.name||"زائر")+'</b><span class="hint">'+esc(fdt(g.createdAt))+'</span></div>'+
+return'<div class="pa-item"><div class="pa-row"><b>👤 '+esc(g.name||"زائر")+'</b>'+(g.ref||g.id?' <bdi dir="ltr" class="hint">'+esc(g.ref||g.id)+'</bdi>':'')+'<span class="hint">'+esc(fdt(g.createdAt))+'</span></div>'+
 '<div class="pa-row" style="justify-content:flex-start;gap:10px;flex-wrap:wrap"><a href="tel:'+esc(ph)+'">📞 <bdi dir="ltr">'+esc(g.phone||"")+'</bdi></a><a href="https://wa.me/'+esc(guWa(g.phone))+'" target="_blank" rel="noopener noreferrer">💬 واتساب</a></div>'+
-'<div>📍 '+esc(g.address||"—")+'</div><div>🔧 '+esc(g.deviceType||"—")+'</div><div>⚠️ '+esc(g.fault||"")+'</div>'+
+'<div>📍 '+esc(guAddr(g)||"—")+'</div><div>🔧 '+esc(g.deviceType||"—")+'</div><div>⚠️ '+esc(g.fault||"")+'</div>'+
 '<div class="pa-actions" style="margin-top:8px"><button type="button" data-act="guConv" data-id="'+esc(g.id)+'">🧾 تحويل لأمر شغل</button> <button type="button" class="secondary" data-act="guDone" data-id="'+esc(g.id)+'">✔️ تم التعامل (بدون أمر)</button> <button type="button" class="secondary" data-act="guDel" data-id="'+esc(g.id)+'" style="border-color:var(--danger-text);color:var(--danger-text)">🗑️ حذف</button></div></div>'}).join(""):'<p class="hint">مفيش طلبات زوار جديدة.</p>'}
 function guOrderNo(){if(typeof window.orderNo==="function")return window.orderNo();var d=new Date(),y=String(d.getFullYear()).slice(-2),pre="W"+y+"-"+(d.getMonth()+1)+"-"+d.getDate()+"-",key=function(x){var t=new Date(x);return t.getFullYear()+"-"+t.getMonth()+"-"+t.getDate()},k=key(d),all=window.arr(window.K.r),n=all.filter(function(x){return x.createdAt&&key(x.createdAt)===k}).length+1;while(all.some(function(x){return x.no===pre+n}))n++;return pre+n}
 function guMark(id,extra){return db.collection("guestRequests").doc(id).update(Object.assign({handled:true,handledAt:SV},extra||{}))}
@@ -298,10 +299,10 @@ var dup=typeof window.duplicateCustomerByPhone==="function"?window.duplicateCust
 if(!confirm(dup?"الرقم ده مسجّل عندك للعميل «"+(dup.name||"")+"». هيتفتح له جهاز وأمر شغل جديد. متأكد؟":"هيتفتح عميل جديد وجهاز وأمر شغل من بيانات الزائر. متأكد؟"))return;
 if(btn)btn.disabled=true;
 var now=new Date().toISOString(),s=window.settings?window.settings():{},cid,custs=window.arr(window.K.c);
-if(dup)cid=dup.id;else{cid=window.id();custs=custs.concat({id:cid,name:String(g.name||"").slice(0,80),phone:g.phone,mainAddress:{center:"",village:"",address:"",street:String(g.address||"").slice(0,200)},extraAddress:{},createdAt:now});if(window.put(window.K.c,custs)!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ العميل.")}}
+if(dup)cid=dup.id;else{cid=window.id();custs=custs.concat({id:cid,name:String(g.name||"").slice(0,80),phone:g.phone,mainAddress:{center:String(g.center||"").slice(0,80),village:String(g.village||"").slice(0,80),address:"",street:String(g.street||g.address||"").slice(0,200)},extraAddress:{},createdAt:now});if(window.put(window.K.c,custs)!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ العميل.")}}
 var did=window.id(),dev={id:did,customerId:cid,addressKey:"main",type:guTypeKey(g.deviceType),category:"",brand:"",model:"",desc:"طلب زائر",photo:"",createdAt:now};
 if(window.put(window.K.d,window.arr(window.K.d).concat(dev))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ الجهاز.")}
-var r={id:window.id(),no:guOrderNo(),customerId:cid,deviceId:did,addressKey:"main",visit:"",status:"جديد",executionPlace:(s.executionPlaces||[])[0]||"عند العميل",workshopStatus:(s.workshopStatuses||[])[0]||"غير مطلوب",partsWaiting:false,tag:"",fault:String(g.fault||"").slice(0,1000),work:"",labor:0,parts:[],partsTotal:0,partsCost:0,total:0,deposit:0,remain:0,closed:false,source:"guest",guestRequestId:id,customerNote:"طلب سريع من زائر غير مسجّل",createdAt:now};
+var r={id:window.id(),no:guOrderNo(),customerId:cid,deviceId:did,addressKey:"main",visit:"",status:"جديد",executionPlace:(s.executionPlaces||[])[0]||"عند العميل",workshopStatus:(s.workshopStatuses||[])[0]||"غير مطلوب",partsWaiting:false,tag:"",fault:String(g.fault||"").slice(0,1000),work:"",labor:0,parts:[],partsTotal:0,partsCost:0,total:0,deposit:0,remain:0,closed:false,source:"guest",guestRequestId:id,guestRef:id,customerNote:"طلب سريع رقم "+id+" من زائر",createdAt:now};
 r.statusHistory=[{from:"",to:r.status,at:now,note:""}];
 if(window.put(window.K.r,window.arr(window.K.r).concat(r))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ أمر الشغل.")}
 guMark(id,{orderId:r.id,orderNo:r.no}).then(function(){if(confirm("اتفتح الأمر "+r.no+". تفتحه دلوقتي؟"))location.href="request.html?id="+encodeURIComponent(r.id)}).catch(function(){alert("اتفتح الأمر "+r.no+" بس تعذّر تحديث الطلب في السحابة؛ هيظهر تاني، اضغط تحويل مرة كمان وهيتربط بنفس الأمر.")})}

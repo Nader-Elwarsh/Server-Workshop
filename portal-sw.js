@@ -1,5 +1,5 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v10";
+const CACHE = "portal-v11";
 const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(f => c.add(f).catch(() => {})))).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
