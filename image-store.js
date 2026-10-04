@@ -130,7 +130,10 @@
         };
         cursorReq.onerror = () => reject(cursorReq.error);
       });
-    } catch (e) { return {}; }
+    } catch (e) {
+      console.error("[ImageStore] تعذر تصدير الصور من IndexedDB:", e);
+      throw e;
+    }
   }
 
   // لاسترجاع نسخة احتياطية: يحط كل الصور من ملف الباك أب في IndexedDB زي ما هي.

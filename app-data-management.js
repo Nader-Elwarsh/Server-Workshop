@@ -31,8 +31,8 @@ function renderAutomaticBackupPermission(){if(localStorage.getItem(AUTO_BACKUP_P
 function canonicalBackupValue(value){if(Array.isArray(value))return value.map(canonicalBackupValue);if(value&&typeof value==="object")return Object.keys(value).sort().reduce((o,k)=>{if(k!=="exportedAt")o[k]=canonicalBackupValue(value[k]);return o},{});return value}
 async function backupDataFingerprint(data){let text=JSON.stringify(canonicalBackupValue(data));try{if(window.crypto?.subtle&&window.TextEncoder){let bytes=await window.crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,"0")).join("")}}catch(e){}let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(16)}
 function renderAutomaticBackupNotice(message){renderAutomaticBackupStatus(message);if(message&&typeof renderBackupReminder==="function")renderBackupReminder()}
-async function createAutomaticBackup(){if(backupBusy)return false;backupBusy=true;try{let data=await snapshotAllData(),hash=await backupDataFingerprint(data);if(!confirm("تم اكتشاف تغيير في بيانات الورشة منذ آخر نسخة احتياطية. هل تريد تنزيل نسخة احتياطية الآن؟"))return false;if(!downloadBackupData(data,"نسخة-احتياطية-تلقائية"))throw new Error("download");localStorage.setItem("wf_last_backup_at",data._meta.exportedAt);localStorage.setItem(AUTO_BACKUP_HASH_KEY,hash);localStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));localStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));renderBackupInfo();renderAutomaticBackupNotice("✅ تم إنشاء النسخة التلقائية بعد موافقتك.");return true}catch(e){console.error("[auto-backup] فشل النسخ",e);renderAutomaticBackupNotice("تعذر إنشاء النسخة التلقائية. يمكنك استخدام زر التصدير اليدوي من الإعدادات.");return false}finally{backupBusy=false}}
-async function runAutomaticBackupCheck(force=false){if(!automaticBackupEnabled()||backupBusy)return;let now=Date.now(),last=+(localStorage.getItem(AUTO_BACKUP_CHECK_KEY)||0);if(!force&&last&&now-last<AUTO_BACKUP_INTERVAL_MS)return;localStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(now));try{let data=await snapshotAllData(),hash=await backupDataFingerprint(data),previous=localStorage.getItem(AUTO_BACKUP_HASH_KEY);if(previous&&previous===hash){renderAutomaticBackupNotice("✅ لم تتغير البيانات منذ آخر نسخة؛ لا حاجة لإنشاء نسخة جديدة.");return}let prompted=+(localStorage.getItem(AUTO_BACKUP_PROMPT_KEY)||0);if(!force&&prompted&&now-prompted<AUTO_BACKUP_INTERVAL_MS)return;localStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(now));await createAutomaticBackup()}catch(e){console.error("[auto-backup] فشل فحص التغيير",e)}}
+async function createAutomaticBackup(data,hash){if(backupBusy)return false;backupBusy=true;try{data=data||await snapshotAllData();hash=hash||await backupDataFingerprint(data);if(!confirm("تم اكتشاف تغيير في بيانات الورشة منذ آخر نسخة احتياطية. هل تريد تنزيل نسخة احتياطية الآن؟"))return false;if(!downloadBackupData(data,"نسخة-احتياطية-تلقائية"))throw new Error("download");localStorage.setItem("wf_last_backup_at",data._meta.exportedAt);localStorage.setItem(AUTO_BACKUP_HASH_KEY,hash);localStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));localStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));renderBackupInfo();renderAutomaticBackupNotice("✅ تم إنشاء النسخة التلقائية بعد موافقتك.");return true}catch(e){console.error("[auto-backup] فشل النسخ",e);renderAutomaticBackupNotice("تعذر إنشاء النسخة التلقائية. يمكنك استخدام زر التصدير اليدوي من الإعدادات.");return false}finally{backupBusy=false}}
+async function runAutomaticBackupCheck(force=false){if(!automaticBackupEnabled()||backupBusy)return;let now=Date.now(),last=+(localStorage.getItem(AUTO_BACKUP_CHECK_KEY)||0);if(!force&&last&&now-last<AUTO_BACKUP_INTERVAL_MS)return;localStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(now));try{let data=await snapshotAllData(),hash=await backupDataFingerprint(data),previous=localStorage.getItem(AUTO_BACKUP_HASH_KEY);if(previous&&previous===hash){renderAutomaticBackupNotice("✅ لم تتغير البيانات منذ آخر نسخة؛ لا حاجة لإنشاء نسخة جديدة.");return}let prompted=+(localStorage.getItem(AUTO_BACKUP_PROMPT_KEY)||0);if(!force&&prompted&&now-prompted<AUTO_BACKUP_INTERVAL_MS)return;localStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(now));await createAutomaticBackup(data,hash)}catch(e){console.error("[auto-backup] فشل فحص التغيير",e);renderAutomaticBackupNotice("تعذر فحص البيانات للنسخ الاحتياطي. تحقق من مساحة التخزين/الصور ثم حاول مرة أخرى.")}}
 function scheduleAutomaticBackupCheck(){setTimeout(async()=>{await runAutomaticBackupCheck();scheduleAutomaticBackupCheck()},AUTO_BACKUP_INTERVAL_MS)}
 // إصلاح لمرة واحدة فقط: أي جهاز كانت عنده القيمة القديمة "no" محفوظة
 // (سواء من ضغطة "لا الآن" القديمة اللي كانت توقف التذكير للأبد، أو أي
@@ -149,8 +149,14 @@ function downloadBackupData(data,prefix){
 }
 function bytesToB64(bytes){let s="";bytes.forEach(b=>s+=String.fromCharCode(b));return btoa(s)}
 function b64ToBytes(s){const bin=atob(s),out=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i);return out}
-async function encryptBackupData(data,password){const enc=new TextEncoder(),salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),base=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:150000,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt"]),cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,enc.encode(JSON.stringify(data)));return{_encrypted:true,algorithm:"AES-GCM",kdf:"PBKDF2-SHA-256",iterations:150000,salt:bytesToB64(salt),iv:bytesToB64(iv),ciphertext:bytesToB64(new Uint8Array(cipher))}}
-async function decryptBackupData(envelope,password){const dec=new TextDecoder(),base=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:b64ToBytes(envelope.salt),iterations:envelope.iterations,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]),plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64ToBytes(envelope.iv)},key,b64ToBytes(envelope.ciphertext));return JSON.parse(dec.decode(plain))}
+const BACKUP_KDF_ITERATIONS=150000;
+async function encryptBackupData(data,password){const enc=new TextEncoder(),salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),base=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:BACKUP_KDF_ITERATIONS,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["encrypt"]),cipher=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,enc.encode(JSON.stringify(data)));return{_encrypted:true,algorithm:"AES-GCM",kdf:"PBKDF2-SHA-256",iterations:BACKUP_KDF_ITERATIONS,salt:bytesToB64(salt),iv:bytesToB64(iv),ciphertext:bytesToB64(new Uint8Array(cipher))}}
+async function decryptBackupData(envelope,password){
+  if(!envelope||envelope._encrypted!==true||envelope.algorithm!=="AES-GCM"||envelope.kdf!=="PBKDF2-SHA-256"||envelope.iterations!==BACKUP_KDF_ITERATIONS||typeof envelope.salt!=="string"||typeof envelope.iv!=="string"||typeof envelope.ciphertext!=="string")throw new Error("invalid-encrypted-backup");
+  let salt,iv,ciphertext;try{salt=b64ToBytes(envelope.salt);iv=b64ToBytes(envelope.iv);ciphertext=b64ToBytes(envelope.ciphertext)}catch(_){throw new Error("invalid-encrypted-backup")}
+  if(salt.byteLength!==16||iv.byteLength!==12||ciphertext.byteLength<16)throw new Error("invalid-encrypted-backup");
+  const dec=new TextDecoder(),base=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveKey"]),key=await crypto.subtle.deriveKey({name:"PBKDF2",salt,iterations:BACKUP_KDF_ITERATIONS,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]),plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,ciphertext);return JSON.parse(dec.decode(plain))
+}
 // أسماء الأقسام اللي بتتفرّغ لو النسخة (القديمة) مفيهاش بياناتها: الاسترجاع استبدال كامل للبيانات، فمايفضلش جزء من الحالة الحالية متلخبط مع بيانات النسخة.
 const BACKUP_SECTION_LABELS={d:"الأجهزة",r:"أوامر الشغل",p:"قطع الغيار",m:"حركات المخزن",e:"المصاريف",tr:"الخزنة",tasks:"المهام",wtx:"حركات الحسابات",fc:"أكواد الأعطال",pc:"المكالمات المعلّقة",inv:"الفواتير",trash:"سلة المهملات",followupLog:"سجل المتابعة"};
 function backupMissingSections(data){return Object.entries(K).filter(([name,k])=>k!==K.s&&!(k in data)).map(([name,k])=>({key:k,label:BACKUP_SECTION_LABELS[name]||name}))}
@@ -174,7 +180,7 @@ function validateBackupData(data){
   if(data.images!==undefined&&(data.images===null||typeof data.images!=="object"||Array.isArray(data.images)))throw new Error("invalid-images");
   if(data.images&&Object.values(data.images).some(x=>typeof x!=="string"))throw new Error("invalid-image-value");
   if(data._meta!==undefined&&(data._meta===null||typeof data._meta!=="object"||Array.isArray(data._meta)))throw new Error("invalid-meta");
-  const schema=+(data._meta?.schemaVersion||1),current=+(window.CURRENT_SCHEMA_VERSION||schema);if(!Number.isInteger(schema)||schema<1)throw new Error("invalid-schema");if(schema>current)throw new Error("future-schema");
+  const rawSchema=data._meta?.schemaVersion,schema=rawSchema===undefined?1:+rawSchema,current=+(window.CURRENT_SCHEMA_VERSION||schema);if(!Number.isInteger(schema)||schema<1)throw new Error("invalid-schema");if(schema>current)throw new Error("future-schema");
   if(data.wf_notif_enabled!==undefined&&data.wf_notif_enabled!==null&&typeof data.wf_notif_enabled!=="string")throw new Error("invalid-notification-setting");
   return {schemaVersion:schema};
 }
@@ -183,13 +189,20 @@ async function backupAllData(){if(backupBusy)return;backupBusy=true;try{const da
 async function restoreBackupFile(input){
   if(backupBusy)return;backupBusy=true;
   const file=input?.files?.[0];if(!file){backupBusy=false;return;}
-  const reader=new FileReader();reader.onload=async()=>{
+  let readSettled=false;
+  const failRead=error=>{if(readSettled)return;readSettled=true;console.error("[backup] تعذر قراءة ملف النسخة الاحتياطية",error?.target?.error||error);try{input.value=""}catch(_){}backupBusy=false;alert("تعذر قراءة ملف النسخة الاحتياطية. تأكد أنه ملف JSON سليم ثم حاول مرة أخرى.")};
+  let reader;try{reader=new FileReader()}catch(e){failRead(e);return}
+  reader.onerror=failRead;reader.onabort=failRead;
+  reader.onload=async()=>{
+    if(readSettled)return;readSettled=true;
     let oldImages=null,oldData=null,oldState=null,safetyDownloaded=false;
     try{
       let data=JSON.parse(reader.result);if(data?._encrypted){const password=prompt("اكتب كلمة مرور النسخة المشفرة:");if(!password)throw new Error("missing-password");data=await decryptBackupData(data,password)}validateBackupData(data);
       const backupSchema=data._meta?.schemaVersion||1;
       const missing=backupMissingSections(data);
-      const summary=backupSummary(data)+(missing.length?`\n\n⚠️ أقسام مش موجودة في النسخة دي وهتتفرّغ: ${missing.map(x=>x.label).join("، ")}`:"");
+      const missingLabels=missing.map(x=>x.label);
+      if(!Object.prototype.hasOwnProperty.call(data,"images"))missingLabels.push("الصور والتسجيلات");
+      const summary=backupSummary(data)+(missingLabels.length?`\n\n⚠️ بيانات/أقسام مش موجودة في النسخة دي وهتتفرّغ: ${missingLabels.join("، ")}`:"");
       oldState=captureLocalDataState();oldData=await snapshotAllData();oldImages=oldData.images;
       // ملف أمان مستقل يُنزّل قبل أي استبدال، ليظل متاحًا حتى لو حدث فشل غير متوقع.
       safetyDownloaded=downloadBackupData(oldData,"نسخة-أمان-قبل-الاسترجاع");
@@ -213,7 +226,8 @@ async function restoreBackupFile(input){
     }
     input.value="";
     backupBusy=false;
-  };reader.readAsText(file);
+  };
+  try{reader.readAsText(file)}catch(e){failRead(e)}
 }
 
 function integrityIgnored(){try{const v=JSON.parse(localStorage.getItem("wf_integrity_ignored")||"[]");return new Set(Array.isArray(v)?v:[])}catch(_){return new Set()}}
