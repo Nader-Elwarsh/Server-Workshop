@@ -1,7 +1,7 @@
 const fs=require('fs'),path=require('path'),assert=require('assert');
 const root=__dirname;const read=n=>fs.readFileSync(path.join(root,n),'utf8');
 const html=read('compcodes.html'),settings=read('settings.html'),css=read('style.css');
-const simpleUi=read('workshop-mini-simple-ui.js'),sharedData=read('shared-data.js');
+const simpleUi=read('workshop-mini-simple-ui.js'),sharedData=read('shared-data.js'),bottomNav=read('bottom-nav.js');
 assert(sharedData.includes('function debounce('),'shared data must provide the common debounce helper');
 assert(simpleUi.includes('debounce(renderCustomers, 120)')&&simpleUi.includes('debounce(renderDevices, 120)')&&simpleUi.includes('debounce(renderParts, 120)')&&simpleUi.includes('debounce(renderRequests, 120)'),'main list searches must use debounce');
 assert(html.includes('aria-label="البحث في أكواد الكباسات"'),'compressor search needs accessible label');
@@ -11,7 +11,9 @@ assert(settings.includes('id="lastBackupInfo" role="status" aria-live="polite"')
 assert(settings.includes('id="dataIntegrityResult"')&&settings.includes('role="status"'),'integrity status needs accessible announcement');
 assert(css.includes(':focus-visible'),'keyboard focus style is required');
 assert(css.includes('prefers-reduced-motion'),'reduced motion support is required');
+assert(bottomNav.includes('width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px'),'bottom navigation icons must use one centered fixed-size box');
+for(const name of fs.readdirSync(root).filter(n=>n.endsWith('.html'))){const source=read(name).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<!--[\s\S]*?-->/g,'');assert(!/<button\b(?![^>]*\btype\s*=)[^>]*>/i.test(source),`${name}: every static button must declare its type`)}
 assert(css.includes('.comp-actions{display:grid;grid-template-columns:1fr 1fr'),'mobile compressor actions need usable layout');
 assert(css.includes('--route-cell-bg')&&css.includes('.route-data-cell{min-width:0;background:var(--route-cell-bg)'),'route data cells need theme-aware contrast');
 assert(css.includes('--route-action-blue-text')&&css.includes('.route-turn-flag{background:var(--route-action-blue-bg)'),'route turn indicator needs theme-aware colors');
-console.log('ui-quality-check: PASS (focus, live regions, mobile layout, reduced motion)');
+console.log('ui-quality-check: PASS (focus, live regions, mobile layout, reduced motion, icon geometry, button types)');
