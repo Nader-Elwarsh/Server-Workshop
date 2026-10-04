@@ -136,24 +136,29 @@ async function main() {
     await assertSucceeds(getDoc(doc(anonymous, 'portalPosts/public-article')));
     await assertFails(getDoc(doc(anonymous, 'portalPosts/draft-article')));
 
-    // طلب الصيانة السريع للزائر غير المسجّل: إنشاء بحقول سليمة فقط، ولا قراءة ولا تعديل إلا للموظف.
-    const GUEST = () => ({
-      name: 'زائر', phone: '01012345678', address: 'مطاي - شارع الجامعة', deviceType: 'غسالات',
-      fault: 'الغسالة مش بتفتح', handled: false, guest: true, createdAt: require('firebase/firestore').serverTimestamp()
+    // طلب الصيانة السريع للزائر غير المسجّل: رقم الطلب = معرّف المستند، إنشاء بحقول سليمة فقط، ولا قراءة ولا تعديل إلا للموظف.
+    const GUEST = (ref) => ({
+      ref, name: 'زائر', phone: '01012345678', center: 'مطاي', village: 'أبو عزيز', street: 'شارع الجامعة',
+      deviceType: 'غسالات', fault: 'الغسالة مش بتفتح', handled: false, guest: true, createdAt: require('firebase/firestore').serverTimestamp()
     });
-    await assertSucceeds(setDoc(doc(anonymous, 'guestRequests/g1'), GUEST()));
-    await assertFails(setDoc(doc(anonymous, 'guestRequests/g2'), { ...GUEST(), extra: 'x' }));
-    await assertFails(setDoc(doc(anonymous, 'guestRequests/g3'), { ...GUEST(), handled: true }));
-    await assertFails(setDoc(doc(anonymous, 'guestRequests/g4'), { ...GUEST(), phone: 'abc' }));
-    await assertFails(setDoc(doc(anonymous, 'guestRequests/g5'), { ...GUEST(), fault: 'x'.repeat(1001) }));
-    await assertFails(setDoc(doc(anonymous, 'guestRequests/g6'), { ...GUEST(), createdAt: new Date('2020-01-01') }));
-    await assertFails(getDoc(doc(anonymous, 'guestRequests/g1')));
+    await assertSucceeds(setDoc(doc(anonymous, 'guestRequests/G-ABC234'), GUEST('G-ABC234')));
+    await assertSucceeds(setDoc(doc(anonymous, 'guestRequests/G-ABC235'), { ...GUEST('G-ABC235'), village: '' }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC234'), GUEST('G-ABC234'))); // نفس الرقم تاني = تعديل ← مرفوض
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/g1'), GUEST('g1'))); // صيغة الرقم غلط
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC236'), GUEST('G-ZZZ999'))); // ref لا يطابق المعرّف
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC237'), { ...GUEST('G-ABC237'), extra: 'x' }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC238'), { ...GUEST('G-ABC238'), handled: true }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC239'), { ...GUEST('G-ABC239'), phone: 'abc' }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC242'), { ...GUEST('G-ABC242'), center: '' }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC243'), { ...GUEST('G-ABC243'), fault: 'x'.repeat(1001) }));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC244'), { ...GUEST('G-ABC244'), createdAt: new Date('2020-01-01') }));
+    await assertFails(getDoc(doc(anonymous, 'guestRequests/G-ABC234')));
     await assertFails(getDocs(collection(anonymous, 'guestRequests')));
-    await assertFails(updateDoc(doc(anonymous, 'guestRequests/g1'), { handled: true }));
-    await assertFails(deleteDoc(doc(anonymous, 'guestRequests/g1')));
-    await assertFails(getDoc(doc(alice, 'guestRequests/g1')));
-    await assertSucceeds(getDoc(doc(staff, 'guestRequests/g1')));
-    await assertSucceeds(updateDoc(doc(staff, 'guestRequests/g1'), { handled: true }));
+    await assertFails(updateDoc(doc(anonymous, 'guestRequests/G-ABC234'), { handled: true }));
+    await assertFails(deleteDoc(doc(anonymous, 'guestRequests/G-ABC234')));
+    await assertFails(getDoc(doc(alice, 'guestRequests/G-ABC234')));
+    await assertSucceeds(getDoc(doc(staff, 'guestRequests/G-ABC234')));
+    await assertSucceeds(updateDoc(doc(staff, 'guestRequests/G-ABC234'), { handled: true }));
 
     console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering)');
   } finally {
