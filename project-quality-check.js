@@ -28,7 +28,8 @@ for(const name of htmlFiles){
   assert(!s.includes('<script src="app-lock.js" defer>'),'app lock must remain synchronous before page interaction');
   const external=[...s.matchAll(/<script\s+src="([^"]+)"([^>]*)><\/script>/g)];
   for(const m of external){
-    if(m[1]==='app-lock.js') continue;
+    // white-label*.js بيتحمّل متزامن عمدًا في <head> عشان ألوان وهوية النسخة تتطبّق قبل أول رسم للصفحة (من غير وميض).
+    if(m[1]==='app-lock.js'||m[1]==='white-label.js'||m[1]==='white-label-config.js') continue;
     assert(/\bdefer\b/.test(m[2]),`${name}: external script ${m[1]} should use defer`);
   }
 }

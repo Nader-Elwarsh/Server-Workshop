@@ -386,7 +386,7 @@ function fillFollowupTemplate(text,x){
     "عدد_الأيام": String(x.daysSince??""),
     "عدد_الأوامر": String(x.ordersCount??""),
     "تاريخ_آخر_أمر": x.last?new Date(x.last).toLocaleDateString("ar-EG"):"",
-    "اسم_الورشة": (info.name||"").trim()||"الورشة الفنية",
+    "اسم_الورشة": (info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"),
     "التوقيع": (info.footer||"").trim()
   };
   return String(text||"").replace(/\{([^}]+)\}/g,(m,k)=>map[k]!==undefined?map[k]:m);

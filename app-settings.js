@@ -486,7 +486,7 @@ function confirmWarrantyTerms(){
 function previewReceiptWorkshopName(){
   let out=document.getElementById("receiptWorkshopNamePreview");
   if(!out)return;
-  out.textContent=(this.value||"").trim()||"الورشة الفنية";
+  out.textContent=(this.value||"").trim()||(window.WL?WL.name():"الورشة الفنية");
 }
 function receiptSettingHtml(){
   let s=settings();
@@ -500,7 +500,7 @@ function receiptSettingHtml(){
       <label class="wide">العنوان<input type="text" value="${esc(info.address||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('address',this.value)"></label>
       <label class="wide">نص ثابت / توقيع (يُستخدم أسفل الإيصال، ومتاح كمان كـ {التوقيع} في أي رسالة واتساب)<input type="text" value="${esc(info.footer||"")}" data-wf-event="change" data-wf-code="setReceiptInfo('footer',this.value)"></label>
     </div>
-    <div class="hint">هيظهر في رأس أي إيصال بالظبط كده: <b id="receiptWorkshopNamePreview">${esc((info.name||"").trim()||"الورشة الفنية")}</b></div>
+    <div class="hint">هيظهر في رأس أي إيصال بالظبط كده: <b id="receiptWorkshopNamePreview">${esc((info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"))}</b></div>
     <div class="hint">فعّل/عطّل أي بند، رتّبه بالأسهم، وعدّل تسميته زي ما تحب. تقدر كمان تضيف بنود مخصصة (نص ثابت بيظهر في كل إيصال، زي "الضمان 3 شهور").</div>
     <div class="page-head-actions"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="addReceiptCustomField()">➕ إضافة بند مخصص</button></div>
     <div id="receiptFieldsList">${receiptFieldsRowsHtml(fields)}</div>

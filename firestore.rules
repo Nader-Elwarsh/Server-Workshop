@@ -50,7 +50,8 @@ service cloud.firestore {
     }
 
     match /portal/{doc} {
-      allow read: if signedIn();
+      // portal/branding = هوية النظام (الاسم والألوان والشعار) وبتتقرأ قبل تسجيل الدخول؛ مفيش فيها بيانات خاصة.
+      allow read: if signedIn() || doc == 'branding';
       allow write: if isStaff();
     }
 

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
+<meta charset="utf-8"><script src="white-label-config.js"></script><script src="white-label.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-app-compat.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-auth-compat.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore-compat.js" defer></script>
@@ -272,7 +272,7 @@ $("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("
 
 /* ---- الدعوات والحسابات ---- */
 var LK={},SEC=null,busy=false,TPL_KEY="wf_portal_invite_tpl";
-var TPL_DEF="أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة الورشة الفنية:\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
+var TPL_DEF="أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة "+(window.WL?WL.name():"الورشة الفنية")+":\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
 function normPhone(s){var d=String(s||"").replace(/[٠-٩]/g,function(x){return x.charCodeAt(0)-1632}).replace(/[۰-۹]/g,function(x){return x.charCodeAt(0)-1776}).replace(/\D/g,"");if(d.indexOf("0020")===0)d=d.slice(4);if(d.length===12&&d.indexOf("20")===0)d="0"+d.slice(2);if(d.length===10&&d[0]==="1")d="0"+d;return/^01[0125]\d{8}$/.test(d)?d:""}
 function portalUrl(){return new URL("portal.html",location.href).href}
 function tpl(){try{return localStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
@@ -305,7 +305,7 @@ $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
 /* ---- الشريط الإعلاني ---- */
 var TKD=null,tkDirty=false,tkT=null,PTK=null;
 var TK_LINKS=[["","بدون رابط"],["tab:mine","🧾 يفتح «طلباتي» (طلب صيانة)"],["tab:learn","📰 يفتح «نصايح»"],["tab:devices","🔧 يفتح «أجهزتي»"],["tab:ask","❓ يفتح «اسأل الورشة»"],["signup","📝 يفتح شاشة التسجيل (للزوار)"],["custom","🔗 رابط خارجي / واتساب / اتصال…"]];
-var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في الورشة الفنية — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
+var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في "+(window.WL?WL.name():"الورشة الفنية")+" — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
 function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:true,controls:true,rev:0,items:[]}}
 function tkLoad(){TKD=PTK.sanitize(window.settings().portalTicker)||tkBlank();tkDirty=false}
 function tkNew(tpl){return Object.assign({id:"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:"",icon:"",type:"info",enabled:true,audience:"all",start:"",end:"",link:""},tpl||{})}

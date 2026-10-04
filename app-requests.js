@@ -368,7 +368,7 @@ function fillWaTemplate(text,r){
     "العطل": r.fault||"",
     "الإجمالي": (+r.total||0).toFixed(2)+" ج",
     "المتبقي": Math.max(0,(+r.total||0)-(+r.deposit||0)).toFixed(2)+" ج",
-    "اسم_الورشة": (info.name||"").trim()||"الورشة الفنية",
+    "اسم_الورشة": (info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"),
     "التوقيع": (info.footer||"").trim(),
     "شروط_الضمان": ((settings().warranty||{}).terms||"").trim()
   };
@@ -419,7 +419,7 @@ function buildReceiptHtml(r){
     if(val===undefined||val==="")return "";
     return `<tr><td class="receipt-label">${esc(f.label||"")}</td><td class="receipt-value">${val}</td></tr>`;
   }).join("");
-  return `<div class="receipt-doc"><div class="receipt-head"><img class="receipt-logo" data-wf-brand="logo" src="workshop-logo.svg" alt=""><h2>${esc((info.name||"").trim()||"الورشة الفنية")}</h2>${(info.phone||"").trim()?`<div>📞 ${esc(info.phone.trim())}</div>`:""}${(info.address||"").trim()?`<div>📍 ${esc(info.address.trim())}</div>`:""}</div><table class="receipt-table">${rows}</table>${(info.footer||"").trim()?`<div class="receipt-footer">${esc(info.footer.trim())}</div>`:""}</div>`;
+  return `<div class="receipt-doc"><div class="receipt-head"><img class="receipt-logo" data-wf-brand="logo" src="workshop-logo.svg" alt=""><h2>${esc((info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"))}</h2>${(info.phone||"").trim()?`<div>📞 ${esc(info.phone.trim())}</div>`:""}${(info.address||"").trim()?`<div>📍 ${esc(info.address.trim())}</div>`:""}</div><table class="receipt-table">${rows}</table>${(info.footer||"").trim()?`<div class="receipt-footer">${esc(info.footer.trim())}</div>`:""}</div>`;
 }
 // نسخة نصية مخصّصة من الإيصال لمشاركة واتساب/الأنظمة التانية، بدل الاعتماد
 // على استخراج innerText من جدول receipt-table: الخلايا المتجاورة (td) في
@@ -462,7 +462,7 @@ function buildReceiptText(r){
     return `${f.label||""}: ${val}`;
   }).filter(Boolean);
   let sep="——————————————";
-  let head=[(info.name||"").trim()||"الورشة الفنية"];
+  let head=[(info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية")];
   if((info.phone||"").trim())head.push("📞 "+info.phone.trim());
   if((info.address||"").trim())head.push("📍 "+info.address.trim());
   let out=head.join("\n")+"\n"+sep+"\n"+lines.join("\n");
@@ -562,7 +562,7 @@ async function buildAndShareReceiptImage(r){
 
   // ===== تمريرة القياس: نحسب عدد الأسطر المطلوبة فعليًا لكل جزء =====
   ctx.font=nameFont;
-  const nameLines=wrapCanvasText(ctx,(info.name||"").trim()||"الورشة الفنية",contentWidth);
+  const nameLines=wrapCanvasText(ctx,(info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"),contentWidth);
   ctx.font=subFont;
   const phoneLines=(info.phone||"").trim()?wrapCanvasText(ctx,"📞 "+info.phone.trim(),contentWidth):[];
   const addrLines=(info.address||"").trim()?wrapCanvasText(ctx,"📍 "+info.address.trim(),contentWidth):[];
@@ -675,7 +675,7 @@ function shareReceiptView(requestId){
     window.open(`https://wa.me/${wa}?text=${encodeURIComponent(text)}`,"_blank","noopener");
     return;
   }
-  let title="الورشة الفنية — إيصال "+(r.no||"");
+  let title=(window.WL?WL.name():"الورشة الفنية")+" — إيصال "+(r.no||"");
   if(navigator.share){
     navigator.share({title,text}).catch(e=>{if(e?.name!=="AbortError"&&typeof window.psCopyFallback==="function")window.psCopyFallback(text)});
   }else if(typeof window.psCopyFallback==="function")window.psCopyFallback(text);

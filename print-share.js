@@ -11,8 +11,8 @@
   function workshopBrandName(){
     try{
       const info=(typeof settings==="function"?settings():{}).receiptInfo||{};
-      return (info.name||"").trim()||"الورشة الفنية";
-    }catch(e){return "الورشة الفنية"}
+      return (info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية");
+    }catch(e){return window.WL?WL.name():"الورشة الفنية"}
   }
   function pageTitle(){return document.title.replace(/\s*\|.*$/,'').trim()||workshopBrandName()}
   function cleanClone(root){

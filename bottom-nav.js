@@ -51,7 +51,7 @@
       "#bottomNav a,#bottomNav button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;color:var(--text-muted,#687583);background:transparent;border:0;font:inherit;cursor:pointer;padding:6px 2px;border-radius:10px}" +
       "#bottomNav a i,#bottomNav button i{font-style:normal;font-size:20px;line-height:1}" +
       "#bottomNav a small,#bottomNav button small{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}" +
-      "#bottomNav a.active{color:var(--accent-text,#17324d);background:rgba(23,50,77,.1);font-weight:bold}" +
+      "#bottomNav a.active{color:var(--accent-text,#17324d);background:rgba(23,50,77,.1);background:color-mix(in srgb,var(--accent-text,#17324d) 12%,transparent);font-weight:bold}" +
       "[data-theme=\"dark\"] #bottomNav a.active{background:rgba(95,176,255,.16)}" +
       "#bottomNav a:active,#bottomNav button:active{opacity:.7}";
     document.head.appendChild(style);

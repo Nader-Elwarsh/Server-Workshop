@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-168-brand-v14";
+const CACHE_NAME = "workshop-v11-169-whitelabel-v15";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -95,6 +95,10 @@ const CORE_FILES = [
   "./apple-touch-icon-v13.png",
   "./app-icon.svg",
   "./branding.js",
+  "./white-label.js",
+  "./white-label-config.js",
+  "./white-label-page.js",
+  "./white-label.html",
   "./workshop-logo.svg",
   "./wf-shell.css",
   "./notif-shared.js"
