@@ -187,10 +187,10 @@
     db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
       .then(function () { SB.x.pt = x; saveBase(); }).catch(function (e) { console.warn("ticker publish pending", e && e.message); });
   }
-  var inboxN = { a: 0, b: 0, c: 0, q: 0 };
+  var inboxN = { a: 0, b: 0, c: 0, q: 0, g: 0 }; // g = طلبات الزوار (guestRequests)
   window.wfPortalInbox = inboxN;
   function pill() { // مفيش شريط عايم: العدّاد بيظهر جوه كارت "بوابة العملاء" في الرئيسية بس
-    var t = inboxN.a + inboxN.b + inboxN.c + inboxN.q, old = document.getElementById("wfPortalPill");
+    var t = inboxN.a + inboxN.b + inboxN.c + inboxN.q + inboxN.g, old = document.getElementById("wfPortalPill");
     if (old) old.remove();
     window.wfPortalTotal = t;
     try { document.dispatchEvent(new CustomEvent("wf-portal-inbox", { detail: { total: t, n: inboxN } })); } catch (e) {}
@@ -203,6 +203,7 @@
       db.collection("portalComplaints").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.b = s.size; pill(); }, function () {});
       db.collection("portalSuggestions").where("status", "==", "pending").onSnapshot(function (s) { inboxN.c = s.size; pill(); }, function () {});
       db.collection("portalQuestions").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.q = s.size; pill(); }, function () {});
+      db.collection("guestRequests").where("handled", "==", false).onSnapshot(function (s) { inboxN.g = s.size; pill(); }, function () {});
     } catch (e) {}
   }
   window.wfChangePassword = function () { // تغيير كلمة سر الموظف/المدير (مع تأكيد وزر إظهار)

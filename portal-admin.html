@@ -69,6 +69,14 @@
 </div>
 </section>
 
+<section class="pa-sec" id="t_gu">
+<div class="panel">
+<h2>🧑‍🔧 طلبات الصيانة السريعة (من غير تسجيل)</h2>
+<p class="hint">طلبات من زوّار البوابة مش مسجّلين. اتصل بالعميل الأول، ولو الطلب جدّي اضغط «تحويل لأمر شغل»: بيتفتح له عميل (أو بيتربط بعميل مسجّل بنفس الرقم) وجهاز وأمر شغل جديد. الطلبات دي مش بتتحوّل لوحدها عشان ماتدخلش بيانات غير مراجعة في حسابات الورشة.</p>
+<div id="gu"></div>
+</div>
+</section>
+
 <section class="pa-sec" id="t_q">
 <div class="panel">
 <h2>❓ أسئلة العملاء</h2>
@@ -159,8 +167,8 @@
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
 var PRE=[["👁️ كل حاجة",{total:1,deposit:1,remain:1,labor:1,partPrices:1,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["💰 الإجمالي بدون تفصيل",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:0,partQty:0,work:1,history:1,visit:1,workshopStatus:1}],["🔩 القطع بدون أسعار",{total:1,deposit:1,remain:1,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}],["🚫 بدون أي أسعار",{total:0,deposit:0,remain:0,labor:0,partPrices:0,parts:1,partQty:1,work:1,history:1,visit:1,workshopStatus:1}]];
-var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["tk","📢 الشريط الإعلاني"],["vs","👁️ الظهور"]];
-var SG=[],CP=[],PT=[],QS=[],RQ=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
+var TABS=[["ov","📊 نظرة عامة"],["cl","👥 العملاء"],["or","🧾 الأوامر"],["gu","🧑‍🔧 طلبات الزوار"],["q","❓ الأسئلة"],["cp","📣 الشكاوى"],["sg","➕ الاقتراحات"],["ac","🔑 الدعوات والحسابات"],["ps","📰 المقالات"],["tk","📢 الشريط الإعلاني"],["vs","👁️ الظهور"]];
+var SG=[],CP=[],PT=[],QS=[],RQ=[],GR=[],DR={},db=null,SV=null,editId="",editImg="",tab="ov",qDefer=false;
 function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function ms(v){if(!v)return 0;if(v.toDate)return v.toDate().getTime();if(typeof v.seconds==="number")return v.seconds*1000;return Date.parse(v)||0}
@@ -175,13 +183,13 @@ function isOpen(r){return r.status!=="مكتمل"&&r.status!=="ملغي"}
 function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id===id});return d?[d.type,d.brand,d.model].filter(Boolean).join(" "):""}
 /* ---- الأرقام والتبويبات ---- */
 function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
-rq:RQ.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
+rq:RQ.length,gu:GR.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
 function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
-function rTabs(){var c=counts(),bd={or:c.rq,q:c.qn,cp:c.cp,sg:c.sg};
+function rTabs(){var c=counts(),bd={or:c.rq,gu:c.gu,q:c.qn,cp:c.cp,sg:c.sg};
 $("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
 function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
 function rStats(){var c=counts(),rev=ordsAll().filter(function(r){return r.status==="مكتمل"}).reduce(function(a,r){return a+(+r.total||0)},0);
-$("st").innerHTML=box(c.cl,"عميل مسجّل","cl")+box(c.or,"أمر شغل ("+c.open+" مفتوح)","or")+box(c.rq,"طلب بانتظار التحويل","or",1)+box(c.qn,"سؤال جديد","q",1)+box(c.cp,"شكوى جديدة","cp",1)+box(c.sg,"اقتراح إضافة","sg",1)+box(c.pub,"مقال منشور","ps")+box(money(rev),"إيراد الأوامر المكتملة (ج)","or")}
+$("st").innerHTML=box(c.cl,"عميل مسجّل","cl")+box(c.or,"أمر شغل ("+c.open+" مفتوح)","or")+box(c.rq,"طلب بانتظار التحويل","or",1)+box(c.gu,"طلب زائر جديد","gu",1)+box(c.qn,"سؤال جديد","q",1)+box(c.cp,"شكوى جديدة","cp",1)+box(c.sg,"اقتراح إضافة","sg",1)+box(c.pub,"مقال منشور","ps")+box(money(rev),"إيراد الأوامر المكتملة (ج)","or")}
 function rOv(){var cl=custs(),o=ordsAll(),st={},vl={},now=Date.now(),n30=0;
 o.forEach(function(r){st[r.status||"—"]=(st[r.status||"—"]||0)+1});
 cl.forEach(function(c){var a=c.mainAddress||{},k=[a.center,a.village].filter(Boolean).join(" - ")||"غير محدد";vl[k]=(vl[k]||0)+1;if(now-ms(c.createdAt)<30*864e5)n30++});
@@ -263,12 +271,42 @@ $("visSum").innerHTML="👁️ العميل هيشوف: "+(t.length?t.join(" •
 function vpre(i){var p=PRE[i][1];Object.keys(p).forEach(function(k){var e=$("v_"+k);if(e)e.checked=!!p[k]});vSum()}
 function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;if(!window.put(window.K.s,s)){$("visMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
 /* ---- ربط الأحداث ---- */
-var ACT={tab:function(b){go(b.dataset.k)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
+var ACT={tab:function(b){go(b.dataset.k)},guConv:function(b){guConv(b.dataset.id,b)},guDone:function(b){guDone(b.dataset.id)},guDel:function(b){guDel(b.dataset.id)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
 document.addEventListener("change",function(e){var t=e.target;if(t.id&&t.id.indexOf("v_")===0&&$("visSum"))vSum();if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
 document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
 document.addEventListener("focusout",function(){if(qDefer)setTimeout(rQs,150)});
 $("cs").addEventListener("input",rCl);$("of").addEventListener("change",rPo);$("qf").addEventListener("change",rQs);
+
+/* ---- طلبات الزوار (guestRequests) ---- */
+function guPhone(p){var d=String(p||"").replace(/\D/g,"");return d}
+function guWa(p){var d=guPhone(p);return d.indexOf("0")===0?"2"+d:d}
+function guTypeKey(t){var T=(window.settings&&window.settings().types)||{},ks=Object.keys(T);for(var i=0;i<ks.length;i++){if(ks[i].replace(/_/g," ")===t)return ks[i]}return t||""}
+function rGu(){var el=$("gu");if(!el)return;
+el.innerHTML=GR.length?GR.slice().sort(byNew).map(function(g){var ph=guPhone(g.phone);
+return'<div class="pa-item"><div class="pa-row"><b>👤 '+esc(g.name||"زائر")+'</b><span class="hint">'+esc(fdt(g.createdAt))+'</span></div>'+
+'<div class="pa-row" style="justify-content:flex-start;gap:10px;flex-wrap:wrap"><a href="tel:'+esc(ph)+'">📞 <bdi dir="ltr">'+esc(g.phone||"")+'</bdi></a><a href="https://wa.me/'+esc(guWa(g.phone))+'" target="_blank" rel="noopener noreferrer">💬 واتساب</a></div>'+
+'<div>📍 '+esc(g.address||"—")+'</div><div>🔧 '+esc(g.deviceType||"—")+'</div><div>⚠️ '+esc(g.fault||"")+'</div>'+
+'<div class="pa-actions" style="margin-top:8px"><button type="button" data-act="guConv" data-id="'+esc(g.id)+'">🧾 تحويل لأمر شغل</button> <button type="button" class="secondary" data-act="guDone" data-id="'+esc(g.id)+'">✔️ تم التعامل (بدون أمر)</button> <button type="button" class="secondary" data-act="guDel" data-id="'+esc(g.id)+'" style="border-color:var(--danger-text);color:var(--danger-text)">🗑️ حذف</button></div></div>'}).join(""):'<p class="hint">مفيش طلبات زوار جديدة.</p>'}
+function guOrderNo(){if(typeof window.orderNo==="function")return window.orderNo();var d=new Date(),y=String(d.getFullYear()).slice(-2),pre="W"+y+"-"+(d.getMonth()+1)+"-"+d.getDate()+"-",key=function(x){var t=new Date(x);return t.getFullYear()+"-"+t.getMonth()+"-"+t.getDate()},k=key(d),all=window.arr(window.K.r),n=all.filter(function(x){return x.createdAt&&key(x.createdAt)===k}).length+1;while(all.some(function(x){return x.no===pre+n}))n++;return pre+n}
+function guMark(id,extra){return db.collection("guestRequests").doc(id).update(Object.assign({handled:true,handledAt:SV},extra||{}))}
+function guConv(id,btn){var g=GR.find(function(x){return x.id===id});if(!g)return;
+if(typeof window.put!=="function"||!window.K||typeof window.arr!=="function"||typeof window.id!=="function")return alert("بيانات النظام لسه بتتحمّل. جرّب كمان ثانية.");
+var orders=window.arr(window.K.r),ex=orders.find(function(r){return r.guestRequestId===id});
+if(ex){if(btn)btn.disabled=true;return guMark(id,{orderId:ex.id,orderNo:ex.no||""}).then(function(){alert("الأمر موجود بالفعل: "+ex.no)}).catch(function(){alert("الأمر موجود ("+ex.no+") بس تعذّر تحديث الطلب. جرّب تاني.")})}
+var dup=typeof window.duplicateCustomerByPhone==="function"?window.duplicateCustomerByPhone(g.phone):null;
+if(!confirm(dup?"الرقم ده مسجّل عندك للعميل «"+(dup.name||"")+"». هيتفتح له جهاز وأمر شغل جديد. متأكد؟":"هيتفتح عميل جديد وجهاز وأمر شغل من بيانات الزائر. متأكد؟"))return;
+if(btn)btn.disabled=true;
+var now=new Date().toISOString(),s=window.settings?window.settings():{},cid,custs=window.arr(window.K.c);
+if(dup)cid=dup.id;else{cid=window.id();custs=custs.concat({id:cid,name:String(g.name||"").slice(0,80),phone:g.phone,mainAddress:{center:"",village:"",address:"",street:String(g.address||"").slice(0,200)},extraAddress:{},createdAt:now});if(window.put(window.K.c,custs)!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ العميل.")}}
+var did=window.id(),dev={id:did,customerId:cid,addressKey:"main",type:guTypeKey(g.deviceType),category:"",brand:"",model:"",desc:"طلب زائر",photo:"",createdAt:now};
+if(window.put(window.K.d,window.arr(window.K.d).concat(dev))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ الجهاز.")}
+var r={id:window.id(),no:guOrderNo(),customerId:cid,deviceId:did,addressKey:"main",visit:"",status:"جديد",executionPlace:(s.executionPlaces||[])[0]||"عند العميل",workshopStatus:(s.workshopStatuses||[])[0]||"غير مطلوب",partsWaiting:false,tag:"",fault:String(g.fault||"").slice(0,1000),work:"",labor:0,parts:[],partsTotal:0,partsCost:0,total:0,deposit:0,remain:0,closed:false,source:"guest",guestRequestId:id,customerNote:"طلب سريع من زائر غير مسجّل",createdAt:now};
+r.statusHistory=[{from:"",to:r.status,at:now,note:""}];
+if(window.put(window.K.r,window.arr(window.K.r).concat(r))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ أمر الشغل.")}
+guMark(id,{orderId:r.id,orderNo:r.no}).then(function(){if(confirm("اتفتح الأمر "+r.no+". تفتحه دلوقتي؟"))location.href="request.html?id="+encodeURIComponent(r.id)}).catch(function(){alert("اتفتح الأمر "+r.no+" بس تعذّر تحديث الطلب في السحابة؛ هيظهر تاني، اضغط تحويل مرة كمان وهيتربط بنفس الأمر.")})}
+function guDone(id){if(!confirm("تعليم الطلب «تم التعامل» من غير أمر شغل؟"))return;guMark(id).catch(function(){alert("تعذّر التحديث. جرّب تاني.")})}
+function guDel(id){if(!confirm("حذف الطلب نهائيًا؟"))return;db.collection("guestRequests").doc(id).delete().catch(function(){alert("تعذّر الحذف. جرّب تاني.")})}
 
 /* ---- الدعوات والحسابات ---- */
 var LK={},SEC=null,busy=false,TPL_KEY="wf_portal_invite_tpl";
@@ -345,7 +383,7 @@ ACT.tkSave=tkSave;ACT.tkQuick=tkQuick;
 document.addEventListener("input",function(e){var t=e.target;if(TKD&&t.dataset&&t.dataset.tk&&t.type!=="checkbox"&&t.tagName!=="SELECT")tkField(t)});
 document.addEventListener("change",function(e){var t=e.target;if(!TKD||!t.dataset)return;if(t.dataset.tk)tkField(t);else if(t.dataset.tkm){TKD[t.dataset.tkm]=t.type==="checkbox"?t.checked:t.value;tkTouch()}});
 window.addEventListener("beforeunload",function(e){if(tkDirty){e.preventDefault();e.returnValue=""}});
-function rAll(){rTabs();rStats();rOv();rCl();rRq();rPo();rQs();rCp();rSg();rPt();rAc()}
+function rAll(){rTabs();rStats();rOv();rCl();rRq();rGu();rPo();rQs();rCp();rSg();rPt();rAc()}
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
 go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
@@ -354,7 +392,8 @@ db.collection("portalSuggestions").where("status","==","pending").onSnapshot(fun
 db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).filter(function(p){return p.id!=="wf-ticker"}).sort(byNew);rTabs();rStats();rOv();rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});
 db.collection("portalQuestions").onSnapshot(function(s){QS=docs(s);rTabs();rStats();rOv();rQs()});
-db.collection("portalRequests").where("handled","==",false).onSnapshot(function(s){RQ=docs(s);rTabs();rStats();rRq()})})}
+db.collection("portalRequests").where("handled","==",false).onSnapshot(function(s){RQ=docs(s);rTabs();rStats();rRq()});
+db.collection("guestRequests").where("handled","==",false).onSnapshot(function(s){GR=docs(s);rTabs();rStats();rGu()},function(){})})}
 ready();
 </script>
 </body>

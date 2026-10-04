@@ -83,9 +83,49 @@
 
   /* ---------- تنظيف الإعدادات ---------- */
   function str(v, max) { return typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max || 120) : ""; }
+  /* نص متعدد الأسطر (بيحافظ على \n) — للسياسات والشروط والقوائم */
+  function mstr(v, max) { return typeof v === "string" ? v.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, " ").trim().slice(0, max || 1000) : ""; }
+  /* رابط آمن: http/https بس (أي javascript: أو data: بيتشال). لو اتكتب دومين من غير بروتوكول بنضيف https:// */
+  function safeUrl(v) {
+    v = typeof v === "string" ? v.replace(/[\u0000-\u001f\s]/g, "").slice(0, 300) : "";
+    if (!v) return "";
+    if (/^https?:\/\/[^\s"'<>]+$/i.test(v)) return v;
+    if (/^[a-z0-9][a-z0-9.\-]*\.[a-z]{2,}([\/?#][^\s"'<>]*)?$/i.test(v)) return "https://" + v;
+    return "";
+  }
+  /* المفاتيح المسموحة للنصوص القابلة للتعديل من لوحة الهوية (والحد الأقصى لطول كل نص) */
+  var CONTENT_MAX = {
+    staffLoginTitle: 160, staffLoginIntro: 500, staffLoginListTitle: 100, staffLoginList: 1200, staffLoginFormTitle: 100,
+    customerLoginTitle: 160, customerLoginIntro: 500, customerStepsTitle: 100, customerSteps: 1200,
+    guestTitle: 100, guestIntro: 400, guestThanks: 300,
+    privacy: 12000, terms: 12000
+  };
+  var WS_TEXT = { title: 80, about: 500, address: 200, hours: 200 };
+  var WS_URLS = ["facebook", "instagram", "youtube", "tiktok", "website", "mapUrl"];
+  /* أرقام عربية/فارسية ← إنجليزية (عشان التحقق وروابط الاتصال) */
+  function latin(v) { return String(v || "").replace(/[\u0660-\u0669]/g, function (c) { return c.charCodeAt(0) - 1632; }).replace(/[\u06F0-\u06F9]/g, function (c) { return c.charCodeAt(0) - 1776; }); }
+  function cleanWorkshop(w) {
+    w = w && typeof w === "object" ? w : {};
+    var o = {};
+    Object.keys(WS_TEXT).forEach(function (k) { var t = mstr(w[k], WS_TEXT[k]); if (t) o[k] = t; });
+    var wa = latin(str(w.whatsapp, 30)); if (wa && wa.replace(/\D/g, "").length >= 7) o.whatsapp = wa;
+    var em = str(w.email, 120); if (/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(em)) o.email = em;
+    WS_URLS.forEach(function (k) { var u = safeUrl(w[k]); if (u) o[k] = u; });
+    if (Array.isArray(w.phones)) {
+      var ph = [];
+      w.phones.forEach(function (p) {
+        if (ph.length >= 4 || !p || typeof p !== "object") return;
+        var n = latin(str(p.number, 30)); if (n.replace(/\D/g, "").length < 5) return;
+        ph.push({ label: str(p.label, 30), number: n });
+      });
+      if (ph.length) o.phones = ph;
+    }
+    if (w.hide === true) o.hide = true;
+    return o;
+  }
   function clean(o) {
     o = o && typeof o === "object" ? o : {};
-    var out = { name: str(o.name, 80), tagline: str(o.tagline, 120), shortName: str(o.shortName, 24), replace: [], colors: { light: {}, dark: {} }, shape: {}, updatedAt: Number(o.updatedAt) > 0 ? Number(o.updatedAt) : 0 };
+    var out = { name: str(o.name, 80), tagline: str(o.tagline, 120), shortName: str(o.shortName, 24), replace: [], colors: { light: {}, dark: {} }, shape: {}, content: {}, workshop: {}, guest: o.guest === "off" ? "off" : (o.guest === "on" ? "on" : ""), updatedAt: Number(o.updatedAt) > 0 ? Number(o.updatedAt) : 0 };
     if (Array.isArray(o.replace)) {
       o.replace.forEach(function (p) {
         if (out.replace.length >= 30 || !Array.isArray(p)) return;
@@ -106,6 +146,9 @@
     if (s.logoShape && Object.prototype.hasOwnProperty.call(LOGO_SHAPES, s.logoShape) && s.logoShape !== "default") out.shape.logoShape = s.logoShape;
     var ls = Number(s.logoSize); if (ls >= 28 && ls <= 120) out.shape.logoSize = Math.round(ls);
     if (s.header === "solid") out.shape.header = "solid";
+    var ct = o.content && typeof o.content === "object" ? o.content : {};
+    Object.keys(CONTENT_MAX).forEach(function (k) { var t = mstr(ct[k], CONTENT_MAX[k]); if (t) out.content[k] = t; });
+    out.workshop = cleanWorkshop(o.workshop);
     return out;
   }
   function merge(a, b) { // b يغلب a (على مستوى كل مفتاح)
@@ -114,6 +157,9 @@
     if (p.replace.length) o.replace = p.replace;
     ["light", "dark"].forEach(function (m) { COLOR_KEYS.forEach(function (k) { if (p.colors[m][k]) o.colors[m][k] = p.colors[m][k]; }); });
     Object.keys(p.shape).forEach(function (k) { o.shape[k] = p.shape[k]; });
+    Object.keys(p.content).forEach(function (k) { o.content[k] = p.content[k]; });
+    Object.keys(p.workshop).forEach(function (k) { o.workshop[k] = p.workshop[k]; });
+    if (p.guest) o.guest = p.guest;
     o.updatedAt = Math.max(o.updatedAt, p.updatedAt);
     return o;
   }
@@ -437,10 +483,123 @@
     });
   }
 
+  /* ================= 6) محتوى الصفحات: نصوص الدخول + الخصوصية والشروط + بيانات الورشة ================= */
+  function mk(tag, text, cls) { var e = document.createElement(tag); if (text != null && text !== "") e.textContent = text; if (cls) e.className = cls; return e; }
+  function eh(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  /* **عريض** و [نص](رابط) فقط — كل شيء يتحط بـ textContent فمفيش أي HTML بيتحقن */
+  function inlineMd(parent, text) {
+    var re = /(\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\s]+\))/g, last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var tok = m[0];
+      if (tok.charAt(0) === "*") parent.appendChild(mk("b", tok.slice(2, -2)));
+      else {
+        var mm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok), href = mm[2], a = mk("a", mm[1]);
+        if (/^[a-z\-]+\.html$/i.test(href)) { a.href = href; parent.appendChild(a); }                 // صفحة داخلية
+        else { var u = safeUrl(href); if (u) { a.href = u; a.target = "_blank"; a.rel = "noopener noreferrer"; parent.appendChild(a); } else parent.appendChild(document.createTextNode(mm[1])); }
+      }
+      last = m.index + tok.length;
+    }
+    if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+  /* صيغة النص: "## عنوان" — "- نقطة" — سطر عادي = فقرة — سطر فاضي بيقفل القائمة */
+  function buildDoc(text) {
+    var frag = document.createDocumentFragment(), ul = null;
+    String(text || "").split("\n").forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) { ul = null; return; }
+      var h = /^#{1,3}\s+(.+)$/.exec(line), b = /^[-•]\s+(.+)$/.exec(line);
+      if (h) { ul = null; var h2 = mk("h2"); inlineMd(h2, h[1]); frag.appendChild(h2); }
+      else if (b) { if (!ul) { ul = mk("ul"); frag.appendChild(ul); } var li = mk("li"); inlineMd(li, b[1]); ul.appendChild(li); }
+      else { ul = null; var p = mk("p"); inlineMd(p, line); frag.appendChild(p); }
+    });
+    return frag;
+  }
+  function digits(v) { return String(v || "").replace(/[\u0660-\u0669]/g, function (c) { return c.charCodeAt(0) - 1632; }).replace(/[\u06F0-\u06F9]/g, function (c) { return c.charCodeAt(0) - 1776; }).replace(/\D/g, ""); }
+  function telHref(v) { var raw = String(v || "").trim(); return (raw.charAt(0) === "+" ? "+" : "") + digits(raw); }
+  function waDigits(v) {
+    var raw = String(v || "").trim(), d = digits(raw);
+    if (raw.charAt(0) === "+") return d;
+    if (d.indexOf("0020") === 0) d = d.slice(2);
+    if (d.indexOf("00") === 0) return d.slice(2);
+    if (d.charAt(0) === "0") return "20" + d.slice(1);
+    return d.indexOf("20") === 0 ? d : "20" + d;
+  }
+  function ensureInfoStyle() {
+    if (document.getElementById("wl-info-style") || !document.head) return;
+    var s = document.createElement("style"); s.id = "wl-info-style";
+    s.textContent = ".wl-info .wl-about{margin:6px 0 10px;line-height:1.8}.wl-info .wl-bs{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}" +
+      ".wl-info a.wl-b{display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:12px;background:var(--pri,#0b57d0);color:var(--on-pri,#fff);text-decoration:none;font-weight:700;font-size:14px;min-height:42px}" +
+      ".wl-info a.wl-b.wa{background:#1a7f37;color:#fff}.wl-info a.wl-b.s{background:transparent;color:var(--pri,#0b57d0);border:1.5px solid var(--pri,#0b57d0)}" +
+      ".wl-info .wl-ln{margin:6px 0;color:var(--tx,inherit)}";
+    document.head.appendChild(s);
+  }
+  var SOCIALS = [["mapUrl", "🗺️ الموقع على الخريطة"], ["facebook", "📘 فيسبوك"], ["instagram", "📸 إنستجرام"], ["youtube", "▶️ يوتيوب"], ["tiktok", "🎵 تيك توك"], ["website", "🌐 الموقع"]];
+  function infoHtml() {
+    var w = eff.workshop || {};
+    if (w.hide) return "";
+    var has = !!(w.about || w.address || w.hours || w.whatsapp || w.email || (w.phones && w.phones.length) || WS_URLS.some(function (k) { return w[k]; }));
+    if (!has) return "";
+    ensureInfoStyle();
+    var h = '<section class="card wl-info"><b class="wf-card-title">📍 ' + eh(w.title || "بيانات الورشة") + "</b>";
+    if (w.about) h += '<p class="wl-about">' + eh(w.about).replace(/\n/g, "<br>") + "</p>";
+    var b = "";
+    (w.phones || []).forEach(function (p) { b += '<a class="wl-b" href="tel:' + eh(telHref(p.number)) + '">📞 ' + (p.label ? eh(p.label) + ": " : "") + '<bdi dir="ltr">' + eh(p.number) + "</bdi></a>"; });
+    if (w.whatsapp) b += '<a class="wl-b wa" href="https://wa.me/' + waDigits(w.whatsapp) + '" target="_blank" rel="noopener noreferrer">💬 واتساب</a>';
+    if (w.email) b += '<a class="wl-b s" href="mailto:' + eh(w.email) + '">✉️ ' + eh(w.email) + "</a>";
+    if (b) h += '<div class="wl-bs">' + b + "</div>";
+    if (w.address) h += '<div class="wl-ln">📍 ' + eh(w.address) + "</div>";
+    if (w.hours) h += '<div class="wl-ln">🕒 ' + eh(w.hours) + "</div>";
+    var so = "";
+    SOCIALS.forEach(function (x) { if (w[x[0]]) so += '<a class="wl-b s" href="' + eh(w[x[0]]) + '" target="_blank" rel="noopener noreferrer">' + x[1] + "</a>"; });
+    if (so) h += '<div class="wl-bs">' + so + "</div>";
+    return h + "</section>";
+  }
+  function listLines(t) { return String(t || "").split("\n").map(function (x) { return x.replace(/^[-•]\s+/, "").trim(); }).filter(Boolean); }
+  function applyContent() {
+    if (!document.body) return;
+    var C = eff.content, i, e, k, v, n;
+    n = document.querySelectorAll("[data-wl-text]");
+    for (i = 0; i < n.length; i++) {
+      e = n[i]; k = e.getAttribute("data-wl-text"); v = C[k] || "";
+      if (e._wlCur === undefined) { e._wlDef = e.textContent; e._wlCur = ""; }
+      if (e._wlCur !== v) { e.textContent = v || e._wlDef; e._wlCur = v; }
+    }
+    n = document.querySelectorAll("[data-wl-list]");
+    for (i = 0; i < n.length; i++) {
+      e = n[i]; k = e.getAttribute("data-wl-list"); v = C[k] || "";
+      if (e._wlCur === undefined) { e._wlDef = e.innerHTML; e._wlCur = ""; }
+      if (e._wlCur === v) continue;
+      e._wlCur = v;
+      if (!v) { e.innerHTML = e._wlDef; continue; }
+      e.innerHTML = "";
+      listLines(v).forEach(function (t) { e.appendChild(mk("li", t)); });
+    }
+    n = document.querySelectorAll("[data-wl-doc]");
+    for (i = 0; i < n.length; i++) {
+      e = n[i]; k = e.getAttribute("data-wl-doc"); v = C[k] || "";
+      if (e._wlCur === undefined) { e._wlDef = Array.prototype.slice.call(e.childNodes); e._wlCur = ""; }
+      if (e._wlCur === v) continue;
+      e._wlCur = v;
+      var back = e._wlDef.filter(function (x) { return x.nodeType === 1 && x.className === "back"; })[0];
+      while (e.firstChild) e.removeChild(e.firstChild);
+      if (!v) { e._wlDef.forEach(function (x) { e.appendChild(x); }); continue; }
+      if (back) e.appendChild(back);
+      e.appendChild(buildDoc(v));
+      var other = k === "privacy" ? ["terms.html", "شروط الاستخدام"] : ["privacy.html", "سياسة الخصوصية"], hp = mk("p", "راجع كمان ", "hint"), a = mk("a", other[1]);
+      a.href = other[0]; hp.appendChild(a); hp.appendChild(document.createTextNode(".")); e.appendChild(hp);
+    }
+    n = document.querySelectorAll("[data-wl-guest]");
+    for (i = 0; i < n.length; i++) n[i].style.display = eff.guest === "off" ? "none" : "";
+    n = document.querySelectorAll("[data-wl-info]");
+    var html = infoHtml();
+    for (i = 0; i < n.length; i++) { e = n[i]; if (e._wlHtml !== html) { e.innerHTML = html; e._wlHtml = html; } }
+  }
+
   /* ================= واجهة API ================= */
   var listeners = [];
   function render() {
-    applyTheme(); refreshText(); applyManifest();
+    applyTheme(); refreshText(); applyContent(); applyManifest();
     for (var i = 0; i < listeners.length; i++) { try { listeners[i](eff); } catch (e) {} }
     try { window.dispatchEvent(new CustomEvent("wl:change")); } catch (e) {}
   }
@@ -481,6 +640,11 @@
     staticCfg: function () { return JSON.parse(JSON.stringify(staticCfg)); },
     lock: function () { return STATIC.lock && STATIC.lock.code ? String(STATIC.lock.code) : ""; },
     isCustom: dirty,
+    content: function (k) { return eff.content[k] || ""; },
+    lines: function (k, def) { var a = listLines(eff.content[k]); return a.length ? a : (def || []); },
+    workshop: function () { return JSON.parse(JSON.stringify(eff.workshop)); },
+    guestEnabled: function () { return eff.guest !== "off"; },
+    infoHtml: infoHtml, applyContent: applyContent, buildDoc: buildDoc, safeUrl: safeUrl, CONTENT_MAX: CONTENT_MAX, WS_URLS: WS_URLS,
     mutate: mutate,
     onChange: function (fn) { listeners.push(fn); },
     mix: mix, contrast: contrast, onColor: onColor,
@@ -492,7 +656,7 @@
   /* ---------- تشغيل ---------- */
   applyTheme();            // فورًا قبل رسم الصفحة (مفيش وميض)
   P = pairs(); pKey = JSON.stringify(P);
-  function ready() { applyTheme(); refreshText(true); applyManifest(); applyStaticBrand(); autoPull(); }
+  function ready() { applyTheme(); refreshText(true); applyContent(); applyManifest(); applyStaticBrand(); autoPull(); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready); else ready();
   window.addEventListener("storage", function (e) { // تعديل من تبويب تاني
     if (e.key === KEY) { local = loadLocal(); recompute(); render(); }

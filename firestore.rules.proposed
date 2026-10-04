@@ -140,6 +140,22 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['kind', 'value', 'parent', 'by', 'status', 'createdAt']);
     }
 
+    // طلب صيانة سريع من زائر غير مسجّل (بوابة العملاء ← «طلب صيانة سريع»).
+    // الزائر يقدر ينشئ مستند بس بحقول محددة وأطوال محدودة، ومفيش له قراءة ولا تعديل ولا حذف.
+    // الموظفون وحدهم يقرؤون الطلبات ويحوّلونها لأوامر شغل (من لوحة بوابة العملاء).
+    match /guestRequests/{id} {
+      allow read, update, delete: if isStaff();
+      allow create: if request.resource.data.keys().hasOnly(['name', 'phone', 'address', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'phone', 'address', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.matches('^[0-9]{8,15}$')
+        && request.resource.data.address is string && request.resource.data.address.size() >= 3 && request.resource.data.address.size() <= 200
+        && request.resource.data.deviceType is string && request.resource.data.deviceType.size() <= 60
+        && request.resource.data.fault is string && request.resource.data.fault.size() >= 3 && request.resource.data.fault.size() <= 1000
+        && request.resource.data.handled == false && request.resource.data.guest == true
+        && request.resource.data.createdAt == request.time;
+    }
+
     match /portalPosts/{id} {
       allow read: if resource.data.published == true;
       allow read, write: if isStaff();
