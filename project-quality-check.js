@@ -15,7 +15,9 @@ assert(comp.includes('للاسترشاد فقط'),'alternatives list must keep t
 assert(comp.includes('function exportCustomCompressors')&&comp.includes('function importCustomCompressorsFile'),'custom compressor additions must be shareable like fault codes');
 const gs=read('global-search.js');
 assert(gs.includes('compressor:')&&gs.includes('CompressorRef'),'global search must include a lazy-loaded compressor category');
-for(const page of ['index.html','settings.html','request.html','customers.html'])assert(read(page).includes('app-compressor-codes.js'),`compressor search API must be available on ${page} for the global search widget`);
+assert(gs.includes('function loadCompressorModule')&&gs.includes('script.src = "app-compressor-codes.js"'),'global search must load compressor support on demand');
+assert(read('compcodes.html').includes('app-compressor-codes.js'),'compressor page must keep its direct feature module');
+for(const page of htmlFiles){if(page!=='compcodes.html')assert(!read(page).includes('app-compressor-codes.js'),`compressor support must not be downloaded eagerly by ${page}`)}
 const compHtml0=read('compcodes.html');
 assert(compHtml0.includes('id="compExportCustom"')&&compHtml0.includes('id="compImportCustom"'),'compressor page must offer export/import for manual additions');
 assert(read('settings.html').includes('data-action="backup"')&&!read('settings.html').includes('onclick="backupAllData()"'),'settings static controls must use delegated actions');

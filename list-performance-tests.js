@@ -25,4 +25,24 @@ ctx.showAllDevices(); const t4 = time(() => ctx.renderDevices());
 console.log('list-performance-tests: customers summary ' + t1 + 'ms, devices summary ' + t2 + 'ms, customers list ' + t3 + 'ms, devices list ' + t4 + 'ms');
 [t1, t2, t3, t4].forEach(t => assert(t < LIMIT, 'list render too slow: ' + t + 'ms (limit ' + LIMIT + 'ms)'));
 assert(/\d+/.test(els.customerList.innerHTML) && els.customerList.innerHTML.length > 500, 'customer list must render');
+// Inventory card rendering must count exits with one movement-index build, not
+// filter the complete movement history once for every part in the list.
+const inventoryParts = Array.from({ length: 180 }, (_, i) => ({ id: 'p' + i, name: 'قطعة ' + i, category: 'اختبار', qty: 5, min: 1, buy: 2, use: 4 }));
+store.wf_p = JSON.stringify(inventoryParts);
+let movementFilters = 0;
+let inventoryMoves = Array.from({ length: 1080 }, (_, i) => ({ id: 'm' + i, partId: 'p' + (i % inventoryParts.length), type: 'خروج', qty: 1, at: new Date().toISOString() }));
+inventoryMoves.push({ id: 'inbound', partId: 'p0', type: 'دخول', qty: 20, at: new Date().toISOString() });
+inventoryMoves.filter = function (fn, thisArg) { movementFilters++; return Array.prototype.filter.call(this, fn, thisArg); };
+const originalArrCached = ctx.arrCached;
+ctx.arrCached = key => key === 'wf_m' ? inventoryMoves : originalArrCached(key);
+ctx.categoryColorClass = () => '';
+ctx.categoryIcon = () => '<svg></svg>';
+ctx.showAllParts();
+assert.ok(els.partList.innerHTML.includes('استُخدم 6 مرة'), 'part usage count should include only outbound inventory movements');
+assert.strictEqual(movementFilters, 0, 'part list should not filter the full movement history once per rendered part');
+inventoryMoves = [{ id: 'new-out', partId: 'p0', type: 'خروج', qty: 1, at: new Date().toISOString() }];
+inventoryMoves.filter = function (fn, thisArg) { movementFilters++; return Array.prototype.filter.call(this, fn, thisArg); };
+ctx.renderParts();
+assert.ok(els.partList.innerHTML.includes('استُخدم 1 مرة'), 'movement index should refresh when the stored movement array changes');
+assert.strictEqual(movementFilters, 0, 'updated inventory list should still use indexed movement counts');
 console.log('list-performance-tests: PASS');

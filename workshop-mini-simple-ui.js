@@ -78,10 +78,19 @@
   /* حركات "الخروج" بس (استهلاك فعلي من المخزن) — بتُستخدم لحساب "عدد مرات
      استخدام الصنف" في كروت/جدول المخزن. حركات الإرجاع أو التعديل ما بتتحسبش
      كاستخدام. */
-  function partOutMoves(pid) {
-    return moveRows().filter(m => m.partId === pid && /خروج/.test(m.type || ""));
+  let partUsageIndex = { moves: null, counts: new Map() };
+  function partUsageCount(pid) {
+    const moves = moveRows();
+    if (partUsageIndex.moves !== moves) {
+      const counts = new Map();
+      for (const move of moves) {
+        if (!move || !/خروج/.test(move.type || "")) continue;
+        counts.set(move.partId, (counts.get(move.partId) || 0) + 1);
+      }
+      partUsageIndex = { moves, counts };
+    }
+    return partUsageIndex.counts.get(pid) || 0;
   }
-  function partUsageCount(pid) { return partOutMoves(pid).length; }
 
   const INVENTORY_PERIOD_LABELS = { "7": "آخر 7 أيام", "30": "آخر 30 يوم", "90": "آخر 90 يوم", all: "كل الوقت" };
 
@@ -106,7 +115,13 @@
   /* ترتيب الأصناف الأكثر حركة في فترة معيّنة — بتتحسب هنا عشان تُستخدم في
      كارت الملخص وفي شاشة "الأكثر حركة" الكاملة بنفس المنطق بالظبط. */
   function computeTopMoved(period) {
-    const all = partRows().filter(p => !p.archived);
+    const allParts = partRows();
+    const allPartsById = new Map(), activePartsById = new Map();
+    for (const p of allParts) {
+      if (!p) continue;
+      if (!allPartsById.has(p.id)) allPartsById.set(p.id, p);
+      if (!p.archived && !activePartsById.has(p.id)) activePartsById.set(p.id, p);
+    }
     const usage = {};
     movesInPeriod(period).forEach(m => {
       const e = (usage[m.partId] ||= { qty: 0, count: 0 });
@@ -115,7 +130,7 @@
     });
     return Object.entries(usage)
       .sort((a, b) => b[1].qty - a[1].qty)
-      .map(([pid, u]) => ({ p: all.find(x => x.id === pid) || partRows().find(x => x.id === pid), ...u }));
+      .map(([pid, u]) => ({ p: activePartsById.get(pid) || allPartsById.get(pid), ...u }));
   }
 
   window.setInventoryStatsPeriod = function (period) {
@@ -139,7 +154,7 @@
   }
 
   function locationForOrder(r) {
-    const c = customerRows().find(x => x.id === r.customerId) || {};
+    const c = (typeof byIdCached === "function" ? byIdCached(K.c).get(r.customerId) : customerRows().find(x => x.id === r.customerId)) || {};
     let a = c.mainAddress || {};
     if (r.addressKey === "extra" && c.extraAddress) a = c.extraAddress;
     return {

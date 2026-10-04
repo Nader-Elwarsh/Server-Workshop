@@ -78,7 +78,6 @@ function localDateKey(date){return dayKeyLocal(date)}
 function parseLocalDateValue(value){if(typeof value==="string"){let m=value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);}return new Date(value)}
 function monthKeyLocal(value){let d=parseLocalDateValue(value);if(Number.isNaN(d.getTime()))return"";return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
 function orderNo(date=new Date()){let y=String(date.getFullYear()).slice(-2),m=date.getMonth()+1,d=date.getDate(),prefix=`W${y}-${m}-${d}-`,ymd=localDateKey(date);let n=arr(K.r).filter(x=>x.createdAt&&localDateKey(new Date(x.createdAt))===ymd).length+1;while(arr(K.r).some(x=>x.no===prefix+n))n++;return prefix+n}
-function normalizeOrderNumbers(){let rs=arr(K.r),used=new Set(),groups={};rs.forEach(r=>{let dt=r.createdAt?new Date(r.createdAt):new Date(),ymd=localDateKey(dt);(groups[ymd]??=[]).push(r)});Object.entries(groups).forEach(([ymd,list])=>{let [yy,mm,dd]=ymd.split("-").map(Number),prefix=`W${String(yy).slice(-2)}-${mm}-${dd}-`;list.forEach((r,i)=>{let n=prefix+(i+1);while(used.has(n))n=prefix+(++i+1);r.no=n;used.add(n)})});put(K.r,rs)}
 
 /* =========================================================
    دورة حالات أمر الشغل المعتمدة (راجع WORK_ORDER_LIFECYCLE_APPROVED.md)

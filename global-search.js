@@ -38,6 +38,27 @@
   };
   var CAT_ORDER = ["customer", "device", "request", "part", "task", "treasury", "wallet", "route", "faultcode", "compressor", "settings"];
   var MAX_PER_GROUP = 25;
+  var compressorModulePromise = null;
+
+  function loadCompressorModule() {
+    if (window.CompressorRef) return Promise.resolve(window.CompressorRef);
+    if (compressorModulePromise) return compressorModulePromise;
+    compressorModulePromise = new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+      script.src = "app-compressor-codes.js";
+      script.async = true;
+      script.onload = function () {
+        if (window.CompressorRef) resolve(window.CompressorRef);
+        else { compressorModulePromise = null; reject(new Error("Compressor search module unavailable")); }
+      };
+      script.onerror = function () {
+        compressorModulePromise = null;
+        reject(new Error("Compressor search module failed to load"));
+      };
+      document.head.appendChild(script);
+    });
+    return compressorModulePromise;
+  }
 
   function safeEsc(v) {
     if (typeof window.esc === "function") return window.esc(v);
@@ -52,11 +73,22 @@
     var results = [];
     var arr = window.arr, K = window.K;
     if (typeof arr !== "function" || !K) return results;
+    // Use the raw-aware shared cache when available. Search input fires repeatedly,
+    // so parsing every localStorage collection for every keystroke is avoidable.
+    var readRows = typeof window.arrCached === "function" ? window.arrCached : arr;
+    var customers = readRows(K.c) || [], devices = readRows(K.d) || [],
+      requests = readRows(K.r) || [], parts = readRows(K.p) || [],
+      tasks = readRows(K.tasks) || [], treasuryEntries = readRows(K.tr) || [],
+      walletEntries = readRows(K.wtx) || [], faultCodes = readRows(K.fc) || [];
+    var requestById = new Map();
+    requests.forEach(function (r) {
+      if (r && r.id != null && !requestById.has(String(r.id))) requestById.set(String(r.id), r);
+    });
     var customerName = window.customerName || function () { return "—"; };
     var deviceName = window.deviceName || function () { return "—"; };
     var addressText = window.addressText || function () { return ""; };
 
-    (arr(K.c) || []).forEach(function (c) {
+    customers.forEach(function (c) {
       var main = c.mainAddress ? addressText(c.mainAddress) : "";
       var extra = c.extraAddress ? addressText(c.extraAddress) : "";
       var hay = norm([c.name, c.phone, main, extra].join(" "));
@@ -69,7 +101,7 @@
       });
     });
 
-    (arr(K.d) || []).forEach(function (d) {
+    devices.forEach(function (d) {
       var cust = customerName(d.customerId);
       var hay = norm([d.type, d.brand, d.model, d.desc, cust].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -81,7 +113,7 @@
       });
     });
 
-    (arr(K.r) || []).forEach(function (r) {
+    requests.forEach(function (r) {
       var cust = customerName(r.customerId);
       var dev = deviceName(r.deviceId);
       var hay = norm([r.no, r.fault, r.work, r.status, r.tag, cust, dev].join(" "));
@@ -94,7 +126,7 @@
       });
     });
 
-    (arr(K.p) || []).forEach(function (p) {
+    parts.forEach(function (p) {
       if (p.archived) return;
       var hay = norm([p.name, p.code, p.category, p.location].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -106,7 +138,7 @@
       });
     });
 
-    (arr(K.tasks) || []).forEach(function (t) {
+    tasks.forEach(function (t) {
       if (t.deleted) return;
       var hay = norm([t.title, t.note].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -118,7 +150,7 @@
       });
     });
 
-    (arr(K.tr) || []).forEach(function (e) {
+    treasuryEntries.forEach(function (e) {
       if (e.deleted) return;
       var hay = norm([e.reason, e.note, e.category].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -132,7 +164,7 @@
 
     // الحسابات/المحافظ: حركات K.wtx (وارد/منصرف على أي محفظة أو تصنيف
     // مصروف)، بندوّر في السبب/الملاحظة/التصنيف/اسم المحفظة نفسها.
-    (arr(K.wtx) || []).forEach(function (w) {
+    walletEntries.forEach(function (w) {
       if (w.deleted) return;
       var hay = norm([w.reason, w.note, w.category, w.wallet].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -142,7 +174,7 @@
         sub: [w.wallet, w.amount ? (+w.amount).toLocaleString("ar-EG") + " ج" : ""].filter(Boolean).join(" • "),
         href: (function(){
           var ref=String(w.refKey||""), match=ref.match(/^order-(?:deposit|final)-(.+)$/);
-          var order=match ? (arr(K.r)||[]).find(function(r){return String(r.id)===match[1]}) : null;
+          var order=match ? (requestById.get(match[1]) || null) : null;
           return order ? ("request.html?id=" + encodeURIComponent(order.id)) : (w.wallet ? ("wallet.html?type=wallet&name=" + encodeURIComponent(w.wallet)) : "wallets.html");
         })()
       });
@@ -150,7 +182,7 @@
 
     // أكواد أعطال الأجهزة: قسم مرجعي مستقل (مش مربوط بعميل/جهاز/أمر
     // شغل) — بندوّر بالكود والوصف والسبب والحل ونوع الجهاز والماركة.
-    (arr(K.fc) || []).forEach(function (f) {
+    faultCodes.forEach(function (f) {
       var hay = norm([f.code, f.title, f.cause, f.fix, f.deviceType, f.brand].join(" "));
       if (hay.indexOf(q) === -1) return;
       results.push({
@@ -164,11 +196,11 @@
     // خط السير: أوامر الشغل اللي ليها موعد زيارة مجدول ولسه نشطة (مش
     // مكتملة/مغلقة/ملغية) — بندوّر باسم العميل/العنوان/المركز/القرية
     // عشان يسهل تلاقي مواعيد يوم أو منطقة معيّنة من نفس البحث الشامل.
-    (arr(K.r) || []).forEach(function (r) {
+    requests.forEach(function (r) {
       if (!r.visit || r.closed || r.status === "مكتمل" || r.status === "ملغي") return;
       var cust = customerName(r.customerId);
       var main = "";
-      var custRec = window.byIdCached ? window.byIdCached(K.c).get(r.customerId) : (arr(K.c) || []).find(function (c) { return c.id === r.customerId; });
+      var custRec = window.byIdCached ? window.byIdCached(K.c).get(r.customerId) : customers.find(function (c) { return c.id === r.customerId; });
       if (custRec) main = addressText(r.addressKey === "extra" && custRec.extraAddress ? custRec.extraAddress : (custRec.mainAddress || {}));
       var hay = norm([cust, main, r.no].join(" "));
       if (hay.indexOf(q) === -1) return;
@@ -312,11 +344,11 @@
       // البحث الشامل (مش من تحميل الصفحة) — عشان النتائج تبقى جاهزة
       // غالبًا قبل ما يخلّص الكتابة، من غير ما نحمّل ~11 ألف سجل على كل
       // صفحة من غير داعي لو حد فتح النظام ومستخدمش البحث أصلاً.
-      if (window.CompressorRef && typeof window.CompressorRef.ensureAll === "function" && !window.CompressorRef.isReady()) {
-        window.CompressorRef.ensureAll().then(function () {
-          if (!overlay.classList.contains("hidden") && input.value.trim()) runSearch();
-        }).catch(function () {});
-      }
+      loadCompressorModule().then(function (ref) {
+        if (ref && typeof ref.ensureAll === "function" && !ref.isReady()) return ref.ensureAll();
+      }).then(function () {
+        if (!overlay.classList.contains("hidden") && input.value.trim()) runSearch();
+      }).catch(function () {});
     }
     function closeSearch() {
       overlay.classList.add("hidden");
