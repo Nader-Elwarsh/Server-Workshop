@@ -22,8 +22,14 @@ function restorePartRecord(pid){const all=arr(K.p),p=all.find(x=>x.id===pid);if(
 
 function initParts(){let f=document.getElementById("partForm");if(!f)return;let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.p).find(x=>x.id===editId):null;fillListSearch("pCategory","partCat",existing?.category||"");pPhoto.onchange=e=>previewPart(e);if(existing){pName.value=existing.name||"";pCode.value=existing.code||"";pLocation.value=existing.location||"";pQty.value=existing.qty||0;pMin.value=existing.min||0;pBuy.value=existing.buy||0;pUse.value=existing.use||0;if(existing.photo){(async()=>{let src=window.ImageStore?await window.ImageStore.resolveSrc(existing.photo):existing.photo;if(src)renderLivePhotoPreview("partPhotoPreview",src)})()}f.classList.remove("hidden");f.querySelector(".primary").textContent="💾 حفظ التعديلات وفتح الملف"}f.onsubmit=async e=>{e.preventDefault();const dup=findDuplicatePartName(pName.value,existing?.id);if(dup){alert(`⚠️ الصنف «${dup.name}» موجود بالفعل بنفس الاسم.\n\nاستخدم الصنف الموجود أو غيّر الاسم.`);pName.focus();return;}const dupCode=findDuplicatePartCode(pCode.value,existing?.id);if(dupCode){alert(`⚠️ كود الصنف «${dupCode.code}» مستخدم بالفعل مع «${dupCode.name}».\n\nاستخدم كودًا مختلفًا.`);pCode.focus();return;}await savePart(e,existing);};const partDuplicateHint=document.getElementById("partDuplicateHint");const checkPartDuplicate=()=>{if(!partDuplicateHint)return;const dn=findDuplicatePartName(pName.value,existing?.id),dc=findDuplicatePartCode(pCode.value,existing?.id);if(dn){partDuplicateHint.innerHTML=`⚠️ يوجد صنف بنفس الاسم بالضبط: <b>${esc(dn.name)}</b> — لن يسمح النظام بإضافة نسخة ثانية منه.`;partDuplicateHint.className="hint negative";return;}if(dc){partDuplicateHint.innerHTML=`⚠️ الكود مستخدم بالفعل مع: <b>${esc(dc.name)}</b> — اختر كودًا مختلفًا.`;partDuplicateHint.className="hint negative";return;}const similar=findSimilarPartNames(pName.value,existing?.id);if(similar.length){partDuplicateHint.innerHTML=`ℹ️ توجد أصناف بأسماء قريبة من هذا الاسم: ${similar.map(x=>`<b>${esc(x)}</b>`).join("، ")}. تأكد أن الصنف الذي تكتبه ليس نفسه قبل الحفظ.`;partDuplicateHint.className="hint";return;}partDuplicateHint.textContent="";partDuplicateHint.className="hint";};pName.addEventListener("input",checkPartDuplicate);pCode.addEventListener("input",checkPartDuplicate);partSearch.oninput=renderParts;renderParts()}
 function previewPart(e){let f=e.target.files[0];if(!f)return;imageToDataURL(f).then(x=>{renderLivePhotoPreview("partPhotoPreview",x);partPhotoPreview.dataset.image=x})}
-async function collectPartFormData(existing){let photo=existing?.photo||"";if(pPhoto.files[0]){let dataURL=await imageToDataURL(pPhoto.files[0]);photo=window.ImageStore?await window.ImageStore.save(dataURL,existing?.photo):dataURL}return{name:(pName.value||"").trim(),code:(pCode.value||"").trim(),category:pCategory.value,location:(pLocation.value||"").trim(),qty:Math.max(0,+pQty.value||0),min:Math.max(0,+pMin.value||0),buy:Math.max(0,+pBuy.value||0),use:Math.max(0,+pUse.value||0),photo}}
+async function collectPartFormData(existing){let photo=existing?.photo||"";if(pPhoto.files[0]){let dataURL=await imageToDataURL(pPhoto.files[0]);photo=window.ImageStore?await window.ImageStore.save(dataURL):dataURL}return{name:(pName.value||"").trim(),code:(pCode.value||"").trim(),category:pCategory.value,location:(pLocation.value||"").trim(),qty:Math.max(0,+pQty.value||0),min:Math.max(0,+pMin.value||0),buy:Math.max(0,+pBuy.value||0),use:Math.max(0,+pUse.value||0),photo}}
+async function discardUncommittedImage(ref){if(ref&&window.ImageStore?.delete){try{await window.ImageStore.delete(ref)}catch(_){}}}
 function persistPartRecord(formData,existing){
+  const qty=Number(formData?.qty),min=Number(formData?.min??0),buy=Number(formData?.buy??0),use=Number(formData?.use??0);
+  if(!Number.isSafeInteger(qty)||qty<0)return{ok:false,error:"كمية المخزون يجب أن تكون عددًا صحيحًا (صفر أو أكبر)."};
+  if(!Number.isSafeInteger(min)||min<0)return{ok:false,error:"الحد الأدنى للمخزون يجب أن يكون عددًا صحيحًا (صفر أو أكبر)."};
+  if(!Number.isFinite(buy)||buy<0||!Number.isFinite(use)||use<0)return{ok:false,error:"أسعار الشراء والاستخدام يجب أن تكون أرقامًا صحيحة غير سالبة."};
+  formData={...formData,qty,min,buy,use};
   let a=arr(K.p),cur=existing?a.find(x=>x.id===existing.id):null;
   // الكمية بتتقارن بآخر نسخة محفوظة (مش بنسخة الفورم اللي ممكن تكون قديمة لو الأمر استهلك قطع في الوقت ده).
   const oldQty=cur?(+cur.qty||0):0;
@@ -38,7 +44,25 @@ function persistPartRecord(formData,existing){
   if(!r?.ok)return{ok:false};
   return{ok:true,part:p};
 }
-async function savePart(e,existing=null){e.preventDefault();if(!pCategory.value)return alert("اختر تصنيف القطعة.");try{let formData=await collectPartFormData(existing);let result=persistPartRecord(formData,existing);if(!result.ok)return;location.href=`part.html?id=${result.part.id}`}catch(err){alert("تعذر حفظ صورة القطعة. جرّب صورة أخرى أصغر.")}}
+async function savePart(e,existing=null){
+  e.preventDefault();if(!pCategory.value)return alert("اختر تصنيف القطعة.");
+  const qty=Number(pQty.value),min=Number(pMin.value||0),buy=Number(pBuy.value||0),use=Number(pUse.value||0);
+  if(String(pQty.value||"").trim()===""||!Number.isSafeInteger(qty)||qty<0)return alert("كمية المخزون يجب أن تكون عددًا صحيحًا (صفر أو أكبر).");
+  if(!Number.isSafeInteger(min)||min<0)return alert("الحد الأدنى للمخزون يجب أن يكون عددًا صحيحًا (صفر أو أكبر).");
+  if(!Number.isFinite(buy)||buy<0||!Number.isFinite(use)||use<0)return alert("أسعار الشراء والاستخدام يجب أن تكون أرقامًا غير سالبة.");
+  const previousPhoto=existing?.photo||"";let formData=null,recordSaved=false;
+  try{
+    formData=await collectPartFormData(existing);
+    const result=persistPartRecord(formData,existing);
+    if(!result.ok){if(result.error)alert(result.error);if(formData.photo&&formData.photo!==previousPhoto)await discardUncommittedImage(formData.photo);return}
+    recordSaved=true;
+    if(previousPhoto&&previousPhoto!==formData.photo)await discardUncommittedImage(previousPhoto);
+    location.href=`part.html?id=${result.part.id}`;
+  }catch(err){
+    if(!recordSaved&&formData?.photo&&formData.photo!==previousPhoto)await discardUncommittedImage(formData.photo);
+    alert("تعذر حفظ صورة القطعة. جرّب صورة أخرى أصغر.");
+  }
+}
 // النسخة الأساسية — بيتم استبدالها في customers/devices/inventory/requests.html
 // بنسخة أغنى (تصنيفات ولوحة ملخص) في workshop-mini-simple-ui.js، وهي الشغالة
 // فعليًا هناك. صفحات تانية (زي part.html) بتستخدم النسخة دي كما هي.

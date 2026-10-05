@@ -32,7 +32,7 @@ function _ensureQuickAddPartBox(anchorEl) {
         <label class="wide">اسم القطعة<input id="qapName"></label>
         <label>التصنيف<div class="part-autocomplete"><input type="text" id="qapCategorySearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم التصنيف..." autocomplete="off" data-wf-event="input" data-wf-code="filterListOptions('qapCategory', this.value)" data-wf-refocus-code="filterListOptions('qapCategory', this.value)" data-wf-blur="hideListResults" data-wf-args='["qapCategory"]'><input type="hidden" id="qapCategory"><div id="qapCategoryResults" class="part-autocomplete-results hidden"></div></div></label>
         <label>الكود <small>اختياري</small><input id="qapCode"></label>
-        <label>الكمية الأولى<input id="qapQty" type="number" min="0" value="1"></label>
+        <label>الكمية الأولى<input id="qapQty" type="number" step="1" min="0" value="1"></label>
         <label>سعر الشراء<input id="qapBuy" type="number" min="0" step=".01" value="0"></label>
         <label>سعر الاستخدام<input id="qapUse" type="number" min="0" step=".01" value="0"></label>
       </div>
@@ -85,7 +85,7 @@ function saveQuickAddPart() {
   const qty = +(document.getElementById("qapQty")?.value || 0);
   const buy = +(document.getElementById("qapBuy")?.value || 0);
   const use = +(document.getElementById("qapUse")?.value || 0);
-  if (!Number.isFinite(qty) || qty < 0) return alert("اكتب كمية أولى صحيحة (صفر أو أكبر).");
+  if (!Number.isSafeInteger(qty) || qty < 0) return alert("اكتب كمية أولى صحيحة كعدد صحيح (صفر أو أكبر).");
   if (!Number.isFinite(buy) || buy < 0 || !Number.isFinite(use) || use < 0) return alert("اكتب أسعار صحيحة.");
   const p = { id: id(), name, category, code, location: "", qty, min: 0, buy, use, photo: "", createdAt: new Date().toISOString() };
   const all = arr(K.p);
@@ -157,7 +157,7 @@ function filterRestockPartOptions(q) {
       box.classList.add("hidden");
       openQuickAddPart(typedName, {
         anchor: "stkPartResults",
-        defaultQty: Number.isFinite(qty) && qty > 0 ? qty : 1,
+        defaultQty: Number.isSafeInteger(qty) && qty > 0 ? qty : 1,
         onCreated: (p) => {
           toggleRestockBox();
           alert(`✅ تمت إضافة الصنف الجديد «${p.name}» للمخزن بكمية ${p.qty}.`);
@@ -189,22 +189,26 @@ async function saveRestock() {
   const pid = document.getElementById("stkPart")?.value || "";
   if (!pid) return alert("اختر قطعة موجودة من نتائج البحث، أو استخدم خيار «صنف جديد» لو مش موجودة.");
   const qty = +(document.getElementById("stkQty")?.value || 0);
-  if (!Number.isFinite(qty) || qty < 1) return alert("اكتب كمية واردة صحيحة (أكبر من صفر).");
+  if (!Number.isSafeInteger(qty) || qty < 1) return alert("اكتب كمية واردة صحيحة كعدد صحيح (أكبر من صفر).");
   const buyEl = document.getElementById("stkBuy"), note = (document.getElementById("stkNote")?.value || "").trim();
+  if (buyEl?.value !== "" && buyEl?.value != null) { const proposedBuy = Number(buyEl.value); if (!Number.isFinite(proposedBuy) || proposedBuy < 0) return alert("سعر الشراء الجديد يجب أن يكون رقمًا صحيحًا غير سالب."); }
   const invoiceFile = document.getElementById("stkInvoice")?.files?.[0] || null;
   _restockBusy = true;
+  let invoice = "",invoiceStored=false,invoiceCommitted=false;
   try {
-  let invoice = "";
   if (invoiceFile) {
     try {
       const dataURL = await imageToDataURL(invoiceFile, 1400, 0.72);
       invoice = window.ImageStore ? await window.ImageStore.save(dataURL) : dataURL;
+      invoiceStored=!!invoice&&!String(invoice).startsWith("data:");
     } catch (err) { return alert("تعذّر حفظ صورة الفاتورة. جرّب صورة أصغر أو سجّل التوريد من غير صورة."); }
   }
   // بنقرا المخزن بعد معالجة الصورة عشان الكمية تكون آخر نسخة.
   const all = arr(K.p), p = all.find(x => x.id === pid);
   if (!p) return alert("القطعة غير موجودة (ربما اتحذفت). جرّب تدور تاني.");
-  p.qty = (+p.qty || 0) + qty;
+  const currentQty = Number(p.qty ?? 0);
+  if (!Number.isSafeInteger(currentQty) || currentQty < 0 || !Number.isSafeInteger(currentQty + qty)) return alert("رصيد القطعة الحالي غير صالح كعدد صحيح؛ صحح الجرد من ملف القطعة قبل التوريد.");
+  p.qty = currentQty + qty;
   if (buyEl?.value !== "" && buyEl?.value != null) {
     const nb = +buyEl.value;
     if (Number.isFinite(nb) && nb >= 0) p.buy = nb;
@@ -216,9 +220,13 @@ async function saveRestock() {
     return{ok:true};
   });
   if(!result?.ok)return;
+  invoiceCommitted=true;
   refreshAllScreens?.();
   renderParts?.();
   alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.`);
   toggleRestockBox();
-  } finally { _restockBusy = false; }
+  } finally {
+    if(invoiceStored&&!invoiceCommitted&&window.ImageStore?.delete){try{await window.ImageStore.delete(invoice)}catch(_){}}
+    _restockBusy = false;
+  }
 }
