@@ -44,6 +44,7 @@ function quickAddWalletTx(type){
 function saveQuickCustomerHome(){
   let name=document.getElementById('qoName')?.value.trim(),phone=document.getElementById('qoPhone')?.value.trim();
   if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
+  if(!validateQuickCustomerPhone(phone))return;
   let duplicate=duplicateCustomerByPhone(phone);
   if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
   let c={id:id(),name,phone,mainAddress:{center:qoCenter.value,village:qoVillage.value,address:"",street:(qoStreet.value||"").trim()},extraAddress:{},createdAt:new Date().toISOString()};
@@ -116,6 +117,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
 })
 
 // Quick-create relations: create the missing entity without leaving the current workflow.
+function validateQuickCustomerPhone(phone){if(typeof wfPhoneKey!=="function"||!wfPhoneKey(phone)){alert("اكتب رقم تليفون صحيح (7 أرقام على الأقل).");return false}return true}
 function setupQuickLocation(prefix){
   let center=document.getElementById(prefix+'Center'), village=document.getElementById(prefix+'Village');
   if(!center||!village)return;
@@ -126,6 +128,7 @@ function setupQuickLocation(prefix){
 function saveQuickCustomer(){
   let name=document.getElementById('qcName')?.value.trim(),phone=document.getElementById('qcPhone')?.value.trim();
   if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
+  if(!validateQuickCustomerPhone(phone))return;
   let duplicate=duplicateCustomerByPhone(phone);if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
   let c={id:id(),name,phone,mainAddress:{center:qcCenter.value,village:qcVillage.value,address:"",street:qcStreet.value.trim()},extraAddress:{},createdAt:new Date().toISOString()};
   let a=arr(K.c);a.push(c);if(!saveJSONSafe(K.c,a))return;
@@ -143,6 +146,7 @@ function saveQuickDevice(){
 }
 function saveDeviceCustomer(){
   let name=dcName.value.trim(),phone=dcPhone.value.trim();if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
+  if(!validateQuickCustomerPhone(phone))return;
   let duplicate=duplicateCustomerByPhone(phone);if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
   let c={id:id(),name,phone,mainAddress:{center:dcCenter.value,village:dcVillage.value,address:"",street:dcStreet.value.trim()},extraAddress:{},createdAt:new Date().toISOString()};
   let a=arr(K.c);a.push(c);if(!saveJSONSafe(K.c,a))return;fillCustomerAutocomplete("dCustomer",c.id);fillAddress(dAddress,c.id,'main');closeQuickAdd('quickDeviceCustomerBox');

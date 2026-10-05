@@ -7,13 +7,13 @@ function makeEnv(){
   const document={addEventListener:()=>{},getElementById:i=>els[i]||null,querySelector:()=>null};
   const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const location={href:'',search:''};
-  const context={window,localStorage,document,location,crypto:window.crypto,console:{log(){},error(){}},alert:m=>alerts.push(String(m)),confirm:()=>true,prompt:()=>answers.shift(),
+  const context={window,localStorage,document,location,crypto:window.crypto,URLSearchParams,console:{log(){},error(){}},alert:m=>alerts.push(String(m)),confirm:()=>true,prompt:()=>answers.shift(),
     renderTasks:()=>{},renderCustomers:()=>{},renderDevices:()=>{}};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe','phoneKey'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
+  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe','wfPhoneKey','duplicateCustomerByPhone'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
   context.id=window.id;
-  ['app-shared.js','tasks.js','app-customers.js','app-devices.js','app-delete-tools.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
+  ['app-shared.js','tasks.js','app-customers.js','app-requests.js','app-devices.js','app-delete-tools.js','app-quick-add.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   context.imageToDataURL=()=>new Promise(r=>setTimeout(()=>r('data:image/png;base64,AA'),30));
   return {store,alerts,answers,els,context,location,K:window.K,setFail:v=>{failWrites=v}};
 }
@@ -89,6 +89,26 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     result=x.persistDeviceRecord({customerId:'missing',type:'مكيف'},null);
     assert.strictEqual(result.reason,'missing-customer');
     assert.strictEqual(J(e,K.d).length,1,'device with a missing parent customer must not be saved');
+  }
+  // 7) فحص الهاتف يستخدم الدالة المصدّرة نفسها ويرفض الرقم غير الصالح في النماذج السريعة.
+  {
+    const e=makeEnv(),x=e.context,K=e.K;
+    assert.strictEqual(x.customerPhoneIsValid('bad'),false);
+    assert.strictEqual(x.customerPhoneIsValid('٠١٠٠١٢٣٤٥٦٧'),true,'Arabic digits should normalize through the shared validator');
+    const form={onsubmit:null,classList:{remove(){}},querySelector(){return {textContent:''}}};
+    e.els.customerForm=form;
+    Object.assign(x,{fillListSearch(){},customerSearch:{},cName:{value:'عميل',focus(){}},cPhone:{value:'bad',focus(){}},cCenter:{value:'مطاي'},cVillage:{value:'مطاي البلد'},cStreet:{value:''},aCenter:{value:''},aVillage:{value:''},aStreet:{value:''}});
+    x.initCustomers();form.onsubmit({preventDefault(){}});
+    assert.strictEqual(J(e,K.c).length,0,'the main customer form must reject an invalid phone');
+    x.cPhone.value='٠١٠٠١٢٣٤٥٦٧';form.onsubmit({preventDefault(){}});
+    assert.strictEqual(J(e,K.c).length,1,'the main form must accept phone digits normalized by the shared validator');
+
+    const q=makeEnv(),qx=q.context,Q=q.K;
+    q.els.qcName={value:'عميل'};q.els.qcPhone={value:'abc'};qx.saveQuickCustomer();
+    Object.assign(qx,{dcName:{value:'عميل'},dcPhone:{value:'abc'}});qx.saveDeviceCustomer();
+    q.els.qoName={value:'عميل'};q.els.qoPhone={value:'abc'};qx.saveQuickCustomerHome();
+    assert.strictEqual(J(q,Q.c).length,0,'invalid quick-add customer phone must not be persisted');
+    assert.ok(q.alerts.filter(a=>/رقم تليفون صحيح/.test(a)).length>=3,'all quick customer entry paths should explain invalid phone input');
   }
   console.log('customers-tasks-tests: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});
