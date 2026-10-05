@@ -811,12 +811,6 @@
       </section>`;
   }
 
-  window.renderRequestFolders = function () {
-    /* لم تعد هناك بطاقات مكررة؛ الملخص الموحد موجود داخل requestList. */
-    const el = $("requestFolders");
-    if (el) el.innerHTML = "";
-  };
-
   defineOverride("renderRequests", "workshop-mini-simple-ui.js", function () {
     const el = $("requestList");
     if (!el) return;

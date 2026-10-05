@@ -82,12 +82,12 @@ function routeDayShort(day){
   return{label:d.toLocaleDateString("ar-EG",{weekday:"short"}),date:d.toLocaleDateString("ar-EG",{day:"2-digit",month:"2-digit"})};
 }
 function ordersForRouteDay(day){
-  const customers=arr(K.c);
+  const customers=byIdCached(K.c);
   return arr(K.r).filter(x=>{
     if(x.visit&&dayKeyLocal(x.visit)===day)return true;
     if(x.closed&&x.closedAt&&dayKeyLocal(x.closedAt)===day&&dayKeyLocal(x.visit)!==day)return true;
     return false;
-  }).map(x=>({...x,_c:customers.find(z=>z.id===x.customerId)||{},_addr:resolveRequestAddress(x),_viaClosedOffSchedule:!!(x.closed&&x.closedAt&&dayKeyLocal(x.closedAt)===day&&dayKeyLocal(x.visit)!==day)}));
+  }).map(x=>({...x,_c:customers.get(x.customerId)||{},_addr:resolveRequestAddress(x),_viaClosedOffSchedule:!!(x.closed&&x.closedAt&&dayKeyLocal(x.closedAt)===day&&dayKeyLocal(x.visit)!==day)}));
 }
 function jumpRouteToday(){
   routeViewState.overdueView=false;
@@ -139,10 +139,10 @@ function renderRoute(){
   let today=dayKeyLocal(new Date()), cf=document.getElementById("routeCenterFilter")?.value||"", summaryEl=document.getElementById("routeSummary");
   let sq=(document.getElementById("routeSearch")?.value||"").trim().toLowerCase();
   if(!routeViewState.day)routeViewState.day=today;
-  const allRequests=arr(K.r), customers=arr(K.c);
+  const allRequests=arr(K.r), customers=byIdCached(K.c);
   let list,headTitle;
   if(routeViewState.overdueView){
-    list=allRequests.filter(x=>x.visit&&dayKeyLocal(x.visit)<today&&x.status!=="ملغي"&&!x.closed).map(x=>({...x,_c:customers.find(z=>z.id===x.customerId)||{},_addr:resolveRequestAddress(x),_viaClosedOffSchedule:false}));
+    list=allRequests.filter(x=>x.visit&&dayKeyLocal(x.visit)<today&&x.status!=="ملغي"&&!x.closed).map(x=>({...x,_c:customers.get(x.customerId)||{},_addr:resolveRequestAddress(x),_viaClosedOffSchedule:false}));
     headTitle="⚠️ كل الطلبات المتأخرة من كل الأيام";
   }else{
     list=ordersForRouteDay(routeViewState.day);
@@ -410,10 +410,6 @@ function logFollowupSend(c,tpl,text){
   log.push({id:id(),customerId:c.id,customerName:c.name||"",templateName:tpl.name||"رسالة",text,sentAt:new Date().toISOString()});
   if(log.length>500)log=log.slice(log.length-500);
   saveJSONSafe(K.followupLog,log);
-}
-function lastFollowupSendFor(customerId){
-  let log=arr(K.followupLog).filter(x=>x.customerId===customerId);
-  return log.length?log[log.length-1]:null;
 }
 function sendFollowupTemplate(customerId,tplIndex){
   let c=arr(K.c).find(x=>x.id===customerId);if(!c)return;

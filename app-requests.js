@@ -127,21 +127,6 @@ function saveRequest(e,existing=null){
   if(!result.ok)return alert(result.error);
   location.href=`request.html?id=${result.request.id}`
 }
-function requestBucketMatch(r,b){
-  const today=dayKeyLocal(new Date()), visit=dayKeyLocal(r.visit);
-  if(b==="completed") return !!r.closed || r.status==="مكتمل";
-  if(b==="workshop") return r.executionPlace==="الورشة" || (r.workshopStatus&&r.workshopStatus!=="غير مطلوب");
-  if(b==="today") return !!r.visit && visit===today;
-  if(b==="parts") return r.partsWaiting===true || r.partsWaiting==="yes";
-  if(b==="overdue") return !!r.visit && visit<today && !r.closed && r.status!=="مكتمل" && r.status!=="ملغي";
-  return true;
-}
-function renderRequestFolders(){
-  const el=document.getElementById("requestFolders"); if(!el)return;
-  const all=arr(K.r), today=dayKeyLocal(new Date());
-  const counts={completed:all.filter(r=>requestBucketMatch(r,"completed")).length,workshop:all.filter(r=>requestBucketMatch(r,"workshop")).length,today:all.filter(r=>requestBucketMatch(r,"today")).length,parts:all.filter(r=>requestBucketMatch(r,"parts")).length,overdue:all.filter(r=>requestBucketMatch(r,"overdue")).length};
-  el.innerHTML=`<div class="request-folders-grid"><a class="request-folder" href="requests.html?bucket=completed"><span>✅</span><b>الأوامر المكتملة</b><small>${counts.completed} أمر</small></a><a class="request-folder" href="requests.html?bucket=workshop"><span>🏭</span><b>أوامر الورشة</b><small>${counts.workshop} أمر</small></a><a class="request-folder" href="requests.html?bucket=today"><span>📅</span><b>أوامر اليوم</b><small>${counts.today} موعد</small></a><a class="request-folder" href="requests.html?bucket=parts"><span>📦</span><b>انتظار قطع غيار</b><small>${counts.parts} أمر</small></a><a class="request-folder" href="requests.html?bucket=overdue"><span>⚠️</span><b>متأخر / لم يُنفذ</b><small>${counts.overdue} أمر</small></a></div>`;
-}
 // renderRequests: كانت هنا نسخة "أساسية" بتفلتر بعناصر statusFilter/workshopFilter
 // اللي مش موجودة في requests.html أصلًا (البحث بقى عن طريق فولدرات/فلاتر تانية
 // requestOpsStatus/requestOpsWorkshop)، والصفحة الوحيدة اللي فيها #requestList هي

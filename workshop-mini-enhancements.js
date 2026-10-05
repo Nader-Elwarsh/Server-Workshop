@@ -22,17 +22,6 @@
     });
   }
 
-  // صور الأجهزة متخزنة في IndexedDB (image-store.js) مش جوه سجل الجهاز
-  // نفسه، فحذف سجل الجهاز من localStorage لوحده مش كافي — لازم نمسح
-  // صورته من IndexedDB برضه وإلا فضلت يتيمة هناك للأبد. نفس المنطق
-  // المستخدم بالفعل في deletePartRecord لكن للأجهزة.
-  function deleteDevicePhotos(devices) {
-    if (!window.ImageStore?.delete) return;
-    (devices || []).forEach(function (d) {
-      if (d.photo) window.ImageStore.delete(d.photo);
-    });
-  }
-
   // Customer search: keep the existing UI, but search all useful customer
   // fields including both addresses and make Arabic/phone matching forgiving.
   defineOverride("renderCustomers", "workshop-mini-enhancements.js", function () {

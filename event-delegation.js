@@ -2,11 +2,12 @@
    It uses a small allowlisted expression parser; it never uses eval or Function. */
 (function () {
   "use strict";
+  function isEscaped(raw, i) { var n = 0; while (i - 1 - n >= 0 && raw[i - 1 - n] === "\\") n++; return n % 2 === 1; } /* عدد فردي من \ قبل العلامة = علامة مهرّبة */
   function splitArgs(raw) {
     var out = [], cur = "", quote = "", depth = 0;
     for (var i = 0; i < raw.length; i++) {
       var ch = raw[i];
-      if (quote) { cur += ch; if (ch === quote && raw[i - 1] !== "\\") quote = ""; continue; }
+      if (quote) { cur += ch; if (ch === quote && !isEscaped(raw, i)) quote = ""; continue; }
       if (ch === "'" || ch === '"' || ch === "`") { quote = ch; cur += ch; continue; }
       if (ch === "(" || ch === "[" || ch === "{") depth++;
       if (ch === ")" || ch === "]" || ch === "}") depth--;
@@ -19,7 +20,7 @@
     var out = [], cur = "", quote = "", depth = 0;
     for (var i = 0; i < raw.length; i++) {
       var ch = raw[i];
-      if (quote) { cur += ch; if (ch === quote && raw[i - 1] !== "\\") quote = ""; continue; }
+      if (quote) { cur += ch; if (ch === quote && !isEscaped(raw, i)) quote = ""; continue; }
       if (ch === "'" || ch === '"' || ch === "`") { quote = ch; cur += ch; continue; }
       if (ch === "(" || ch === "[" || ch === "{") depth++;
       if (ch === ")" || ch === "]" || ch === "}") depth--;
@@ -31,7 +32,7 @@
   }
   function literal(raw, el, event) {
     var s = raw.trim();
-    if ((s[0] === "'" && s[s.length - 1] === "'") || (s[0] === '"' && s[s.length - 1] === '"')) return s.slice(1, -1).replace(/\\(['"])/g, "$1");
+    if ((s[0] === "'" && s[s.length - 1] === "'") || (s[0] === '"' && s[s.length - 1] === '"')) return s.slice(1, -1).replace(/\\(['"\\])/g, "$1");
     if (s === "this") return el;
     if (s === "event") return event;
     if (s === "this.value") return el.value;

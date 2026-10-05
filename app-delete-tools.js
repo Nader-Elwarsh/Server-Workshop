@@ -79,6 +79,6 @@ function deleteAllRequests(){
   if(!ok)return;
   cleanupRequestRecordings(r);renderRequests?.();renderDash?.();monthReport?.();alert("تم حذف جميع أوامر الشغل وإرجاع القطع للمخزن.");
 }
-function resolveRequestAddress(r){const c=arr(K.c).find(x=>x.id===r.customerId);if(!c)return{};const list=addresses(c);return list.find(a=>a.key===r.addressKey)||list[0]||{}}
+function resolveRequestAddress(r){const c=byIdCached(K.c).get(r.customerId);if(!c)return{};const list=addresses(c);return list.find(a=>a.key===r.addressKey)||list[0]||{}}
 
 // خط سير اليوم: تجميع أوامر الشغل التي لها موعد زيارة حسب المركز والقرية.
