@@ -43,6 +43,13 @@ function adjustStockForOrder(oldParts,newParts,requestId,stock=arr(K.p),moves=ar
 // بينهم. السلوك الفعلي (الحسابات، ترتيب العمليات، رسائل الخطأ) لم يتغيّر.
 function collectRequestFormData(existing){let t=+rTotal.value||0,dep=+rDeposit.value||0,tag=document.getElementById("rTag")?rTag.value:(existing?.tag||""),depositWallet=document.getElementById("rDepositWallet")?.value||"";return{customerId:rCustomer.value,deviceId:rDevice.value,addressKey:rAddress.value,visit:rVisit.value,status:rStatus.value,executionPlace:rExecutionPlace.value,workshopStatus:rWorkshopStatus.value,partsWaiting:!!document.getElementById("rPartsWaiting")?.checked,tag,fault:rFault.value,work:rWork.value,labor:(+rLabor.value||0),parts:currentParts,partsTotal:+rPartsTotal.value||0,total:t,deposit:dep,depositWallet}}
 function persistRequestRecord(formData,existing){
+  const customerId=String(formData?.customerId||"");
+  if(!customerId||!arr(K.c).some(c=>String(c.id)===customerId))return{ok:false,error:"العميل المحدد غير موجود. اختر عميلًا صالحًا ثم حاول مرة أخرى."};
+  if(formData.deviceId){
+    const device=arr(K.d).find(d=>String(d.id)===String(formData.deviceId));
+    if(!device)return{ok:false,error:"الجهاز المحدد غير موجود. أعد اختياره ثم حاول مرة أخرى."};
+    if(String(device.customerId||"")!==customerId)return{ok:false,error:"الجهاز المحدد تابع لعميل آخر. اختر جهازًا تابعًا لنفس العميل."};
+  }
   // اللي كان قبل كده backup يدوي بـ JSON.stringify لمفتاح wf_p بس، دلوقتي
   // withRollback (shared-data.js) بيغطي wf_p وwf_m مع بعض، وبيرجعهم
   // تلقائيًا لو رجّعنا {ok:false} أو حصل استثناء — بدل ما نعمل الإرجاع يدوي.
@@ -79,7 +86,7 @@ function persistRequestRecord(formData,existing){
     applyStatusTimestamp(r,r.status);
     recordStatusHistory(r,"",r.status);
     let stock=arr(K.p),moves=arr(K.m);
-    formData.parts.filter(x=>!x.external).forEach(x=>{let p=stock.find(z=>z.id===x.partId);if(p){p.qty=Math.max(0,(+p.qty||0)-x.qty);moves.push({id:id(),partId:p.id,type:"خروج",qty:x.qty,requestId:r.id,at:new Date().toISOString()})}});
+    if(!adjustStockForOrder([],formData.parts,r.id,stock,moves))return{ok:false,error:"قطعة من الأمر لم تعد متاحة بالكمية المطلوبة في المخزن. راجع الكميات ثم حاول الحفظ مجددًا."};
     if(!commitStorage({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).concat(r)}))return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
     syncTreasuryForOrderDeposit(r);
     if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false,error:"تعذر حفظ حركة العربون. تم التراجع عن العملية."};

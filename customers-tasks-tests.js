@@ -63,6 +63,7 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
   // 5) جهاز بضغطتين متتاليتين = جهاز واحد
   {
     const e=makeEnv(),x=e.context,K=e.K;
+    e.store[K.c]=JSON.stringify([{id:'c1',name:'عميل'}]);
     Object.assign(x,{dType:{value:'غسالة'},dCategory:{value:'أوتوماتيك'},dBrand:{value:'LG'},dModel:{value:' X1 '},dDesc:{value:''},dAddress:{value:'main'},dCustomer:{value:'c1'},dPhoto:{files:[{name:'p.png'}]}});
     e.els.dCustomer={value:'c1'};
     const ev={preventDefault(){}};
@@ -70,6 +71,24 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     assert.strictEqual(J(e,K.d).length,1,'double submit must create one device');
     assert.strictEqual(J(e,K.d)[0].model,'X1');
     await x.saveDevice(ev,null);assert.strictEqual(J(e,K.d).length,2,'a later save must still work');
+  }
+  // 6) لا ينفصل مالك الجهاز عن أوامره السابقة، ولا يُحفظ جهاز لعميل غير موجود.
+  {
+    const e=makeEnv(),x=e.context,K=e.K;
+    e.store[K.c]=JSON.stringify([{id:'c1',name:'أول'},{id:'c2',name:'ثان'}]);
+    e.store[K.d]=JSON.stringify([{id:'d1',customerId:'c1',type:'غسالة'}]);
+    e.store[K.r]=JSON.stringify([{id:'r1',deviceId:'d1',customerId:'c1'}]);
+    let d=J(e,K.d)[0];
+    let result=x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
+    assert.strictEqual(result.reason,'device-has-history');
+    assert.strictEqual(J(e,K.d)[0].customerId,'c1','failed ownership change must not mutate the saved device');
+    e.store[K.r]=JSON.stringify([]);
+    result=x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
+    assert.ok(result.ok,'owner change is allowed when no service history exists');
+    assert.strictEqual(J(e,K.d)[0].customerId,'c2');
+    result=x.persistDeviceRecord({customerId:'missing',type:'مكيف'},null);
+    assert.strictEqual(result.reason,'missing-customer');
+    assert.strictEqual(J(e,K.d).length,1,'device with a missing parent customer must not be saved');
   }
   console.log('customers-tasks-tests: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});

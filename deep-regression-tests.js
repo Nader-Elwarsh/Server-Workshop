@@ -12,7 +12,7 @@ const alerts = [];
 const controls = {};
 document.getElementById = id => controls[id] || null;
 const context = vm.createContext({ window, localStorage, sessionStorage: localStorage, document, console, crypto: { randomUUID: () => 'test-' + Math.random() }, alert(message) { alerts.push(String(message)); }, confirm() { return true; }, prompt() { return 'test'; }, location: { href: '' }, setTimeout, clearTimeout, Date, Math, Number, String, Object, Array, JSON, Promise, URLSearchParams });
-for (const file of ['shared-data.js', 'app-shared.js', 'app-requests.js', 'app-dashboard-reports.js', 'app-route-followup.js']) {
+for (const file of ['shared-data.js', 'app-shared.js', 'app-requests.js', 'app-dashboard-reports.js', 'app-route-followup.js', 'app-devices.js', 'app-quick-add.js']) {
   vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
 }
 for (const name of ['K', 'arr', 'put', 'commitStorage', 'saveJSONSafe', 'withRollback', 'settings', 'id']) if (context.window[name]) context[name] = context.window[name];
@@ -69,6 +69,32 @@ check(!get(K.r)[0].closed,'standard close must reject deposit greater than total
 context.confirmQuickClose('r4');
 check(!get(K.r)[0].closed,'route quick close must reject deposit greater than total');
 check(alerts.some(x=>/أكبر من إجمالي الأمر/.test(x)),'over-collection needs a clear repair message');
+
+// Request persistence must reject missing/mismatched customer-device pairs and re-check live stock.
+set(K.c,[{id:'c1',name:'عميل 1'},{id:'c2',name:'عميل 2'}]);
+set(K.d,[{id:'d1',customerId:'c1',type:'غسالة'}]);set(K.p,[{id:'p3',qty:1,buy:5,use:10}]);set(K.m,[]);set(K.r,[]);
+const baseRequest={customerId:'c2',deviceId:'d1',addressKey:'main',visit:'',status:'جديد',executionPlace:'عند العميل',workshopStatus:'غير مطلوب',partsWaiting:false,tag:'',fault:'اختبار',work:'',labor:0,parts:[],partsTotal:0,total:0,deposit:0,depositWallet:''};
+let relationResult=context.persistRequestRecord({...baseRequest});
+check(!relationResult.ok&&/تابع لعميل آخر/.test(relationResult.error),"a request cannot reference another customer's device");
+relationResult=context.persistRequestRecord({...baseRequest,customerId:'c1',deviceId:'missing'});
+check(!relationResult.ok&&/غير موجود/.test(relationResult.error),'a request cannot reference a missing device');
+relationResult=context.persistRequestRecord({...baseRequest,customerId:'c1',parts:[{partId:'p3',qty:2,sell:10,cost:5}],partsTotal:20,total:20});
+check(!relationResult.ok&&/لم تعد متاحة/.test(relationResult.error),'final save rechecks current stock availability');
+check(get(K.r).length===0&&get(K.p)[0].qty===1&&get(K.m).length===0,'failed order validation must not mutate stock, movement, or order data');
+controls.qoCustomer={value:'c2'};controls.qoDevice={value:'d1'};controls.qoFault={value:'اختبار'};
+context.quickCreateRequest();
+check(get(K.r).length===0,'quick order creation must reject a customer/device mismatch too');
+controls.qoCustomer={value:'missing'};
+context.saveQuickDeviceHome();
+context.rCustomer={value:'missing'};
+context.saveQuickDevice();
+check(get(K.d).length===1,'quick-device paths must reject a missing parent customer');
+
+// A deposit is still permitted while the total is unknown (zero), then bounded after a total is known.
+set(K.r,[{id:'r5',status:'جاري التنفيذ',labor:0,partsTotal:0,total:0,deposit:0,closed:false,paid:false}]);
+controls['qcLabor-r5']={value:'0'};controls['qcNewDeposit-r5']={value:'20'};controls['qcWallet-r5']={value:'محفظتي'};
+context.confirmQuickPartialPayment('r5');
+check(get(K.r)[0].deposit===20,'pre-estimate deposits remain supported when the order total is unknown');
 
 // Date-only values must remain local dates in report range checks.
 const start = new Date(2026, 8, 20, 0, 0, 0, 0), end = new Date(2026, 8, 20, 23, 59, 59, 999);
