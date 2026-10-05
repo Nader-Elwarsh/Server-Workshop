@@ -211,6 +211,11 @@ async function createRequestFromCallShare() {
   if (!cid) return alert("اختر العميل أولاً.");
   if (!did) return alert("اختر الجهاز أولاً.");
   if (!fault) return alert("اكتب وصف العطل.");
+  const customer = arr(K.c).find(c => String(c.id) === String(cid));
+  if (!customer) return alert("العميل المحدد غير موجود. أعد اختياره ثم حاول مرة أخرى.");
+  const device = arr(K.d).find(d => String(d.id) === String(did));
+  if (!device) return alert("الجهاز المحدد غير موجود. أعد اختياره ثم حاول مرة أخرى.");
+  if (String(device.customerId || "") !== String(cid)) return alert("الجهاز المحدد تابع لعميل آخر. اختر جهازًا تابعًا لنفس العميل.");
   let s = settings();
   let r = { id: id(), no: orderNo(), customerId: cid, deviceId: did, addressKey: "main", visit: "", status: "جديد", executionPlace: (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault, work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, createdAt: new Date().toISOString() };
   if (__audioRef) {

@@ -291,21 +291,23 @@ return'<div class="pa-item"><div class="pa-row"><b>👤 '+esc(g.name||"زائر"
 '<div class="pa-actions" style="margin-top:8px"><button type="button" data-act="guConv" data-id="'+esc(g.id)+'">🧾 تحويل لأمر شغل</button> <button type="button" class="secondary" data-act="guDone" data-id="'+esc(g.id)+'">✔️ تم التعامل (بدون أمر)</button> <button type="button" class="secondary" data-act="guDel" data-id="'+esc(g.id)+'" style="border-color:var(--danger-text);color:var(--danger-text)">🗑️ حذف</button></div></div>'}).join(""):'<p class="hint">مفيش طلبات زوار جديدة.</p>'}
 function guOrderNo(){if(typeof window.orderNo==="function")return window.orderNo();var d=new Date(),y=String(d.getFullYear()).slice(-2),pre="W"+y+"-"+(d.getMonth()+1)+"-"+d.getDate()+"-",key=function(x){var t=new Date(x);return t.getFullYear()+"-"+t.getMonth()+"-"+t.getDate()},k=key(d),all=window.arr(window.K.r),n=all.filter(function(x){return x.createdAt&&key(x.createdAt)===k}).length+1;while(all.some(function(x){return x.no===pre+n}))n++;return pre+n}
 function guMark(id,extra){return db.collection("guestRequests").doc(id).update(Object.assign({handled:true,handledAt:SV},extra||{}))}
-function guConv(id,btn){var g=GR.find(function(x){return x.id===id});if(!g)return;
-if(typeof window.put!=="function"||!window.K||typeof window.arr!=="function"||typeof window.id!=="function")return alert("بيانات النظام لسه بتتحمّل. جرّب كمان ثانية.");
+function guConv(id,btn){
+var g=GR.find(function(x){return x.id===id});if(!g)return;
+if(typeof window.commitStorage!=="function"||!window.K||typeof window.arr!=="function"||typeof window.id!=="function")return alert("بيانات النظام لسه بتتحمّل. جرّب كمان ثانية.");
 var orders=window.arr(window.K.r),ex=orders.find(function(r){return r.guestRequestId===id});
-if(ex){if(btn)btn.disabled=true;return guMark(id,{orderId:ex.id,orderNo:ex.no||""}).then(function(){alert("الأمر موجود بالفعل: "+ex.no)}).catch(function(){alert("الأمر موجود ("+ex.no+") بس تعذّر تحديث الطلب. جرّب تاني.")})}
-var dup=typeof window.duplicateCustomerByPhone==="function"?window.duplicateCustomerByPhone(g.phone):null;
+if(ex){if(btn)btn.disabled=true;return guMark(id,{orderId:ex.id,orderNo:ex.no||""}).then(function(){alert("الأمر موجود بالفعل: "+ex.no)}).catch(function(){if(btn)btn.disabled=false;alert("الأمر موجود ("+ex.no+") بس تعذّر تحديث الطلب. جرّب تاني.")})}
+var phone=String(g.phone||"").trim();if(typeof window.wfPhoneKey!=="function"||!window.wfPhoneKey(phone))return alert("رقم تليفون الزائر غير صالح؛ راجعه قبل التحويل.");
+var dup=typeof window.duplicateCustomerByPhone==="function"?window.duplicateCustomerByPhone(phone):null;
 if(!confirm(dup?"الرقم ده مسجّل عندك للعميل «"+(dup.name||"")+"». هيتفتح له جهاز وأمر شغل جديد. متأكد؟":"هيتفتح عميل جديد وجهاز وأمر شغل من بيانات الزائر. متأكد؟"))return;
 if(btn)btn.disabled=true;
-var now=new Date().toISOString(),s=window.settings?window.settings():{},cid,custs=window.arr(window.K.c);
-if(dup)cid=dup.id;else{cid=window.id();custs=custs.concat({id:cid,name:String(g.name||"").slice(0,80),phone:g.phone,mainAddress:{center:String(g.center||"").slice(0,80),village:String(g.village||"").slice(0,80),address:"",street:String(g.street||g.address||"").slice(0,200)},extraAddress:{},createdAt:now});if(window.put(window.K.c,custs)!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ العميل.")}}
+var now=new Date().toISOString(),s=window.settings?window.settings():{},cid,custs=window.arr(window.K.c),values={};
+if(dup)cid=dup.id;else{cid=window.id();custs=custs.concat({id:cid,name:String(g.name||"").slice(0,80),phone:phone,mainAddress:{center:String(g.center||"").slice(0,80),village:String(g.village||"").slice(0,80),address:"",street:String(g.street||g.address||"").slice(0,200)},extraAddress:{},createdAt:now});values[window.K.c]=custs}
 var did=window.id(),dev={id:did,customerId:cid,addressKey:"main",type:guTypeKey(g.deviceType),category:"",brand:"",model:"",desc:"طلب زائر",photo:"",createdAt:now};
-if(window.put(window.K.d,window.arr(window.K.d).concat(dev))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ الجهاز.")}
 var r={id:window.id(),no:guOrderNo(),customerId:cid,deviceId:did,addressKey:"main",visit:"",status:"جديد",executionPlace:(s.executionPlaces||[])[0]||"عند العميل",workshopStatus:(s.workshopStatuses||[])[0]||"غير مطلوب",partsWaiting:false,tag:"",fault:String(g.fault||"").slice(0,1000),work:"",labor:0,parts:[],partsTotal:0,partsCost:0,total:0,deposit:0,remain:0,closed:false,source:"guest",guestRequestId:id,guestRef:id,customerNote:"طلب سريع رقم "+id+" من زائر",createdAt:now};
 r.statusHistory=[{from:"",to:r.status,at:now,note:""}];
-if(window.put(window.K.r,window.arr(window.K.r).concat(r))!==true){if(btn)btn.disabled=false;return alert("تعذّر حفظ أمر الشغل.")}
-guMark(id,{orderId:r.id,orderNo:r.no}).then(function(){if(confirm("اتفتح الأمر "+r.no+". تفتحه دلوقتي؟"))location.href="request.html?id="+encodeURIComponent(r.id)}).catch(function(){alert("اتفتح الأمر "+r.no+" بس تعذّر تحديث الطلب في السحابة؛ هيظهر تاني، اضغط تحويل مرة كمان وهيتربط بنفس الأمر.")})}
+values[window.K.d]=window.arr(window.K.d).concat(dev);values[window.K.r]=orders.concat(r);
+if(!window.commitStorage(values)){if(btn)btn.disabled=false;return}
+return guMark(id,{orderId:r.id,orderNo:r.no}).then(function(){if(confirm("اتفتح الأمر "+r.no+". تفتحه دلوقتي؟"))location.href="request.html?id="+encodeURIComponent(r.id)}).catch(function(){if(btn)btn.disabled=false;alert("اتفتح الأمر "+r.no+" بس تعذّر تحديث الطلب في السحابة؛ هيظهر تاني، اضغط تحويل مرة كمان وهيتربط بنفس الأمر.")})}
 function guDone(id){if(!confirm("تعليم الطلب «تم التعامل» من غير أمر شغل؟"))return;guMark(id).catch(function(){alert("تعذّر التحديث. جرّب تاني.")})}
 function guDel(id){if(!confirm("حذف الطلب نهائيًا؟"))return;db.collection("guestRequests").doc(id).delete().catch(function(){alert("تعذّر الحذف. جرّب تاني.")})}
 
