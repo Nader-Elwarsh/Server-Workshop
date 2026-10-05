@@ -298,7 +298,10 @@ function markPaidAndClose(i){
   if(!r||r.closed||r.paid)return;
   if(r.status!=="مكتمل"){alert("اجعل حالة أمر الشغل «مكتمل» أولًا.");return}
   let wallet=document.getElementById("rCloseWallet")?.value||"";
-  let collected=Math.max(0,(+r.total||0)-(+r.deposit||0));
+  const totalRaw=r.total==null||r.total===""?0:+r.total,depositRaw=r.deposit==null||r.deposit===""?0:+r.deposit;
+  if(!Number.isFinite(totalRaw)||totalRaw<0||!Number.isFinite(depositRaw)||depositRaw<0){alert("إجمالي الأمر أو العربون غير صالح. صحّح القيم قبل الإغلاق.");return}
+  if(depositRaw>totalRaw+0.001){alert(`العربون (${depositRaw.toFixed(2)} ج) أكبر من إجمالي الأمر (${totalRaw.toFixed(2)} ج). صحّح الإجمالي أو سجّل ردّ الزيادة قبل الإغلاق.`);return}
+  let collected=Math.max(0,totalRaw-depositRaw);
   // لو فيه مبلغ محصّل ومحدد مفيش محفظة، لازم نلفت نظر المستخدم إن المبلغ
   // ده مش هيتسجل في أي محفظة (upsertWalletTxForRef بيتجاهل الحركة لو
   // مفيش محفظة، زي ما بالظبط بيحصل في تقفيل خط السير — نفس التحذير هنا

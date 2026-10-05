@@ -314,6 +314,12 @@ function confirmQuickPartialPayment(i){
   const newDeposit=+(document.getElementById(`qcNewDeposit-${i}`)?.value||0);
   if(!Number.isFinite(labor)||labor<0){alert("اكتب قيمة مصنعية صحيحة.");return}
   if(!Number.isFinite(newDeposit)||newDeposit<=0){alert("اكتب قيمة الدفعة الجديدة أولًا.");return}
+  const partsTotal=Number.isFinite(+r.partsTotal)?+r.partsTotal:0;
+  const existingDeposit=r.deposit==null||r.deposit===""?0:+r.deposit;
+  const estimatedTotal=partsTotal+labor;
+  if(partsTotal<0||!Number.isFinite(existingDeposit)||existingDeposit<0){alert("إجمالي الأمر أو العربون الحالي غير صالح؛ صحّح البيانات قبل تسجيل الدفعة.");return}
+  // قبل تحديد إجمالي معروف نسمح بالعربون المسبق؛ بعد معرفة الإجمالي لا نسجل زيادة على المتبقي.
+  if(estimatedTotal>0&&existingDeposit+newDeposit>estimatedTotal+0.001){alert(`الدفعة الجديدة أكبر من المتبقي (${Math.max(0,estimatedTotal-existingDeposit).toFixed(2)} ج). راجع المبلغ أو إجمالي الأمر.`);return}
   const wallet=document.getElementById(`qcWallet-${i}`)?.value||"";
   if(!wallet&&!confirm("مفيش محفظة محددة للدفعة، فمش هتتسجل كحركة في الحسابات — تكمل بدون تحديد محفظة؟"))return;
   r.labor=labor;
@@ -338,7 +344,10 @@ function confirmQuickClose(i){
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value||0);
   if(!Number.isFinite(labor)||labor<0){alert("اكتب قيمة مصنعية صحيحة.");return}
   const wallet=document.getElementById(`qcWallet-${i}`)?.value||"";
-  const collectedPreview=Math.max(0,(+r.partsTotal||0)+labor-(+r.deposit||0));
+  const partsTotal=Number.isFinite(+r.partsTotal)?+r.partsTotal:0,deposit=r.deposit==null||r.deposit===""?0:+r.deposit,estimatedTotal=partsTotal+labor;
+  if(partsTotal<0||!Number.isFinite(deposit)||deposit<0||!Number.isFinite(estimatedTotal)){alert("إجمالي الأمر أو العربون غير صالح؛ صحّح البيانات قبل الإغلاق.");return}
+  if(deposit>estimatedTotal+0.001){alert(`العربون (${deposit.toFixed(2)} ج) أكبر من إجمالي الأمر (${estimatedTotal.toFixed(2)} ج). صحّح الإجمالي أو سجّل ردّ الزيادة قبل الإغلاق.`);return}
+  const collectedPreview=Math.max(0,estimatedTotal-deposit);
   if(collectedPreview>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المتبقي المُحصّل (${collectedPreview.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة القفل من غير تسجيله في محفظة؟`))return;
   if(!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
   r.labor=labor;
