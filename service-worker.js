@@ -49,6 +49,7 @@ const CORE_FILES = [
   "./backup-reminder.js",
   "./image-store.js",
   "./fault-codes-idb.js",
+  "./tasks-idb.js",
   "./migrations.js",
   "./treasury.js",
   "./wallets.js",

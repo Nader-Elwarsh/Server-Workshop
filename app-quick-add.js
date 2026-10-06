@@ -114,6 +114,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
   // عشان ميحصلش سباق بين "لسه base64" و"بقى مرجع IndexedDB".
   if(window.runMigrations){try{await window.runMigrations()}catch(e){console.error("[app] فشل تشغيل الترحيلات",e)}}
   if(window.FaultCodesIDB){try{await window.FaultCodesIDB.hydrate()}catch(e){console.warn("[app] تعذر تحميل أكواد الأعطال من IndexedDB",e)}}
+  if(window.TasksIDB){try{await window.TasksIDB.hydrate()}catch(e){console.warn("[app] تعذر تحميل المهام من IndexedDB",e)}}
   settings();renderDash();monthReport();document.getElementById("reportMonth")?.addEventListener("change",financeReport);document.getElementById("reportWeek")?.addEventListener("change",financeReport);initCustomers();customerProfile();initDevices();deviceProfile();initRequests();requestProfile();initParts();partProfile();(typeof initInventoryBulk==="function")&&initInventoryBulk();initTasks();settingsPage();renderTreasury();renderWallets();renderWalletDetail();initQuickOrder();initQuickWallet();initRoutePage();initFollowupPage();initFaultCodes();faultCodeProfile();initWarrantyPage?.();openSettingsPanelFromHash?.()
 })
 

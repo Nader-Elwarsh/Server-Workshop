@@ -78,6 +78,7 @@
     try {
       localStorage.setItem(k, JSON.stringify(v));
       invalidateReadCache(k);
+      if(k===K.tasks){try{window.TasksIDB?.replace(v)}catch(_){/* localStorage هو fallback */}}
       return true;
     } catch (e) {
       // مساحة التخزين المخصصة للمتصفح امتلأت (أو خاصية التخزين متعطّلة، زي
@@ -96,6 +97,8 @@
       for (const [k] of entries) previous[k] = localStorage.getItem(k);
       for (const [k, v] of entries) localStorage.setItem(k, JSON.stringify(v));
       invalidateReadCache(entries.map(([k]) => k));
+      const taskEntry=entries.find(([k])=>k===K.tasks);
+      if(taskEntry){try{window.TasksIDB?.replace(taskEntry[1])}catch(_){/* localStorage هو fallback */}}
       return true;
     } catch (e) {
       for (const [k, raw] of Object.entries(previous)) {
