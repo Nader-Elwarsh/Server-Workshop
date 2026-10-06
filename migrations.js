@@ -112,7 +112,7 @@
     let existing = arr(K.wtx);
     // مرجع ثابت يمنع خصم نفس المصروف مرتين إذا أُعيد تشغيل الترحيل
     // بعد استرجاع نسخة احتياطية أو بسبب نسخة قديمة من التطبيق.
-    let migrated = oldExpenses.filter(e => !existing.some(x => x && x.source === "migrated-expense" && (x.legacyExpenseId === e.id || x.refKey === "legacy-expense-" + e.id))).map(e => {
+    let migrated = oldExpenses.filter(e => !existing.some(x => x && x.source === "migrated-expense" && (x.legacyExpenseId === e.id || x.refKey === "legacy-expense-" + e.id || (!x.legacyExpenseId && !x.refKey && x.createdAt && x.createdAt === e.createdAt && (+x.amount || 0) === (+e.amount || 0))))).map(e => {
       let ref = "legacy-expense-" + (e.id || id());
       return {
       id: ref, refKey: ref, legacyExpenseId: e.id || "", manualOverride: true, deleted: false, type: "out",

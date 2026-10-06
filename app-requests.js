@@ -281,29 +281,69 @@ function markRequestReturned(i){
     return;
   }
   if(!canTransitionStatus(r.status,"جاري التنفيذ")){alert(`لا يمكن الانتقال من حالة «${r.status}» إلى «جاري التنفيذ» مباشرة.`);return}
+  // الفلوس اللي اتحصّلت وقت التقفيل: بدل ما تتشال من الرصيد بصمت (وتخلّي الرصيد أقل من الفعلي)،
+  // بتختار: تتحوّل لعربون على الأمر (الافتراضي — مش هتتحصّل تاني لما تقفله)، أو تسجّل إنها اتردّت للعميل.
+  const fin=r.closed?arr(K.wtx).find(x=>x&&x.refKey==="order-final-"+r.id&&!x.deleted):null;
+  const collected=r.closed?(fin?(+fin.amount||0):Math.max(0,(+r.total||0)-(+r.deposit||0))):0;
+  const finWallet=fin?String(fin.wallet||"").trim():String(r.closeWallet||"").trim();
+  let choice="none",refund=0;
+  if(r.closed&&collected>0){
+    const where=finWallet?` في «${finWallet}»`:" (من غير محفظة)";
+    if(confirm(`الأمر ده اتحصّل فيه ${collected.toFixed(2)} ج${where}. عايز إيه يحصل في الفلوس دي؟\n\n✅ موافق = تتحوّل لعربون على الأمر (تفضل في المحفظة ومش هتتحصّل تاني لما تقفله).\n❌ إلغاء = خيارات تانية (رد الفلوس للعميل / من غير تسجيل).`)){
+      choice="deposit";
+    }else if(confirm(`الفلوس اتردّت للعميل فعلًا؟\n\n✅ موافق = أسجّل رد فلوس (المبلغ المردود بيتشال من رصيد المحفظة، وأي باقي بيتحوّل لعربون).\n❌ إلغاء = من غير تسجيل أي حاجة.`)){
+      const v=prompt(`المبلغ اللي اتردّ للعميل (أقصى ${collected.toFixed(2)} ج، والباقي لو فيه بيتحوّل لعربون):`,String(collected));
+      if(v===null)return;
+      const n=typeof parseAmountInput==="function"?parseAmountInput(v):+v;
+      if(!(n>0)||n>collected+0.001){alert("مبلغ الرد لازم يكون أكبر من صفر ومايزيدش عن المبلغ المحصّل.");return}
+      choice="refund";refund=Math.min(n,collected);
+    }else{
+      if(!confirm(`مفيش تحويل لعربون ولا تسجيل رد: التحصيل (${collected.toFixed(2)} ج) هيتشال من الرصيد تلقائيًا.\n\nلو الفلوس لسه معاك فالرصيد في التطبيق هيبقى أقل من الفعلي لحد ما تقفل الأمر تاني.\n\nمتابعة؟`))return;
+    }
+  }
   let reason=prompt("سبب/ملاحظة المرتجع (مطلوب):","");
   if(reason===null)return;
   reason=reason.trim();
   if(!reason){alert("سبب/ملاحظة المرتجع مطلوبة.");return}
   let from=r.status,wasClosed=!!r.closed,previousCloseWallet=r.closeWallet||"";
   r.status="جاري التنفيذ";
+  let depAmount=0,separate=false;
   if(wasClosed){
-    r.closed=false;r.paid=false;r.remain=Math.max(0,(+r.total||0)-(+r.deposit||0));
+    r.closed=false;r.paid=false;
     r.reopenedAt=new Date().toISOString();r.reopenedFromClosedAt=r.closedAt||"";
     r.closedAt=null;r.paidAt=null;r.closeWallet="";
+    depAmount=choice==="deposit"?collected:(choice==="refund"?Math.max(0,collected-refund):0);
+    if(depAmount>0&&typeof applyAdditionalDeposit==="function")separate=applyAdditionalDeposit(r,depAmount,finWallet).separate;
+    else depAmount=0;
+    r.remain=Math.max(0,(+r.total||0)-(+r.deposit||0));
+    if(choice!=="none")r.returnMoney={choice,collected,refund,at:r.reopenedAt};
   }
   applyStatusTimestamp(r,r.status);
-  recordStatusHistory(r,from,r.status,`مرتجع${wasClosed?" (كان مغلقًا)":""}: ${reason}`);
+  const moneyNote=choice==="deposit"?` — التحصيل ${collected.toFixed(2)} ج اتحوّل لعربون`:(choice==="refund"?` — اتردّ ${refund.toFixed(2)} ج للعميل${depAmount>0?` والباقي ${depAmount.toFixed(2)} ج اتحوّل لعربون`:""}`:"");
+  recordStatusHistory(r,from,r.status,`مرتجع${wasClosed?" (كان مغلقًا)":""}: ${reason}${moneyNote}`);
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
+    if(wasClosed&&choice!=="none"){
+      // تحويل لعربون/رد: حركة التحصيل النهائي بتتشال صراحةً (حتى لو اتعدّلت يدويًا) وبيتسجل مكانها العربون
+      // (المبلغ كله، أو الباقي بعد الرد)، فرصيد المحفظة ماينقصش إلا بالمبلغ اللي اتردّ فعلًا.
+      const w=arr(K.wtx);let ch=false;
+      w.forEach(x=>{if(x&&x.refKey==="order-final-"+r.id&&!x.deleted){x.deleted=true;ch=true}});
+      if(ch&&!put(K.wtx,w))return{ok:false};
+      if(depAmount>0){
+        if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false};
+        if(separate&&typeof addOrderPartialPaymentTx==="function"&&!addOrderPartialPaymentTx(r,depAmount,finWallet))return{ok:false};
+      }
+      return{ok:true};
+    }
     // التحصيل النهائي التلقائي لم يعد صالحًا بعد المرتجع؛ يُحذف من الحساب
     // بنفس refKey بدل إنشاء حركة عكسية أو ترك الرصيد مرتفعًا.
     if(wasClosed&&typeof syncWalletForOrderClose==="function"&&!syncWalletForOrderClose(r,0,previousCloseWallet))return{ok:false};
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ المرتجع وتحديث الحركة المالية معًا؛ لم يتم تغيير الأمر.");return}
-  window.auditLog?.("إرجاع أمر", "أمر شغل", r.id, reason);renderRequests();renderDash();requestProfile();
+  window.auditLog?.("إرجاع أمر", "أمر شغل", r.id, reason+moneyNote);renderRequests();renderDash();requestProfile();
 }
+
 function changeRequestVisit(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.visit=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
 // تعديل مكان التنفيذ/العطل/الأعمال المنفذة كانوا نص ثابت مالهوش أي تحكم في
 // صفحة عرض الأمر — أي تغيير كان لازم يدخل على وضع التعديل الكامل من فوق.

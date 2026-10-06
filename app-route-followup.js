@@ -325,12 +325,17 @@ function confirmQuickPartialPayment(i){
   r.labor=labor;
   r.partsTotal=+r.partsTotal||0;
   r.total=r.partsTotal+labor;
-  r.deposit=(+r.deposit||0)+newDeposit;
-  if(wallet)r.depositWallet=wallet;
+  // العربون بيتسجل كحركة واحدة في محفظة واحدة. لو فيه عربون سابق ومحفظة الدفعة الجديدة مختلفة (أو من
+  // غير محفظة، أو حركة العربون اتعدّلت يدويًا) مينفعش نجمعهم في حركة واحدة: كانت الفلوس بتنتقل من
+  // محفظة لمحفظة أو بتتحسب في محفظة غلط. بنسجّل الدفعة الجديدة لوحدها ونسيب العربون الأساسي زي ما هو.
+  let separate=false;
+  if(typeof applyAdditionalDeposit==="function")separate=applyAdditionalDeposit(r,newDeposit,wallet).separate;
+  else{r.deposit=(+r.deposit||0)+newDeposit;if(wallet)r.depositWallet=wallet}
   r.remain=Math.max(0,r.total-r.deposit);
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false};
+    if(separate&&typeof addOrderPartialPaymentTx==="function"&&!addOrderPartialPaymentTx(r,newDeposit,wallet))return{ok:false};
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الدفعة والحركة المالية معًا؛ لم يتم تسجيل الدفعة.");return}

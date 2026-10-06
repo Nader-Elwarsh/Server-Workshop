@@ -66,7 +66,8 @@ function restoreFromTrash(trashId) {
   values[K.p] = stock;
 
   const refKeys = new Set(p.walletRefKeys || []);
-  values[K.wtx] = arr(K.wtx).map(x => refKeys.has(String(x.refKey || "")) ? { ...x, deleted: false } : x);
+  const restoredOrderIds = new Set([p.request, ...(p.requests || [])].filter(Boolean).map(r => String(r.id)));
+  values[K.wtx] = arr(K.wtx).map(x => (refKeys.has(String(x.refKey || "")) || (x.source === "order-part" && x.deletedWithOrder && restoredOrderIds.has(String(x.orderId)))) ? { ...x, deleted: false, deletedWithOrder: undefined } : x);
   values[K.trash] = arr(K.trash).filter(x => x.id !== trashId);
 
   if (!commitStorage(values)) { alert("تعذر الاسترجاع؛ لم يتم تنفيذ أي تغيير."); return; }

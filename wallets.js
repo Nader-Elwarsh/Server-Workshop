@@ -32,7 +32,37 @@ function walletBalance(walletName){
   let raw=walletRawBalance(walletName),cap=walletCapOf(walletName);
   return cap!==null&&raw>cap?cap:raw;
 }
+// دفعات جزئية من خط السير سُجّلت في محفظة مختلفة (أو من غير محفظة) عن محفظة العربون الأساسي:
+// بتتخزن في order.depositExtra، وحركة العربون الأساسية بتغطي الباقي بس (العربون − depositExtra)
+// عشان نفس الفلوس ماتتحسبش مرتين ولا تنتقل من محفظة لمحفظة تانية.
+function orderDepositExtra(o){let n=+o?.depositExtra;return Number.isFinite(n)&&n>0?Math.min(n,Math.max(0,+o?.deposit||0)):0}
+function orderMainDeposit(o){return Math.max(0,(+o?.deposit||0)-orderDepositExtra(o))}
+// حركة محفظة لدفعة جزئية منفصلة (بتتحذف مع الأمر لو اتحذف، وبتظهر مربوطة بيه).
+function addOrderPartialPaymentTx(order,amount,wallet){
+  wallet=String(wallet||"").trim();amount=+amount||0;
+  if(!wallet||amount<=0)return true;
+  return put(K.wtx,arr(K.wtx).concat({
+    id:id(),refKey:null,orderId:order.id,manualOverride:true,deleted:false,type:"in",amount,wallet,
+    category:"تحصيل عميل",reason:`💵 دفعة جزئية أمر الشغل ${order.no}`,note:"",
+    date:localDateKey(new Date()),time:new Date().toTimeString().slice(0,5),
+    source:"order-part",createdAt:new Date().toISOString()
+  }));
+}
+// يزوّد عربون الأمر بمبلغ جديد (دفعة جزئية، أو فلوس مرتجع اتحوّلت لعربون) من غير ما ينقل فلوس العربون
+// السابق من محفظته. بيعدّل الأمر بس ويرجّع {separate}: لو true المستدعي لازم يسجّل الحركة بـ addOrderPartialPaymentTx.
+function applyAdditionalDeposit(r,amount,wallet){
+  wallet=String(wallet||"").trim();amount=+amount||0;
+  const existing=r.deposit==null||r.deposit===""?0:(+r.deposit||0);
+  const mainTx=arr(K.wtx).find(x=>x&&x.refKey==="order-deposit-"+r.id&&!x.deleted);
+  const mainWallet=mainTx?String(mainTx.wallet||"").trim():String(r.depositWallet||"").trim();
+  const separate=existing>0&&(wallet!==mainWallet||!!(mainTx&&mainTx.manualOverride));
+  r.deposit=existing+amount;
+  if(separate)r.depositExtra=(+r.depositExtra||0)+amount;
+  else r.depositWallet=wallet; // من غير محفظة = مفيش حركة، ومايتسجلش في محفظة قديمة محدّدة على الأمر
+  return{separate};
+}
 function linkedOrderForWalletTx(tx){
+  if(tx&&tx.orderId&&tx.source==="order-part")return arr(K.r).find(r=>String(r.id)===String(tx.orderId))||null;
   let ref=String(tx?.refKey||"");
   let match=ref.match(/^order-(?:deposit|final)-(.+)$/);
   return match?arr(K.r).find(r=>String(r.id)===match[1]):null;
@@ -210,7 +240,7 @@ function orderSnapshotForRef(refKey){
   let m=String(refKey||"").match(/^order-(deposit|final)-(.+)$/);if(!m)return null;
   let r=arr(K.r).find(x=>String(x.id)===m[2]);if(!r)return null;
   return m[1]==="deposit"
-    ?{amount:+r.deposit||0,wallet:String(r.depositWallet||"").trim()}
+    ?{amount:orderMainDeposit(r),wallet:String(r.depositWallet||"").trim()}
     :{amount:Math.max(0,(+r.total||0)-(+r.deposit||0)),wallet:String(r.closeWallet||"").trim()};
 }
 function upsertWalletTxForRef(refKey,data){
@@ -260,7 +290,7 @@ function upsertWalletTxForRef(refKey,data){
 // العربون صفر، الحركة (لو كانت موجودة من قبل) بتتشال تلقائيًا.
 function syncWalletForOrderDeposit(order){
   return upsertWalletTxForRef("order-deposit-"+order.id,{
-    amount:order.deposit,wallet:order.depositWallet,category:"تحصيل عميل",
+    amount:orderMainDeposit(order),wallet:order.depositWallet,category:"تحصيل عميل",
     reason:`💵 عربون أمر الشغل ${order.no}`
   });
 }
@@ -431,7 +461,7 @@ function renderWalletDetail(){dedupeWalletTxByRef();
     ${entries.length?entries.map(x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
       <div class="treasury-row-main">
         <b>${(()=>{let order=linkedOrderForWalletTx(x);return order?`<a href="request.html?id=${encodeURIComponent(order.id)}" title="فتح أمر الشغل ${escAttr(order.no||"")}">${esc(x.reason||"—")} ↗</a>`:esc(x.reason||"—")})()}</b>
-        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"?" • 🔗 أمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
+        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
         ${x.note?`<small>📝 ${esc(x.note)}</small>`:""}
       </div>
       <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>
@@ -458,13 +488,18 @@ function walletAudit(){
   active.forEach(x=>{
     const m=String(x.refKey||"").match(/^order-(deposit|final)-(.+)$/);
     const isIn=x.type==="in",amt=money(x.amount);
+    if(x.source==="order-part"&&x.orderId){
+      const po=byId.get(String(x.orderId));
+      if(!po)add({kind:"order-missing",dir:"up",tx:x,amount:amt,text:"دفعة جزئية مربوطة بأمر شغل مش موجود (اتحذف؟) — لسه محسوبة في الرصيد."});
+      else if(po.status==="ملغي")add({kind:"order-cancelled",dir:"up",tx:x,order:po,amount:amt,text:"أمر "+(po.no||"")+" ملغي لكن دفعته الجزئية لسه محسوبة. لو رجّعت الفلوس للعميل لازم تسجّل صرف."});
+    }
     if(!known.has(x.wallet))add({kind:"unknown-wallet",dir:"info",tx:x,amount:amt,text:"الحركة على محفظة «"+(x.wallet||"—")+"» مش موجودة في الإعدادات، فمش داخلة في إجمالي أي محفظة معروضة."});
     if(!m)return;
     const r=byId.get(m[2]),kind=m[1];
     if(!r){add({kind:"order-missing",dir:isIn?"up":"down",tx:x,amount:amt,text:"حركة مربوطة بأمر شغل مش موجود (اتحذف؟) — لسه محسوبة في الرصيد."});return}
     if(r.status==="ملغي")add({kind:"order-cancelled",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" ملغي لكن حركته لسه محسوبة. لو رجّعت الفلوس للعميل لازم تسجّل صرف."});
     if(kind==="final"&&!r.closed)add({kind:"final-on-open",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" اتفتح تاني (مرتجع/تعديل) وتحصيله النهائي لسه محسوب. لو رجّعت الفلوس سجّل صرف، ولو لأ سيبه لحد ما تقفله تاني."});
-    const expect=kind==="deposit"?money(r.deposit):Math.max(0,money(r.total)-money(r.deposit));
+    const expect=kind==="deposit"?orderMainDeposit(r):Math.max(0,money(r.total)-money(r.deposit));
     if(Math.abs(expect-amt)>0.005)add({kind:"amount-mismatch",dir:amt>expect?"up":"down",tx:x,order:r,amount:amt-expect,text:"أمر "+(r.no||"")+": الحركة "+amt.toFixed(2)+" لكن "+(kind==="deposit"?"العربون":"المتبقي (الإجمالي − العربون)")+" على الأمر "+expect.toFixed(2)+(x.manualOverride?" (انت معدّل الحركة بإيدك).":".")});
     const w=String((kind==="deposit"?r.depositWallet:r.closeWallet)||"").trim();
     if(w&&w!==x.wallet)add({kind:"wallet-mismatch",dir:"info",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+": المحفظة على الأمر «"+w+"» لكن الحركة على «"+(x.wallet||"—")+"»."});
@@ -474,10 +509,24 @@ function walletAudit(){
   // أوامر ليها محفظة ومبلغ لكن مفيش حركة خالص (ولا حتى محذوفة بقصد) => الرصيد المعروض أقل
   orders.forEach(r=>{
     if(r.status==="ملغي")return;
-    const has=(ref)=>all.some(x=>x&&x.refKey===ref);
-    if(money(r.deposit)>0&&String(r.depositWallet||"").trim()&&!has("order-deposit-"+r.id))add({kind:"missing-deposit",dir:"down",order:r,amount:money(r.deposit),text:"أمر "+(r.no||"")+": عربون "+money(r.deposit).toFixed(2)+" على الأمر ومحفظته متحددة، لكن مفيش حركة في المحفظة."});
+    const has=(ref)=>all.some(x=>x&&x.refKey===ref&&!x.deleted);
+    const gone=(ref)=>all.filter(x=>x&&x.refKey===ref&&x.deleted);
+    const mainDep=orderMainDeposit(r);
+    if(mainDep>0&&String(r.depositWallet||"").trim()&&!has("order-deposit-"+r.id)){
+      const g=gone("order-deposit-"+r.id),byUser=g.some(x=>x.userDeleted);
+      // اللي اتحذف منك بقصد (tombstone) مابيتعدّش ناقص.
+      if(!byUser)add({kind:"missing-deposit",dir:"down",order:r,amount:mainDep,fix:{type:"deposit",orderId:r.id},text:"أمر "+(r.no||"")+": عربون "+mainDep.toFixed(2)+" على الأمر ومحفظته «"+String(r.depositWallet).trim()+"»، لكن "+(g.length?"حركته في المحفظة اتشالت تلقائيًا (مش محسوبة في الرصيد).":"مفيش حركة في المحفظة.")});
+    }
     const coll=Math.max(0,money(r.total)-money(r.deposit));
-    if(r.closed&&coll>0&&String(r.closeWallet||"").trim()&&!has("order-final-"+r.id))add({kind:"missing-final",dir:"down",order:r,amount:coll,text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" لكن مفيش حركة تحصيل في المحفظة."});
+    if(r.closed&&coll>0&&String(r.closeWallet||"").trim()&&!has("order-final-"+r.id)){
+      const g=gone("order-final-"+r.id),byUser=g.some(x=>x.userDeleted);
+      if(!byUser)add({kind:"missing-final",dir:"down",order:r,amount:coll,fix:{type:"final",orderId:r.id},text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" في «"+String(r.closeWallet).trim()+"» لكن "+(g.length?"حركة التحصيل اتشالت تلقائيًا (مش محسوبة في الرصيد).":"مفيش حركة تحصيل في المحفظة.")});
+    }
+    // أمر اتفتح تاني (مرتجع/تعديل) فالتحصيل النهائي اتشال من المحفظة تلقائيًا: الفلوس غالبًا لسه معاك فالرصيد المعروض أقل من الفعلي لحد ما تقفله تاني.
+    if(!r.closed&&r.reopenedFromClosedAt&&!(r.returnMoney&&r.returnMoney.choice&&r.returnMoney.choice!=="none")){
+      const gf=gone("order-final-"+r.id).filter(x=>!x.userDeleted&&money(x.amount)>0);
+      if(gf.length&&!has("order-final-"+r.id)){const last=gf[gf.length-1];add({kind:"reopened-final",dir:"info",order:r,amount:money(last.amount),text:"أمر "+(r.no||"")+" اتفتح تاني بعد التقفيل، وتحصيله النهائي "+money(last.amount).toFixed(2)+" ج اتشال من «"+(last.wallet||"—")+"» تلقائيًا. هيرجع لما تقفل الأمر تاني (لو الفلوس لسه معاك فالرصيد الفعلي أعلى من المعروض)."})}
+    }
     if(r.closed&&coll>0&&!String(r.closeWallet||"").trim())add({kind:"closed-no-wallet",dir:"info",order:r,amount:coll,text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" من غير تحديد محفظة (مش محسوب في أي رصيد)."});
   });
   // احتمال تكرار: نفس المحفظة/النوع/المبلغ/اليوم/السبب أكتر من مرة
@@ -488,7 +537,7 @@ function walletAudit(){
   // (مرة تلقائي من الأمر ومرة بإيدك) => الرصيد المعروض أعلى من الفعلي.
   const linked=active.filter(x=>/^order-(deposit|final)-/.test(String(x.refKey||""))&&x.type==="in");
   const day=x=>new Date((x.date||"1970-01-01")+"T00:00:00").getTime();
-  active.filter(x=>!x.refKey&&x.type==="in"&&x.source!=="transfer"&&x.source!=="migrated-expense").forEach(x=>{
+  active.filter(x=>!x.refKey&&x.type==="in"&&x.source!=="transfer"&&x.source!=="migrated-expense"&&x.source!=="order-part").forEach(x=>{
     const twin=linked.find(l=>l.wallet===x.wallet&&Math.abs(money(l.amount)-money(x.amount))<0.005&&Math.abs(day(l)-day(x))<=86400000);
     if(twin)add({kind:"manual-vs-order",dir:"up",tx:x,amount:money(x.amount),text:"وارد يدوي "+money(x.amount).toFixed(2)+" ج ("+(x.reason||"بدون سبب")+") بنفس مبلغ «"+(twin.reason||"")+"» في نفس اليوم تقريبًا — هل اتسجل مرتين؟"});
   });
@@ -505,11 +554,24 @@ function walletAudit(){
   const sum=d=>issues.filter(i=>i.dir===d).reduce((a,i)=>a+Math.abs(+i.amount||0),0);
   return{wallets,issues,upTotal:sum("up"),downTotal:sum("down")};
 }
-const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر اتحذفت","order-cancelled":"أوامر ملغية وحركاتها لسه محسوبة","final-on-open":"تحصيل نهائي على أوامر اتفتحت تاني","amount-mismatch":"مبلغ الحركة غير مطابق للأمر","possible-duplicate":"احتمال حركات مكررة","manual-vs-order":"وارد يدوي بنفس مبلغ حركة أمر","missing-deposit":"عرابين على أوامر ومفيش حركة ليها","missing-final":"تحصيلات مقفولة ومفيش حركة ليها","closed-no-wallet":"أوامر اتقفلت من غير محفظة","wallet-mismatch":"محفظة الحركة غير محفظة الأمر","late-entry":"حركات أوامر قديمة اتسجلت متأخر","unknown-wallet":"حركات على محفظة غير معروفة","transfer-orphan":"تحويلات ناقصة","cap":"حد أقصى بيخفّض المعروض"};
+const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر اتحذفت","order-cancelled":"أوامر ملغية وحركاتها لسه محسوبة","final-on-open":"تحصيل نهائي على أوامر اتفتحت تاني","amount-mismatch":"مبلغ الحركة غير مطابق للأمر","possible-duplicate":"احتمال حركات مكررة","manual-vs-order":"وارد يدوي بنفس مبلغ حركة أمر","missing-deposit":"عرابين على أوامر ومفيش حركة ليها","missing-final":"تحصيلات مقفولة ومفيش حركة ليها","closed-no-wallet":"أوامر اتقفلت من غير محفظة","wallet-mismatch":"محفظة الحركة غير محفظة الأمر","late-entry":"حركات أوامر قديمة اتسجلت متأخر","unknown-wallet":"حركات على محفظة غير معروفة","transfer-orphan":"تحويلات ناقصة","cap":"حد أقصى بيخفّض المعروض","reopened-final":"أوامر اتفتحت تاني وتحصيلها اتشال من المحفظة"};
+// يرجّع حركة عربون/تحصيل أمر اتشالت تلقائيًا من المحفظة، بعد تأكيد صريح منك (بتتسجل بنفس مبلغ ومحفظة الأمر).
+function restoreOrderWalletTx(orderId,kind){
+  const r=arr(K.r).find(x=>String(x.id)===String(orderId));if(!r)return alert("الأمر مش موجود.");
+  const isDep=kind==="deposit";
+  const amount=isDep?orderMainDeposit(r):Math.max(0,(+r.total||0)-(+r.deposit||0));
+  const wallet=String((isDep?r.depositWallet:r.closeWallet)||"").trim();
+  if(!(amount>0)||!wallet)return alert("مفيش مبلغ أو محفظة على الأمر لتسجيلهم.");
+  if(!confirm(`هتتسجل ${isDep?"عربون":"تحصيل"} أمر ${r.no||""} بمبلغ ${amount.toFixed(2)} ج كوارد في «${wallet}». لو الفلوس دي اتسجلت عندك بطريقة تانية (وارد يدوي مثلًا) هتتحسب مرتين. تأكيد؟`))return;
+  const ok=isDep?syncWalletForOrderDeposit(r):syncWalletForOrderClose(r,amount,wallet);
+  if(!ok)return alert("تعذر تسجيل الحركة.");
+  window.auditLog?.("استرجاع حركة أمر","محفظة",r.id,`${wallet} ${amount.toFixed(2)} ج`);
+  renderWallets();document.getElementById("walletAuditPanel")?.setAttribute("open","");renderWalletAudit();
+}
 function renderWalletAudit(){
   const box=document.getElementById("walletAuditBody");if(!box)return;
   const a=walletAudit(),fmt=n=>(+n||0).toFixed(2);
-  const order=["order-missing","order-cancelled","final-on-open","amount-mismatch","possible-duplicate","manual-vs-order","missing-deposit","missing-final","closed-no-wallet","wallet-mismatch","late-entry","unknown-wallet","transfer-orphan","cap"];
+  const order=["order-missing","order-cancelled","final-on-open","amount-mismatch","possible-duplicate","manual-vs-order","missing-deposit","missing-final","closed-no-wallet","wallet-mismatch","late-entry","unknown-wallet","transfer-orphan","reopened-final","cap"];
   const link=i=>i.tx?(i.tx.wallet?'wallet.html?type=wallet&name='+encodeURIComponent(i.tx.wallet)+'#tx-'+encodeURIComponent(i.tx.id):"wallets.html"):(i.order?'request.html?id='+encodeURIComponent(i.order.id):"");
   const dirIcon={up:"⬆️",down:"⬇️",info:"ℹ️"};
   let html='<div class="profile-grid">'+a.wallets.map(w=>'<div class="kv"><b>'+esc(w.name)+'</b>وارد '+fmt(w.inSum)+' − صادر '+fmt(w.outSum)+' = <b>'+fmt(w.raw)+'</b>'+(w.cap!==null&&w.raw>w.cap?' (المعروض '+fmt(w.balance)+')':'')+' <small>('+w.count+' حركة)</small></div>').join("")+'</div>';
@@ -518,7 +580,7 @@ function renderWalletAudit(){
   order.forEach(k=>{
     const l=a.issues.filter(i=>i.kind===k);if(!l.length)return;
     const tot=l.reduce((s,i)=>s+Math.abs(+i.amount||0),0);
-    html+='<details class="expense-panel" '+(l[0].dir==="up"?"open":"")+'><summary>'+dirIcon[l[0].dir]+' '+esc(WALLET_AUDIT_TITLES[k])+' — '+l.length+' ('+fmt(tot)+' ج)</summary>'+l.slice(0,50).map(i=>{const h=link(i);return'<div class="treasury-row '+(i.tx?i.tx.type:"")+'"><div class="treasury-row-main"><small>'+esc(i.text)+'</small></div>'+(h?'<div class="treasury-row-actions"><a class="mini-action" href="'+h+'">فتح</a></div>':"")+'</div>'}).join("")+(l.length>50?'<div class="hint">معروض أول 50.</div>':"")+'</details>';
+    html+='<details class="expense-panel" '+(l[0].dir!=="info"?"open":"")+'><summary>'+dirIcon[l[0].dir]+' '+esc(WALLET_AUDIT_TITLES[k])+' — '+l.length+' ('+fmt(tot)+' ج)</summary>'+l.slice(0,50).map(i=>{const h=link(i);const fx=i.fix?'<button type="button" class="mini-action" data-wf-event="click" data-wf-code="restoreOrderWalletTx(\''+escAttr(i.fix.orderId)+'\',\''+i.fix.type+'\')">↩️ سجّلها</button>':"";return'<div class="treasury-row '+(i.tx?i.tx.type:"")+'"><div class="treasury-row-main"><small>'+esc(i.text)+'</small></div>'+((h||fx)?'<div class="treasury-row-actions">'+fx+(h?'<a class="mini-action" href="'+h+'">فتح</a>':"")+'</div>':"")+'</div>'}).join("")+(l.length>50?'<div class="hint">معروض أول 50.</div>':"")+'</details>';
   });
   box.innerHTML=html;
 }

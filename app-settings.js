@@ -297,7 +297,10 @@ function addInlineListItem(key){
 function renameInlineListItem(key,i,v){
   v=(v||"").trim();let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;
   if(!v){settingsPage();return} // رجوع للاسم القديم لو مسحه فاضي بدل ما يحفظ قيمة فاضية
-  let old=a[i];a[i]=v;s[key]=a;
+  let old=a[i];
+  // اسم محفظة مكرر كان بيخلي نفس الرصيد يتحسب مرتين في الإجمالي.
+  if(key==="wallets"&&old!==v&&a.includes(v)){alert(`فيه حساب بنفس الاسم «${v}» بالفعل. اختر اسمًا مختلفًا.`);settingsPage();return}
+  a[i]=v;s[key]=a;
   if(key==="wallets"&&old!==v){
     if(s.walletCaps&&old in s.walletCaps){s.walletCaps[v]=s.walletCaps[old];delete s.walletCaps[old]}
     if(s.defaultWallet===old)s.defaultWallet=v;
