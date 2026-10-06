@@ -57,13 +57,18 @@
 
 
   // رفع أي ملف (صورة/صوت) على Cloudinary بنفس إعداد الموقع القديم. بترجع الرابط أو "" لو فشل.
+  // الحد المحلي ليس بديلًا عن ضبط Cloudinary preset، لكنه يمنع تعليق الواجهة
+  // ورفع ملفات ضخمة بالخطأ عند العمل من الهاتف.
+  const MAX_REMOTE_UPLOAD_BYTES = 12 * 1024 * 1024;
   async function imageStoreUploadRemote(dataUrl) {
     if (!String(dataUrl || "").startsWith("data:") || navigator.onLine === false) return "";
     try {
       const blob = await (await fetch(dataUrl)).blob();
+      if (blob.size > MAX_REMOTE_UPLOAD_BYTES) return "";
       const fd = new FormData(); fd.append("file", blob); fd.append("upload_preset", "workshop_unsigned");
       const kind = String(dataUrl).startsWith("data:image/") ? "image" : "auto";
       const r = await fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/" + kind + "/upload", { method: "POST", body: fd });
+      if (!r.ok) return "";
       const j = await r.json();
       return j.secure_url || "";
     } catch (e) { return ""; }
