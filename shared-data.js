@@ -51,20 +51,22 @@
   };
 
   let storageErrorSeq = 0;
-  // كاش للقراءات المتكررة داخل نفس عملية الرندر. الكاش يحتفظ بالنص الخام
-  // أيضًا؛ لذلك أي تغيير خارجي في localStorage يُكتشف تلقائيًا، وأي كتابة
-  // من خلال الطبقة هنا تُبطل القيمة القديمة قبل عودتها لأي شاشة.
+  // كاش القراءات المتكررة: للمجموعات الأساسية يتبع إصدار snapshot المحمّل من
+  // IndexedDB؛ وباقي المفاتيح تحتفظ بكاش raw localStorage المعتاد.
   const readCache = new Map();
   let writingThroughDataApi = false;
   function invalidateReadCache(keys) {
     if (!keys) { readCache.clear(); return; }
     for (const k of (Array.isArray(keys) ? keys : [keys])) readCache.delete(k);
   }
-  // جسر التوافق: واجهات الشاشات القديمة متزامنة وتعتمد على localStorage؛
-  // كل كتابة لها تُسجّل كذلك في قاعدة IndexedDB الجديدة، من غير تعطيل الواجهة.
-  // الواجهات الجديدة يجب أن تستخدم WorkshopDB مباشرةً وتنتظر الـ Promise.
+  // واجهات القراءة المتزامنة القديمة تستخدم snapshot الذاكرة المحمّل من IDB.
+  // localStorage نسخة توافق لـFirebase والاسترداد، والكتابات القديمة تحدّث
+  // الـsnapshot فورًا ثم تحفظه إلى IndexedDB في الخلفية.
   function persistOperational(values) {
     if (!window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return;
+    Object.entries(values || {}).forEach(([key, value]) => {
+      if ([K.c, K.d, K.r].includes(key) && typeof window.WorkshopDB.setSnapshot === "function") window.WorkshopDB.setSnapshot(key, value);
+    });
     window.WorkshopDB.replaceMany(values).catch(function (error) {
       console.error("[WorkshopData] تعذر تحديث نسخة IndexedDB؛ بيانات التوافق المحلية ما زالت موجودة:", error);
     });
@@ -90,6 +92,13 @@
   }
   hookDirectOperationalStorage();
   function readCached(k, f = []) {
+    const snapshot = window.WorkshopDB && window.WorkshopDB.getSnapshot && window.WorkshopDB.getSnapshot(k);
+    if (snapshot) {
+      const hit = readCache.get(k);
+      if (hit && hit.version === snapshot.version) return hit.value;
+      readCache.set(k, { version: snapshot.version, value: snapshot.records });
+      return snapshot.records;
+    }
     let raw = null;
     try { raw = localStorage.getItem(k); } catch { return f; }
     const hit = readCache.get(k);
@@ -101,6 +110,10 @@
     } catch { return f; }
   }
   function get(k, f = []) {
+    const snapshot = window.WorkshopDB && window.WorkshopDB.getSnapshot && window.WorkshopDB.getSnapshot(k);
+    if (snapshot) {
+      try { return JSON.parse(JSON.stringify(snapshot.records)); } catch (_) { return snapshot.records.map(x => ({ ...x })); }
+    }
     try { let x = JSON.parse(localStorage.getItem(k)); return x ?? f; }
     catch { return f; }
   }

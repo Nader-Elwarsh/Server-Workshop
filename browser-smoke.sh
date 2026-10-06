@@ -9,11 +9,13 @@ trap cleanup EXIT
 cat >"$HARNESS" <<'HTML'
 <!doctype html><meta charset="utf-8"><body>INDEXEDDB_SMOKE_RUNNING</body>
 <script>
+const nativeSetItem = Storage.prototype.setItem;
 localStorage.setItem("wf_c", JSON.stringify([{id:"c1",name:"Legacy customer"}]));
 localStorage.setItem("wf_d", JSON.stringify([{id:"d1",customerId:"c1",type:"Washer"}]));
 localStorage.setItem("wf_r", JSON.stringify([{id:"r1",customerId:"c1",deviceId:"d1",status:"new"}]));
 </script>
 <script src="workshop-idb.js"></script>
+<script src="shared-data.js"></script>
 <script>
 WorkshopDBReady.then(async function () {
   if (!await WorkshopDB.readCollection("wf_c").then(x => x.length === 1 && x[0].id === "c1")) throw Error("legacy import");
@@ -29,6 +31,8 @@ WorkshopDBReady.then(async function () {
   ]);
   if (customer.name !== "Updated customer" || devices.length !== 2 || requests[0].status !== "closed" || indexed.length !== 2) throw Error("transaction/index");
   if (JSON.parse(localStorage.getItem("wf_c"))[0].name !== "Updated customer") throw Error("legacy mirror");
+  nativeSetItem.call(localStorage, "wf_c", JSON.stringify([{id:"c1",name:"stale legacy copy"}]));
+  if (arr(K.c)[0].name !== "Updated customer" || arrCached(K.d).length !== 2) throw Error("shared-data must read the hydrated IDB snapshot");
   document.body.textContent = "INDEXEDDB_SMOKE_PASS";
 }).catch(function (error) { document.body.textContent = "INDEXEDDB_SMOKE_FAIL: " + error.message; });
 </script>
@@ -41,7 +45,7 @@ run_page(){
   local out="$TMP/${page}.html"
   chromium --headless --no-sandbox --disable-gpu --allow-file-access-from-files --virtual-time-budget=6000 --dump-dom "http://127.0.0.1:${PORT}/${page}" >"$out" 2>"$TMP/${page}.err"
   grep -q "$marker" "$out"
-  grep -vE 'org.freedesktop.DBus|UPower' "$TMP/${page}.err" >"$TMP/${page}.filtered.err" || true
+  grep -vE 'org.freedesktop.DBus|UPower|SharedImageManager::ProduceMemory.*non-existent mailbox' "$TMP/${page}.err" >"$TMP/${page}.filtered.err" || true
   test ! -s "$TMP/${page}.filtered.err" || { cat "$TMP/${page}.filtered.err" >&2; return 1; }
 }
 # The public customer portal must render without a staff session.
@@ -58,6 +62,6 @@ grep -q 'request.html?id=' "$ROOT/portal-admin.html"
 grep -q 'customer.html?id=' "$ROOT/portal-admin.html"
 chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=6000 --dump-dom "http://127.0.0.1:${PORT}/.indexeddb-smoke.html" >"$TMP/indexeddb.html" 2>"$TMP/indexeddb.err"
 grep -q "INDEXEDDB_SMOKE_PASS" "$TMP/indexeddb.html"
-grep -vE 'org.freedesktop.DBus|UPower' "$TMP/indexeddb.err" >"$TMP/indexeddb.filtered.err" || true
+grep -vE 'org.freedesktop.DBus|UPower|SharedImageManager::ProduceMemory.*non-existent mailbox' "$TMP/indexeddb.err" >"$TMP/indexeddb.filtered.err" || true
 test ! -s "$TMP/indexeddb.filtered.err" || { cat "$TMP/indexeddb.filtered.err" >&2; exit 1; }
-echo "browser-smoke: PASS (customer portal, settings controls, IndexedDB migration/transactions/indexes, and compatibility mirror)"
+echo "browser-smoke: PASS (customer portal, IndexedDB-backed shared-data reads, transactions/indexes, and compatibility mirror)"

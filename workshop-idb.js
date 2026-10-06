@@ -16,6 +16,8 @@
   let dbPromise = null;
   let initializePromise = null;
   let writeTail = Promise.resolve();
+  const snapshots = new Map();
+  const snapshotVersions = new Map();
 
   function fingerprint(value) {
     const text = JSON.stringify(value);
@@ -26,6 +28,14 @@
   function validRecords(value) {
     if (!Array.isArray(value)) return [];
     return value.filter(x => x && typeof x === "object" && !Array.isArray(x) && x.id !== undefined && x.id !== null && String(x.id) !== "");
+  }
+  function setSnapshot(key, records) {
+    if (!STORES[key]) return;
+    snapshots.set(key, validRecords(records));
+    snapshotVersions.set(key, (snapshotVersions.get(key) || 0) + 1);
+  }
+  function getSnapshot(key) {
+    return snapshots.has(key) ? { records: snapshots.get(key), version: snapshotVersions.get(key) || 0 } : null;
   }
   function localRecords(key) {
     try { return validRecords(JSON.parse(window.localStorage.getItem(key) || "[]")); }
@@ -63,6 +73,7 @@
   function writeCollections(values) {
     const entries = Object.entries(values || {}).filter(([key]) => STORES[key]);
     if (!entries.length) return Promise.resolve(true);
+    const expectedVersions = new Map(entries.map(([key]) => [key, snapshotVersions.get(key) || 0]));
     return enqueueWrite(async () => {
       const db = await open();
       return new Promise((resolve, reject) => {
@@ -75,7 +86,10 @@
           records.forEach(record => store.put(record));
           meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
         });
-        tx.oncomplete = () => resolve(true);
+        tx.oncomplete = () => {
+          entries.forEach(([key, value]) => { if ((snapshotVersions.get(key) || 0) === expectedVersions.get(key)) setSnapshot(key, value); });
+          resolve(true);
+        };
         tx.onerror = () => reject(tx.error || new Error("فشلت معاملة حفظ البيانات"));
         tx.onabort = () => reject(tx.error || new Error("أُلغيت معاملة حفظ البيانات"));
       });
@@ -89,9 +103,10 @@
       request.onerror = () => reject(request.error || new Error("تعذرت قراءة البيانات"));
     }));
   }
-  function mirrorLegacy(values) {
+  function mirrorLegacy(values, expectedVersions) {
     Object.entries(values || {}).forEach(([key, records]) => {
       if (!STORES[key]) return;
+      if (expectedVersions && (snapshotVersions.get(key) || 0) !== expectedVersions.get(key) + 1) return;
       try { window.localStorage.setItem(key, JSON.stringify(validRecords(records))); }
       catch (error) { console.warn("[WorkshopDB] تعذر تحديث نسخة localStorage التوافقية؛ IndexedDB محفوظة", key, error); }
     });
@@ -134,7 +149,10 @@
         };
         getMeta.onerror = () => { try { tx.abort(); } catch (_) {} };
       });
-      tx.oncomplete = () => resolve(true);
+      tx.oncomplete = () => {
+        Promise.all(selected.map(key => readCollection(key).then(records => setSnapshot(key, records))))
+          .then(() => resolve(true), reject);
+      };
       tx.onerror = () => reject(tx.error || new Error("فشل تهيئة قاعدة البيانات"));
       tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة قاعدة البيانات"));
     }));
@@ -143,12 +161,14 @@
   function replace(key, records) {
     if (!STORES[key]) return Promise.reject(new Error("مجموعة غير مدعومة: " + key));
     const values = { [key]: validRecords(records) };
-    return writeCollections(values).then(() => { mirrorLegacy(values); return true; });
+    const expectedVersions = new Map([[key, snapshotVersions.get(key) || 0]]);
+    return writeCollections(values).then(() => { mirrorLegacy(values, expectedVersions); return true; });
   }
   function transaction(keys, callback) {
     // معاملة ذرية متعددة المجموعات: القراءة والتعديل والكتابة داخل IDB tx واحدة.
     const unique = Array.from(new Set((keys || []).filter(key => STORES[key])));
     if (!unique.length || typeof callback !== "function") return Promise.reject(new Error("معاملة غير صالحة"));
+    const expectedVersions = new Map(unique.map(key => [key, snapshotVersions.get(key) || 0]));
     return enqueueWrite(async () => {
       const db = await open();
       return new Promise((resolve, reject) => {
@@ -173,7 +193,13 @@
           };
           request.onerror = () => { callbackError = request.error || new Error("تعذرت قراءة مجموعة المعاملة"); try { tx.abort(); } catch (_) {} };
         });
-        tx.oncomplete = () => { mirrorLegacy(draft); resolve(result); };
+        tx.oncomplete = () => {
+          const mirror = {};
+          unique.forEach(key => {
+            if ((snapshotVersions.get(key) || 0) === expectedVersions.get(key)) { setSnapshot(key, draft[key]); mirror[key] = draft[key]; }
+          });
+          mirrorLegacy(mirror, expectedVersions); resolve(result);
+        };
         tx.onerror = () => reject(callbackError || tx.error || new Error("فشلت معاملة البيانات"));
         tx.onabort = () => reject(callbackError || tx.error || new Error("أُلغيت معاملة البيانات"));
       });
@@ -183,7 +209,7 @@
 
   window.WorkshopDB = {
     name: DB_NAME, version: DB_VERSION, stores: STORES,
-    open, initialize, readCollection, getById, queryIndex, replace, replaceMany: writeCollections, transaction, flush,
+    open, initialize, readCollection, getById, queryIndex, replace, replaceMany: writeCollections, transaction, flush, getSnapshot, setSnapshot,
     isAvailable: () => !!window.indexedDB
   };
   // يسبق هذا التحضير تهيئة Firebase والصفحات التي لا تحمل migrations.js.
