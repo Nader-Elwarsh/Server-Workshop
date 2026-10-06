@@ -61,11 +61,17 @@ function collectFaultFormData(){
     addedBy:(fcAddedBy?.value||"").trim()
   };
 }
+function saveFaultCodesRecords(records){
+  if(!saveJSONSafe(K.fc,records))return false;
+  // لا ننتظر IndexedDB حتى لا نؤخر الواجهة أو نكسر fallback المحلي.
+  try{window.FaultCodesIDB?.replace(records)}catch(_){/* localStorage هو fallback */}
+  return true;
+}
 function persistFaultRecord(formData,existing){
   let f=existing||{id:id(),source:"manual",createdAt:new Date().toISOString()};
   Object.assign(f,formData);f.updatedAt=new Date().toISOString();
   let a=arr(K.fc);
-  if(!saveJSONSafe(K.fc,existing?a.map(x=>x.id===f.id?f:x):a.concat(f)))return{ok:false};
+  if(!saveFaultCodesRecords(existing?a.map(x=>x.id===f.id?f:x):a.concat(f)))return{ok:false};
   return{ok:true,fault:f};
 }
 function saveFaultCode(e,existing=null){
@@ -101,7 +107,7 @@ function saveFaultCodeAndAddAnother(){
 function deleteFaultCodeRecord(fid){
   let a=arr(K.fc),f=a.find(x=>x.id===fid);if(!f)return;
   if(!confirm(`حذف كود العطل «${f.code}» نهائيًا؟`))return;
-  if(!saveJSONSafe(K.fc,a.filter(x=>x.id!==fid)))return;
+  if(!saveFaultCodesRecords(a.filter(x=>x.id!==fid)))return;
   renderFaultCodes?.();
   if(document.getElementById("faultCodeProfile"))location.href="faultcodes.html";
 }
@@ -110,7 +116,7 @@ function deleteAllFaultCodes(){
   if(!a.length)return alert("لا توجد أكواد أعطال مسجّلة أصلًا.");
   if(!confirm(`حذف جميع أكواد الأعطال (${a.length}) نهائيًا؟ (كل الأنواع والماركات)`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
-  if(!saveJSONSafe(K.fc,[]))return;
+  if(!saveFaultCodesRecords([]))return;
   renderFaultCodes?.();
   alert("تم حذف جميع أكواد الأعطال.");
 }
@@ -129,7 +135,7 @@ function deleteFilteredFaultCodes(){
   if(!confirm(`حذف ${matches.length} كود مطابق لـ (${label}) نهائيًا؟`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
   let ids=new Set(matches.map(x=>x.id));
-  if(!saveJSONSafe(K.fc,a.filter(x=>!ids.has(x.id))))return;
+  if(!saveFaultCodesRecords(a.filter(x=>!ids.has(x.id))))return;
   renderFaultCodes?.();
   alert(`تم حذف ${matches.length} كود.`);
 }
@@ -190,7 +196,7 @@ function confirmBulkFaultCodes(){
     });
     added++;
   });
-  if(!saveJSONSafe(K.fc,existing))return;
+  if(!saveFaultCodesRecords(existing))return;
   alert(`تم حفظ ${added} كود جديد.${skipped?` (اتجاهل ${skipped} كود مكرر).`:""}`);
   document.getElementById("bfLines").value="";
   document.getElementById("bulkFaultPreview").innerHTML="";
@@ -304,7 +310,7 @@ function importFaultCodesFile(input){
         });
         added++;
       });
-      put(K.fc,existing);
+      saveFaultCodesRecords(existing);
       alert(`تم استيراد ${added} كود جديد.${skipped?` (اتجاهل ${skipped} كود مكرر موجود عندك بالفعل).`:""}`);
       renderFaultCodes?.();
     }catch(err){alert("⚠️ ملف غير صالح. تأكد إنه ملف أكواد أعطال مُصدَّر من نفس النظام.")}
