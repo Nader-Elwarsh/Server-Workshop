@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-173-offline-firebase-local-v1";
+const CACHE_NAME = "workshop-v11-174-offline-indexeddb-core-v1";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -34,6 +34,7 @@ const CORE_FILES = [
   "./reports.html",
   "./style.css",
   "./theme.js",
+  "./workshop-idb.js",
   "./shared-data.js",
   "./firebase-sync.js",
   "./login.html",

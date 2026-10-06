@@ -334,7 +334,12 @@
       raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
       lastRaw = {}; ALL.forEach(function (k) { if (!isDirty(k)) lastRaw[k] = ls.getItem(k); }); // ارفع بس اللي اتغيّر فعلًا
       return { changed: changedAny, cloudEmpty: cloudEmpty };
-    }).then(function (r) { hydrating = false; return r; }, function (e) { hydrating = false; throw e; });
+    }).then(function (r) {
+      var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
+        ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [] }).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
+        : Promise.resolve();
+      return mirror.then(function () { hydrating = false; return r; });
+    }, function (e) { hydrating = false; throw e; });
   }
   // دمج بأساس صريح (آخر حالة اتزامنت)
   function mergeColWithBase(k, cloudArr, first, B0) {

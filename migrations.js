@@ -182,6 +182,17 @@
   function runMigrations() {
     if (migrationPromise) return migrationPromise;
     migrationPromise = (async () => {
+      // أولًا ننقل المجموعات الأساسية إلى قاعدة IndexedDB. نحتفظ بنسخة
+      // localStorage كاملة كجسر للتوافق؛ وفشل IndexedDB لا يمنع فتح النظام.
+      if (window.WorkshopDB && typeof window.WorkshopDB.initialize === "function") {
+        try {
+          await window.WorkshopDB.initialize([window.K.c, window.K.d, window.K.r]);
+          window.WorkshopDBStatus = { ready: true, collections: [window.K.c, window.K.d, window.K.r] };
+        } catch (e) {
+          window.WorkshopDBStatus = { ready: false, fallback: "localStorage", error: e };
+          console.warn("[migrations] تعذر تهيئة IndexedDB؛ سيستمر النظام مؤقتًا على localStorage", e);
+        }
+      }
       let v = window.getSchemaVersion ? window.getSchemaVersion() : 1;
       let target = window.CURRENT_SCHEMA_VERSION || 1;
       if (v >= target) return true;

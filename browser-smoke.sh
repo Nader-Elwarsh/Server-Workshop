@@ -3,8 +3,36 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${WORKSHOP_TEST_PORT:-8765}"
 TMP="$(mktemp -d)"
-cleanup(){ kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$TMP"; }
+HARNESS="$ROOT/.indexeddb-smoke.html"
+cleanup(){ kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$TMP"; rm -f "$HARNESS"; }
 trap cleanup EXIT
+cat >"$HARNESS" <<'HTML'
+<!doctype html><meta charset="utf-8"><body>INDEXEDDB_SMOKE_RUNNING</body>
+<script>
+localStorage.setItem("wf_c", JSON.stringify([{id:"c1",name:"Legacy customer"}]));
+localStorage.setItem("wf_d", JSON.stringify([{id:"d1",customerId:"c1",type:"Washer"}]));
+localStorage.setItem("wf_r", JSON.stringify([{id:"r1",customerId:"c1",deviceId:"d1",status:"new"}]));
+</script>
+<script src="workshop-idb.js"></script>
+<script>
+WorkshopDBReady.then(async function () {
+  if (!await WorkshopDB.readCollection("wf_c").then(x => x.length === 1 && x[0].id === "c1")) throw Error("legacy import");
+  await WorkshopDB.transaction(["wf_c", "wf_d", "wf_r"], function (draft) {
+    draft.wf_c[0].name = "Updated customer";
+    draft.wf_d.push({id:"d2",customerId:"c1",type:"Fridge"});
+    draft.wf_r[0].status = "closed";
+    return true;
+  });
+  const [customer, devices, requests, indexed] = await Promise.all([
+    WorkshopDB.getById("wf_c", "c1"), WorkshopDB.readCollection("wf_d"),
+    WorkshopDB.readCollection("wf_r"), WorkshopDB.queryIndex("wf_d", "customerId", "c1")
+  ]);
+  if (customer.name !== "Updated customer" || devices.length !== 2 || requests[0].status !== "closed" || indexed.length !== 2) throw Error("transaction/index");
+  if (JSON.parse(localStorage.getItem("wf_c"))[0].name !== "Updated customer") throw Error("legacy mirror");
+  document.body.textContent = "INDEXEDDB_SMOKE_PASS";
+}).catch(function (error) { document.body.textContent = "INDEXEDDB_SMOKE_FAIL: " + error.message; });
+</script>
+HTML
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$ROOT" >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 sleep 1
@@ -28,4 +56,8 @@ grep -q 'id="cp"' "$ROOT/portal-admin.html"
 grep -q 'function complaintOrder' "$ROOT/portal-admin.html"
 grep -q 'request.html?id=' "$ROOT/portal-admin.html"
 grep -q 'customer.html?id=' "$ROOT/portal-admin.html"
-echo "browser-smoke: PASS (customer portal shell, order navigation, guide, and settings controls verified)"
+chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=6000 --dump-dom "http://127.0.0.1:${PORT}/.indexeddb-smoke.html" >"$TMP/indexeddb.html" 2>"$TMP/indexeddb.err"
+grep -q "INDEXEDDB_SMOKE_PASS" "$TMP/indexeddb.html"
+grep -vE 'org.freedesktop.DBus|UPower' "$TMP/indexeddb.err" >"$TMP/indexeddb.filtered.err" || true
+test ! -s "$TMP/indexeddb.filtered.err" || { cat "$TMP/indexeddb.filtered.err" >&2; exit 1; }
+echo "browser-smoke: PASS (customer portal, settings controls, IndexedDB migration/transactions/indexes, and compatibility mirror)"

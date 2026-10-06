@@ -55,10 +55,40 @@
   // أيضًا؛ لذلك أي تغيير خارجي في localStorage يُكتشف تلقائيًا، وأي كتابة
   // من خلال الطبقة هنا تُبطل القيمة القديمة قبل عودتها لأي شاشة.
   const readCache = new Map();
+  let writingThroughDataApi = false;
   function invalidateReadCache(keys) {
     if (!keys) { readCache.clear(); return; }
     for (const k of (Array.isArray(keys) ? keys : [keys])) readCache.delete(k);
   }
+  // جسر التوافق: واجهات الشاشات القديمة متزامنة وتعتمد على localStorage؛
+  // كل كتابة لها تُسجّل كذلك في قاعدة IndexedDB الجديدة، من غير تعطيل الواجهة.
+  // الواجهات الجديدة يجب أن تستخدم WorkshopDB مباشرةً وتنتظر الـ Promise.
+  function persistOperational(values) {
+    if (!window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return;
+    window.WorkshopDB.replaceMany(values).catch(function (error) {
+      console.error("[WorkshopData] تعذر تحديث نسخة IndexedDB؛ بيانات التوافق المحلية ما زالت موجودة:", error);
+    });
+  }
+  function hookDirectOperationalStorage() {
+    const proto = window.Storage && window.Storage.prototype;
+    if (!proto || proto.__wfOperationalIDBBridge) return;
+    const originalSet = proto.setItem, originalRemove = proto.removeItem;
+    Object.defineProperty(proto, "__wfOperationalIDBBridge", { value: true });
+    proto.setItem = function (key, value) {
+      const result = originalSet.call(this, key, value);
+      if (this === window.localStorage && !writingThroughDataApi && [K.c, K.d, K.r].includes(String(key))) {
+        try { persistOperational({ [key]: JSON.parse(String(value)) }); }
+        catch (e) { console.warn("[WorkshopData] تجاهل كتابة محلية غير صالحة في جسر IndexedDB", key, e); }
+      }
+      return result;
+    };
+    proto.removeItem = function (key) {
+      const result = originalRemove.call(this, key);
+      if (this === window.localStorage && !writingThroughDataApi && [K.c, K.d, K.r].includes(String(key))) persistOperational({ [key]: [] });
+      return result;
+    };
+  }
+  hookDirectOperationalStorage();
   function readCached(k, f = []) {
     let raw = null;
     try { raw = localStorage.getItem(k); } catch { return f; }
@@ -76,8 +106,10 @@
   }
   function put(k, v) {
     try {
-      localStorage.setItem(k, JSON.stringify(v));
+      writingThroughDataApi = true;
+      try { localStorage.setItem(k, JSON.stringify(v)); } finally { writingThroughDataApi = false; }
       invalidateReadCache(k);
+      persistOperational({ [k]: v });
       if(k===K.tasks){try{window.TasksIDB?.replace(v)}catch(_){/* localStorage هو fallback */}}
       return true;
     } catch (e) {
@@ -95,8 +127,11 @@
     try {
       for (const [k, v] of entries) JSON.stringify(v);
       for (const [k] of entries) previous[k] = localStorage.getItem(k);
-      for (const [k, v] of entries) localStorage.setItem(k, JSON.stringify(v));
+      writingThroughDataApi = true;
+      try { for (const [k, v] of entries) localStorage.setItem(k, JSON.stringify(v)); }
+      finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([k]) => k));
+      persistOperational(Object.fromEntries(entries));
       const taskEntry=entries.find(([k])=>k===K.tasks);
       if(taskEntry){try{window.TasksIDB?.replace(taskEntry[1])}catch(_){/* localStorage هو fallback */}}
       return true;
@@ -111,10 +146,13 @@
     }
   }
   function restoreStorageValues(values) {
+    writingThroughDataApi = true;
     for (const [k, v] of Object.entries(values || {})) {
       try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
     }
+    writingThroughDataApi = false;
     invalidateReadCache(Object.keys(values || {}));
+    persistOperational(values || {});
   }
   function arr(k) { return get(k, []); }
   function arrCached(k) { return readCached(k, []); }
