@@ -5,15 +5,38 @@
 (function () {
   "use strict";
   if (typeof firebase === "undefined") {
-    console.warn("Firebase SDK غير متاح — تم إغلاق صفحات الموظفين حتى يمكن التحقق من الحساب.");
-    if (!/login\.html$/.test(location.pathname)) {
+    /*
+       وضع محلي حقيقي: فشل تحميل Firebase لا يعني فشل قاعدة البيانات المحلية.
+       يحصل فتح الأوفلاين فقط على جهاز سبق التحقق فيه من نفس UID كموظف؛
+       أما الجهاز الجديد فيظل محجوبًا حتى يتم أول تحقق أونلاين.
+    */
+    var localOnlyPath = /login\.html$/.test(location.pathname);
+    var localOnlyUid = null, localOnlyAt = 0, localOnlyHydrated = null;
+    try {
+      localOnlyUid = localStorage.getItem("wf_is_staff_uid");
+      localOnlyAt = +(localStorage.getItem("wf_staff_ok_at") || 0);
+      localOnlyHydrated = localStorage.getItem("wf_cloud_hydrated_uid");
+    } catch (e) {}
+    var localOnlyAllowed = !!localOnlyUid && localOnlyUid === localOnlyHydrated &&
+      !!localOnlyAt && Date.now() - localOnlyAt < 12 * 3600 * 1000;
+    if (!localOnlyPath && !localOnlyAllowed) {
       try {
         var lock = document.createElement("div"); lock.id = "wfCloudCover";
         lock.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px";
-        lock.textContent = "تعذّر تحميل Firebase والتحقق من حساب الموظف. أعد الاتصال بالإنترنت ثم حدّث الصفحة.";
+        lock.textContent = "لا توجد نسخة محلية موثّقة لهذا الجهاز. افتح النظام مرة واحدة مع الإنترنت لتفعيل العمل أوفلاين.";
         (document.body || document.documentElement).appendChild(lock);
       } catch (e) {}
     }
+    if (!localOnlyPath && localOnlyAllowed) {
+      try {
+        var b = document.createElement("div"); b.id = "wfCloudBadge";
+        b.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:9998;background:rgba(0,27,77,.85);color:#fff;padding:4px 10px;border-radius:14px;font:600 12px sans-serif;direction:rtl;pointer-events:none";
+        b.textContent = "📴 أوفلاين — محفوظ على الجهاز";
+        (document.body || document.documentElement).appendChild(b);
+      } catch (e) {}
+    }
+    try { window.addEventListener("online", function () { location.reload(); }); } catch (e) {}
+    console.warn("Firebase SDK غير متاح — التطبيق يعمل محليًا إذا كان الجهاز موثّقًا سابقًا.");
     return;
   }
   var CFG = { apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8", authDomain: "elwarsha-elfanya.firebaseapp.com", projectId: "elwarsha-elfanya", storageBucket: "elwarsha-elfanya.firebasestorage.app", messagingSenderId: "916075814550", appId: "1:916075814550:web:90e6b0c01b58abc614ecb7" };
@@ -677,7 +700,12 @@
   if (!isLogin && !fastHint()) cover("جارٍ التحقق من صلاحيات حساب الموظف…");
   firebase.auth().onAuthStateChanged(function (u) {
     if (isLogin) { if (u) location.replace("index.html"); return; }
-    if (!u) { if (denied) return; if (navigator.onLine === false) { ready = false; cover("يلزم اتصال الإنترنت والتحقق من حساب الموظف قبل فتح بيانات النظام."); return; }
+    if (!u) { if (denied) return; if (navigator.onLine === false) {
+        /* Auth قد لا يعيد الجلسة في بعض المتصفحات رغم وجود نسخة محلية موثّقة.
+           لا نرمي المستخدم خارج النظام: نفتح البيانات المحلية لنفس UID فقط. */
+        if (fastHint()) { ready = true; uncover(); badge(); return; }
+        ready = false; cover("يلزم فتح النظام مرة واحدة مع الإنترنت للتحقق من حساب الموظف."); return;
+      }
       cover("جارٍ التحقق من صلاحيات حساب الموظف…"); // مفيش جلسة: غطّي الشاشة لحد التحويل لصفحة الدخول
       // الجلسة اتمسحت من المتصفح بدون ما المستخدم يعمل خروج؟ جرّب الدخول الصامت من مدير كلمات المرور قبل ما نروح لصفحة الدخول
       loadScript("wf-session.js").then(function () { return window.WfSession ? WfSession.silent(firebase.auth()) : null; }).then(function (r) { if (!r) location.replace("login.html"); }); return; }

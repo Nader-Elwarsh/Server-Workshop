@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-172-guest-ref-v31";
+const CACHE_NAME = "workshop-v11-173-offline-firebase-local-v1";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -103,7 +103,10 @@ const CORE_FILES = [
   "./white-label.html",
   "./workshop-logo.svg",
   "./wf-shell.css",
-  "./notif-shared.js"
+  "./notif-shared.js",
+  "./vendor/firebase-app-compat.js",
+  "./vendor/firebase-auth-compat.js",
+  "./vendor/firebase-firestore-compat.js"
 ];
 
 // تثبيت ذري: لو أي ملف أساسي فشل بسبب النت (مش 404)، التثبيت كله بيفشل
