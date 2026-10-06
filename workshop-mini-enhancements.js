@@ -213,7 +213,7 @@
   // Individual customer deletion is allowed in the experimental build.
   // It warns clearly and removes dependent devices/orders so no orphan
   // records remain. Parts used by those orders return to stock.
-  defineOverride("deleteCustomerRecord", "workshop-mini-enhancements.js", function (cid) {
+  defineOverride("deleteCustomerRecord", "workshop-mini-enhancements.js", async function (cid) {
     const c = customerRows().find(function (x) { return x.id === cid; });
     if (!c) return;
 
@@ -253,7 +253,7 @@
     values[window.K.d] = deviceRows().filter(function (d) { return d.customerId !== cid; });
     values[window.K.c] = customerRows().filter(function (x) { return x.id !== cid; });
     values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
-    if (!window.commitStorage(values)) { alert("تعذر حذف العميل بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
+    if (!await window.commitStorageAsync(values)) { alert("تعذر حذف العميل بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
 
     window.auditLog?.("حذف", "عميل", cid, `${c.name || ""} (${devices.length} جهاز، ${orders.length} أمر شغل)`);
     if (typeof pushToTrash === "function") pushToTrash("customer", `العميل ${c.name || ""}`, {
@@ -268,7 +268,7 @@
 
   // Device deletion is also allowed for testing, with confirmation.
   // Linked orders are removed and their used parts are returned to stock.
-  defineOverride("deleteDeviceRecord", "workshop-mini-enhancements.js", function (did) {
+  defineOverride("deleteDeviceRecord", "workshop-mini-enhancements.js", async function (did) {
     const d = deviceRows().find(function (x) { return x.id === did; });
     if (!d) return;
 
@@ -294,7 +294,7 @@
     values[window.K.r] = requestRows().filter(function (r) { return r.deviceId !== did; });
     values[window.K.d] = deviceRows().filter(function (x) { return x.id !== did; });
     values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
-    if (!window.commitStorage(values)) { alert("تعذر حذف الجهاز بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
+    if (!await window.commitStorageAsync(values)) { alert("تعذر حذف الجهاز بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
 
     window.auditLog?.("حذف", "جهاز", did, `${d.type || ""} — ${d.brand || ""} (${orders.length} أمر شغل)`);
     if (typeof pushToTrash === "function") pushToTrash("device", `الجهاز ${d.type || ""} — ${d.brand || ""}`, {

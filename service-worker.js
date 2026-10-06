@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v11-174-offline-indexeddb-core-v1";
+const CACHE_NAME = "workshop-v12-175-offline-indexeddb-async-writes";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

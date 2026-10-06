@@ -11,7 +11,7 @@ function makeEnv(){
     renderTasks:()=>{},renderCustomers:()=>{},renderDevices:()=>{}};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe','wfPhoneKey','duplicateCustomerByPhone'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
+  ['K','arr','get','put','putAsync','esc','escAttr','commitStorage','commitStorageAsync','withRollback','withRollbackAsync','saveJSONSafe','wfPhoneKey','duplicateCustomerByPhone'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
   context.id=window.id;
   ['app-shared.js','tasks.js','app-customers.js','app-requests.js','app-devices.js','app-delete-tools.js','app-quick-add.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   context.imageToDataURL=()=>new Promise(r=>setTimeout(()=>r('data:image/png;base64,AA'),30));
@@ -46,7 +46,7 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     const e=makeEnv(),x=e.context,K=e.K;
     e.store[K.c]=JSON.stringify([{id:'c1',name:'أحمد',phone:'01001234567'}]);
     e.store[K.tasks]=JSON.stringify([{id:'t1',title:'متابعة',customerId:'c1',requestId:'r9'},{id:'t2',title:'تانية',customerId:'c2'}]);
-    x.deleteCustomerRecord('c1');
+    await x.deleteCustomerRecord('c1');
     assert.strictEqual(J(e,K.c).length,0);
     const ts=J(e,K.tasks);assert.strictEqual(ts.length,2);
     assert.strictEqual(ts.find(t=>t.id==='t1').customerId,'');assert.strictEqual(ts.find(t=>t.id==='t2').customerId,'c2');
@@ -55,9 +55,9 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
   {
     const e=makeEnv(),x=e.context;
     e.setFail(true);
-    assert.strictEqual(x.persistCustomerRecord({name:'س',phone:'01001234567',mainAddress:{},extraAddress:{}},null),null);
+    assert.strictEqual(await x.persistCustomerRecord({name:'س',phone:'01001234567',mainAddress:{},extraAddress:{}},null),null);
     e.setFail(false);
-    const c=x.persistCustomerRecord({name:'س',phone:'01001234567',mainAddress:{},extraAddress:{}},null);
+    const c=await x.persistCustomerRecord({name:'س',phone:'01001234567',mainAddress:{},extraAddress:{}},null);
     assert.ok(c&&c.id);assert.strictEqual(J(e,e.K.c).length,1);
   }
   // 5) جهاز بضغطتين متتاليتين = جهاز واحد
@@ -79,14 +79,14 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     e.store[K.d]=JSON.stringify([{id:'d1',customerId:'c1',type:'غسالة'}]);
     e.store[K.r]=JSON.stringify([{id:'r1',deviceId:'d1',customerId:'c1'}]);
     let d=J(e,K.d)[0];
-    let result=x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
+    let result=await x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
     assert.strictEqual(result.reason,'device-has-history');
     assert.strictEqual(J(e,K.d)[0].customerId,'c1','failed ownership change must not mutate the saved device');
     e.store[K.r]=JSON.stringify([]);
-    result=x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
+    result=await x.persistDeviceRecord({customerId:'c2',type:'غسالة'},d);
     assert.ok(result.ok,'owner change is allowed when no service history exists');
     assert.strictEqual(J(e,K.d)[0].customerId,'c2');
-    result=x.persistDeviceRecord({customerId:'missing',type:'مكيف'},null);
+    result=await x.persistDeviceRecord({customerId:'missing',type:'مكيف'},null);
     assert.strictEqual(result.reason,'missing-customer');
     assert.strictEqual(J(e,K.d).length,1,'device with a missing parent customer must not be saved');
   }
@@ -98,9 +98,9 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     const form={onsubmit:null,classList:{remove(){}},querySelector(){return {textContent:''}}};
     e.els.customerForm=form;
     Object.assign(x,{fillListSearch(){},customerSearch:{},cName:{value:'عميل',focus(){}},cPhone:{value:'bad',focus(){}},cCenter:{value:'مطاي'},cVillage:{value:'مطاي البلد'},cStreet:{value:''},aCenter:{value:''},aVillage:{value:''},aStreet:{value:''}});
-    x.initCustomers();form.onsubmit({preventDefault(){}});
+    x.initCustomers();await form.onsubmit({preventDefault(){}});
     assert.strictEqual(J(e,K.c).length,0,'the main customer form must reject an invalid phone');
-    x.cPhone.value='٠١٠٠١٢٣٤٥٦٧';form.onsubmit({preventDefault(){}});
+    x.cPhone.value='٠١٠٠١٢٣٤٥٦٧';await form.onsubmit({preventDefault(){}});
     assert.strictEqual(J(e,K.c).length,1,'the main form must accept phone digits normalized by the shared validator');
 
     const q=makeEnv(),qx=q.context,Q=q.K;

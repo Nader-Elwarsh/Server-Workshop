@@ -1,5 +1,6 @@
 const fs = require('fs');
 const vm = require('vm');
+async function main(){
 const store = new Map();
 const localStorage = {
   getItem(k) { return store.has(k) ? store.get(k) : null; },
@@ -15,7 +16,7 @@ const context = vm.createContext({ window, localStorage, sessionStorage: localSt
 for (const file of ['shared-data.js', 'app-shared.js', 'app-requests.js', 'app-dashboard-reports.js', 'app-route-followup.js', 'app-devices.js', 'app-quick-add.js']) {
   vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
 }
-for (const name of ['K', 'arr', 'put', 'commitStorage', 'saveJSONSafe', 'withRollback', 'settings', 'id']) if (context.window[name]) context[name] = context.window[name];
+for (const name of ['K', 'arr', 'put', 'putAsync', 'commitStorage', 'commitStorageAsync', 'saveJSONSafe', 'withRollback', 'withRollbackAsync', 'settings', 'id']) if (context.window[name]) context[name] = context.window[name];
 context.id = context.id || (() => 'test-' + Math.random());
 context.renderRequests = () => {};
 context.renderDash = () => {};
@@ -74,11 +75,11 @@ check(alerts.some(x=>/أكبر من إجمالي الأمر/.test(x)),'over-coll
 set(K.c,[{id:'c1',name:'عميل 1'},{id:'c2',name:'عميل 2'}]);
 set(K.d,[{id:'d1',customerId:'c1',type:'غسالة'}]);set(K.p,[{id:'p3',qty:1,buy:5,use:10}]);set(K.m,[]);set(K.r,[]);
 const baseRequest={customerId:'c2',deviceId:'d1',addressKey:'main',visit:'',status:'جديد',executionPlace:'عند العميل',workshopStatus:'غير مطلوب',partsWaiting:false,tag:'',fault:'اختبار',work:'',labor:0,parts:[],partsTotal:0,total:0,deposit:0,depositWallet:''};
-let relationResult=context.persistRequestRecord({...baseRequest});
+let relationResult=await context.persistRequestRecord({...baseRequest});
 check(!relationResult.ok&&/تابع لعميل آخر/.test(relationResult.error),"a request cannot reference another customer's device");
-relationResult=context.persistRequestRecord({...baseRequest,customerId:'c1',deviceId:'missing'});
+relationResult=await context.persistRequestRecord({...baseRequest,customerId:'c1',deviceId:'missing'});
 check(!relationResult.ok&&/غير موجود/.test(relationResult.error),'a request cannot reference a missing device');
-relationResult=context.persistRequestRecord({...baseRequest,customerId:'c1',parts:[{partId:'p3',qty:2,sell:10,cost:5}],partsTotal:20,total:20});
+relationResult=await context.persistRequestRecord({...baseRequest,customerId:'c1',parts:[{partId:'p3',qty:2,sell:10,cost:5}],partsTotal:20,total:20});
 check(!relationResult.ok&&/لم تعد متاحة/.test(relationResult.error),'final save rechecks current stock availability');
 check(get(K.r).length===0&&get(K.p)[0].qty===1&&get(K.m).length===0,'failed order validation must not mutate stock, movement, or order data');
 controls.qoCustomer={value:'c2'};controls.qoDevice={value:'d1'};controls.qoFault={value:'اختبار'};
@@ -101,3 +102,5 @@ const start = new Date(2026, 8, 20, 0, 0, 0, 0), end = new Date(2026, 8, 20, 23,
 check(context.inRange('2026-09-20', start, end), 'date-only report value shifted outside local day');
 
 console.log('deep-regression-tests: PASS');
+}
+main().catch(error=>{console.error(error);process.exitCode=1});

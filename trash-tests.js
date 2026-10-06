@@ -1,4 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
+async function main(){
 function freshStore(){const store={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener:()=>{},getElementById:()=>null};
@@ -6,7 +7,7 @@ function freshStore(){const store={};
   const ctx={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true};
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),ctx,{filename:'shared-data.js'});
-  ['K','arr','get','put','commitStorage','esc','id','defineOverride','refreshAllScreens','settings'].forEach(k=>ctx[k]=window[k]);
+  ['K','arr','get','put','putAsync','commitStorage','commitStorageAsync','esc','id','defineOverride','refreshAllScreens','settings'].forEach(k=>ctx[k]=window[k]);
   vm.runInContext(fs.readFileSync(`${__dirname}/app-trash.js`,'utf8'),ctx,{filename:'app-trash.js'});
   ctx.renderRequests=()=>{};ctx.document.getElementById=()=>null;
   ['pushToTrash','restoreFromTrash','permanentlyDeleteTrash','renderTrash','walletRefKeysForOrders','trashEntries'].forEach(k=>window[k]=ctx[k]);
@@ -24,7 +25,7 @@ function freshStore(){const store={};
   store[ctx.K.p]=JSON.stringify([{id:'p1',name:'ثرموستات',qty:3}]);
   store[ctx.K.m]=JSON.stringify([{id:'mv1',requestId:'r1',type:'out',partId:'p1',qty:2}]);
   store[ctx.K.wtx]=JSON.stringify([{id:'w1',refKey:'order-deposit-r1',deleted:false,amount:80,wallet:'كاش'}]);
-  window.deleteRequestRecord('r1');
+  await window.deleteRequestRecord('r1');
   assert.deepStrictEqual(JSON.parse(store[ctx.K.r]),[],'order removed from live data');
   assert.strictEqual(JSON.parse(store[ctx.K.p])[0].qty,5,'part qty restocked (3+2)');
   assert.strictEqual(JSON.parse(store[ctx.K.wtx])[0].deleted,true,'linked wallet tx soft-deleted');
@@ -49,7 +50,7 @@ function freshStore(){const store={};
   store[ctx.K.r]=JSON.stringify([{id:'r1',customerId:'c1',deviceId:'d1',no:'W-1',parts:[]}]);
   store[ctx.K.wtx]=JSON.stringify([{id:'w1',refKey:'order-final-r1',deleted:false,amount:200,wallet:'كاش'}]);
   store[ctx.K.m]=JSON.stringify([]);store[ctx.K.p]=JSON.stringify([]);
-  window.deleteCustomerRecord('c1');
+  await window.deleteCustomerRecord('c1');
   assert.strictEqual(window.trashEntries().length,1);
   assert.strictEqual(window.trashEntries()[0].type,'customer');
 
@@ -65,10 +66,12 @@ function freshStore(){const store={};
   const {store,ctx,window}=freshStore();
   store[ctx.K.r]=JSON.stringify([{id:'r1',no:'W-1',parts:[]}]);
   store[ctx.K.p]=JSON.stringify([]);store[ctx.K.m]=JSON.stringify([]);store[ctx.K.wtx]=JSON.stringify([]);
-  window.deleteRequestRecord('r1');
+  await window.deleteRequestRecord('r1');
   const tid=window.trashEntries()[0].id;
   window.permanentlyDeleteTrash(tid);
   assert.strictEqual(window.trashEntries().length,0,'trash entry permanently removed');
 }
 
 console.log('trash-tests: PASS');
+}
+main().catch(error=>{console.error(error);process.exitCode=1});

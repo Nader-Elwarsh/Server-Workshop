@@ -167,6 +167,43 @@
     invalidateReadCache(Object.keys(values || {}));
     persistOperational(values || {});
   }
+  async function commitStorageAsync(values) {
+    const entries = Object.entries(values || {});
+    const operational = Object.fromEntries(entries.filter(([key]) => [K.c, K.d, K.r].includes(key)));
+    if (!Object.keys(operational).length || !window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return commitStorage(values);
+    if (window.WorkshopDBReady) {
+      const ready = await window.WorkshopDBReady;
+      if (!ready) return commitStorage(values);
+    }
+    const previous = {};
+    try {
+      entries.forEach(([key, value]) => JSON.stringify(value));
+      entries.forEach(([key]) => { previous[key] = localStorage.getItem(key); });
+      for (const [key, value] of entries) {
+        writingThroughDataApi = true;
+        try { localStorage.setItem(key, JSON.stringify(value)); }
+        finally { writingThroughDataApi = false; }
+      }
+      invalidateReadCache(entries.map(([key]) => key));
+      await window.WorkshopDB.replaceMany(operational);
+      const taskEntry = entries.find(([key]) => key === K.tasks);
+      if (taskEntry) { try { await window.TasksIDB?.replace(taskEntry[1]); } catch (_) {} }
+      return true;
+    } catch (error) {
+      writingThroughDataApi = true;
+      try {
+        for (const [key, raw] of Object.entries(previous)) {
+          try { if (raw === null) localStorage.removeItem(key); else localStorage.setItem(key, raw); } catch (_) {}
+        }
+      } finally { writingThroughDataApi = false; }
+      invalidateReadCache(entries.map(([key]) => key));
+      storageErrorSeq++;
+      console.error("[WorkshopData] فشل الحفظ غير المتزامن:", error);
+      alert("⚠️ لم يتم تأكيد الحفظ في قاعدة البيانات. تم إرجاع نسخة التوافق المحلية قدر الإمكان؛ أعد المحاولة بعد التحقق من مساحة التخزين.");
+      return false;
+    }
+  }
+  function putAsync(key, value) { return commitStorageAsync({ [key]: value }); }
   function arr(k) { return get(k, []); }
   function arrCached(k) { return readCached(k, []); }
   function debounce(fn, wait = 120) {
@@ -251,6 +288,20 @@
     } catch (e) {
       restoreStorageValues(snapshot);
       throw e;
+    }
+  }
+  async function withRollbackAsync(keys, fn) {
+    const snapshot = {};
+    keys.forEach(key => { snapshot[key] = get(key, null); });
+    const errorBefore = storageErrorSeq;
+    try {
+      let result = await fn();
+      if (storageErrorSeq !== errorBefore) result = { ok: false, error: "storage-failed" };
+      if (result && result.ok === false) await commitStorageAsync(snapshot);
+      return result;
+    } catch (error) {
+      await commitStorageAsync(snapshot);
+      throw error;
     }
   }
 
@@ -395,9 +446,9 @@
   }
 
   window.WorkshopData = {
-    K, get, put, commitStorage, arr, arrCached, byIdCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
+    K, get, put, commitStorage, putAsync, commitStorageAsync, arr, arrCached, byIdCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
     customerName, deviceName, addresses, addressText, defineOverride, refreshAllScreens,
-    getSchemaVersion, setSchemaVersion, CURRENT_SCHEMA_VERSION, withRollback
+    getSchemaVersion, setSchemaVersion, CURRENT_SCHEMA_VERSION, withRollback, withRollbackAsync
   };
 
   // نفس الأسماء متاحة كمتغيرات عامة زي ما كانت بالظبط (K, get, put, arr, esc, id, settings, ...)
@@ -406,6 +457,8 @@
   window.get = get;
   window.put = put;
   window.commitStorage = commitStorage;
+  window.putAsync = putAsync;
+  window.commitStorageAsync = commitStorageAsync;
   window.arr = arr;
   window.wfPhoneKey = phoneKey;
   window.wfCustomerDupGroups = customerDupGroups;
@@ -432,6 +485,7 @@
   window.setSchemaVersion = setSchemaVersion;
   window.CURRENT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
   window.withRollback = withRollback;
+  window.withRollbackAsync = withRollbackAsync;
 })(window);
 
 /* ---------------------------------------------------------------------

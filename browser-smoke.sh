@@ -33,6 +33,13 @@ WorkshopDBReady.then(async function () {
   if (JSON.parse(localStorage.getItem("wf_c"))[0].name !== "Updated customer") throw Error("legacy mirror");
   nativeSetItem.call(localStorage, "wf_c", JSON.stringify([{id:"c1",name:"stale legacy copy"}]));
   if (arr(K.c)[0].name !== "Updated customer" || arrCached(K.d).length !== 2) throw Error("shared-data must read the hydrated IDB snapshot");
+  const saved = await commitStorageAsync({
+    [K.c]: [{id:"c1",name:"Async customer"}],
+    [K.d]: [{id:"d1",customerId:"c1",type:"Washer"}],
+    [K.r]: [{id:"r1",customerId:"c1",deviceId:"d1",status:"new"}]
+  });
+  const durableCustomer = await WorkshopDB.getById("wf_c", "c1");
+  if (!saved || durableCustomer.name !== "Async customer" || arr(K.c)[0].name !== "Async customer") throw Error("awaited async commit");
   document.body.textContent = "INDEXEDDB_SMOKE_PASS";
 }).catch(function (error) { document.body.textContent = "INDEXEDDB_SMOKE_FAIL: " + error.message; });
 </script>

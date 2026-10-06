@@ -2,6 +2,7 @@
 function initRequests(){let f=document.getElementById("requestForm");if(!f)return;let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.r).find(x=>x.id===editId):null;if(existing?.closed){alert("أمر الشغل مغلق نهائيًا ولا يمكن تعديله.");location.href=`request.html?id=${existing.id}`;return}currentParts=existing?.parts?existing.parts.map(x=>({...x})):[];fillCustomerAutocomplete("rCustomer",existing?.customerId||q.get("customer")||"");fillAddress(rAddress,rCustomer.value,existing?.addressKey||"main");fillDevice(rDevice,rCustomer.value,existing?.deviceId||q.get("device")||"");let s=settings(),defPlace=existing?.executionPlace||(s.executionPlaces||[])[0]||"عند العميل",defWs=existing?.workshopStatus||(s.workshopStatuses||[])[0]||"غير مطلوب",defStatus=existing?.status||"جديد";fillList(rExecutionPlace,"executionPlaces",defPlace,"اختر مكان التنفيذ");fillList(rWorkshopStatus,"workshopStatuses",defWs,"اختر حالة الورشة");if(document.getElementById("rDepositWallet"))fillList(rDepositWallet,"wallets",existing?.depositWallet||s.defaultWallet||"","بدون تحديد");rStatus.innerHTML=nextStatusOptions(defStatus).map(x=>`<option ${x===defStatus?"selected":""}>${esc(x)}</option>`).join("");if(document.getElementById("rTag"))fillListSearch("rTag","orderTag",existing?.tag||"");rCustomer.onchange=()=>{fillAddress(rAddress,rCustomer.value,"main");fillDevice(rDevice,rCustomer.value,"")};rLabor.oninput=calc;rDeposit.oninput=calc;if(existing){rVisit.value=existing.visit||"";rFault.value=existing.fault||"";rWork.value=existing.work||"";rLabor.value=(+existing.labor||0).toFixed(2);rDeposit.value=existing.deposit||0;renderOrderParts();f.classList.remove("hidden");f.querySelector("#requestSubmitBtn").textContent="💾 حفظ التعديلات وفتح أمر الشغل"}else if(q.get("customer")||q.get("device")||q.get("add")){f.classList.remove("hidden")}f.onsubmit=e=>saveRequest(e,existing);renderRequests();calc()}
 function fillDevice(el,cid,selected=""){el.innerHTML='<option value="">اختر الجهاز</option>'+arr(K.d).filter(d=>d.customerId===cid).map(d=>`<option value="${d.id}" ${d.id===selected?"selected":""}>${esc(d.type)} — ${esc(d.brand)}</option>`).join("")}
 let currentParts=[];
+let _requestSaving=false;
 function partsStockTotal(list){return (list||[]).reduce((a,x)=>a+(+x.qty||0)*(+x.sell||0),0)}
 function partsStockCost(list){return (list||[]).reduce((a,x)=>a+(+x.qty||0)*(+x.cost||0),0)}
 function filterOrderPartOptions(q){
@@ -42,7 +43,7 @@ function adjustStockForOrder(oldParts,newParts,requestId,stock=arr(K.p),moves=ar
 // يُستخدم من مكان تاني زي استيراد جماعي) — ودالة تحكم رفيعة (saveRequest) بتربط
 // بينهم. السلوك الفعلي (الحسابات، ترتيب العمليات، رسائل الخطأ) لم يتغيّر.
 function collectRequestFormData(existing){let t=+rTotal.value||0,dep=+rDeposit.value||0,tag=document.getElementById("rTag")?rTag.value:(existing?.tag||""),depositWallet=document.getElementById("rDepositWallet")?.value||"";return{customerId:rCustomer.value,deviceId:rDevice.value,addressKey:rAddress.value,visit:rVisit.value,status:rStatus.value,executionPlace:rExecutionPlace.value,workshopStatus:rWorkshopStatus.value,partsWaiting:!!document.getElementById("rPartsWaiting")?.checked,tag,fault:rFault.value,work:rWork.value,labor:(+rLabor.value||0),parts:currentParts,partsTotal:+rPartsTotal.value||0,total:t,deposit:dep,depositWallet}}
-function persistRequestRecord(formData,existing){
+async function persistRequestRecord(formData,existing){
   const customerId=String(formData?.customerId||"");
   if(!customerId||!arr(K.c).some(c=>String(c.id)===customerId))return{ok:false,error:"العميل المحدد غير موجود. اختر عميلًا صالحًا ثم حاول مرة أخرى."};
   if(formData.deviceId){
@@ -54,7 +55,7 @@ function persistRequestRecord(formData,existing){
   // withRollback (shared-data.js) بيغطي wf_p وwf_m مع بعض، وبيرجعهم
   // تلقائيًا لو رجّعنا {ok:false} أو حصل استثناء — بدل ما نعمل الإرجاع يدوي.
   let partsCost=partsStockCost(formData.parts);
-  return withRollback([K.p,K.m,K.r,K.wtx],()=>{
+  return withRollbackAsync([K.p,K.m,K.r,K.wtx],async()=>{
     if(existing){
       // الأمر الملغي لا تكون قطعه محجوزة من المخزن؛ نحسب فرق المخزون
       // بين الحالة السابقة والجديدة مرة واحدة فقط، حتى لا تتكرر الإعادة
@@ -76,7 +77,7 @@ function persistRequestRecord(formData,existing){
         if(fromStatus==="ملغي"&&existing.status==="جديد"){existing.cancelReason="";existing.cancelledAt=null;existing.reopenedAt=new Date().toISOString()}
         recordStatusHistory(existing,fromStatus,existing.status);
       }
-      let saved=commitStorage({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).map(x=>x.id===existing.id?existing:x)});
+      let saved=await commitStorageAsync({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).map(x=>x.id===existing.id?existing:x)});
       if(!saved)return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
       syncTreasuryForOrderDeposit(existing);
       if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(existing))return{ok:false,error:"تعذر حفظ حركة العربون. تم التراجع عن العملية."};
@@ -87,14 +88,15 @@ function persistRequestRecord(formData,existing){
     recordStatusHistory(r,"",r.status);
     let stock=arr(K.p),moves=arr(K.m);
     if(!adjustStockForOrder([],formData.parts,r.id,stock,moves))return{ok:false,error:"قطعة من الأمر لم تعد متاحة بالكمية المطلوبة في المخزن. راجع الكميات ثم حاول الحفظ مجددًا."};
-    if(!commitStorage({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).concat(r)}))return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
+    if(!await commitStorageAsync({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).concat(r)}))return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
     syncTreasuryForOrderDeposit(r);
     if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false,error:"تعذر حفظ حركة العربون. تم التراجع عن العملية."};
     return{ok:true,request:r}
   })
 }
-function saveRequest(e,existing=null){
+async function saveRequest(e,existing=null){
   e.preventDefault();
+  if(_requestSaving)return;
   if(!document.getElementById("rCustomer")?.value)return alert("اختر العميل أولاً من نتائج البحث.");
   let formData=collectRequestFormData(existing);
   // تنبيه ضمان: لو الأمر ده جديد فعلاً (مش تعديل) والجهاز ده له أمر سابق
@@ -123,9 +125,12 @@ function saveRequest(e,existing=null){
     if(existing.status==="ملغي"&&formData.status==="جديد"&&!confirm("تأكيد إعادة فتح أمر الشغل الملغي؟"))return;
     if(existing.status==="مكتمل"&&formData.status==="جاري التنفيذ"&&!confirm("تأكيد إعادة فتح أمر الشغل المكتمل عند الحاجة؟"))return;
   }
-  let result=persistRequestRecord(formData,existing);
-  if(!result.ok)return alert(result.error);
-  location.href=`request.html?id=${result.request.id}`
+  _requestSaving=true;
+  try{
+    let result=await persistRequestRecord(formData,existing);
+    if(!result.ok)return alert(result.error);
+    location.href=`request.html?id=${result.request.id}`
+  }finally{_requestSaving=false}
 }
 // renderRequests: كانت هنا نسخة "أساسية" بتفلتر بعناصر statusFilter/workshopFilter
 // اللي مش موجودة في requests.html أصلًا (البحث بقى عن طريق فولدرات/فلاتر تانية
