@@ -28,12 +28,13 @@
         (document.body || document.documentElement).appendChild(lock);
       } catch (e) {}
     }
-    if (!localOnlyPath && localOnlyAllowed) {
+    var localDashboard = document.getElementById("dashboard");
+    if (!localOnlyPath && localOnlyAllowed && localDashboard) {
       try {
         var b = document.createElement("div"); b.id = "wfCloudBadge";
-        b.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:9998;background:rgba(0,27,77,.85);color:#fff;padding:4px 10px;border-radius:14px;font:600 12px sans-serif;direction:rtl;pointer-events:none";
+        b.style.cssText = "display:block;box-sizing:border-box;max-width:100%;margin:8px 0;padding:7px 9px;border:1px solid #b7c7dc;border-radius:10px;background:var(--panel,#fff);color:var(--text,#14213d);font:600 13px sans-serif;direction:rtl";
         b.textContent = "📴 أوفلاين — محفوظ على الجهاز";
-        (document.body || document.documentElement).appendChild(b);
+        localDashboard.parentNode.insertBefore(b, localDashboard.nextSibling);
       } catch (e) {}
     }
     try { window.addEventListener("online", function () { location.reload(); }); } catch (e) {}
@@ -94,37 +95,43 @@
     });
     return count;
   }
+  function isHomePage() { return !!document.getElementById("dashboard"); }
   function syncPanel() {
-    if (isLogin || !document.body) return;
     var panel = document.getElementById("wfSyncStatusPanel");
+    if (isLogin || !document.body) return;
+    if (!isHomePage()) { if (panel) panel.remove(); return; }
     if (!panel) {
       panel = document.createElement("section"); panel.id = "wfSyncStatusPanel";
       panel.setAttribute("aria-live", "polite");
-      panel.style.cssText = "margin:12px 0;padding:14px;border:1px solid #b7c7dc;border-radius:12px;background:var(--panel,#fff);color:var(--text,#14213d);direction:rtl;box-shadow:0 2px 8px #001b4d12";
+      panel.style.cssText = "position:relative;display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;margin:8px 0;padding:7px 9px;border:1px solid #b7c7dc;border-radius:10px;background:var(--panel,#fff);color:var(--text,#14213d);direction:rtl;box-shadow:0 2px 8px #001b4d12;font-size:13px;white-space:nowrap";
       var dash = document.getElementById("dashboard");
       if (dash && dash.parentNode) dash.parentNode.insertBefore(panel, dash.nextSibling); else (document.querySelector("main") || document.body).prepend(panel);
     }
     var pending = pendingKeys().length, waiting = countPendingOperations();
     var status = navigator.onLine === false ? "غير متصل — محفوظ محليًا" : (pending ? (Object.keys(retryTimers).length ? "إعادة المحاولة بانتظار Backoff" : "توجد تعديلات تنتظر المزامنة") : (ready ? "متزامن" : "جارٍ التحقق/الاتصال"));
     var last = lastSyncAt ? new Date(lastSyncAt).toLocaleString("ar-EG") : "لم تتم مزامنة ناجحة بعد";
-    panel.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'><strong>☁️ حالة المزامنة</strong><button type='button' id='wfSyncNowBtn' style='border:0;border-radius:8px;padding:8px 12px;background:#0b57d0;color:#fff;font-weight:700'>مزامنة الآن</button></div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px'><div><b>الحالة</b><br><span id='wfSyncState'></span></div><div><b>آخر مزامنة</b><br><span id='wfSyncLast'></span></div><div><b>التعديلات المعلقة</b><br><span id='wfSyncPending'></span></div><div><b>عدد العمليات المنتظرة</b><br><span id='wfSyncWaiting'></span></div><div><b>آخر خطأ</b><br><span id='wfSyncError'></span></div><div><b>تعارضات تحتاج مراجعة</b><br><span id='wfSyncConflicts'></span> <button type='button' id='wfSyncConflictBtn' style='display:none;border:0;border-radius:7px;padding:5px 8px;background:#b45309;color:#fff'>مراجعة</button></div></div>";
+    var conflictCount = Object.keys(conflicts).reduce(function (n, k) { return n + Object.keys(conflicts[k] || {}).length; }, 0);
+    var summary = lastSyncError ? "خطأ: " + lastSyncError : status;
+    if (pending) summary += " · معلّق " + pending;
+    if (lastSyncAt) summary += " · " + new Date(lastSyncAt).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
+    if (conflictCount) summary += " · تعارض " + conflictCount;
+    var wasOpen = !!(panel.querySelector("#wfSyncDetails") && panel.querySelector("#wfSyncDetails").open);
+    panel.innerHTML = "<strong style='flex:0 0 auto'>☁️ المزامنة</strong><span id='wfSyncSummary' style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis' title=''></span><button type='button' id='wfSyncNowBtn' style='flex:0 0 auto;border:0;border-radius:7px;padding:6px 9px;background:#0b57d0;color:#fff;font-weight:700'>مزامنة</button><details id='wfSyncDetails' style='position:relative;flex:0 0 auto'><summary style='cursor:pointer;list-style:none;border:1px solid #b7c7dc;border-radius:7px;padding:5px 8px'>التفاصيل</summary><div style='position:absolute;top:calc(100% + 6px);left:0;z-index:9999;width:min(330px,calc(100vw - 36px));box-sizing:border-box;white-space:normal;background:var(--panel,#fff);color:var(--text,#14213d);border:1px solid #b7c7dc;border-radius:10px;padding:10px;box-shadow:0 4px 16px #001b4d30'><div><b>الحالة:</b> <span id='wfSyncState'></span></div><div><b>آخر مزامنة:</b> <span id='wfSyncLast'></span></div><div><b>التعديلات المعلقة:</b> <span id='wfSyncPending'></span></div><div><b>عدد العمليات المنتظرة:</b> <span id='wfSyncWaiting'></span></div><div><b>آخر خطأ:</b> <span id='wfSyncError'></span></div><div><b>تعارضات تحتاج مراجعة:</b> <span id='wfSyncConflicts'></span> <button type='button' id='wfSyncConflictBtn' style='display:none;border:0;border-radius:7px;padding:5px 8px;background:#b45309;color:#fff'>مراجعة</button></div></div></details>";
+    var summaryNode = panel.querySelector("#wfSyncSummary"); summaryNode.textContent = summary; summaryNode.title = summary;
     panel.querySelector("#wfSyncState").textContent = status;
     panel.querySelector("#wfSyncLast").textContent = last;
     panel.querySelector("#wfSyncPending").textContent = String(pending);
     panel.querySelector("#wfSyncWaiting").textContent = String(waiting);
     panel.querySelector("#wfSyncError").textContent = lastSyncError || "لا يوجد";
-    var conflictCount = Object.keys(conflicts).reduce(function (n, k) { return n + Object.keys(conflicts[k] || {}).length; }, 0);
     panel.querySelector("#wfSyncConflicts").textContent = String(conflictCount);
     panel.querySelector("#wfSyncConflictBtn").style.display = conflictCount ? "inline-block" : "none";
     panel.querySelector("#wfSyncConflictBtn").onclick = showSyncConflicts;
-    panel.querySelector("#wfSyncNowBtn").onclick = function () { var btn = this; btn.disabled = true; btn.textContent = "جارٍ المزامنة…"; window.wfCloudSyncNow().catch(function (e) { lastSyncError = String(e && e.message || e); origSet.call(ls, "wf_sync_last_error", lastSyncError); }).then(function () { btn.disabled = false; btn.textContent = "مزامنة الآن"; badge(); }); };
+    panel.querySelector("#wfSyncNowBtn").onclick = function () { var btn = this; btn.disabled = true; btn.textContent = "جارٍ…"; window.wfCloudSyncNow().catch(function (e) { lastSyncError = String(e && e.message || e); origSet.call(ls, "wf_sync_last_error", lastSyncError); }).then(function () { btn.disabled = false; btn.textContent = "مزامنة"; badge(); }); };
+    if (wasOpen) panel.querySelector("#wfSyncDetails").open = true;
   }
   function badge() {
     if (isLogin || !document.body) return;
-    var el = document.getElementById("wfCloudBadge");
-    if (!el) { el = document.createElement("div"); el.id = "wfCloudBadge"; el.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:9998;background:rgba(0,27,77,.85);color:#fff;padding:4px 10px;border-radius:14px;font:600 12px sans-serif;direction:rtl;pointer-events:none"; document.body.appendChild(el); }
-    var pending = pendingKeys().length;
-    el.textContent = navigator.onLine === false ? "📴 أوفلاين — محفوظ على الجهاز" : (pending ? (Object.keys(retryTimers).length ? "⏳ إعادة المزامنة لاحقًا" : "⏳ تعديلات بانتظار الرفع") : "☁️ متزامن");
+    var oldBadge = document.getElementById("wfCloudBadge"); if (oldBadge) oldBadge.remove();
     syncPanel();
   }
 

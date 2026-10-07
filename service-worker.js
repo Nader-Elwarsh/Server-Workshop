@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v16-conflict-secure-upload";
+const CACHE_NAME = "workshop-v17-home-sync-strip";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

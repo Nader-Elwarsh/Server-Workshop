@@ -8,6 +8,11 @@ assert(/db\.runTransaction\(async function \(tx\)/.test(sync), "collection updat
 assert(/remoteHash === job\.baseHash/.test(sync), "the remote version must match the last synced hash before overwrite/delete");
 assert(/CONFLICT_KEY/.test(sync) && /showSyncConflicts/.test(sync), "conflicts must be persisted and reviewable");
 assert(/اعتماد نسخة هذا الجهاز/.test(sync) && /اعتماد نسخة السحابة/.test(sync), "the user must choose which version to keep");
+assert(/function isHomePage\(\) \{ return !!document\.getElementById\("dashboard"\); \}/.test(sync), "the sync strip must identify the home screen only");
+assert(/if \(!isHomePage\(\)\) \{ if \(panel\) panel\.remove\(\); return; \}/.test(sync), "the sync strip must be removed from non-home pages");
+assert(/<details id='wfSyncDetails'/.test(sync) && /wfSyncSummary/.test(sync), "the home-screen sync strip must stay compact and expose details on demand");
+assert(/localOnlyAllowed && localDashboard/.test(sync), "the offline-only status row must be limited to the home screen");
+assert(!/position:fixed;bottom:8px;left:8px/.test(sync), "the global floating sync badge must not appear on every page");
 
 const fn = read("functions/index.js");
 assert(/verifyIdToken/.test(fn), "upload endpoint must verify Firebase ID tokens");
