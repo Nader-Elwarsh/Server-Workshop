@@ -7,21 +7,16 @@ function refreshRouteViews(){
   if(typeof renderRoute==="function")renderRoute();
   if(typeof renderRequests==="function")renderRequests();
 }
-function toggleVisited(i){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r)return;let today=dayKeyLocal(new Date());if(r.visitedAt&&dayKeyLocal(r.visitedAt)===today)r.visitedAt=null;else r.visitedAt=new Date().toISOString();if(!saveJSONSafe(K.r,a))return;refreshRouteViews()}
-function setRouteContactStatus(i,status){
-  const a=arr(K.r),r=a.find(x=>x.id===i);if(!r)return;
-  r.contactStatus=status;
-  r.contactStatusAt=new Date().toISOString();
-  if(!saveJSONSafe(K.r,a))return;
-  refreshRouteViews();
+async function toggleVisited(i){const saved=await updateRequestRecordAsync(i,(_,r)=>{let today=dayKeyLocal(new Date());if(r.visitedAt&&dayKeyLocal(r.visitedAt)===today)r.visitedAt=null;else r.visitedAt=new Date().toISOString();return true});if(saved)refreshRouteViews()}
+async function setRouteContactStatus(i,status){
+  const saved=await updateRequestRecordAsync(i,(_,r)=>{r.contactStatus=status;r.contactStatusAt=new Date().toISOString();return true});
+  if(saved)refreshRouteViews();
 }
-function clearRouteContactStatus(i){
-  const a=arr(K.r),r=a.find(x=>x.id===i);if(!r)return;
-  delete r.contactStatus;delete r.contactStatusAt;
-  if(!saveJSONSafe(K.r,a))return;
-  refreshRouteViews();
+async function clearRouteContactStatus(i){
+  const saved=await updateRequestRecordAsync(i,(_,r)=>{delete r.contactStatus;delete r.contactStatusAt;return true});
+  if(saved)refreshRouteViews();
 }
-function retryRouteContact(i){clearRouteContactStatus(i);}
+function retryRouteContact(i){return clearRouteContactStatus(i);}
 // حالة الصف المختصر لأي أمر شغل في خط السير: بيرجع {collapsed,cls,text,retry}
 // لو الأمر لازم يتعرض مختصر (سطر واحد) بدل الكارت الكامل، وbtn "إعادة
 // المحاولة" بيظهر بس للحالات اللي ممكن ترجعها (contactStatus).
@@ -289,20 +284,19 @@ function toggleQuickClose(i){
 // إضافة قطعة غيار من المخزن/خارجه من نفس فورم التقفيل السريع، من غير ما
 // تسيبي خط السير — بنحفظ المصنعية المكتوبة أولًا عشان ما تضيعش لما الفورم
 // يتجدد بعد إضافة القطعة.
-function routeSaveDraftLabor(i){
-  const a=arr(K.r),r=a.find(x=>x.id===i);
-  if(!r)return;
+async function routeSaveDraftLabor(i){
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value);
-  if(Number.isFinite(labor)&&labor>=0){r.labor=labor;r.total=(+r.partsTotal||0)+labor;r.remain=Math.max(0,r.total-(+r.deposit||0));if(!saveJSONSafe(K.r,a))return;}
+  if(!Number.isFinite(labor)||labor<0)return true;
+  return updateRequestRecordAsync(i,(_,r)=>{r.labor=labor;r.total=(+r.partsTotal||0)+labor;r.remain=Math.max(0,r.total-(+r.deposit||0));return true});
 }
-function routeConfirmAddPart(requestId){
-  routeSaveDraftLabor(requestId);
-  confirmAddPartToRequest(requestId);
+async function routeConfirmAddPart(requestId){
+  if(!await routeSaveDraftLabor(requestId))return;
+  await confirmAddPartToRequest(requestId);
   renderRoute();
 }
-function routeConfirmAddExternalPart(requestId){
-  routeSaveDraftLabor(requestId);
-  confirmAddExternalPartToRequest(requestId);
+async function routeConfirmAddExternalPart(requestId){
+  if(!await routeSaveDraftLabor(requestId))return;
+  await confirmAddExternalPartToRequest(requestId);
   renderRoute();
 }
 // تسجيل دفعة/عربون جزئي دلوقتي من غير تقفيل الأمر — للحالة اللي العميل

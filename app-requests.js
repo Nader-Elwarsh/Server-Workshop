@@ -3,6 +3,9 @@ function initRequests(){let f=document.getElementById("requestForm");if(!f)retur
 function fillDevice(el,cid,selected=""){el.innerHTML='<option value="">اختر الجهاز</option>'+arr(K.d).filter(d=>d.customerId===cid).map(d=>`<option value="${d.id}" ${d.id===selected?"selected":""}>${esc(d.type)} — ${esc(d.brand)}</option>`).join("")}
 let currentParts=[];
 let _requestSaving=false;
+const _requestMutationLocks=new Set();
+async function withRequestMutationLock(requestId,work){const key=String(requestId||"");if(!key||_requestMutationLocks.has(key))return false;_requestMutationLocks.add(key);try{return await work()}finally{_requestMutationLocks.delete(key)}}
+async function updateRequestRecordAsync(requestId,update){return withRequestMutationLock(requestId,async()=>{const records=arr(K.r),record=records.find(x=>String(x.id)===String(requestId));if(!record)return false;if(update(records,record)===false)return false;return putAsync(K.r,records)})}
 function partsStockTotal(list){return (list||[]).reduce((a,x)=>a+(+x.qty||0)*(+x.sell||0),0)}
 function partsStockCost(list){return (list||[]).reduce((a,x)=>a+(+x.qty||0)*(+x.cost||0),0)}
 function filterOrderPartOptions(q){
@@ -163,8 +166,8 @@ async function requestProfile(){let el=document.getElementById("requestProfile")
     if(html)box.innerHTML=`<div class="workshop-track"><h3>🎙️ تسجيلات المكالمات (${recs.length})</h3>${html}</div>`;
   }
 }
-function requestWorkshopPull(i){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;if(r.workshopStatus&&r.workshopStatus!=="غير مطلوب")return;if(!confirm("تأكيد سحب الجهاز إلى الورشة؟"))return;let now=new Date().toISOString();r.executionPlace="الورشة";r.workshopStatus="تم السحب";r.workshopAt=now;r.pulledAt=now;if(!r.workshopEnteredAt)r.workshopEnteredAt=now;if(r.status==="جاري التنفيذ"&&!r.workshopStartedAt)r.workshopStartedAt=r.startedAt||now;if(!saveJSONSafe(K.r,a))return;requestProfile()}
-function setWorkshopStatus(i,status){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;let now=new Date().toISOString();r.executionPlace="الورشة";r.workshopStatus=status;r.workshopAt=now;if(status==="تم السحب"&&!r.workshopEnteredAt)r.workshopEnteredAt=now;if(r.status==="جاري التنفيذ"&&!r.workshopStartedAt)r.workshopStartedAt=r.startedAt||now;if(!saveJSONSafe(K.r,a))return;requestProfile()}
+async function requestWorkshopPull(i){let r=arr(K.r).find(x=>x.id===i);if(!r||r.closed||r.paid)return;if(r.workshopStatus&&r.workshopStatus!=="غير مطلوب")return;if(!confirm("تأكيد سحب الجهاز إلى الورشة؟"))return;const saved=await updateRequestRecordAsync(i,(_,current)=>{if(current.closed||current.paid||(current.workshopStatus&&current.workshopStatus!=="غير مطلوب"))return false;let now=new Date().toISOString();current.executionPlace="الورشة";current.workshopStatus="تم السحب";current.workshopAt=now;current.pulledAt=now;if(!current.workshopEnteredAt)current.workshopEnteredAt=now;if(current.status==="جاري التنفيذ"&&!current.workshopStartedAt)current.workshopStartedAt=current.startedAt||now;return true});if(saved)requestProfile()}
+async function setWorkshopStatus(i,status){const saved=await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;let now=new Date().toISOString();r.executionPlace="الورشة";r.workshopStatus=status;r.workshopAt=now;if(status==="تم السحب"&&!r.workshopEnteredAt)r.workshopEnteredAt=now;if(r.status==="جاري التنفيذ"&&!r.workshopStartedAt)r.workshopStartedAt=r.startedAt||now;return true});if(saved)requestProfile()}
 
 function filterRequestPartOptions(q){
   const box=document.getElementById("rpPartResults");if(!box)return;
@@ -194,8 +197,8 @@ function selectRequestPart(pid){
 }
 function hideRequestPartResults(){setTimeout(()=>document.getElementById("rpPartResults")?.classList.add("hidden"),150)}
 function syncRequestPartQty(){let hiddenEl=document.getElementById("rpPart"),q=document.getElementById("rpQty"),h=document.getElementById("rpStockHint"),selectedId=hiddenEl?.value||"",available=+(arr(K.p).find(x=>x.id===selectedId)?.qty||0);if(q&&selectedId){q.max=Math.max(1,available);q.value=Math.min(Math.max(1,+q.value||1),Math.max(1,available));if(available<1)q.value=0}if(h)h.textContent=selectedId?`المتاح في المخزن: ${available} قطعة — سيتم استخدام الكمية المكتوبة فقط.`:"اكتب اسم القطعة واختر من نتائج البحث لمعرفة الكمية المتاحة."}
-function confirmAddPartToRequest(requestId){let rs=arr(K.r),r=rs.find(x=>x.id===requestId);if(!r)return alert("أمر الشغل غير موجود.");if(r.closed||r.paid)return alert("الأمر مغلق أو مدفوع بالكامل ولا يمكن إضافة قطع غيار.");let pid=document.getElementById("rpPart")?.value||"";if(!pid)return alert("اكتب اسم القطعة واختر واحدة من نتائج البحث أولًا ثم اضغط تأكيد إضافة القطعة.");let q=+(document.getElementById("rpQty")?.value||1),stock=arr(K.p),p=stock.find(x=>x.id===pid),available=+(p?.qty||0);if(!p)return alert("قطعة الغيار المختارة غير موجودة في المخزن.");if(!Number.isInteger(q)||q<1)return alert("اكتب كمية صحيحة كعدد صحيح.");let updatedParts=(r.parts||[]).map(x=>({...x})),existing=updatedParts.find(x=>!x.external&&x.partId===pid&&+x.sell===+p.use&&+x.cost===+p.buy),already=existing?(+existing.qty||0):0;if(available<q)return alert(`الكمية المطلوبة ${q} أكبر من المتاح ${available}.`);if(existing)existing.qty=already+q;else updatedParts.push({partId:pid,qty:q,sell:+p.use||0,cost:+p.buy||0});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;let newStock=stock.map(x=>x.id===pid?{...x,qty:(+x.qty||0)-q}:x),moves=arr(K.m);moves.push({id:id(),partId:pid,type:"خروج بسبب إضافة قطعة لأمر شغل",qty:q,requestId:r.id,at:new Date().toISOString()});let updated={...r,parts:updatedParts,partsTotal,partsCost,total,remain:Math.max(0,total-(+r.deposit||0))};if(!commitStorage({[K.p]:newStock,[K.m]:moves,[K.r]:rs.map(x=>x.id===r.id?updated:x)}))return;requestProfile()}
-function confirmAddExternalPartToRequest(requestId){let rs=arr(K.r),r=rs.find(x=>x.id===requestId);if(!r)return alert("أمر الشغل غير موجود.");if(r.closed||r.paid)return alert("الأمر مغلق أو مدفوع بالكامل ولا يمكن إضافة قطع غيار.");let nameEl=document.getElementById("rpExtName"),buyEl=document.getElementById("rpExtBuy"),sellEl=document.getElementById("rpExtSell"),qtyEl=document.getElementById("rpExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");let updatedParts=(r.parts||[]).map(x=>({...x}));updatedParts.push({external:true,name,qty:q,sell,cost});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;let updated={...r,parts:updatedParts,partsTotal,partsCost,total,remain:Math.max(0,total-(+r.deposit||0))};const saved=withRollback([K.r],()=>put(K.r,rs.map(x=>x.id===r.id?updated:x))?{ok:true}:{ok:false});if(!saved?.ok){alert("تعذر حفظ إضافة القطعة. لم يتم تغيير أمر الشغل.");return}if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1;requestProfile()}
+async function confirmAddPartToRequest(requestId){return withRequestMutationLock(requestId,async()=>{let rs=arr(K.r),r=rs.find(x=>x.id===requestId);if(!r)return alert("أمر الشغل غير موجود.");if(r.closed||r.paid)return alert("الأمر مغلق أو مدفوع بالكامل ولا يمكن إضافة قطع غيار.");let pid=document.getElementById("rpPart")?.value||"";if(!pid)return alert("اكتب اسم القطعة واختر واحدة من نتائج البحث أولًا ثم اضغط تأكيد إضافة القطعة.");let q=+(document.getElementById("rpQty")?.value||1),stock=arr(K.p),p=stock.find(x=>x.id===pid),available=+(p?.qty||0);if(!p)return alert("قطعة الغيار المختارة غير موجودة في المخزن.");if(!Number.isInteger(q)||q<1)return alert("اكتب كمية صحيحة كعدد صحيح.");let updatedParts=(r.parts||[]).map(x=>({...x})),existing=updatedParts.find(x=>!x.external&&x.partId===pid&&+x.sell===+p.use&&+x.cost===+p.buy),already=existing?(+existing.qty||0):0;if(available<q)return alert(`الكمية المطلوبة ${q} أكبر من المتاح ${available}.`);if(existing)existing.qty=already+q;else updatedParts.push({partId:pid,qty:q,sell:+p.use||0,cost:+p.buy||0});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;let newStock=stock.map(x=>x.id===pid?{...x,qty:(+x.qty||0)-q}:x),moves=arr(K.m);moves.push({id:id(),partId:pid,type:"خروج بسبب إضافة قطعة لأمر شغل",qty:q,requestId:r.id,at:new Date().toISOString()});let updated={...r,parts:updatedParts,partsTotal,partsCost,total,remain:Math.max(0,total-(+r.deposit||0))};if(!await commitStorageAsync({[K.p]:newStock,[K.m]:moves,[K.r]:rs.map(x=>x.id===r.id?updated:x)}))return;requestProfile();return true})}
+async function confirmAddExternalPartToRequest(requestId){let nameEl=document.getElementById("rpExtName"),buyEl=document.getElementById("rpExtBuy"),sellEl=document.getElementById("rpExtSell"),qtyEl=document.getElementById("rpExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");const saved=await updateRequestRecordAsync(requestId,(_,r)=>{if(r.closed||r.paid)return false;let updatedParts=(r.parts||[]).map(x=>({...x}));updatedParts.push({external:true,name,qty:q,sell,cost});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;r.parts=updatedParts;r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=total;r.remain=Math.max(0,total-(+r.deposit||0));return true});if(!saved){alert("تعذر حفظ إضافة القطعة. لم يتم تغيير أمر الشغل.");return}if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1;requestProfile()}
 // markPaidAndClose / closeOrder: اتنقلوا لنسخة واحدة موحّدة في app-shared.js
 // (بيتحمّل قبل الملف ده في كل صفحة) بدل ما يتكرروا هنا وفي
 // workshop-mini-simple-ui.js بنفس المنطق بالظبط.
@@ -349,29 +352,31 @@ function markRequestReturned(i){
   window.auditLog?.("إرجاع أمر", "أمر شغل", r.id, reason+moneyNote);renderRequests();renderDash();requestProfile();
 }
 
-function changeRequestVisit(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.visit=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
+async function changeRequestVisit(i,val){if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.visit=val;return true})){requestProfile();renderRequests()}}
 // تعديل مكان التنفيذ/العطل/الأعمال المنفذة كانوا نص ثابت مالهوش أي تحكم في
 // صفحة عرض الأمر — أي تغيير كان لازم يدخل على وضع التعديل الكامل من فوق.
 // دلوقتي بقوا قابلين للتعديل مباشرة هنا (زي التصنيف اليدوي وموعد الزيارة
 // بالظبط)، بنفس شرط canEdit (الأمر لسه مش مقفول أو متحصّل بالكامل).
-function changeRequestExecutionPlace(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.executionPlace=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
-function changeRequestFault(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.fault=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
-function changeRequestWork(i,val){let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.work=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
+async function changeRequestExecutionPlace(i,val){if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.executionPlace=val;return true})){requestProfile();renderRequests()}}
+async function changeRequestFault(i,val){if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.fault=val;return true})){requestProfile();renderRequests()}}
+async function changeRequestWork(i,val){if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.work=val;return true})){requestProfile();renderRequests()}}
 // مدة الضمان قابلة للتعديل دايمًا (حتى لو الأمر مقفول) — عكس باقي حقول
 // أمر الشغل، لأن الضمان أصلاً حاجة بتتحدد وتتعدّل بعد التقفيل، مش قبله.
 // بيتحسب من تاريخ التقفيل لو موجود، وإلا من دلوقتي.
-function changeRequestWarrantyDays(i,val){
-  let a=arr(K.r),r=a.find(x=>x.id===i);if(!r)return;
+async function changeRequestWarrantyDays(i,val){
   let days=+val;if(!Number.isFinite(days)||days<0)days=0;
-  let base=r.closedAt?new Date(r.closedAt):new Date();
-  r.warrantyDays=days;
-  r.warrantyUntil=days>0?new Date(base.getTime()+days*86400000).toISOString():"";
+  const saved=await updateRequestRecordAsync(i,(_,r)=>{
+    let base=r.closedAt?new Date(r.closedAt):new Date();
+    r.warrantyDays=days;
+    r.warrantyUntil=days>0?new Date(base.getTime()+days*86400000).toISOString():"";
   // علّم إن المدة دي اتحددت يدويًا (حتى لو صفر لأمر كشف/معاينة) عشان
   // تقفيل الأمر (markPaidAndClose) ميرجعش يكتب فوقها المدة الافتراضية
   // من الإعدادات تاني. من غير العلامة دي، تعديلك اليدوي كان بيتمسح
   // ويرجع للمدة الافتراضية بمجرد ما تقفل الأمر.
-  r.warrantyManual=true;
-  if(!saveJSONSafe(K.r,a))return;requestProfile();
+    r.warrantyManual=true;
+    return true;
+  });
+  if(saved)requestProfile();
 }
 // بدل ما مدة الضمان تتحفظ تلقائي بمجرد ما تدوس برّه الخانة (change) —
 // وده كان بيسهّل حفظ رقم اتغيّر بالغلط أثناء التمرير أو اللمس — بقى
@@ -388,7 +393,7 @@ function warrantyStatusHtml(r){
   if(active){let daysLeft=Math.ceil((until-new Date())/86400000);return `<span class="badge">🛡️ سارٍ حتى ${dateLabel} (باقي ${daysLeft} يوم)</span>`}
   return `<span class="hint">⏹️ انتهى في ${dateLabel}</span>`;
 }
-function changeRequestTag(i,val){if(val==="__add__"){let s=settings(),v=prompt("اكتب اسم التصنيف الجديد:");if(!v||!v.trim()){requestProfile();return}v=v.trim();s.orderTags=s.orderTags||[];if(!s.orderTags.includes(v))s.orderTags.push(v);if(!saveJSONSafe(K.s,s))return;val=v}let a=arr(K.r),r=a.find(x=>x.id===i);if(!r||r.closed||r.paid)return;r.tag=val;if(!saveJSONSafe(K.r,a))return;requestProfile();renderRequests()}
+async function changeRequestTag(i,val){if(val==="__add__"){let s=settings(),v=prompt("اكتب اسم التصنيف الجديد:");if(!v||!v.trim()){requestProfile();return}v=v.trim();s.orderTags=s.orderTags||[];if(!s.orderTags.includes(v))s.orderTags.push(v);if(!saveJSONSafe(K.s,s))return;val=v}if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.tag=val;return true})){requestProfile();renderRequests()}}
 function editRequest(i){location.href="requests.html?edit="+encodeURIComponent(i)}
 
 // ===== رسائل واتساب جاهزة من صفحة أمر الشغل =====

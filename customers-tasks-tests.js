@@ -110,5 +110,15 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     assert.strictEqual(J(q,Q.c).length,0,'invalid quick-add customer phone must not be persisted');
     assert.ok(q.alerts.filter(a=>/رقم تليفون صحيح/.test(a)).length>=3,'all quick customer entry paths should explain invalid phone input');
   }
+  // الإضافات السريعة تنتظر IndexedDB وتمنع ازدواج الكتابة المتزامنة لنفس المجموعة.
+  {
+    const q=makeEnv(),x=q.context,K=q.K;
+    const outcomes=await Promise.all([
+      x.saveQuickOperational('customers',K.c,[{id:'quick-a',name:'أ'}]),
+      x.saveQuickOperational('customers',K.c,[{id:'quick-b',name:'ب'}])
+    ]);
+    assert.strictEqual(outcomes.filter(Boolean).length,1,'only one concurrent quick customer write should acquire the collection lock');
+    assert.strictEqual(J(q,K.c).length,1,'concurrent quick save must not duplicate customer records');
+  }
   console.log('customers-tasks-tests: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});

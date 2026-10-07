@@ -51,12 +51,24 @@ check(get(K.r)[0].parts.length===0,'fractional external quantity must be rejecte
 context.updateOrderPartQty(0,'1.5');
 check(alerts.some(x=>/عدد صحيح/.test(x)),'fractional order-line quantity edits must be rejected');
 controls.rpPart={value:'p2'};controls.rpQty={value:'1.5'};
-context.confirmAddPartToRequest('r2');
+await context.confirmAddPartToRequest('r2');
 check(get(K.p)[0].qty===5&&get(K.m).length===0&&get(K.r)[0].parts.length===0,'fractional stock quantity must be rejected on an existing order');
 controls.rpExtName={value:'قطعة خارجية'};controls.rpExtBuy={value:'5'};controls.rpExtSell={value:'10'};controls.rpExtQty={value:'1.5'};
-context.confirmAddExternalPartToRequest('r2');
+await context.confirmAddExternalPartToRequest('r2');
 check(get(K.r)[0].parts.length===0,'fractional external quantity must be rejected on an existing order');
 check(alerts.some(x=>/عدد صحيح/.test(x)),'fractional quantities need a useful validation message');
+controls.rpQty={value:'1'};
+await context.confirmAddPartToRequest('r2');
+check(get(K.p)[0].qty===4&&get(K.r)[0].parts.length===1&&get(K.m).length===1,'valid part addition must persist stock, movement, and order together');
+controls.rpExtName={value:'قطعة خارجية'};controls.rpExtBuy={value:'5'};controls.rpExtSell={value:'10'};controls.rpExtQty={value:'1'};
+await context.confirmAddExternalPartToRequest('r2');
+check(get(K.r)[0].parts.length===2&&get(K.r)[0].parts[1].external,'valid external part must persist to IndexedDB-backed requests');
+await context.changeRequestVisit('r2','2026-10-08');
+await context.changeRequestFault('r2','عطل محدث');
+await context.setWorkshopStatus('r2','تم السحب');
+await context.setRouteContactStatus('r2','no-answer');
+await context.toggleVisited('r2');
+check(get(K.r)[0].visit==='2026-10-08'&&get(K.r)[0].fault==='عطل محدث'&&get(K.r)[0].workshopStatus==='تم السحب'&&get(K.r)[0].contactStatus==='no-answer'&&get(K.r)[0].visitedAt,'request detail and route updates must persist before resolving');
 
 // Once a total is known, neither partial payment nor final close can silently over-collect.
 set(K.r,[{id:'r3',status:'جاري التنفيذ',labor:10,partsTotal:40,total:50,deposit:45,closed:false,paid:false}]);
