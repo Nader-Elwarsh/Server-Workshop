@@ -27,7 +27,37 @@ function isAutomaticBackupAskSnoozed(){
     return new Date(until).getTime()>Date.now();
   }catch(e){return false}
 }
-function renderAutomaticBackupPermission(){if(WFStorage.getItem(AUTO_BACKUP_PREF_KEY)!==null||isAutomaticBackupAskSnoozed())return;let host=document.getElementById("backupReminder")||document.getElementById("automaticBackupControls");if(!host||document.getElementById("automaticBackupPermission"))return;let box=document.createElement("div");box.id="automaticBackupPermission";box.className="notice backup-reminder-banner";box.innerHTML=`🔄 هل تسمح للنظام بفحص تغييرات البيانات كل 4 ساعات وطلب موافقتك قبل تنزيل نسخة احتياطية؟<div class="backup-reminder-actions"><button type="button" class="primary small-btn" id="enableAutomaticBackup">تفعيل النسخ التلقائي</button><button type="button" class="secondary small-btn" id="skipAutomaticBackup">لا الآن (اسألني تاني بعد ${AUTO_BACKUP_ASK_SNOOZE_DAYS} أيام)</button></div>`;host.appendChild(box);box.querySelector("#enableAutomaticBackup").addEventListener("click",()=>{WFStorage.setItem(AUTO_BACKUP_PREF_KEY,"yes");WFStorage.removeItem(AUTO_BACKUP_ASK_SNOOZE_KEY);box.remove();renderAutomaticBackupControls();runAutomaticBackupCheck(true)});box.querySelector("#skipAutomaticBackup").addEventListener("click",()=>{let d=new Date();d.setDate(d.getDate()+AUTO_BACKUP_ASK_SNOOZE_DAYS);WFStorage.setItem(AUTO_BACKUP_ASK_SNOOZE_KEY,d.toISOString());box.remove()})}
+function renderAutomaticBackupPermission(){
+  if(WFStorage.getItem(AUTO_BACKUP_PREF_KEY)!==null||isAutomaticBackupAskSnoozed())return;
+  let host=document.getElementById("backupReminder")||document.getElementById("automaticBackupControls");
+  if(!host||document.getElementById("automaticBackupPermission"))return;
+  let box=document.createElement("div");box.id="automaticBackupPermission";box.className="notice backup-reminder-banner";
+  box.innerHTML=`🔄 هل تسمح للنظام بفحص تغييرات البيانات كل 4 ساعات وطلب موافقتك قبل تنزيل نسخة احتياطية؟<div class="backup-reminder-actions"><button type="button" class="primary small-btn" id="enableAutomaticBackup">تفعيل النسخ التلقائي</button><button type="button" class="secondary small-btn" id="skipAutomaticBackup">لا الآن (اسألني تاني بعد ${AUTO_BACKUP_ASK_SNOOZE_DAYS} أيام)</button></div><small class="auto-backup-save-error" role="status" hidden></small>`;
+  host.appendChild(box);
+  async function commitChoice(button, work){
+    button.disabled=true;
+    try{
+      work();
+      if(typeof WFStorage.flush==="function")await WFStorage.flush();
+      box.remove();
+      return true;
+    }catch(error){
+      console.error("[auto-backup] تعذر حفظ الاختيار",error);
+      button.disabled=false;
+      const status=box.querySelector(".auto-backup-save-error");
+      if(status){status.hidden=false;status.textContent="تعذر حفظ الاختيار. تحقق من اتصالك ثم حاول مرة أخرى."}
+      return false;
+    }
+  }
+  box.querySelector("#enableAutomaticBackup").addEventListener("click",async function(){
+    if(!await commitChoice(this,function(){WFStorage.setItem(AUTO_BACKUP_PREF_KEY,"yes");WFStorage.removeItem(AUTO_BACKUP_ASK_SNOOZE_KEY)}))return;
+    renderAutomaticBackupControls();runAutomaticBackupCheck(true);
+  });
+  box.querySelector("#skipAutomaticBackup").addEventListener("click",function(){
+    const button=this;
+    commitChoice(button,function(){let d=new Date();d.setDate(d.getDate()+AUTO_BACKUP_ASK_SNOOZE_DAYS);WFStorage.setItem(AUTO_BACKUP_ASK_SNOOZE_KEY,d.toISOString())});
+  });
+}
 function canonicalBackupValue(value){if(Array.isArray(value))return value.map(canonicalBackupValue);if(value&&typeof value==="object")return Object.keys(value).sort().reduce((o,k)=>{if(k!=="exportedAt")o[k]=canonicalBackupValue(value[k]);return o},{});return value}
 async function backupDataFingerprint(data){let text=JSON.stringify(canonicalBackupValue(data));try{if(window.crypto?.subtle&&window.TextEncoder){let bytes=await window.crypto.subtle.digest("SHA-256",new TextEncoder().encode(text));return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,"0")).join("")}}catch(e){}let h=2166136261;for(let i=0;i<text.length;i++){h^=text.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(16)}
 function renderAutomaticBackupNotice(message){renderAutomaticBackupStatus(message);if(message&&typeof renderBackupReminder==="function")renderBackupReminder()}

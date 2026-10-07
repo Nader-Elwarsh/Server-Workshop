@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v14-179-mobile-storage-diagnostics";
+const CACHE_NAME = "workshop-v14-180-persist-reminder-snoozes";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

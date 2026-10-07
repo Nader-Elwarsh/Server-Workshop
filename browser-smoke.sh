@@ -4,7 +4,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 PORT="${WORKSHOP_TEST_PORT:-8765}"
 TMP="$(mktemp -d)"
 HARNESS="$ROOT/.indexeddb-smoke.html"
-cleanup(){ kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$TMP"; rm -f "$HARNESS"; }
+REMINDER_HARNESS="$ROOT/.reminder-persistence-smoke.html"
+cleanup(){ kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$TMP"; rm -f "$HARNESS" "$REMINDER_HARNESS"; }
 trap cleanup EXIT
 cat >"$HARNESS" <<'HTML'
 <!doctype html><meta charset="utf-8"><body>INDEXEDDB_SMOKE_RUNNING</body>
@@ -74,6 +75,40 @@ WorkshopDBReady.then(async function () {
 }).catch(function (error) { document.body.textContent = "INDEXEDDB_SMOKE_FAIL: " + error.message; });
 </script>
 HTML
+cat >"$REMINDER_HARNESS" <<'HTML'
+<!doctype html><meta charset="utf-8"><body><div id="backupReminder"></div><p id="lastBackupInfo"></p>
+<script src="workshop-idb.js"></script>
+<script src="backup-reminder.js"></script>
+<script src="app-data-management.js"></script>
+<script>
+async function waitFor(fn, label) {
+  for (let i=0;i<100;i++) { if (fn()) return; await new Promise(resolve=>setTimeout(resolve,10)); }
+  throw new Error("timeout waiting for " + label);
+}
+window.addEventListener("load", async function () {
+  try {
+    await window.WFStorageReady;
+    const firstRun = sessionStorage.getItem("reminder-persistence-stage") !== "done";
+    await waitFor(()=>document.getElementById("automaticBackupPermission") && document.getElementById("manualBackupReminder"), "both reminders");
+    if (firstRun) {
+      await snoozeBackupReminder();
+      if (document.getElementById("manualBackupReminder")) throw new Error("manual reminder did not close after durable snooze");
+      if (!document.getElementById("automaticBackupPermission")) throw new Error("manual reminder snooze removed the unrelated automatic-backup prompt");
+      document.getElementById("skipAutomaticBackup").click();
+      await waitFor(()=>!document.getElementById("automaticBackupPermission"), "automatic reminder snooze");
+      sessionStorage.setItem("reminder-persistence-stage", "done");
+      location.reload();
+      return;
+    }
+    const manualUntil = Date.parse(WFStorage.getItem("wf_backup_reminder_snoozed_until") || "");
+    const autoUntil = Date.parse(WFStorage.getItem("wf_auto_backup_ask_snoozed_until") || "");
+    if (!(manualUntil>Date.now() && autoUntil>Date.now())) throw new Error("snooze values were not durable across reload");
+    if (document.getElementById("manualBackupReminder") || document.getElementById("automaticBackupPermission")) throw new Error("snoozed reminders reappeared after reload");
+    document.body.textContent="REMINDER_PERSISTENCE_PASS";
+  } catch (error) { document.body.textContent="REMINDER_PERSISTENCE_FAIL: "+error.message; }
+});
+</script></body>
+HTML
 python3 -m http.server "$PORT" --bind 127.0.0.1 --directory "$ROOT" >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 sleep 1
@@ -101,4 +136,8 @@ chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=6000 --dump
 grep -q "INDEXEDDB_SMOKE_PASS" "$TMP/indexeddb.html"
 grep -vE 'org.freedesktop.DBus|UPower|SharedImageManager::ProduceMemory.*non-existent mailbox' "$TMP/indexeddb.err" >"$TMP/indexeddb.filtered.err" || true
 test ! -s "$TMP/indexeddb.filtered.err" || { cat "$TMP/indexeddb.filtered.err" >&2; exit 1; }
-echo "browser-smoke: PASS (customer portal, IndexedDB key-value migration, six operational stores, atomic transaction, and legacy-storage removal)"
+chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom "http://127.0.0.1:${PORT}/.reminder-persistence-smoke.html" >"$TMP/reminder.html" 2>"$TMP/reminder.err"
+grep -q "REMINDER_PERSISTENCE_PASS" "$TMP/reminder.html"
+grep -vE 'org.freedesktop.DBus|UPower|SharedImageManager::ProduceMemory.*non-existent mailbox' "$TMP/reminder.err" >"$TMP/reminder.filtered.err" || true
+test ! -s "$TMP/reminder.filtered.err" || { cat "$TMP/reminder.filtered.err" >&2; exit 1; }
+echo "browser-smoke: PASS (IndexedDB migration, six stores, atomic writes, theme gate, durable independent reminder snoozes across reload)"
