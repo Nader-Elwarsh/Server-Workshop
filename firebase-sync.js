@@ -49,6 +49,8 @@
   var isLogin = /login\.html$/.test(location.pathname);
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
+  var RETRY_KEY = "wf_sync_retry_state", retryState = {}, retryTimers = {}, lastSyncAt = +(ls.getItem("wf_last_sync_at") || 0), lastSyncError = ls.getItem("wf_sync_last_error") || "";
+  try { retryState = JSON.parse(ls.getItem(RETRY_KEY) || "{}") || {}; } catch (e) { retryState = {}; }
   var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
   var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
   function saveBase() { origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
@@ -66,12 +68,59 @@
   }
   function forgetLogin() { try { if (navigator.credentials && navigator.credentials.preventSilentAccess) navigator.credentials.preventSilentAccess().catch(function () {}); } catch (e) {} }
   function banner() { if (document.getElementById("wfCloudBanner")) return; var b = document.createElement("div"); b.id = "wfCloudBanner"; b.style.cssText = "position:fixed;bottom:70px;left:12px;right:12px;z-index:9999;background:#0b57d0;color:#fff;padding:12px;border-radius:10px;text-align:center;direction:rtl;font:600 15px sans-serif;cursor:pointer"; b.textContent = "🔄 فيه تحديث من جهاز تاني — اضغط لإعادة التحميل"; b.onclick = function () { location.reload(); }; (document.body || document.documentElement).appendChild(b); }
+  function pendingKeys() { return ALL.filter(function (k) { return (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) || !!timers[k] || !!pushing[k] || !!retryTimers[k]; }); }
+  function retryDelay(attempt) { return Math.min(5 * 60 * 1000, 2000 * Math.pow(2, Math.max(0, attempt - 1))); }
+  function saveRetryState() { try { origSet.call(ls, RETRY_KEY, JSON.stringify(retryState)); } catch (e) {} }
+  function scheduleRetry(k) {
+    var item = retryState[k]; if (!item) return;
+    saveRetryState(); clearTimeout(retryTimers[k]);
+    retryTimers[k] = setTimeout(function () { delete retryTimers[k]; if (ready && online()) push(k, false); else badge(); }, Math.max(0, (+item.nextAt || Date.now()) - Date.now()));
+  }
+  function retryLater(k) {
+    var item = retryState[k] || (retryState[k] = { attempts: 0 });
+    item.attempts = Math.min(12, (+item.attempts || 0) + 1); item.nextAt = Date.now() + retryDelay(item.attempts);
+    scheduleRetry(k);
+  }
+  function resumeRetries() { Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1) scheduleRetry(k); }); }
+  function countPendingOperations() {
+    var count = 0;
+    ALL.forEach(function (k) {
+      if (COLS[k]) {
+        var localRows = local(k), rows = Array.isArray(localRows) ? localRows : [], base = SB.c[k] || {}, seen = {};
+        rows.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (base[r.id] !== hr(r)) count++; });
+        Object.keys(base).forEach(function (id) { if (!seen[id]) count++; });
+      } else if (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) count++;
+    });
+    return count;
+  }
+  function syncPanel() {
+    if (isLogin || !document.body) return;
+    var panel = document.getElementById("wfSyncStatusPanel");
+    if (!panel) {
+      panel = document.createElement("section"); panel.id = "wfSyncStatusPanel";
+      panel.setAttribute("aria-live", "polite");
+      panel.style.cssText = "margin:12px 0;padding:14px;border:1px solid #b7c7dc;border-radius:12px;background:var(--panel,#fff);color:var(--text,#14213d);direction:rtl;box-shadow:0 2px 8px #001b4d12";
+      var dash = document.getElementById("dashboard");
+      if (dash && dash.parentNode) dash.parentNode.insertBefore(panel, dash.nextSibling); else (document.querySelector("main") || document.body).prepend(panel);
+    }
+    var pending = pendingKeys().length, waiting = countPendingOperations();
+    var status = navigator.onLine === false ? "غير متصل — محفوظ محليًا" : (pending ? (Object.keys(retryTimers).length ? "إعادة المحاولة بانتظار Backoff" : "توجد تعديلات تنتظر المزامنة") : (ready ? "متزامن" : "جارٍ التحقق/الاتصال"));
+    var last = lastSyncAt ? new Date(lastSyncAt).toLocaleString("ar-EG") : "لم تتم مزامنة ناجحة بعد";
+    panel.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'><strong>☁️ حالة المزامنة</strong><button type='button' id='wfSyncNowBtn' style='border:0;border-radius:8px;padding:8px 12px;background:#0b57d0;color:#fff;font-weight:700'>مزامنة الآن</button></div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px'><div><b>الحالة</b><br><span id='wfSyncState'></span></div><div><b>آخر مزامنة</b><br><span id='wfSyncLast'></span></div><div><b>التعديلات المعلقة</b><br><span id='wfSyncPending'></span></div><div><b>عدد العمليات المنتظرة</b><br><span id='wfSyncWaiting'></span></div><div><b>آخر خطأ</b><br><span id='wfSyncError'></span></div></div>";
+    panel.querySelector("#wfSyncState").textContent = status;
+    panel.querySelector("#wfSyncLast").textContent = last;
+    panel.querySelector("#wfSyncPending").textContent = String(pending);
+    panel.querySelector("#wfSyncWaiting").textContent = String(waiting);
+    panel.querySelector("#wfSyncError").textContent = lastSyncError || "لا يوجد";
+    panel.querySelector("#wfSyncNowBtn").onclick = function () { var btn = this; btn.disabled = true; btn.textContent = "جارٍ المزامنة…"; window.wfCloudSyncNow().catch(function (e) { lastSyncError = String(e && e.message || e); origSet.call(ls, "wf_sync_last_error", lastSyncError); }).then(function () { btn.disabled = false; btn.textContent = "مزامنة الآن"; badge(); }); };
+  }
   function badge() {
     if (isLogin || !document.body) return;
     var el = document.getElementById("wfCloudBadge");
     if (!el) { el = document.createElement("div"); el.id = "wfCloudBadge"; el.style.cssText = "position:fixed;bottom:8px;left:8px;z-index:9998;background:rgba(0,27,77,.85);color:#fff;padding:4px 10px;border-radius:14px;font:600 12px sans-serif;direction:rtl;pointer-events:none"; document.body.appendChild(el); }
-    var pending = ALL.filter(function (k) { return lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]; }).length;
-    el.textContent = navigator.onLine === false ? "📴 أوفلاين — التعديلات هتترفع لما النت يرجع" : (pending || Object.keys(timers).length ? "⏳ جاري الرفع للسحابة" : "☁️ متزامن");
+    var pending = pendingKeys().length;
+    el.textContent = navigator.onLine === false ? "📴 أوفلاين — محفوظ على الجهاز" : (pending ? (Object.keys(retryTimers).length ? "⏳ إعادة المزامنة لاحقًا" : "⏳ تعديلات بانتظار الرفع") : "☁️ متزامن");
+    syncPanel();
   }
 
   /* ---------- أدوات ---------- */
@@ -98,7 +147,7 @@
   function push(k, interactive) {
     if (!online() || pushing[k]) return Promise.resolve(false);
     pushing[k] = true;
-    var done = function (ok) { pushing[k] = false; badge(); return ok; };
+    var done = function (ok, err) { pushing[k] = false; if (ok) { delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; lastSyncAt = Date.now(); lastSyncError = ""; origRemove.call(ls, "wf_sync_last_error"); origSet.call(ls, "wf_last_sync_at", String(lastSyncAt)); saveRetryState(); } else { if (err) { lastSyncError = String(err.message || err); origSet.call(ls, "wf_sync_last_error", lastSyncError); } retryLater(k); } badge(); return ok; };
     var snapshotRaw = ls.getItem(k), ops = [], v = local(k), next;
     if (COLS[k]) {
       var col = db.collection(COLS[k]), B = SB.c[k] || {}, arr = Array.isArray(v) ? v : [], seen = {}, dels = 0;
@@ -107,16 +156,16 @@
       Object.keys(B).forEach(function (id) { if (!seen[id]) { dels++; ops.push(function (bt) { bt.delete(col.doc(id)); }); } });
       var total = Object.keys(B).length;
       if (dels > 20 && dels > total / 2) { // حماية من المسح الجماعي
-        if (!interactive) return Promise.resolve(done(false)); // هنسأل لما تضغط «مزامنة الآن»
+        if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); } // انتظار موافقة يدوية عبر «مزامنة الآن»
         if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
       if (!ops.length) { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-      return commitOps(ops).then(function () { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { if (k === "wf_r" || k === "wf_c" || k === "wf_d") projectOrders(); return done(true); }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false); });
+      return commitOps(ops).then(function () { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { if (k === "wf_r" || k === "wf_c" || k === "wf_d") projectOrders(); return done(true); }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false, e); });
     }
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));
       if (SB.x[k] === h(snapshotRaw)) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); projectOrders(); return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
+      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); projectOrders(); return touchMeta(); }).then(function () { return done(true); }).catch(function (e) { return done(false, e); });
     }
     var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
     if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
@@ -126,7 +175,7 @@
     ops.push(function (bt) { n ? bt.set(db.collection("settings").doc(id), { n: n, dev: DEV, ts: Date.now() }) : bt.delete(db.collection("settings").doc(id)); });
     parts.forEach(function (p, i) { ops.push(function (bt) { bt.set(db.collection("settings").doc(id + "~" + i), { v: p }); }); });
     for (var j = n; j < old; j++) (function (j) { ops.push(function (bt) { bt.delete(db.collection("settings").doc(id + "~" + j)); }); })(j);
-    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { return done(true); }).catch(function () { return done(false); });
+    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { return done(true); }).catch(function (e) { return done(false, e); });
   }
   function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
 
@@ -629,13 +678,13 @@
     CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
     var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
     function goReady(reload) {
-      ready = true; uncover(); badge();
+      ready = true; uncover(); resumeRetries(); badge();
       if (reload) { location.reload(); return; }
       pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);
       watchInbox();
     }
     if (!online()) { // أوفلاين: لا تكشف نسخة الموظفين المحفوظة إلا لمعرّف سبق التحقق منه كموظف.
-      if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid) { ready = true; uncover(); badge(); return; }
+      if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid) { ready = true; uncover(); resumeRetries(); badge(); return; }
       cover("اتصل بالإنترنت للتحقق من حساب الموظف قبل فتح بيانات النظام."); return;
     }
     // مسار سريع: عضوية موظف متحقق منها حديثًا لنفس الحساب + بيانات متزامنة → افتح فورًا بدون أي انتظار للشبكة
@@ -692,7 +741,7 @@
 
   window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
-  window.addEventListener("online", function () { badge(); pushAll(false); });
+  window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1 && !retryTimers[k]) scheduleRetry(k); }); });
   window.addEventListener("offline", badge);
   window.addEventListener("pagehide", function () { Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); delete timers[k]; push(k, false); }); });
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") pushAll(false); });
@@ -708,7 +757,7 @@
     if (!u) { if (denied) return; if (navigator.onLine === false) {
         /* Auth قد لا يعيد الجلسة في بعض المتصفحات رغم وجود نسخة محلية موثّقة.
            لا نرمي المستخدم خارج النظام: نفتح البيانات المحلية لنفس UID فقط. */
-        if (fastHint()) { ready = true; uncover(); badge(); return; }
+        if (fastHint()) { ready = true; uncover(); resumeRetries(); badge(); return; }
         ready = false; cover("يلزم فتح النظام مرة واحدة مع الإنترنت للتحقق من حساب الموظف."); return;
       }
       cover("جارٍ التحقق من صلاحيات حساب الموظف…"); // مفيش جلسة: غطّي الشاشة لحد التحويل لصفحة الدخول
