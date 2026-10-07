@@ -16,15 +16,29 @@ localStorage.setItem("wf_r", JSON.stringify([{id:"r1",customerId:"c1",deviceId:"
 localStorage.setItem("wf_p", JSON.stringify([{id:"p1",name:"Part",category:"Cooling",qty:4}]));
 localStorage.setItem("wf_m", JSON.stringify([{id:"m1",partId:"p1",type:"توريد",qty:4,at:"2026-10-07T00:00:00.000Z"}]));
 localStorage.setItem("wf_wallet_tx", JSON.stringify([{id:"w1",wallet:"Cash",refKey:"order-final-r1",deleted:false,amount:20}]));
-localStorage.setItem("wf_theme", "dark");
+localStorage.setItem("wf_theme", "light");
+window.matchMedia = () => ({matches:true}); // حاكِ هاتفًا مضبوطًا على الوضع الداكن
 </script>
 <script src="workshop-idb.js"></script>
+<script>
+// نفس منطق head: يطبق ثيم النظام مبكرًا، لكن حاجز العرض يجب أن يمنع وميضه.
+const systemDark = true;
+if (systemDark) document.documentElement.setAttribute("data-theme", "dark");
+Promise.resolve(window.WFStorageReady).then(function () {
+  const saved = WFStorage.getItem("wf_theme");
+  const dark = saved === "dark" || (saved !== "light" && systemDark);
+  if (dark) document.documentElement.setAttribute("data-theme", "dark");
+  else document.documentElement.removeAttribute("data-theme");
+});
+window.themeWasGated = document.documentElement.getAttribute("data-wf-storage-pending") === "1" && getComputedStyle(document.body).visibility === "hidden";
+</script>
 <script src="shared-data.js"></script>
 <script>
 WorkshopDBReady.then(async function () {
   if (WFStorageStatus.ready !== true || WFStorageStatus.migrationComplete !== true || WFStorageStatus.legacySourceCleared !== true) throw Error("migration status must confirm ready, complete, and legacy source cleared");
+  if (!window.themeWasGated || document.documentElement.hasAttribute("data-wf-storage-pending") || document.documentElement.getAttribute("data-theme") === "dark") throw Error("saved light theme must be applied before the page becomes visible");
   if (localStorage.length !== 0) throw Error("legacy localStorage should be cleared after a successful import");
-  if (WFStorage.getItem("wf_theme") !== "dark") throw Error("preference key-value migration");
+  if (WFStorage.getItem("wf_theme") !== "light") throw Error("preference key-value migration");
   if (!await WorkshopDB.readCollection("wf_c").then(x => x.length === 1 && x[0].id === "c1")) throw Error("legacy import");
   await WorkshopDB.transaction(["wf_c", "wf_d", "wf_r", "wf_p", "wf_m", "wf_wallet_tx"], function (draft) {
     draft.wf_c[0].name = "Updated customer";

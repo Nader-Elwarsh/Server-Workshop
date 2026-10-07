@@ -6,6 +6,17 @@
   "use strict";
   if (window.WorkshopDB && window.WFStorage) return;
 
+  // امنع رسم المحتوى قبل معرفة الثيم المحفوظ من IndexedDB، لتجنب وميض
+  // ثيم النظام على الصفحات التي لديها تفضيل يدوي محفوظ.
+  try {
+    const root = window.document.documentElement;
+    root.setAttribute("data-wf-storage-pending", "1");
+    const gate = window.document.createElement("style");
+    gate.id = "wf-storage-theme-gate";
+    gate.textContent = 'html[data-wf-storage-pending="1"] body{visibility:hidden!important}';
+    (window.document.head || root).appendChild(gate);
+  } catch (_) {}
+
   const DB_NAME = "wfOperationalDB";
   const DB_VERSION = 3;
   const KV_STORE = "keyValues";
@@ -201,6 +212,15 @@
   };
   window.WFStorage = WFStorage;
   window.WFStorageReady = initializeStorage();
+  window.WFStorageReady.then(() => {
+    try {
+      const savedTheme = WFStorage.getItem("wf_theme");
+      const systemDark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      if (savedTheme === "dark" || (savedTheme !== "light" && systemDark)) window.document.documentElement.setAttribute("data-theme", "dark");
+      else window.document.documentElement.removeAttribute("data-theme");
+    } catch (_) {}
+    try { window.document.documentElement.removeAttribute("data-wf-storage-pending"); } catch (_) {}
+  });
   // صفّ تشغيل واجهات DOMContentLoaded إلى ما بعد تحميل كاش IndexedDB؛
   // واجهات التطبيق المتزامنة لا ترى مجموعة فارغة أثناء ترطيب قاعدة قائمة.
   try {
