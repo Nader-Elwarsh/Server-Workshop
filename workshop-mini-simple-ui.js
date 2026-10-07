@@ -45,7 +45,7 @@
     return CATEGORY_ICONS.box;
   };
   // rows/save/esc2: كانت بتعيد تعريف نفس منطق القراءة/الكتابة والـ escaping
-  // اللي في app.js بالظبط (JSON.parse/localStorage مباشرة). دلوقتي بتنادي
+  // اللي في app.js بالظبط (JSON.parse/WFStorage مباشرة). دلوقتي بتنادي
   // على النسخة الموحّدة في shared-data.js (لازم يتحمّل قبل الملف ده).
   // قراءة مخزّنة: نفس المصفوفة تتعاد طالما محتوى التخزين ما اتغيّرش (بدل JSON.parse جديد في كل نداء)
   const rows = (key) => (typeof arrCached === "function" ? arrCached(key) : arr(key));

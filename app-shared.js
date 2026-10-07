@@ -2,7 +2,7 @@
 function imageToDataURL(file,max=720,quality=.62){return new Promise((resolve,reject)=>{if(!file){resolve("");return}try{let r=new FileReader();r.onload=()=>{let img=new Image();img.onload=()=>{let scale=Math.min(1,max/Math.max(img.width,img.height)),w=Math.max(1,Math.round(img.width*scale)),h=Math.max(1,Math.round(img.height*scale)),c=document.createElement("canvas");c.width=w;c.height=h;let ctx=c.getContext("2d",{alpha:false});ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);resolve(c.toDataURL("image/jpeg",quality))};img.onerror=reject;img.src=r.result};r.onerror=reject;r.readAsDataURL(file)}catch(e){reject(e)}})}
 // حفظ آمن: كانت هذه الدالة بها عطل جوهري — put(k,v);return true — بترجّع
 // "نجح" دايمًا مهما كانت نتيجة put() الحقيقية، لأن put() بتمسك أي خطأ حفظ
-// (امتلاء المساحة، تعطّل localStorage) جوّاها هي نفسها وترجع false من غير أي
+// (امتلاء المساحة، تعطّل WFStorage) جوّاها هي نفسها وترجع false من غير أي
 // throw، فالـ catch هنا ما كانش بيتنفذ أبدًا وكل نداء لـ saveJSONSafe في
 // النظام (أكتر من 40 مكان) كان بيكمل العملية وكأن الحفظ نجح حتى لو فشل
 // فعليًا. التصحيح: إرجاع نتيجة put() الحقيقية بدل true ثابتة.

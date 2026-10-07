@@ -15,7 +15,7 @@ async function updateNotificationSnapshot(){
   await notifSet("snapshot",{generatedAt:new Date().toISOString(),today:todayList,overdue:overdueList,lowStock:lowStockList,backupOverdue});
 }
 async function checkNotificationsNow(){
-  if(localStorage.getItem("wf_notif_enabled")!=="1")return;
+  if(WFStorage.getItem("wf_notif_enabled")!=="1")return;
   if(!("Notification" in window)||Notification.permission!=="granted")return;
   if(!("serviceWorker" in navigator))return;
   let today=dayKeyLocal(new Date());
@@ -33,7 +33,7 @@ async function enableNotifications(){
   if(!("Notification" in window)||!("serviceWorker" in navigator)){alert("هذا المتصفح لا يدعم الإشعارات، للأسف.");return renderNotifSettings()}
   let perm=await Notification.requestPermission();
   if(perm!=="granted"){alert("يلزم السماح بإذن الإشعارات من المتصفح حتى تعمل.");return renderNotifSettings()}
-  localStorage.setItem("wf_notif_enabled","1");
+  WFStorage.setItem("wf_notif_enabled","1");
   try{
     let reg=await navigator.serviceWorker.ready;
     if("periodicSync" in reg && "permissions" in navigator){
@@ -46,7 +46,7 @@ async function enableNotifications(){
   renderNotifSettings();
 }
 async function disableNotifications(){
-  localStorage.setItem("wf_notif_enabled","0");
+  WFStorage.setItem("wf_notif_enabled","0");
   try{let reg=await navigator.serviceWorker.ready;if(reg.periodicSync)await reg.periodicSync.unregister("workshop-check")}catch(e){}
   renderNotifSettings();
 }
@@ -55,7 +55,7 @@ async function renderNotifSettings(){
   let supported="Notification" in window && "serviceWorker" in navigator;
   let periodicSupported=false;
   if(supported){try{let reg=await navigator.serviceWorker.ready;periodicSupported="periodicSync" in reg}catch(e){}}
-  let enabled=supported&&localStorage.getItem("wf_notif_enabled")==="1"&&Notification.permission==="granted";
+  let enabled=supported&&WFStorage.getItem("wf_notif_enabled")==="1"&&Notification.permission==="granted";
   el.innerHTML=!supported
     ?`<p class="hint">⚠️ المتصفح أو الجهاز ده مش بيدعم الإشعارات (شائع على آيفون Safari). هيشتغل النظام عادي من غيرها.</p>`
     :`<p class="hint">${enabled?"🔔 الإشعارات مفعّلة على هذا الجهاز.":"🔕 الإشعارات غير مفعّلة حاليًا."}</p>
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded",()=>{updateNotificationSnapshot().t
 document.addEventListener('DOMContentLoaded',()=>setTimeout(setupQuickForms,0));
 
 
-// V11.1 PWA: install support + offline registration. This does not touch localStorage data.
+// V11.1 PWA: install support + offline registration. This does not touch WFStorage data.
 (function setupPWA(){
   let deferredPrompt=null;
   window.addEventListener('beforeinstallprompt',e=>{
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded',()=>setTimeout(setupQuickForms,0));
       bar.querySelector('button').addEventListener('click',()=>location.reload());
       (document.body||document.documentElement).appendChild(bar);
     }
-    window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js?v=11.73', {updateViaCache: 'none'}).then(reg=>{
+    window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js?v=11.74', {updateViaCache: 'none'}).then(reg=>{
       if(reg.waiting&&navigator.serviceWorker.controller)announceWorkshopUpdate();
       reg.addEventListener('updatefound',()=>{
         const nw=reg.installing;if(!nw)return;

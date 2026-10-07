@@ -2,7 +2,7 @@
    فات على آخر نسخة احتياطية أكتر من 14 يوم (أو معملش نسخة أبدًا).
    بيعتمد على daysSinceLastBackup() الموجودة في app-data-management.js
    (لازم يتحمّل بعده). ممكن "يأجّل" التذكير 3 أيام من غير ما يعمل نسخة،
-   محفوظ في wf_backup_reminder_snoozed_until (localStorage). */
+   محفوظ في wf_backup_reminder_snoozed_until (WFStorage). */
 (function () {
   "use strict";
 
@@ -16,7 +16,7 @@
 
   function isSnoozed() {
     try {
-      var until = localStorage.getItem("wf_backup_reminder_snoozed_until");
+      var until = WFStorage.getItem("wf_backup_reminder_snoozed_until");
       if (!until) return false;
       return new Date(until).getTime() > Date.now();
     } catch (e) {
@@ -28,7 +28,7 @@
     try {
       var d = new Date();
       d.setDate(d.getDate() + SNOOZE_DAYS);
-      localStorage.setItem("wf_backup_reminder_snoozed_until", d.toISOString());
+      WFStorage.setItem("wf_backup_reminder_snoozed_until", d.toISOString());
     } catch (e) {}
     var el = document.getElementById("backupReminder");
     if (el) el.innerHTML = "";

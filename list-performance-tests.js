@@ -11,7 +11,7 @@ store.wf_c = JSON.stringify(C); store.wf_d = JSON.stringify(D); store.wf_r = JSO
 const els = {}; const el = id => els[id] || (els[id] = { innerHTML: '', value: '', classList: { add() {}, remove() {}, contains() { return false; } }, style: {} });
 const doc = { getElementById: el, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: () => el('x'), body: el('body'), documentElement: el('de') };
 const ctx = { localStorage: ls, document: doc, console, location: { search: '', pathname: '/customers.html' }, navigator: {}, setTimeout, clearTimeout, Date, Map, Set, Object, JSON, Math, URLSearchParams, sessionStorage: ls, addEventListener() {}, matchMedia: () => ({ matches: false }) };
-ctx.window = ctx; ctx.self = ctx; vm.createContext(ctx);
+ctx.window = ctx; ctx.WFStorage = ls; ctx.self = ctx; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync('shared-data.js', 'utf8'), ctx);
 ctx.defineOverride = (n, f, fn) => { ctx[n] = fn; };
 ctx.villageGroupOf = () => 'city'; ctx.addressText = a => (a && a.village) || ''; ctx.psActions = () => ''; ctx.worstRequestAgeInfo = () => null;

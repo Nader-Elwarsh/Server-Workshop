@@ -4,7 +4,7 @@ function makeEnv(){
   const store={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener:()=>{},getElementById:()=>null,querySelector:()=>null};
-  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const context={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true,prompt:()=>null};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});

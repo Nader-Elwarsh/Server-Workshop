@@ -3,7 +3,7 @@ async function main(){
 function freshStore(seed){const store=Object.assign({},seed);
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener:()=>{},getElementById:()=>null};
-  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random()},ImageStore:null};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random()},ImageStore:null};
   const ctx={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true};
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),ctx,{filename:'shared-data.js'});

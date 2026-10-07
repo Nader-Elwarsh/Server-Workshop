@@ -1,8 +1,9 @@
+var WFStorage = window.WFStorage;
 /* =========================================================
    الورشة الفنية — طبقة البيانات المشتركة (shared-data.js)
    =========================================================
    ليه الملف ده موجود:
-   قبل كده كانت نفس الدوال (قراءة/كتابة localStorage، esc، id،
+   قبل كده كانت نفس الدوال (قراءة/كتابة WFStorage، esc، id،
    أسماء العملاء/الأجهزة، تجميع العنوان...) معرّفة بنفس المنطق
    بالظبط في أكتر من ملف (app.js، workshop-mini-enhancements.js،
    workshop-mini-simple-ui.js). ده كان معناه إن أي تعديل بسيط في
@@ -14,7 +15,7 @@
    بيستخدم النسخة هنا بس. لازم يتحمّل في كل صفحة HTML قبل app.js
    وقبل أي ملف تاني بيستخدم الدوال دي.
 
-   ملحوظة: بنية localStorage والمفاتيح (wf_c, wf_d, ...) لم تتغيّر
+   ملحوظة: بنية WFStorage والمفاتيح (wf_c, wf_d, ...) لم تتغيّر
    خالص — نفس البيانات الحالية للمستخدم هتفضل شغالة زي ما هي.
    ========================================================= */
 (function (window) {
@@ -53,7 +54,7 @@
 
   let storageErrorSeq = 0;
   // كاش القراءات المتكررة: للمجموعات الأساسية يتبع إصدار snapshot المحمّل من
-  // IndexedDB؛ وباقي المفاتيح تحتفظ بكاش raw localStorage المعتاد.
+  // IndexedDB؛ وباقي المفاتيح تحتفظ بكاش raw WFStorage المعتاد.
   const readCache = new Map();
   let writingThroughDataApi = false;
   function invalidateReadCache(keys) {
@@ -61,7 +62,7 @@
     for (const k of (Array.isArray(keys) ? keys : [keys])) readCache.delete(k);
   }
   // واجهات القراءة المتزامنة القديمة تستخدم snapshot الذاكرة المحمّل من IDB.
-  // localStorage نسخة توافق لـFirebase والاسترداد، والكتابات القديمة تحدّث
+  // WFStorage نسخة توافق لـFirebase والاسترداد، والكتابات القديمة تحدّث
   // الـsnapshot فورًا ثم تحفظه إلى IndexedDB في الخلفية.
   function persistOperational(values) {
     if (!window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return;
@@ -73,23 +74,19 @@
     });
   }
   function hookDirectOperationalStorage() {
-    const proto = window.Storage && window.Storage.prototype;
-    if (!proto || proto.__wfOperationalIDBBridge) return;
-    const originalSet = proto.setItem, originalRemove = proto.removeItem;
-    Object.defineProperty(proto, "__wfOperationalIDBBridge", { value: true });
-    proto.setItem = function (key, value) {
-      const result = originalSet.call(this, key, value);
-      if (this === window.localStorage && !writingThroughDataApi && OPERATIONAL_KEYS.has(String(key))) {
-        try { persistOperational({ [key]: JSON.parse(String(value)) }); }
-        catch (e) { console.warn("[WorkshopData] تجاهل كتابة محلية غير صالحة في جسر IndexedDB", key, e); }
-      }
-      return result;
-    };
-    proto.removeItem = function (key) {
-      const result = originalRemove.call(this, key);
-      if (this === window.localStorage && !writingThroughDataApi && OPERATIONAL_KEYS.has(String(key))) persistOperational({ [key]: [] });
-      return result;
-    };
+    if (!window.WFStorage || typeof window.WFStorage.subscribe !== "function") return;
+    window.WFStorage.subscribe(function (key, value, removed, remote) {
+      if (writingThroughDataApi || !OPERATIONAL_KEYS.has(String(key))) return;
+      try {
+        const records = removed ? [] : JSON.parse(String(value));
+        if (remote) {
+          window.WorkshopDB?.setSnapshot?.(key, records);
+          invalidateReadCache(key);
+          return;
+        }
+        persistOperational({ [key]: records });
+      } catch (e) { console.warn("[WorkshopData] تجاهل كتابة تخزين غير صالحة في جسر IndexedDB", key, e); }
+    });
   }
   hookDirectOperationalStorage();
   function readCached(k, f = []) {
@@ -101,7 +98,7 @@
       return snapshot.records;
     }
     let raw = null;
-    try { raw = localStorage.getItem(k); } catch { return f; }
+    try { raw = WFStorage.getItem(k); } catch { return f; }
     const hit = readCache.get(k);
     if (hit && hit.raw === raw) return hit.value;
     try {
@@ -115,22 +112,22 @@
     if (snapshot) {
       try { return JSON.parse(JSON.stringify(snapshot.records)); } catch (_) { return snapshot.records.map(x => ({ ...x })); }
     }
-    try { let x = JSON.parse(localStorage.getItem(k)); return x ?? f; }
+    try { let x = JSON.parse(WFStorage.getItem(k)); return x ?? f; }
     catch { return f; }
   }
   function put(k, v) {
     try {
       writingThroughDataApi = true;
-      try { localStorage.setItem(k, JSON.stringify(v)); } finally { writingThroughDataApi = false; }
+      try { WFStorage.setItem(k, JSON.stringify(v)); } finally { writingThroughDataApi = false; }
       invalidateReadCache(k);
       persistOperational({ [k]: v });
-      if(k===K.tasks){try{window.TasksIDB?.replace(v)}catch(_){/* localStorage هو fallback */}}
+      if(k===K.tasks){try{window.TasksIDB?.replace(v)}catch(_){/* WFStorage هو fallback */}}
       return true;
     } catch (e) {
       // مساحة التخزين المخصصة للمتصفح امتلأت (أو خاصية التخزين متعطّلة، زي
       // وضع التصفح الخاص في بعض المتصفحات) — من غير هذا الفحص كانت العملية
       // بتفشل بصمت والمستخدم يفتكر إن البيانات اتحفظت وهي فعليًا لأ.
-      console.error(`[WorkshopData] فشل حفظ "${k}" في localStorage:`, e);
+      console.error(`[WorkshopData] فشل حفظ "${k}" في WFStorage:`, e);
       storageErrorSeq++;
       alert("⚠️ لم يتم الحفظ! مساحة التخزين في المتصفح ممتلئة على ما يبدو.\n\nخد نسخة احتياطية فورًا من بيانات موجودة (لو قدرت)، وامسح بيانات قديمة مش محتاجها من ⚙️ الإعدادات، أو فرّغ مساحة على الجهاز.");
       return false;
@@ -140,18 +137,18 @@
     const entries = Object.entries(values || {}), previous = {};
     try {
       for (const [k, v] of entries) JSON.stringify(v);
-      for (const [k] of entries) previous[k] = localStorage.getItem(k);
+      for (const [k] of entries) previous[k] = WFStorage.getItem(k);
       writingThroughDataApi = true;
-      try { for (const [k, v] of entries) localStorage.setItem(k, JSON.stringify(v)); }
+      try { for (const [k, v] of entries) WFStorage.setItem(k, JSON.stringify(v)); }
       finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([k]) => k));
       persistOperational(Object.fromEntries(entries));
       const taskEntry=entries.find(([k])=>k===K.tasks);
-      if(taskEntry){try{window.TasksIDB?.replace(taskEntry[1])}catch(_){/* localStorage هو fallback */}}
+      if(taskEntry){try{window.TasksIDB?.replace(taskEntry[1])}catch(_){/* WFStorage هو fallback */}}
       return true;
     } catch (e) {
       for (const [k, raw] of Object.entries(previous)) {
-        try { if (raw === null) localStorage.removeItem(k); else localStorage.setItem(k, raw); } catch (_) {}
+        try { if (raw === null) WFStorage.removeItem(k); else WFStorage.setItem(k, raw); } catch (_) {}
       }
       console.error("[WorkshopData] فشل حفظ عملية متعددة المفاتيح:", e);
       storageErrorSeq++;
@@ -162,7 +159,7 @@
   function restoreStorageValues(values) {
     writingThroughDataApi = true;
     for (const [k, v] of Object.entries(values || {})) {
-      try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
+      try { WFStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
     }
     writingThroughDataApi = false;
     invalidateReadCache(Object.keys(values || {}));
@@ -179,22 +176,23 @@
     const previous = {};
     try {
       entries.forEach(([key, value]) => JSON.stringify(value));
-      entries.forEach(([key]) => { previous[key] = localStorage.getItem(key); });
+      entries.forEach(([key]) => { previous[key] = WFStorage.getItem(key); });
       for (const [key, value] of entries) {
         writingThroughDataApi = true;
-        try { localStorage.setItem(key, JSON.stringify(value)); }
+        try { WFStorage.setItem(key, JSON.stringify(value)); }
         finally { writingThroughDataApi = false; }
       }
       invalidateReadCache(entries.map(([key]) => key));
       await window.WorkshopDB.replaceMany(operational);
       const taskEntry = entries.find(([key]) => key === K.tasks);
       if (taskEntry) { try { await window.TasksIDB?.replace(taskEntry[1]); } catch (_) {} }
+      await window.WFStorage.flush();
       return true;
     } catch (error) {
       writingThroughDataApi = true;
       try {
         for (const [key, raw] of Object.entries(previous)) {
-          try { if (raw === null) localStorage.removeItem(key); else localStorage.setItem(key, raw); } catch (_) {}
+          try { if (raw === null) WFStorage.removeItem(key); else WFStorage.setItem(key, raw); } catch (_) {}
         }
       } finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([key]) => key));
@@ -221,6 +219,9 @@
       if (!event || !event.key) return;
       invalidateReadCache(event.key);
     });
+  }
+  if (window.WFStorage && typeof window.WFStorage.subscribe === "function") {
+    window.WFStorage.subscribe(function (key) { invalidateReadCache(key); });
   }
   function esc(v) {
     return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
@@ -257,14 +258,14 @@
   const SCHEMA_KEY = "wf_schema_version";
   const CURRENT_SCHEMA_VERSION = 6;
   function getSchemaVersion() {
-    let v = parseInt(localStorage.getItem(SCHEMA_KEY), 10);
+    let v = parseInt(WFStorage.getItem(SCHEMA_KEY), 10);
     return Number.isFinite(v) && v > 0 ? v : 1;
   }
-  function setSchemaVersion(v) { localStorage.setItem(SCHEMA_KEY, String(v)); }
+  function setSchemaVersion(v) { WFStorage.setItem(SCHEMA_KEY, String(v)); }
 
   /* ---------------------------------------------------------------------
      withRollback: طبقة "شبه Transaction" لعمليات بتلمس أكتر من مفتاح
-     localStorage مع بعض (زي تعديل مخزون القطع + حركاته وقت حفظ أمر شغل).
+     WFStorage مع بعض (زي تعديل مخزون القطع + حركاته وقت حفظ أمر شغل).
      قبل كده كل عملية كانت بتعمل backup يدوي بـ JSON.stringify وترجعه لو
      فشلت — نفس الفكرة بالظبط لكن معمّمة في مكان واحد بدل ما تتكرر.
      بتاخد قايمة مفاتيح (من K.*) وفنكشن fn:
@@ -308,7 +309,7 @@
 
   function settings() {
     let stored = null;
-    try { stored = localStorage.getItem(K.s); } catch (_) {}
+    try { stored = WFStorage.getItem(K.s); } catch (_) {}
     let s = get(K.s, null); if (!s) s = {};
     let base = JSON.parse(JSON.stringify(def));
     for (const k of Object.keys(base)) {
@@ -352,7 +353,7 @@
     s.warranty.days = Number.isFinite(+s.warranty.days) && +s.warranty.days > 0 ? +s.warranty.days : 90;
     s.warranty.terms = typeof s.warranty.terms === "string" ? s.warranty.terms : "";
     // قراءة الإعدادات يجب ألا تتحول إلى كتابة في كل شاشة؛ هذا يقلل استهلاك
-    // localStorage ويمنع ظهور أخطاء امتلاء التخزين أثناء عمليات القراءة فقط.
+    // WFStorage ويمنع ظهور أخطاء امتلاء التخزين أثناء عمليات القراءة فقط.
     const normalized = JSON.stringify(s);
     if (stored !== normalized) put(K.s, s);
     return s;
@@ -381,7 +382,7 @@
   // customerName/deviceName بيتناديلهم من جوه map() لقوايم طويلة (عملاء،
   // أجهزة، أوامر شغل) في أكتر من صفحة — كل نداء كان بيعمل arr() (JSON.parse
   // كامل للمصفوفة) من جديد. بنستخدم arrCached هنا عشان الاستدعاءات
-  // المتكررة على نفس البيانات (من غير أي تغيير في localStorage) ترجع من
+  // المتكررة على نفس البيانات (من غير أي تغيير في WFStorage) ترجع من
   // كاش القراءة بدل إعادة التحليل، وده بيفرق بشكل ملموس في السرعة لما
   // يكون عدد العملاء/الأجهزة كبير.
   // فهرس id → سجل لنسخة القراءة المخزّنة. قبل كده customerName/deviceName (وكل بحث «find» جوه حلقة) كانوا بيعدّوا على كل السجلات
@@ -467,7 +468,7 @@
   window.byIdCached = byIdCached;
   window.debounce = debounce;
   // بعض الشاشات (استرجاع/حذف كل البيانات في app-data-management.js) بتكتب
-  // في localStorage مباشرة برا put/commitStorage (عشان بترجع القيم الخام
+  // في WFStorage مباشرة برا put/commitStorage (عشان بترجع القيم الخام
   // الأصلية بالظبط وقت الفشل)، فلازم تقدر تُبطل الكاش يدويًا بعدها عشان أي
   // قراءة عبر arrCached بعد كده تجيب القيمة الصح مش نسخة قديمة من الكاش.
   window.invalidateReadCache = invalidateReadCache;

@@ -1,12 +1,15 @@
-/* طبقة قاعدة البيانات التشغيلية — IndexedDB للعملاء والأجهزة وأوامر الشغل والمخزون والحركات المالية المرتبطة.
-   المرحلة الانتقالية: المستودع غير المتزامن هو واجهة القراءة/الكتابة الجديدة،
-   وتظل localStorage نسخة توافق مؤقتة للشاشات القديمة وFirebase.
-   لا تُحذف البيانات القديمة؛ ويُعاد تشغيل التهيئة بأمان عند كل فتح. */
+/* طبقة قاعدة البيانات التشغيلية — IndexedDB مصدر التخزين المحلي الأساسي.
+   تُستورد مفاتيح localStorage القديمة مرة واحدة إلى keyValues، ثم تزال النسخة
+   القديمة فقط بعد تأكيد المعاملة. WFStorage يحافظ على واجهة متزامنة للقراءة
+   القديمة عبر كاش ذاكرة، وتُحفظ الكتابات على IndexedDB في الخلفية. */
 (function (window) {
   "use strict";
+  if (window.WorkshopDB && window.WFStorage) return;
 
   const DB_NAME = "wfOperationalDB";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
+  const KV_STORE = "keyValues";
+  const KV_MIGRATION_KEY = "localStorageImportedV1";
   const STORES = {
     wf_c: { name: "customers", indexes: [["phone", "phone"], ["portalUid", "portalUid"]] },
     wf_d: { name: "devices", indexes: [["customerId", "customerId"], ["type", "type"]] },
@@ -16,11 +19,10 @@
     wf_wallet_tx: { name: "walletTx", indexes: [["refKey", "refKey"], ["wallet", "wallet"], ["orderId", "orderId"], ["deleted", "deleted"]] }
   };
   const META = "meta";
-  let dbPromise = null;
-  let initializePromise = null;
-  let writeTail = Promise.resolve();
-  const snapshots = new Map();
-  const snapshotVersions = new Map();
+  let dbPromise = null, initializePromise = null, writeTail = Promise.resolve();
+  let storageReady = null, storageTail = Promise.resolve(), storageChannel = null;
+  const snapshots = new Map(), snapshotVersions = new Map();
+  const storageCache = new Map(), storageListeners = new Set();
 
   function fingerprint(value) {
     const text = JSON.stringify(value);
@@ -40,10 +42,6 @@
   function getSnapshot(key) {
     return snapshots.has(key) ? { records: snapshots.get(key), version: snapshotVersions.get(key) || 0 } : null;
   }
-  function localRecords(key) {
-    try { return validRecords(JSON.parse(window.localStorage.getItem(key) || "[]")); }
-    catch (e) { console.warn("[WorkshopDB] تعذرت قراءة البيانات المحلية", key, e); return []; }
-  }
   function open() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
@@ -57,6 +55,7 @@
           spec.indexes.forEach(([name, field]) => { if (!store.indexNames.contains(name)) store.createIndex(name, field, { unique: false }); });
         });
         if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: "key" });
+        if (!db.objectStoreNames.contains(KV_STORE)) db.createObjectStore(KV_STORE, { keyPath: "key" });
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -68,9 +67,143 @@
     }).catch(error => { dbPromise = null; throw error; });
     return dbPromise;
   }
+  function legacyEntries() {
+    const entries = [];
+    try {
+      const source = window.localStorage;
+      for (let i = 0; source && i < source.length; i++) {
+        const key = source.key(i);
+        if (key != null) entries.push([String(key), source.getItem(key)]);
+      }
+    } catch (error) { console.warn("[WFStorage] تعذرت قراءة التخزين القديم", error); }
+    return entries;
+  }
+  function notifyStorage(key, value, removed, remote, silentLocal) {
+    if (!silentLocal) storageListeners.forEach(fn => { try { fn(key, value, !!removed, !!remote); } catch (error) { console.warn("[WFStorage] storage listener failed", error); } });
+    if (!remote) { try { storageChannel && storageChannel.postMessage({ key, value, removed: !!removed }); } catch (_) {} }
+  }
+  try {
+    if (window.BroadcastChannel) {
+      storageChannel = new window.BroadcastChannel("wf-indexeddb-kv");
+      storageChannel.onmessage = event => {
+        const d = event && event.data;
+        if (!d || typeof d.key !== "string") return;
+        if (d.removed) storageCache.delete(d.key); else storageCache.set(d.key, String(d.value));
+        notifyStorage(d.key, d.value, d.removed, true);
+      };
+    }
+  } catch (_) {}
+  function persistStorageMutation(key, value, remove) {
+    const current = storageTail.then(() => storageReady).then(ok => {
+      if (!ok) {
+        if (remove) window.localStorage.removeItem(key); else window.localStorage.setItem(key, String(value));
+        return true;
+      }
+      return open().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction([KV_STORE], "readwrite"), store = tx.objectStore(KV_STORE);
+        if (remove) store.delete(key); else store.put({ key, value: String(value) });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => reject(tx.error || new Error("تعذر حفظ قيمة التخزين"));
+        tx.onabort = () => reject(tx.error || new Error("أُلغيت كتابة التخزين"));
+      }));
+    });
+    storageTail = current.catch(error => {
+      console.error("[WFStorage] تعذر حفظ القيمة في IndexedDB", key, error);
+      window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { writeError: error });
+      try { if (remove) window.localStorage.removeItem(key); else window.localStorage.setItem(key, String(value)); } catch (_) {}
+      return false;
+    });
+    return current;
+  }
+  function initializeStorage() {
+    const legacy = legacyEntries();
+    legacy.forEach(([key, value]) => { if (!storageCache.has(key)) storageCache.set(key, value); });
+    storageReady = open().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction([KV_STORE, META], "readwrite"), store = tx.objectStore(KV_STORE), meta = tx.objectStore(META);
+      const allReq = store.getAll(), markReq = meta.get(KV_MIGRATION_KEY);
+      let rows = [], imported = false;
+      allReq.onsuccess = () => { rows = Array.isArray(allReq.result) ? allReq.result : []; };
+      markReq.onsuccess = () => {
+        imported = !markReq.result;
+        if (!imported) return;
+        const known = new Set(rows.map(row => row && row.key));
+        legacy.forEach(([key, value]) => { if (!known.has(key)) store.put({ key, value: String(value) }); });
+        meta.put({ key: KV_MIGRATION_KEY, at: Date.now(), count: legacy.length });
+      };
+      markReq.onerror = () => { try { tx.abort(); } catch (_) {} };
+      tx.oncomplete = () => {
+        const readTx = db.transaction([KV_STORE], "readonly"), req = readTx.objectStore(KV_STORE).getAll();
+        req.onsuccess = () => resolve({ rows: Array.isArray(req.result) ? req.result : [], imported });
+        req.onerror = () => reject(req.error || new Error("تعذر تحميل القيم المحلية"));
+      };
+      tx.onerror = () => reject(tx.error || new Error("تعذرت تهيئة مخزن القيم"));
+      tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة مخزن القيم"));
+    })).then(({ rows, imported }) => {
+      storageCache.clear();
+      rows.forEach(row => { if (row && typeof row.key === "string") storageCache.set(row.key, String(row.value)); });
+      if (imported) {
+        try { window.localStorage.clear(); }
+        catch (error) { console.warn("[WFStorage] اكتمل الاستيراد لكن تعذر مسح التخزين القديم", error); }
+      }
+      window.WFStorageStatus = { ready: true, importedLegacy: imported, keys: storageCache.size };
+      return true;
+    }).catch(error => {
+      // لا نمسح المصدر القديم عند الفشل؛ يحتفظ الكاش بقيمه ويمكن قراءة القديم.
+      legacy.forEach(([key, value]) => { if (!storageCache.has(key)) storageCache.set(key, value); });
+      window.WFStorageStatus = { ready: false, fallback: "legacy-read-only", error };
+      console.warn("[WFStorage] تهيئة IndexedDB لم تنجح؛ أبقينا البيانات القديمة دون مسح", error);
+      return false;
+    });
+    return storageReady;
+  }
+  const WFStorage = {
+    get length() { return storageCache.size; },
+    key(index) { return Array.from(storageCache.keys())[Number(index)] ?? null; },
+    getItem(key) { key = String(key); return storageCache.has(key) ? storageCache.get(key) : null; },
+    setItem(key, value) {
+      key = String(key); value = String(value);
+      storageCache.set(key, value); notifyStorage(key, value, false);
+      persistStorageMutation(key, value, false).catch(() => {});
+    },
+    removeItem(key) {
+      key = String(key); storageCache.delete(key); notifyStorage(key, null, true);
+      persistStorageMutation(key, null, true).catch(() => {});
+    },
+    clear() {
+      const keys = Array.from(storageCache.keys()); storageCache.clear();
+      keys.forEach(key => notifyStorage(key, null, true));
+      storageTail = storageTail.then(() => storageReady).then(ok => {
+        if (!ok) { window.localStorage.clear(); return true; }
+        return open().then(db => new Promise((resolve, reject) => {
+          const tx = db.transaction([KV_STORE], "readwrite"); tx.objectStore(KV_STORE).clear();
+          tx.oncomplete = () => resolve(true); tx.onerror = () => reject(tx.error || new Error("تعذر مسح مخزن القيم"));
+        }));
+      }).catch(error => { console.error("[WFStorage] clear failed", error); try { window.localStorage.clear(); } catch (_) {} return false; });
+    },
+    subscribe(fn) { if (typeof fn !== "function") return () => {}; storageListeners.add(fn); return () => storageListeners.delete(fn); },
+    flush() { return Promise.all([storageReady, storageTail, writeTail]).then(results => { if (results[0] === false || (window.WFStorageStatus && window.WFStorageStatus.writeError)) throw new Error("تعذر تأكيد الحفظ في IndexedDB"); return true; }); },
+    exportAll() { return Object.fromEntries(storageCache); },
+    isReady() { return !!(window.WFStorageStatus && window.WFStorageStatus.ready); }
+  };
+  window.WFStorage = WFStorage;
+  window.WFStorageReady = initializeStorage();
+  // صفّ تشغيل واجهات DOMContentLoaded إلى ما بعد تحميل كاش IndexedDB؛
+  // واجهات التطبيق المتزامنة لا ترى مجموعة فارغة أثناء ترطيب قاعدة قائمة.
+  try {
+    const nativeDocumentAdd = window.document.addEventListener.bind(window.document);
+    window.document.addEventListener = function (type, listener, options) {
+      if (type === "DOMContentLoaded" && typeof listener === "function" && window.document.readyState === "loading") {
+        return nativeDocumentAdd(type, function (event) {
+          window.WFStorageReady.then(() => listener.call(window.document, event));
+        }, options);
+      }
+      return nativeDocumentAdd(type, listener, options);
+    };
+  } catch (_) {}
+
   function enqueueWrite(work) {
     const current = writeTail.then(work);
-    writeTail = current.catch(error => { console.error("[WorkshopDB] فشل حفظ نسخة IndexedDB:", error); });
+    writeTail = current.catch(error => { console.error("[WorkshopDB] فشل حفظ IndexedDB:", error); });
     return current;
   }
   function writeCollections(values) {
@@ -78,19 +211,23 @@
     if (!entries.length) return Promise.resolve(true);
     const expectedVersions = new Map(entries.map(([key]) => [key, snapshotVersions.get(key) || 0]));
     return enqueueWrite(async () => {
+      if (!await window.WFStorageReady) throw new Error("WFStorage غير جاهز");
       const db = await open();
       return new Promise((resolve, reject) => {
-        const names = entries.map(([key]) => STORES[key].name).concat(META);
-        const tx = db.transaction(names, "readwrite");
-        const meta = tx.objectStore(META);
+        const names = entries.map(([key]) => STORES[key].name).concat([META, KV_STORE]);
+        const tx = db.transaction(names, "readwrite"), meta = tx.objectStore(META), kv = tx.objectStore(KV_STORE);
         entries.forEach(([key, value]) => {
-          const records = validRecords(value), storeName = STORES[key].name, store = tx.objectStore(storeName);
-          store.clear();
-          records.forEach(record => store.put(record));
+          const records = validRecords(value), store = tx.objectStore(STORES[key].name);
+          store.clear(); records.forEach(record => store.put(record));
           meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
+          kv.put({ key, value: JSON.stringify(records) });
         });
         tx.oncomplete = () => {
-          entries.forEach(([key, value]) => { if ((snapshotVersions.get(key) || 0) === expectedVersions.get(key)) setSnapshot(key, value); });
+          entries.forEach(([key, value]) => {
+            if ((snapshotVersions.get(key) || 0) !== expectedVersions.get(key)) return;
+            setSnapshot(key, value);
+            const serialized = JSON.stringify(validRecords(value)); storageCache.set(key, serialized); notifyStorage(key, serialized, false, false, true);
+          });
           resolve(true);
         };
         tx.onerror = () => reject(tx.error || new Error("فشلت معاملة حفظ البيانات"));
@@ -110,8 +247,7 @@
     Object.entries(values || {}).forEach(([key, records]) => {
       if (!STORES[key]) return;
       if (expectedVersions && (snapshotVersions.get(key) || 0) !== expectedVersions.get(key) + 1) return;
-      try { window.localStorage.setItem(key, JSON.stringify(validRecords(records))); }
-      catch (error) { console.warn("[WorkshopDB] تعذر تحديث نسخة localStorage التوافقية؛ IndexedDB محفوظة", key, error); }
+      const serialized = JSON.stringify(validRecords(records)); storageCache.set(key, serialized); notifyStorage(key, serialized, false, false, true);
     });
   }
   function getById(key, id) {
@@ -135,27 +271,27 @@
     if (initializePromise) return initializePromise;
     const selected = (keys || Object.keys(STORES)).filter(key => STORES[key]);
     if (!selected.length) return Promise.resolve(true);
-    initializePromise = open().then(db => new Promise((resolve, reject) => {
+    initializePromise = window.WFStorageReady.then(ok => {
+      if (!ok) throw new Error("WFStorage غير جاهز");
+      return open();
+    }).then(db => new Promise((resolve, reject) => {
       const names = selected.map(key => STORES[key].name).concat(META);
       const tx = db.transaction(names, "readwrite"), meta = tx.objectStore(META);
       selected.forEach(key => {
-        const records = localRecords(key), store = tx.objectStore(STORES[key].name);
-        const getMeta = meta.get(key);
+        let records = [];
+        try { records = validRecords(JSON.parse(WFStorage.getItem(key) || "[]")); } catch (_) {}
+        const store = tx.objectStore(STORES[key].name), getMeta = meta.get(key);
         getMeta.onsuccess = () => {
           const prior = getMeta.result;
-          // المصدر المحلي القديم يظل مرجع التهيئة أو أي تعديل أحدث وصل من
-          // واجهة توافق قديمة؛ كل كتابة مكتملة تسجل بصمتها في meta.
           if (!prior || prior.fingerprint !== fingerprint(records)) {
             store.clear(); records.forEach(record => store.put(record));
-            meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now(), migratedFrom: "localStorage" });
+            meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now(), migratedFrom: "keyValues" });
           }
         };
         getMeta.onerror = () => { try { tx.abort(); } catch (_) {} };
       });
-      tx.oncomplete = () => {
-        Promise.all(selected.map(key => readCollection(key).then(records => setSnapshot(key, records))))
-          .then(() => resolve(true), reject);
-      };
+      tx.oncomplete = () => Promise.all(selected.map(key => readCollection(key).then(records => setSnapshot(key, records))))
+        .then(() => resolve(true), reject);
       tx.onerror = () => reject(tx.error || new Error("فشل تهيئة قاعدة البيانات"));
       tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة قاعدة البيانات"));
     }));
@@ -163,26 +299,24 @@
   }
   function replace(key, records) {
     if (!STORES[key]) return Promise.reject(new Error("مجموعة غير مدعومة: " + key));
-    const values = { [key]: validRecords(records) };
-    const expectedVersions = new Map([[key, snapshotVersions.get(key) || 0]]);
-    return writeCollections(values).then(() => { mirrorLegacy(values, expectedVersions); return true; });
+    const values = { [key]: validRecords(records) }, expectedVersions = new Map([[key, snapshotVersions.get(key) || 0]]);
+    return writeCollections(values).then(() => { mirrorLegacy(values, expectedVersions); return WFStorage.flush(); });
   }
   function transaction(keys, callback) {
-    // معاملة ذرية متعددة المجموعات: القراءة والتعديل والكتابة داخل IDB tx واحدة.
     const unique = Array.from(new Set((keys || []).filter(key => STORES[key])));
     if (!unique.length || typeof callback !== "function") return Promise.reject(new Error("معاملة غير صالحة"));
     const expectedVersions = new Map(unique.map(key => [key, snapshotVersions.get(key) || 0]));
     return enqueueWrite(async () => {
+      if (!await window.WFStorageReady) throw new Error("WFStorage غير جاهز");
       const db = await open();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction(unique.map(key => STORES[key].name).concat(META), "readwrite");
-        const meta = tx.objectStore(META), draft = {}, pending = new Set(unique);
+        const tx = db.transaction(unique.map(key => STORES[key].name).concat([META, KV_STORE]), "readwrite");
+        const meta = tx.objectStore(META), kv = tx.objectStore(KV_STORE), draft = {}, pending = new Set(unique);
         let result, callbackError = null;
         unique.forEach(key => {
           const request = tx.objectStore(STORES[key].name).getAll();
           request.onsuccess = () => {
-            draft[key] = validRecords(request.result).map(row => ({ ...row }));
-            pending.delete(key);
+            draft[key] = validRecords(request.result).map(row => ({ ...row })); pending.delete(key);
             if (pending.size) return;
             try {
               result = callback(draft);
@@ -191,6 +325,7 @@
                 const records = validRecords(draft[k]), store = tx.objectStore(STORES[k].name);
                 store.clear(); records.forEach(record => store.put(record));
                 meta.put({ key: k, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
+                kv.put({ key: k, value: JSON.stringify(records) });
               });
             } catch (error) { callbackError = error; try { tx.abort(); } catch (_) {} }
           };
@@ -201,24 +336,28 @@
           unique.forEach(key => {
             if ((snapshotVersions.get(key) || 0) === expectedVersions.get(key)) { setSnapshot(key, draft[key]); mirror[key] = draft[key]; }
           });
-          mirrorLegacy(mirror, expectedVersions); resolve(result);
+          mirrorLegacy(mirror, expectedVersions);
+          // القيم التشغيلية ونسختها في keyValues حُفظتا ذريًا داخل هذه المعاملة.
+          // لا ننتظر writeTail هنا لأن هذا المسار نفسه موجود داخله.
+          resolve(result);
         };
         tx.onerror = () => reject(callbackError || tx.error || new Error("فشلت معاملة البيانات"));
         tx.onabort = () => reject(callbackError || tx.error || new Error("أُلغيت معاملة البيانات"));
       });
     });
   }
-  function flush() { return writeTail; }
+  function flush() { return Promise.all([writeTail, WFStorage.flush()]).then(() => true); }
 
   window.WorkshopDB = {
     name: DB_NAME, version: DB_VERSION, stores: STORES,
     open, initialize, readCollection, getById, queryIndex, replace, replaceMany: writeCollections, transaction, flush, getSnapshot, setSnapshot,
     isAvailable: () => !!window.indexedDB
   };
-  // يسبق هذا التحضير تهيئة Firebase والصفحات التي لا تحمل migrations.js.
   window.WorkshopDBReady = initialize().then(() => true).catch(error => {
-    window.WorkshopDBStatus = { ready: false, fallback: "localStorage", error };
-    console.warn("[WorkshopDB] تهيئة IndexedDB لم تنجح؛ سيُستخدم مخزن التوافق المحلي", error);
+    window.WorkshopDBStatus = { ready: false, fallback: "legacy-read-only", error };
+    console.warn("[WorkshopDB] تعذرت تهيئة IndexedDB؛ لم يتم حذف نسخة البيانات القديمة", error);
     return false;
   });
 })(window);
+// تسمح للسكربتات التقليدية باستخدام الاسم كمتغير عام، من دون الرجوع إلى localStorage.
+var WFStorage = window.WFStorage;

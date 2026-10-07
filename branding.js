@@ -12,8 +12,8 @@
    الملفين دول فيهم 3 ألوان ثابتة بتتبدّل لحظيًا: الأساسي #082A54 / المميز #FAA822 / الفاتح #FFFFFF.
    (لو استبدلت الملفات بتصميم تاني ملوّن بغير الألوان دي هيظهر زي ما هو من غير تغيير ألوان.)
 
-   التخزين: الإعدادات الصغيرة في localStorage (مفتاح wf_branding_v1)، والصور المرفوعة في IndexedDB
-   (قاعدة wfBrandingDB) عشان ما تزاحمش مساحة بيانات النظام الأساسية في localStorage. */
+   التخزين: الإعدادات الصغيرة في WFStorage (مفتاح wf_branding_v1)، والصور المرفوعة في IndexedDB
+   (قاعدة wfBrandingDB) عشان ما تزاحمش مساحة بيانات النظام الأساسية في WFStorage. */
 (function () {
   "use strict";
   if (window.WFBrand) return;
@@ -27,14 +27,14 @@
   function loadSettings() {
     var st = { primary: DEF.primary, accent: DEF.accent, light: DEF.light, applyHeader: false, hasLogo: false, hasIcon: false };
     try {
-      var o = JSON.parse(localStorage.getItem(KEY) || "{}") || {};
+      var o = JSON.parse(WFStorage.getItem(KEY) || "{}") || {};
       ["primary", "accent", "light"].forEach(function (k) { if (HEX.test(o[k] || "")) st[k] = String(o[k]).toUpperCase(); });
       st.applyHeader = !!o.applyHeader; st.hasLogo = !!o.hasLogo; st.hasIcon = !!o.hasIcon;
     } catch (e) {}
     return st;
   }
   var st = loadSettings();
-  function saveSettings() { try { localStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
+  function saveSettings() { try { WFStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
   function colorsDefault() { return st.primary === DEF.primary && st.accent === DEF.accent && st.light === DEF.light; }
   function customized() { return !colorsDefault() || st.hasLogo || st.hasIcon || st.applyHeader; }
 
@@ -256,7 +256,7 @@
   function resetAll() {
     return Promise.all([idbDel("logo")["catch"](function () {}), idbDel("icon")["catch"](function () {})]).then(function () {
       st = { primary: DEF.primary, accent: DEF.accent, light: DEF.light, applyHeader: false, hasLogo: false, hasIcon: false };
-      try { localStorage.removeItem(KEY); } catch (e) {}
+      try { WFStorage.removeItem(KEY); } catch (e) {}
       invalidate(); return refresh();
     });
   }

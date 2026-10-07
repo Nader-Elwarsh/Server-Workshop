@@ -1,6 +1,6 @@
 /* theme.js — تبديل الوضع الفاتح/الداكن لكل صفحات النظام.
    الافتراضي: يتبع مظهر الهاتف (فاتح/داكن) تلقائيًا لحظيًا عبر prefers-color-scheme.
-   لو المستخدم دوس على زرار 🌙/☀️، الاختيار ده بيتحفظ في localStorage كتفضيل يدوي
+   لو المستخدم دوس على زرار 🌙/☀️، الاختيار ده بيتحفظ في WFStorage كتفضيل يدوي
    ويكسر التتبع التلقائي من هذا المتصفح (لحد ما يمسح بيانات الموقع)، عشان يقدر
    يغيّر المظهر براحته في أي وقت من غير ما يرجع تلقائي على طول.
 
@@ -18,7 +18,7 @@ function wfSystemPrefersDark() {
 
 function wfSavedThemePref() {
   try {
-    return localStorage.getItem("wf_theme"); // "dark" | "light" | null (تلقائي)
+    return WFStorage.getItem("wf_theme"); // "dark" | "light" | null (تلقائي)
   } catch (e) {
     return null;
   }
@@ -45,7 +45,7 @@ function toggleTheme() {
     var isDark = document.documentElement.getAttribute("data-theme") === "dark";
     var next = isDark ? "light" : "dark";
     wfApplyDark(next === "dark");
-    localStorage.setItem("wf_theme", next);
+    WFStorage.setItem("wf_theme", next);
     updateThemeToggleIcons();
   } catch (e) {}
 }
@@ -82,6 +82,11 @@ if (document.readyState === "loading") {
 } else {
   updateThemeToggleIcons();
 }
+Promise.resolve(window.WFStorageReady).then(function () {
+  var saved = wfSavedThemePref();
+  wfApplyDark(saved === "dark" || (saved !== "light" && wfSystemPrefersDark()));
+  updateThemeToggleIcons();
+});
 
 /* تحميل نظام الهوية (branding.js): ألوان وصور الشعار والأيقونة اللي بتتحكم فيها من الإعدادات. */
 (function () {

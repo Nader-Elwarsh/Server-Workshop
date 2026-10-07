@@ -10,7 +10,7 @@
 
    طبقة إضافات محلية فوق القاعدة الأصلية (بدون أي تعديل في المرجع نفسه):
    - مفضلة: كباسات بتستخدمها كتير، تفتحها بضغطة من غير بحث.
-   - إضافات يدوية: موديلات ناقصة تضيفها إنت وتتخزن في localStorage.
+   - إضافات يدوية: موديلات ناقصة تضيفها إنت وتتخزن في WFStorage.
    ========================================================= */
 (function (window) {
   "use strict";
@@ -27,8 +27,8 @@
   let compressorAllPromise = null;
   let editingCustomId = null;
 
-  function getLS(k, f) { try { return JSON.parse(localStorage.getItem(k)) ?? f; } catch { return f; } }
-  function putLS(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { alert("تعذر الحفظ محليًا: " + (e?.message || e)); return false; } }
+  function getLS(k, f) { try { return JSON.parse(WFStorage.getItem(k)) ?? f; } catch { return f; } }
+  function putLS(k, v) { try { WFStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { alert("تعذر الحفظ محليًا: " + (e?.message || e)); return false; } }
 
   function favorites() {
     const seen=new Set();

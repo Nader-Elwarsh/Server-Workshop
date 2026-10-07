@@ -1,6 +1,6 @@
 /* Workshop Mini V2 — focused enhancements
    Scope: Customers / Devices only, plus safe shared helpers.
-   Keeps the existing project structure, localStorage and UI.
+   Keeps the existing project structure, WFStorage and UI.
 */
 (function () {
   "use strict";
@@ -231,7 +231,7 @@
 
     if (!confirm(message)) return;
 
-    // بُني الحذف ده أصلًا بخمس كتابات منفصلة لـlocalStorage (قطع، حركات
+    // بُني الحذف ده أصلًا بخمس كتابات منفصلة لـWFStorage (قطع، حركات
     // مخزن، أوامر، أجهزة، عملاء) من غير أي حماية لو فشلت وحدة منهم في
     // النص، ومن غير ما يمسح حركات المحفظة المرتبطة بالأوامر المحذوفة (تفضل
     // "دخل" ظاهر في المحفظة لأمر شغل بقى غير موجود أصلًا) ولا تسجيلات

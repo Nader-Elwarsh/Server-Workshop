@@ -55,7 +55,7 @@ function moveRouteItem(id,delta){
 
 // ---- خط سير الورشة: كل الأيام مش بس اليوم ----
 // حالة الصفحة (اليوم المختار / وضع "كل المتأخر") محفوظة في متغيّر بسيط بدل
-// localStorage عشان بتتصفّر كل ما تفتح الصفحة من جديد على اليوم الحالي.
+// WFStorage عشان بتتصفّر كل ما تفتح الصفحة من جديد على اليوم الحالي.
 const routeViewState={day:null,overdueView:false,quickCloseId:null,quickCloseDraft:null,lastTurnId:undefined};
 function routeDaysWithData(){
   const set=new Set();

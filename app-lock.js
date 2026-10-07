@@ -29,8 +29,8 @@
   function now() { return Date.now(); }
   // لوحة المفاتيح العربية بتكتب ١٢٣٤: بنوحّد الأرقام ونشيل المسافات. الأرقام السرية القديمة المتخزنة زي ما اتكتبت لسه بتتقبل (بنجرّب الصيغتين).
   function normPin(p) { return String(p == null ? "" : p).replace(/[٠-٩]/g, function (d) { return d.charCodeAt(0) - 1632; }).replace(/[۰-۹]/g, function (d) { return d.charCodeAt(0) - 1776; }).trim(); }
-  function readJSON(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || "null") || fallback; } catch (_) { return fallback; } }
-  function writeJSON(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {} }
+  function readJSON(key, fallback) { try { return JSON.parse(WFStorage.getItem(key) || "null") || fallback; } catch (_) { return fallback; } }
+  function writeJSON(key, value) { try { WFStorage.setItem(key, JSON.stringify(value)); } catch (_) {} }
   function audit(ok, reason) {
     var log = readJSON(LK_AUDIT, []);
     log.push({ at: new Date().toISOString(), ok: !!ok, reason: reason || "entry" });
@@ -38,7 +38,7 @@
     writeJSON(LK_AUDIT, log);
   }
   function attempts() { return readJSON(LK_ATTEMPTS, { count: 0, since: 0 }); }
-  function resetAttempts() { localStorage.removeItem(LK_ATTEMPTS); }
+  function resetAttempts() { WFStorage.removeItem(LK_ATTEMPTS); }
   // مدة الإيقاف بتتضاعف مع كل جولة محاولات خاطئة (30 ث ← دقيقة ← دقيقتين ... لحد 15 دقيقة). قبل كده كانت دايمًا 30 ثانية،
   // يعني تخمين الرقم السري كان ممكن يتكرر كل نص دقيقة. بتتصفّر أول ما الرقم الصحيح يتكتب.
   function cool(a) { return Math.min(900000, COOLDOWN_MS * Math.pow(2, Math.max(0, (a.level || 1) - 1))); }
@@ -55,7 +55,7 @@
   }
   function armIdle() {
     clearTimeout(idleTimer);
-    var minutes = Math.max(1, Math.min(240, Number(localStorage.getItem(LK_IDLE) || 15)));
+    var minutes = Math.max(1, Math.min(240, Number(WFStorage.getItem(LK_IDLE) || 15)));
     if (WFLock.isUnlocked() && WFLock.isSet()) idleTimer = setTimeout(function () { WFLock.lock("idle"); }, minutes * 60000);
   }
   function activity() { if (WFLock.isUnlocked()) armIdle(); }
@@ -75,24 +75,24 @@
   }
 
   var WFLock = {
-    isSet: function () { return !!localStorage.getItem(LK_HASH); },
+    isSet: function () { return !!WFStorage.getItem(LK_HASH); },
     setPin: function (pin) {
       var salt = randSalt();
-      localStorage.setItem(LK_SALT, salt);
-      localStorage.setItem(LK_HASH, wfHash(normPin(pin), salt));
-      if (localStorage.getItem(LK_ENTRY) === null) localStorage.setItem(LK_ENTRY, "1");
-      if (localStorage.getItem(LK_DELETE) === null) localStorage.setItem(LK_DELETE, "1");
-      if (localStorage.getItem(LK_IDLE) === null) localStorage.setItem(LK_IDLE, "15");
-      if (localStorage.getItem(LK_LEAVE) === null) localStorage.setItem(LK_LEAVE, "1");
+      WFStorage.setItem(LK_SALT, salt);
+      WFStorage.setItem(LK_HASH, wfHash(normPin(pin), salt));
+      if (WFStorage.getItem(LK_ENTRY) === null) WFStorage.setItem(LK_ENTRY, "1");
+      if (WFStorage.getItem(LK_DELETE) === null) WFStorage.setItem(LK_DELETE, "1");
+      if (WFStorage.getItem(LK_IDLE) === null) WFStorage.setItem(LK_IDLE, "15");
+      if (WFStorage.getItem(LK_LEAVE) === null) WFStorage.setItem(LK_LEAVE, "1");
       resetAttempts();
     },
     verify: function (pin) {
-      var salt = localStorage.getItem(LK_SALT) || "";
-      var stored = localStorage.getItem(LK_HASH), raw = String(pin == null ? "" : pin), norm = normPin(pin);
+      var salt = WFStorage.getItem(LK_SALT) || "";
+      var stored = WFStorage.getItem(LK_HASH), raw = String(pin == null ? "" : pin), norm = normPin(pin);
       return wfHash(raw, salt) === stored || (norm !== raw && wfHash(norm, salt) === stored);
     },
     removePin: function () {
-      [LK_HASH, LK_SALT, LK_ENTRY, LK_DELETE, LK_IDLE, LK_LEAVE, LK_ATTEMPTS, LK_AUDIT].forEach(function (k) { localStorage.removeItem(k); });
+      [LK_HASH, LK_SALT, LK_ENTRY, LK_DELETE, LK_IDLE, LK_LEAVE, LK_ATTEMPTS, LK_AUDIT].forEach(function (k) { WFStorage.removeItem(k); });
       sessionStorage.removeItem(SK_UNLOCK); clearTimeout(idleTimer);
     },
     isUnlocked: function () { return sessionStorage.getItem(SK_UNLOCK) === "1"; },
@@ -102,14 +102,14 @@
       // القفل بسبب الخمول كان بيشيل علامة الفتح بس والشاشة تفضل ظاهرة ومتاحة لحد أول تنقل؛ دلوقتي بنطلب الرقم السري فورًا.
       if (reason === "idle") setTimeout(function () { try { WFLock.ensureEntryUnlocked(); } catch (_) {} }, 0);
     },
-    entryLockEnabled: function () { return localStorage.getItem(LK_ENTRY) !== "0"; },
-    setEntryLockEnabled: function (v) { localStorage.setItem(LK_ENTRY, v ? "1" : "0"); },
-    deleteLockEnabled: function () { return localStorage.getItem(LK_DELETE) !== "0"; },
-    setDeleteLockEnabled: function (v) { localStorage.setItem(LK_DELETE, v ? "1" : "0"); },
-    idleMinutes: function () { return Number(localStorage.getItem(LK_IDLE) || 15); },
-    setIdleMinutes: function (v) { localStorage.setItem(LK_IDLE, String(Math.max(1, Math.min(240, Number(v) || 15)))); armIdle(); },
-    lockOnLeave: function () { return localStorage.getItem(LK_LEAVE) !== "0"; },
-    setLockOnLeave: function (v) { localStorage.setItem(LK_LEAVE, v ? "1" : "0"); },
+    entryLockEnabled: function () { return WFStorage.getItem(LK_ENTRY) !== "0"; },
+    setEntryLockEnabled: function (v) { WFStorage.setItem(LK_ENTRY, v ? "1" : "0"); },
+    deleteLockEnabled: function () { return WFStorage.getItem(LK_DELETE) !== "0"; },
+    setDeleteLockEnabled: function (v) { WFStorage.setItem(LK_DELETE, v ? "1" : "0"); },
+    idleMinutes: function () { return Number(WFStorage.getItem(LK_IDLE) || 15); },
+    setIdleMinutes: function (v) { WFStorage.setItem(LK_IDLE, String(Math.max(1, Math.min(240, Number(v) || 15)))); armIdle(); },
+    lockOnLeave: function () { return WFStorage.getItem(LK_LEAVE) !== "0"; },
+    setLockOnLeave: function (v) { WFStorage.setItem(LK_LEAVE, v ? "1" : "0"); },
     getAttemptLog: function () { return readJSON(LK_AUDIT, []); },
     requirePin: function (msg) {
       if (!this.isSet()) return true;
@@ -136,7 +136,7 @@
     }
   };
   window.WFLock = WFLock;
-  WFLock.ensureEntryUnlocked();
+  Promise.resolve(window.WFStorageReady).then(function () { WFLock.ensureEntryUnlocked(); });
   ["click", "keydown", "pointerdown", "touchstart"].forEach(function (type) { document.addEventListener(type, activity, { passive: true }); });
   // «قفل عند الخروج»: لما التطبيق يتخبّى بنقفل، ولما يرجع بنطلب الرقم السري فورًا (قبل كده كان الرقم بيتطلب في أول تنقل بس).
   document.addEventListener("visibilitychange", function () {

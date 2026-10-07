@@ -5,8 +5,8 @@ const { webcrypto } = require('crypto');
 const data = new Map();
 const localStorage = { getItem: k => data.has(k) ? data.get(k) : null, setItem: (k, v) => data.set(k, String(v)), removeItem: k => data.delete(k) };
 const document = { readyState: 'complete', addEventListener() {}, getElementById() { return null; }, createElement() { return { click() {}, remove() {} }; } };
-const window = { crypto: webcrypto, TextEncoder, TextDecoder };
-const context = vm.createContext({ window, localStorage, document, crypto: webcrypto, TextEncoder, TextDecoder, btoa, atob, navigator: {}, console, URL: { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} }, Blob, confirm: () => true, prompt: () => '', setTimeout, Date, Math, Number, String, Object, Array, JSON, Promise });
+const window = { crypto: webcrypto, TextEncoder, TextDecoder, WFStorage: localStorage };
+const context = vm.createContext({ window, localStorage, WFStorage: localStorage, document, crypto: webcrypto, TextEncoder, TextDecoder, btoa, atob, navigator: {}, console, URL: { createObjectURL() { return 'blob:test'; }, revokeObjectURL() {} }, Blob, confirm: () => true, prompt: () => '', setTimeout, Date, Math, Number, String, Object, Array, JSON, Promise });
 vm.runInContext(fs.readFileSync('app-data-management.js', 'utf8'), context, { filename: 'app-data-management.js' });
 const now = Date.now();
 (async () => {

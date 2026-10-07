@@ -11,7 +11,7 @@ assert(bulk.includes('await putAsync(K.p,all)'),'bulk price update must await th
 assert(requests.includes('commitStorageAsync({[K.p]:newStock,[K.m]:moves,[K.r]'),'request stock update must await one multi-key save');
 assert(backup.includes('captureLocalDataState()'),'backup restore must capture local state');
 assert(backup.includes('restoreLocalDataState(oldState)'),'backup restore must rollback local state');
-assert(backup.includes('localStorage.removeItem("wf_notif_enabled")'),'empty notification setting must restore exactly');
+assert(backup.includes('WFStorage.removeItem("wf_notif_enabled")'),'empty notification setting must restore exactly');
 assert(compressor.includes('function compressorKey'),'compressor codes must compare normalized brand/model keys');
 assert(compressor.includes('duplicateBase')&&compressor.includes('duplicateCustom'),'manual compressor duplicates must be rejected');
 assert(compressor.includes('const seen = new Set()'),'compressor display must suppress duplicate keys');

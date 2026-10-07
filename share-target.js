@@ -41,7 +41,7 @@ function findOpenRequestForCustomer(customerId) {
   return arr(K.r).find(x => x.customerId === customerId && x.status !== "مكتمل" && x.status !== "ملغي") || null;
 }
 
-// بيحفظ المكالمة كـ"معلّقة" في localStorage فور وصولها، قبل حتى ما نملى
+// بيحفظ المكالمة كـ"معلّقة" في WFStorage فور وصولها، قبل حتى ما نملى
 // الفورم — عشان لو المستخدم قفل الصفحة أو الموبايل من غير ما يكمّل،
 // المكالمة تفضل موجودة وميضيعش فيها حاجة (يقدر يكملها بعدين من لوحة
 // التحكم عن طريق pending-calls.html).

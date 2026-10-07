@@ -5,7 +5,7 @@ function makeEnv(){
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{if(failWrites)throw new Error('quota');store[k]=String(v)},removeItem:k=>delete store[k]};
   const els={};
   const document={addEventListener:()=>{},getElementById:i=>els[i]||null,querySelector:()=>null};
-  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const location={href:'',search:''};
   const context={window,localStorage,document,location,crypto:window.crypto,URLSearchParams,console:{log(){},error(){}},alert:m=>alerts.push(String(m)),confirm:()=>true,prompt:()=>answers.shift(),
     renderTasks:()=>{},renderCustomers:()=>{},renderDevices:()=>{}};

@@ -10,7 +10,8 @@ function makeEnv(){
   const body={children:[],appendChild(c){this.children.push(c)}};
   const document={hidden:false,body,documentElement:body,addEventListener:(t,f)=>{(handlers[t]=handlers[t]||[]).push(f)},getElementById:()=>null,createElement:()=>({style:{},setAttribute(){},appendChild(){}})};
   const window={addEventListener:(t,f)=>{(wHandlers[t]=wHandlers[t]||[]).push(f)}};
-  const ctx={window,document,localStorage:mkStorage(),sessionStorage:mkStorage(),crypto:require('crypto').webcrypto,Date:FakeDate,Math,JSON,Number,String,Uint32Array,
+  const localStorage=mkStorage();window.WFStorage=localStorage;
+  const ctx={window,document,localStorage,WFStorage:localStorage,sessionStorage:mkStorage(),crypto:require('crypto').webcrypto,Date:FakeDate,Math,JSON,Number,String,Uint32Array,
     setTimeout:(f,ms)=>{timers.push({f,ms});return timers.length},clearTimeout:()=>{},
     alert:m=>alerts.push(String(m)),prompt:m=>{prompts.push(m);return answers.length?answers.shift():null}};
   vm.runInNewContext(src,ctx,{filename:'app-lock.js'});

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8"><script src="white-label-config.js"></script><script src="white-label.js"></script>
+<meta charset="utf-8"><script src="workshop-idb.js"></script><script src="white-label-config.js"></script><script src="white-label.js"></script>
 <script src="./vendor/firebase-app-compat.js" defer></script>
 <script src="./vendor/firebase-auth-compat.js" defer></script>
 <script src="./vendor/firebase-firestore-compat.js" defer></script>
@@ -162,7 +162,7 @@
 </div>
 </section>
 </main>
-<script src="workshop-idb.js" defer></script><script src="shared-data.js" defer></script>
+<script src="shared-data.js" defer></script>
 <script>
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
@@ -316,7 +316,7 @@ var LK={},SEC=null,busy=false,TPL_KEY="wf_portal_invite_tpl";
 var TPL_DEF="أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة "+(window.WL?WL.name():"الورشة الفنية")+":\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
 function normPhone(s){var d=String(s||"").replace(/[٠-٩]/g,function(x){return x.charCodeAt(0)-1632}).replace(/[۰-۹]/g,function(x){return x.charCodeAt(0)-1776}).replace(/\D/g,"");if(d.indexOf("0020")===0)d=d.slice(4);if(d.length===12&&d.indexOf("20")===0)d="0"+d.slice(2);if(d.length===10&&d[0]==="1")d="0"+d;return/^01[0125]\d{8}$/.test(d)?d:""}
 function portalUrl(){return new URL("portal.html",location.href).href}
-function tpl(){try{return localStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
+function tpl(){try{return WFStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
 var TEMP={};function tempPw(){var x=new Uint32Array(1);(window.crypto||window.msCrypto).getRandomValues(x);return String(10000000+(x[0]%90000000))}
 function inviteText(c){var p=normPhone(c.phone),l=LK[c.id],pw=(l&&l.mustChange===false)?"":TEMP[c.id]?"كلمة المرور المؤقتة: "+TEMP[c.id]+" (هتطلب منك تغييرها أول دخول).":(l&&l.pwKind)?"":"كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";return $("acTpl").value.replace(/\{الاسم\}/g,c.name||"").replace(/\{الرابط\}/g,portalUrl()).replace(/\{الرقم\}/g,p).replace(/\{كلمة_المرور\}/g,pw).trim()}
 function waHref(c){return"https://wa.me/2"+normPhone(c.phone)+"?text="+encodeURIComponent(inviteText(c))}
@@ -341,7 +341,7 @@ ACT.actAll=function(){actList(acRows().filter(function(r){return r.s[0]==="none"
 ACT.copyLink=function(){var l=$("acLink");l.select();try{navigator.clipboard.writeText(l.value)}catch(e){document.execCommand("copy")}};
 ACT.addWaTpl=addWaTpl;
 $("acLink").value=portalUrl();$("acTpl").value=tpl();
-$("acTpl").addEventListener("input",function(){try{localStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
+$("acTpl").addEventListener("input",function(){try{WFStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
 $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
 /* ---- الشريط الإعلاني ---- */
 var TKD=null,tkDirty=false,tkT=null,PTK=null;

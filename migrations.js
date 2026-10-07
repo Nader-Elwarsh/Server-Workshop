@@ -11,7 +11,7 @@
 (function (window) {
   "use strict";
 
-  // ترحيل 1 → 2: نقل صور الأجهزة والقطع من base64 جوه localStorage
+  // ترحيل 1 → 2: نقل صور الأجهزة والقطع من base64 جوه WFStorage
   // إلى IndexedDB (image-store.js)، والاستبدال بمرجع قصير بدل الصورة
   // نفسها. راجع شرح السبب في أعلى image-store.js.
   async function migrate1to2() {
@@ -183,15 +183,15 @@
     if (migrationPromise) return migrationPromise;
     migrationPromise = (async () => {
       // أولًا ننقل المجموعات الأساسية إلى قاعدة IndexedDB. نحتفظ بنسخة
-      // localStorage كاملة كجسر للتوافق؛ وفشل IndexedDB لا يمنع فتح النظام.
+      // WFStorage كاملة كجسر للتوافق؛ وفشل IndexedDB لا يمنع فتح النظام.
       if (window.WorkshopDB && typeof window.WorkshopDB.initialize === "function") {
         try {
           const collections = [window.K.c, window.K.d, window.K.r, window.K.p, window.K.m, window.K.wtx];
           await window.WorkshopDB.initialize(collections);
           window.WorkshopDBStatus = { ready: true, collections };
         } catch (e) {
-          window.WorkshopDBStatus = { ready: false, fallback: "localStorage", error: e };
-          console.warn("[migrations] تعذر تهيئة IndexedDB؛ سيستمر النظام مؤقتًا على localStorage", e);
+          window.WorkshopDBStatus = { ready: false, fallback: "WFStorage", error: e };
+          console.warn("[migrations] تعذر تهيئة IndexedDB؛ سيستمر النظام مؤقتًا على WFStorage", e);
         }
       }
       let v = window.getSchemaVersion ? window.getSchemaVersion() : 1;

@@ -2,6 +2,7 @@ const fs=require('fs'),path=require('path'),assert=require('assert');
 const root=__dirname;
 const read=n=>fs.readFileSync(path.join(root,n),'utf8');
 const htmlFiles=fs.readdirSync(root).filter(n=>n.endsWith('.html'));
+const jsFiles=fs.readdirSync(root).filter(n=>n.endsWith('.js')&&!n.endsWith('-tests.js')&&!['project-quality-check.js','critical-path-smoke.js'].includes(n));
 assert(fs.existsSync(path.join(root,'PROJECT_STRUCTURE.md')),'project structure document is required');
 assert(htmlFiles.includes('compcodes.html'),'compressor page must exist');
 for(const name of htmlFiles){const s=read(name);if(name!=='compcodes.html')assert(!s.includes('compressor-db.js'),'compressor database must not load on unrelated pages')}
@@ -31,7 +32,7 @@ for(const name of htmlFiles){
   const external=[...s.matchAll(/<script\s+src="([^"]+)"([^>]*)><\/script>/g)];
   for(const m of external){
     // white-label*.js بيتحمّل متزامن عمدًا في <head> عشان ألوان وهوية النسخة تتطبّق قبل أول رسم للصفحة (من غير وميض).
-    if(m[1]==='app-lock.js'||m[1]==='white-label.js'||m[1]==='white-label-config.js') continue;
+    if(m[1]==='app-lock.js'||m[1]==='white-label.js'||m[1]==='white-label-config.js'||m[1]==='workshop-idb.js') continue;
     assert(/\bdefer\b/.test(m[2]),`${name}: external script ${m[1]} should use defer`);
   }
 }
@@ -43,6 +44,11 @@ for(const name of htmlFiles){
   const s=read(name);
   for(const m of s.matchAll(/(?:src|href)="([\w.\-]+\.(?:js|css))(?:\?[^"]*)?"/g))referenced.add(m[1]);
 }
+for(const name of htmlFiles){if(name==='browser-interactive.html')continue;const s=read(name);assert(s.includes('<script src="workshop-idb.js"></script>'),`${name}: IndexedDB storage bootstrap must load synchronously`);}
+const directLegacy=htmlFiles.filter(name=>/\blocalStorage\s*\.\s*(?:getItem|setItem|removeItem|clear)\s*\(/.test(read(name)));
+assert.strictEqual(directLegacy.length,0,`HTML must not access browser localStorage directly: ${directLegacy.join(', ')}`);
+const directLegacyJs=jsFiles.filter(name=>name!=='workshop-idb.js'&&/\blocalStorage\s*\.\s*(?:getItem|setItem|removeItem|clear)\s*\(/.test(read(name)));
+assert.strictEqual(directLegacyJs.length,0,`Production JavaScript must not access browser localStorage directly: ${directLegacyJs.join(', ')}`);
 const uncached=[...referenced].filter(f=>!cached.has(f));
 assert.strictEqual(uncached.length,0,`file(s) loaded by an HTML page but missing from service-worker.js offline cache: ${uncached.join(', ')}`);
 console.log(`project-quality-check: PASS (${htmlFiles.length} HTML pages; lazy compressor DB verified)`);

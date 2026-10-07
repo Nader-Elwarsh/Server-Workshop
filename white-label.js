@@ -8,7 +8,7 @@
 
    مصادر الإعدادات بالترتيب (الأحدث بيغلب):
      1) white-label-config.js  ← هوية النسخة الثابتة (للبيع/التأجير)
-     2) localStorage (wf_wl_v1) ← اللي اتضبط من لوحة «هوية النظام» على الجهاز
+     2) WFStorage (wf_wl_v1) ← اللي اتضبط من لوحة «هوية النظام» على الجهاز
      3) السحابة portal/branding ← لو اتنشرت من لوحة الهوية، بتنزل لكل الأجهزة والعملاء
 
    لو مفيش أي إعداد: المحرك مابيعملش حاجة خالص والنظام يفضل بشكله الأصلي. */
@@ -168,11 +168,11 @@
   var STATIC = window.WL_STATIC && typeof window.WL_STATIC === "object" ? window.WL_STATIC : {};
   var staticCfg = clean(STATIC.cfg);
   function loadLocal() {
-    try { return clean(JSON.parse(localStorage.getItem(KEY) || "{}")); } catch (e) { return clean({}); }
+    try { return clean(JSON.parse(WFStorage.getItem(KEY) || "{}")); } catch (e) { return clean({}); }
   }
   var local = loadLocal();
   var eff = merge(staticCfg, local);
-  function saveLocal() { try { localStorage.setItem(KEY, JSON.stringify(local)); return true; } catch (e) { return false; } }
+  function saveLocal() { try { WFStorage.setItem(KEY, JSON.stringify(local)); return true; } catch (e) { return false; } }
   function recompute() { eff = merge(staticCfg, local); }
   function dirty() { return JSON.stringify(eff) !== JSON.stringify(clean({})); }
 
@@ -389,7 +389,7 @@
     var o; try { o = JSON.parse(json); } catch (e) { return Promise.resolve(false); }
     return waitFor(brandReady, 12000).then(function (ok) {
       if (!ok || !window.WFBrand.importData) return false;
-      return window.WFBrand.importData(o).then(function () { try { localStorage.setItem(APPLIED, String(stamp)); } catch (e) {} return true; });
+      return window.WFBrand.importData(o).then(function () { try { WFStorage.setItem(APPLIED, String(stamp)); } catch (e) {} return true; });
     });
   }
   function adoptRemote(r) {
@@ -404,10 +404,10 @@
       if (!ok) throw new Error("Firebase مش جاهز — لازم تكون أونلاين");
       return ref().get();
     }).then(function (d) {
-      try { localStorage.setItem(LAST_PULL, String(Date.now())); } catch (e) {}
+      try { WFStorage.setItem(LAST_PULL, String(Date.now())); } catch (e) {}
       if (!d.exists) return { exists: false, changed: false };
       var r = d.data() || {}, cur = local.updatedAt || 0;
-      var brandApplied = 0; try { brandApplied = Number(localStorage.getItem(APPLIED) || 0); } catch (e) {}
+      var brandApplied = 0; try { brandApplied = Number(WFStorage.getItem(APPLIED) || 0); } catch (e) {}
       if (!opts.force && !(Number(r.updatedAt) > cur)) {
         if (r.brand && Number(r.updatedAt) > brandApplied && Number(r.updatedAt) >= cur) return adoptBrand(r.brand, r.updatedAt).then(function () { return { exists: true, changed: true }; });
         return { exists: true, changed: false };
@@ -455,19 +455,19 @@
       var ts = Date.now();
       local.updatedAt = ts; saveLocal(); recompute();
       return ref().set({ cfg: JSON.stringify(clean(local)), brand: bj, updatedAt: ts }).then(function () {
-        try { localStorage.setItem(APPLIED, String(ts)); } catch (e) {}
+        try { WFStorage.setItem(APPLIED, String(ts)); } catch (e) {}
         return { warn: warn };
       });
     });
   }
   function autoPull() {
     if (!window.firebase) return; // الصفحة دي مفيهاش Firebase
-    var last = 0; try { last = Number(localStorage.getItem(LAST_PULL) || 0); } catch (e) {}
+    var last = 0; try { last = Number(WFStorage.getItem(LAST_PULL) || 0); } catch (e) {}
     if (Date.now() - last < 5 * 60 * 1000) return; // مرة كل 5 دقايق كحد أقصى (توفير قراءات)
     cloudPull({ wait: 25000 })["catch"](function () {});
     waitFor(fbReady, 25000).then(function (ok) {
       if (!ok) return;
-      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { try { localStorage.removeItem(LAST_PULL); } catch (e) {} cloudPull({ wait: 3000 })["catch"](function () {}); } }); } catch (e) {}
+      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { try { WFStorage.removeItem(LAST_PULL); } catch (e) {} cloudPull({ wait: 3000 })["catch"](function () {}); } }); } catch (e) {}
     });
   }
 
@@ -475,11 +475,11 @@
   function applyStaticBrand() {
     if (!STATIC.brand) return;
     var stamp = String(STATIC.version || "1"), k = "wf_wl_static_applied";
-    var done = ""; try { done = localStorage.getItem(k) || ""; } catch (e) {}
+    var done = ""; try { done = WFStorage.getItem(k) || ""; } catch (e) {}
     if (done === stamp) return;
     waitFor(brandReady, 12000).then(function (ok) {
       if (!ok || !window.WFBrand.importData) return;
-      WFBrand.importData(STATIC.brand).then(function () { try { localStorage.setItem(k, stamp); } catch (e) {} })["catch"](function () {});
+      WFBrand.importData(STATIC.brand).then(function () { try { WFStorage.setItem(k, stamp); } catch (e) {} })["catch"](function () {});
     });
   }
 
@@ -648,7 +648,7 @@
     mutate: mutate,
     onChange: function (fn) { listeners.push(fn); },
     mix: mix, contrast: contrast, onColor: onColor,
-    reset: function () { local = clean({}); try { localStorage.removeItem(KEY); } catch (e) {} recompute(); render(); },
+    reset: function () { local = clean({}); try { WFStorage.removeItem(KEY); } catch (e) {} recompute(); render(); },
     cloudPull: cloudPull, cloudPush: cloudPush,
     exportConfigFile: exportConfigFile, exportJson: exportJson, importJson: importJson
   };
@@ -656,9 +656,7 @@
   /* ---------- تشغيل ---------- */
   applyTheme();            // فورًا قبل رسم الصفحة (مفيش وميض)
   P = pairs(); pKey = JSON.stringify(P);
-  function ready() { applyTheme(); refreshText(true); applyContent(); applyManifest(); applyStaticBrand(); autoPull(); }
+  function ready() { Promise.resolve(window.WFStorageReady).then(function () { local = loadLocal(); recompute(); applyTheme(); refreshText(true); applyContent(); applyManifest(); applyStaticBrand(); autoPull(); }); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready); else ready();
-  window.addEventListener("storage", function (e) { // تعديل من تبويب تاني
-    if (e.key === KEY) { local = loadLocal(); recompute(); render(); }
-  });
+  if (window.WFStorage && window.WFStorage.subscribe) window.WFStorage.subscribe(function (key) { if (key === KEY) { local = loadLocal(); recompute(); render(); } });
 })();

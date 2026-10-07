@@ -8,7 +8,7 @@ const localStorage = {
   removeItem(k) { store.delete(k); },
 };
 const document = { addEventListener() {}, getElementById() { return null; }, querySelector() { return null; } };
-const window = { addEventListener() {}, auditLog() {} };
+const window = { addEventListener() {}, auditLog() {}, WFStorage: localStorage };
 const alerts = [];
 const controls = {};
 document.getElementById = id => controls[id] || null;

@@ -6,7 +6,7 @@
    فاضي = "كل الماركات") + وصف قصير + السبب المحتمل + خطوات الفحص/الحل.
 
    المشاركة مع فنيين تانيين: كل فني بيثبّت نفس التطبيق على جهازه وعنده
-   نسخته الخاصة من localStorage، فمفيش مزامنة تلقائية بين الأجهزة. الحل
+   نسخته الخاصة من WFStorage، فمفيش مزامنة تلقائية بين الأجهزة. الحل
    العملي: تصدير الأكواد بس (exportFaultCodesOnly) كملف JSON صغير منفصل
    عن النسخة الاحتياطية الكاملة (اللي فيها بيانات عملاء حساسة)، والفني
    التاني يستورده (importFaultCodesFile) وبيتضاف/يتدمج مع نسخته هو من
@@ -64,7 +64,7 @@ function collectFaultFormData(){
 function saveFaultCodesRecords(records){
   if(!saveJSONSafe(K.fc,records))return false;
   // لا ننتظر IndexedDB حتى لا نؤخر الواجهة أو نكسر fallback المحلي.
-  try{window.FaultCodesIDB?.replace(records)}catch(_){/* localStorage هو fallback */}
+  try{window.FaultCodesIDB?.replace(records)}catch(_){/* WFStorage هو fallback */}
   return true;
 }
 function persistFaultRecord(formData,existing){
@@ -144,7 +144,7 @@ function deleteFilteredFaultCodes(){
    إضافة دفعة أكواد مرة واحدة (لصق نص): سطر لكل كود بالشكل
    "الكود | وصف قصير | السبب | الحل | ملاحظة" لنفس النوع/الماركة
    المختارين فوق. بيوري معاينة (وبيوضح أي سطر ناقص أو مكرر) قبل ما
-   يتحفظ أي حاجة فعليًا في localStorage — التأكيد خطوة منفصلة.
+   يتحفظ أي حاجة فعليًا في WFStorage — التأكيد خطوة منفصلة.
 --------------------------------------------------------------------- */
 function parseBulkFaultLines(text){
   return String(text||"").split("\n").map(l=>l.trim()).filter(Boolean).map(line=>{

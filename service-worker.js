@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v14-177-offline-indexeddb-inventory-returns";
+const CACHE_NAME = "workshop-v14-178-indexeddb-final-storage";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -261,7 +261,7 @@ self.addEventListener("fetch", event => {
    شغالة فعليًا على أندرويد/كروم لو التطبيق متثبت على الشاشة الرئيسية،
    والمتصفح هو اللي بيقرر التوقيت الفعلي (مش مضمون بالظبط، ومش مدعوم
    خالص على آيفون Safari). البيانات بتوصل من IndexedDB (notif-shared.js)
-   لأن الـ Service Worker مايقدرش يقرأ localStorage مباشرة.
+   لأن الـ Service Worker مايقدرش يقرأ WFStorage مباشرة.
 --------------------------------------------------------------------- */
 function localDayKey(value) {
   const d = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)

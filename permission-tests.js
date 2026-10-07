@@ -29,7 +29,7 @@ const document = {
   addEventListener(type, fn) { (docListeners[type] ||= []).push(fn); }
 };
 const context = {
-  document, localStorage, sessionStorage, Uint32Array,
+  document, localStorage, WFStorage: localStorage, sessionStorage, Uint32Array,
   crypto: { getRandomValues(target) { target.set([101, 202, 303]); return target; } },
   prompt() { return promptAnswers.length ? promptAnswers.shift() : null; },
   alert(message) { alerts.push(String(message)); },

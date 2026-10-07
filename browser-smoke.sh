@@ -16,11 +16,14 @@ localStorage.setItem("wf_r", JSON.stringify([{id:"r1",customerId:"c1",deviceId:"
 localStorage.setItem("wf_p", JSON.stringify([{id:"p1",name:"Part",category:"Cooling",qty:4}]));
 localStorage.setItem("wf_m", JSON.stringify([{id:"m1",partId:"p1",type:"توريد",qty:4,at:"2026-10-07T00:00:00.000Z"}]));
 localStorage.setItem("wf_wallet_tx", JSON.stringify([{id:"w1",wallet:"Cash",refKey:"order-final-r1",deleted:false,amount:20}]));
+localStorage.setItem("wf_theme", "dark");
 </script>
 <script src="workshop-idb.js"></script>
 <script src="shared-data.js"></script>
 <script>
 WorkshopDBReady.then(async function () {
+  if (localStorage.length !== 0) throw Error("legacy localStorage should be cleared after a successful import");
+  if (WFStorage.getItem("wf_theme") !== "dark") throw Error("preference key-value migration");
   if (!await WorkshopDB.readCollection("wf_c").then(x => x.length === 1 && x[0].id === "c1")) throw Error("legacy import");
   await WorkshopDB.transaction(["wf_c", "wf_d", "wf_r", "wf_p", "wf_m", "wf_wallet_tx"], function (draft) {
     draft.wf_c[0].name = "Updated customer";
@@ -38,8 +41,8 @@ WorkshopDBReady.then(async function () {
     WorkshopDB.queryIndex("wf_m", "partId", "p1"), WorkshopDB.queryIndex("wf_wallet_tx", "wallet", "Cash")
   ]);
   if (customer.name !== "Updated customer" || devices.length !== 2 || requests[0].status !== "closed" || indexed.length !== 2 || parts[0].qty !== 7 || moves.length !== 2 || moveIndex.length !== 2 || walletTx[0].deleted !== true || walletIndex.length !== 1) throw Error("transaction/index");
-  if (JSON.parse(localStorage.getItem("wf_c"))[0].name !== "Updated customer") throw Error("legacy mirror");
-  nativeSetItem.call(localStorage, "wf_c", JSON.stringify([{id:"c1",name:"stale legacy copy"}]));
+  if (JSON.parse(WFStorage.getItem("wf_c"))[0].name !== "Updated customer") throw Error("durable IndexedDB key-value mirror");
+  nativeSetItem.call(localStorage, "orphaned-after-migration", "ignored");
   if (arr(K.c)[0].name !== "Updated customer" || arrCached(K.d).length !== 2) throw Error("shared-data must read the hydrated IDB snapshot");
   const saved = await commitStorageAsync({
     [K.c]: [{id:"c1",name:"Async customer"}],
@@ -51,6 +54,7 @@ WorkshopDBReady.then(async function () {
   });
   const [durableCustomer,durablePart,durableMove,durableWallet] = await Promise.all([WorkshopDB.getById("wf_c", "c1"),WorkshopDB.getById("wf_p","p1"),WorkshopDB.getById("wf_m","m1"),WorkshopDB.getById("wf_wallet_tx","w1")]);
   if (!saved || durableCustomer.name !== "Async customer" || durablePart.qty!==11 || durableMove.qty!==11 || durableWallet.amount!==35 || arr(K.c)[0].name !== "Async customer" || arr(K.p)[0].qty!==11) throw Error("awaited async commit");
+  if (localStorage.getItem("wf_c") !== null || JSON.parse(WFStorage.getItem("wf_c"))[0].name !== "Async customer") throw Error("legacy storage must not be used after import");
   document.body.textContent = "INDEXEDDB_SMOKE_PASS";
 }).catch(function (error) { document.body.textContent = "INDEXEDDB_SMOKE_FAIL: " + error.message; });
 </script>
@@ -82,4 +86,4 @@ chromium --headless --no-sandbox --disable-gpu --virtual-time-budget=6000 --dump
 grep -q "INDEXEDDB_SMOKE_PASS" "$TMP/indexeddb.html"
 grep -vE 'org.freedesktop.DBus|UPower|SharedImageManager::ProduceMemory.*non-existent mailbox' "$TMP/indexeddb.err" >"$TMP/indexeddb.filtered.err" || true
 test ! -s "$TMP/indexeddb.filtered.err" || { cat "$TMP/indexeddb.filtered.err" >&2; exit 1; }
-echo "browser-smoke: PASS (customer portal, six IndexedDB stores, atomic inventory/return transaction and compatibility mirror)"
+echo "browser-smoke: PASS (customer portal, IndexedDB key-value migration, six operational stores, atomic transaction, and legacy-storage removal)"

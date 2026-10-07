@@ -6,7 +6,7 @@ function make(){
   const store={},els={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener(){},getElementById:i=>els[i]||null,querySelector:()=>null,querySelectorAll:()=>[]};
-  const window={localStorage,document,crypto:{randomUUID:()=>'id-'+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>'id-'+Math.random().toString(36).slice(2)}};
   const ctx={window,localStorage,document,crypto:window.crypto,console,alert(){},confirm(){return true},setTimeout,Date,URLSearchParams,location:{search:'',href:'',reload(){}}};
   vm.createContext(ctx);
   const run=f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),ctx,{filename:f});
@@ -74,7 +74,7 @@ function makeReturn(confirms,prompts,o){
   const store={},els={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener(){},getElementById:i=>els[i]||null,querySelector:()=>null,querySelectorAll:()=>[]};
-  const window={localStorage,document,crypto:{randomUUID:()=>'id-'+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>'id-'+Math.random().toString(36).slice(2)}};
   const ctx={window,localStorage,document,crypto:window.crypto,console,alert(m){ctx.__alerts.push(m)},confirm(){return confirms.length?confirms.shift():true},prompt(){return prompts.length?prompts.shift():''},__alerts:[],setTimeout,Date,URLSearchParams,location:{search:'',href:'',reload(){}}};
   vm.createContext(ctx);
   const run=f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),ctx,{filename:f});

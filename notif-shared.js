@@ -1,5 +1,5 @@
 /* مخزن صغير (IndexedDB) يشترك فيه الصفحة و الـ Service Worker معًا،
-   لأن الـ Service Worker (اللي بيشتغل في الخلفية) مايقدرش يوصل لـ localStorage
+   لأن الـ Service Worker (اللي بيشتغل في الخلفية) مايقدرش يوصل لـ WFStorage
    العادي؛ فبنستخدم IndexedDB كجسر بسيط بين الاتنين خاص بملخص الإشعارات بس
    (مش بديل لتخزين بيانات النظام الأساسية). */
 const NOTIF_DB_NAME = "workshopNotifDB";

@@ -1,4 +1,4 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><script src="workshop-idb.js"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>تشخيص النظام</title>
 <style>
@@ -40,7 +40,7 @@
 
 <!-- نفس ملفات settings.html بالظبط وبنفس الترتيب -->
 <script src="notif-shared.js" defer></script>
-<script src="workshop-idb.js" defer></script><script src="shared-data.js" defer></script>
+<script src="shared-data.js" defer></script>
 <script src="audit-log.js" defer></script>
 <script src="global-search.js" defer></script>
 <script src="bottom-nav.js" defer></script>
@@ -90,7 +90,7 @@
       out += reportLine('renderAutomaticBackupControls رمت خطأ وقت التشغيل', false, e.message);
     }
     try {
-      var val = localStorage.getItem('wf_auto_backup_enabled');
+      var val = WFStorage.getItem('wf_auto_backup_enabled');
       out += reportLine('قيمة wf_auto_backup_enabled المحفوظة عندك دلوقتي', true, val === null ? '(فاضية/null — يعني أول مرة)' : val);
     } catch(e) {}
     document.getElementById('results').innerHTML = out;

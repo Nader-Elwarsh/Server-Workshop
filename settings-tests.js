@@ -5,7 +5,7 @@ function makeEnv(){
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const els={};
   const document={addEventListener:()=>{},getElementById:i=>els[i]||null,querySelector:()=>null,querySelectorAll:()=>[]};
-  const window={localStorage,document,addEventListener(){},removeEventListener(){},crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,addEventListener(){},removeEventListener(){},crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const calls={requirePin:0,remove:0};
   window.WFLock={isSet:()=>true,verify:()=>{throw new Error('verify() must not be called directly (bypasses the attempt limiter)')},
     requirePin:()=>{calls.requirePin++;return pinOk},removePin:()=>{calls.remove++},setPin(){},unlock(){}};

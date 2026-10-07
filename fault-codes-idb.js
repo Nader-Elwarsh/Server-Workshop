@@ -2,8 +2,8 @@
    أكواد الأعطال — طبقة IndexedDB تجريبية آمنة
    ---------------------------------------------------------
    IndexedDB هو المصدر المحلي الأساسي لهذه المجموعة فقط.
-   localStorage يظل نسخة توافق ومصدر مزامنة Firebase مؤقتًا.
-   إذا تعذر IndexedDB يستمر النظام بالعمل من localStorage بدون فقد بيانات.
+   WFStorage يظل نسخة توافق ومصدر مزامنة Firebase مؤقتًا.
+   إذا تعذر IndexedDB يستمر النظام بالعمل من WFStorage بدون فقد بيانات.
    ========================================================= */
 (function (window) {
   "use strict";
@@ -30,7 +30,7 @@
 
   function localRecords() {
     try {
-      const value = JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]");
+      const value = JSON.parse(window.WFStorage.getItem(LOCAL_KEY) || "[]");
       return Array.isArray(value) ? value : [];
     } catch (_) { return []; }
   }
@@ -71,21 +71,21 @@
     try {
       const records = await all();
       const local = localRecords();
-      // أول تشغيل: ننسخ البيانات القديمة إلى IndexedDB بدون حذف نسخة localStorage.
+      // أول تشغيل: ننسخ البيانات القديمة إلى IndexedDB بدون حذف نسخة WFStorage.
       if (!records.length && local.length) {
         await replace(local);
         return local;
       }
-      // بعد التهيئة: IndexedDB هي المصدر المحلي لهذه المجموعة، وlocalStorage ظل توافق.
+      // بعد التهيئة: IndexedDB هي المصدر المحلي لهذه المجموعة، وWFStorage ظل توافق.
       if (records.length) {
-        window.localStorage.setItem(LOCAL_KEY, JSON.stringify(records));
+        window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records));
         return records;
       }
       // لا توجد بيانات في أي مكان؛ نعلّم المخزن أنه مهيأ.
       await replace([]);
       return [];
     } catch (error) {
-      console.warn("[FaultCodesIDB] fallback إلى localStorage:", error);
+      console.warn("[FaultCodesIDB] fallback إلى WFStorage:", error);
       return localRecords();
     }
   }

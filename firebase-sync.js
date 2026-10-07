@@ -1,9 +1,10 @@
 /* ربط الورشة الفنية بنفس قاعدة Firebase بتاعة الموقع الحالي، مع دعم الأوفلاين.
-   - التطبيق بيشتغل على localStorage، وكل تعديل بيتعكس على نفس الكولكشنز (customers, devices, requests, ...).
+   - التطبيق بيشتغل على WFStorage، وكل تعديل بيتعكس على نفس الكولكشنز (customers, devices, requests, ...).
    - أوفلاين: التعديلات (والصور) بتفضل معلّقة على الجهاز وبتترفع لوحدها أول ما النت يرجع، حتى لو قفلت الصفحة.
    - أي دمج بين الجهاز والسحابة بيحافظ على البيانات: بنقارن بآخر حالة اتزامنت، فمفيش سجل بيتمسح من السحابة إلا لو انت مسحته. */
-(function () {
+(async function () {
   "use strict";
+  if (window.WFStorageReady) await window.WFStorageReady;
   if (typeof firebase === "undefined") {
     /*
        وضع محلي حقيقي: فشل تحميل Firebase لا يعني فشل قاعدة البيانات المحلية.
@@ -13,9 +14,9 @@
     var localOnlyPath = /login\.html$/.test(location.pathname);
     var localOnlyUid = null, localOnlyAt = 0, localOnlyHydrated = null;
     try {
-      localOnlyUid = localStorage.getItem("wf_is_staff_uid");
-      localOnlyAt = +(localStorage.getItem("wf_staff_ok_at") || 0);
-      localOnlyHydrated = localStorage.getItem("wf_cloud_hydrated_uid");
+      localOnlyUid = WFStorage.getItem("wf_is_staff_uid");
+      localOnlyAt = +(WFStorage.getItem("wf_staff_ok_at") || 0);
+      localOnlyHydrated = WFStorage.getItem("wf_cloud_hydrated_uid");
     } catch (e) {}
     var localOnlyAllowed = !!localOnlyUid && localOnlyUid === localOnlyHydrated &&
       !!localOnlyAt && Date.now() - localOnlyAt < 12 * 3600 * 1000;
@@ -46,7 +47,7 @@
   var ALL = Object.keys(COLS).concat(EXTRA, [SETTINGS]);
   var HYD = "wf_cloud_hydrated_uid", BASEKEY = "wf_syncbase", FULL = "wf_last_full_sync", SEEN = "wf_meta_seen";
   var isLogin = /login\.html$/.test(location.pathname);
-  var P = Storage.prototype, ls = window.localStorage, origSet = P.setItem, origRemove = P.removeItem;
+  var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
   var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
   var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
@@ -87,8 +88,7 @@
   function withTimeout(p) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, TIMEOUT); })]); }
   function online() { return navigator.onLine !== false && !!db; }
 
-  P.setItem = function (k, v) { origSet.call(this, k, v); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
-  P.removeItem = function (k) { origRemove.call(this, k); if (this === ls && ready && !applying && ALL.indexOf(k) > -1) queue(k); };
+  ls.subscribe(function (k) { if (ready && !applying && ALL.indexOf(k) > -1) queue(k); });
 
   /* ---------- الرفع ---------- */
   function queue(k) { clearTimeout(timers[k]); timers[k] = setTimeout(function () { delete timers[k]; push(k, true); }, 700); badge(); }

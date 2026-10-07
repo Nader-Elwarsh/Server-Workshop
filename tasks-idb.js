@@ -1,6 +1,6 @@
 /* =========================================================
    المهام — طبقة IndexedDB تجريبية آمنة
-   IndexedDB مصدر محلي للمهام، وlocalStorage نسخة توافق مؤقتة
+   IndexedDB مصدر محلي للمهام، وWFStorage نسخة توافق مؤقتة
    حتى تستمر مزامنة Firebase الحالية بلا تغيير.
    ========================================================= */
 (function (window) {
@@ -27,7 +27,7 @@
   }
   function localRecords() {
     try {
-      const value = JSON.parse(window.localStorage.getItem(LOCAL_KEY) || "[]");
+      const value = JSON.parse(window.WFStorage.getItem(LOCAL_KEY) || "[]");
       return Array.isArray(value) ? value : [];
     } catch (_) { return []; }
   }
@@ -66,13 +66,13 @@
       const local = localRecords();
       if (!records.length && local.length) { await replace(local); return local; }
       if (records.length) {
-        window.localStorage.setItem(LOCAL_KEY, JSON.stringify(records));
+        window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records));
         return records;
       }
       await replace([]);
       return [];
     } catch (error) {
-      console.warn("[TasksIDB] fallback إلى localStorage:", error);
+      console.warn("[TasksIDB] fallback إلى WFStorage:", error);
       return localRecords();
     }
   }

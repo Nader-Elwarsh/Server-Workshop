@@ -4,7 +4,7 @@ function makeEnv(){
   const store={},els={},alerts=[];
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener:()=>{},getElementById:i=>els[i]||null,querySelector:()=>null};
-  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const context={window,localStorage,document,crypto:window.crypto,console,alert:m=>alerts.push(m),confirm:()=>true,
     refreshAllScreens:()=>{},renderParts:()=>{},
     imageToDataURL:()=>new Promise(r=>setTimeout(()=>r('data:image/png;base64,AA'),30)),

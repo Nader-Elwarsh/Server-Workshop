@@ -5,7 +5,7 @@ function makeEnv(){
   const localStorage={getItem:k=>{reads[k]=(reads[k]||0)+1;return k in store?store[k]:null},setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const els={followupList:{innerHTML:''},followupDays:{value:'1'}};
   const document={addEventListener:()=>{},getElementById:i=>els[i]||null,querySelector:()=>null,querySelectorAll:()=>[]};
-  const window={localStorage,document,addEventListener(){},removeEventListener(){},crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,addEventListener(){},removeEventListener(){},crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const context={window,localStorage,document,location:{href:'',search:''},crypto:window.crypto,console:{log(){},error(){},warn(){}},alert(){},confirm:()=>true,prompt:()=>null,setTimeout,clearTimeout,
     contactLinksHtml:()=>'',waNumber:()=>'',localDateKey:d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
   const c=vm.createContext(context);

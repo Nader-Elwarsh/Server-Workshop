@@ -74,7 +74,7 @@
     var arr = window.arr, K = window.K;
     if (typeof arr !== "function" || !K) return results;
     // Use the raw-aware shared cache when available. Search input fires repeatedly,
-    // so parsing every localStorage collection for every keystroke is avoidable.
+    // so parsing every WFStorage collection for every keystroke is avoidable.
     var readRows = typeof window.arrCached === "function" ? window.arrCached : arr;
     var customers = readRows(K.c) || [], devices = readRows(K.d) || [],
       requests = readRows(K.r) || [], parts = readRows(K.p) || [],

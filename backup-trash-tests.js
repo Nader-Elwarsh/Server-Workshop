@@ -4,7 +4,7 @@ function makeEnv(confirmAnswer){
   const store={},alerts=[],confirms=[],downloads=[];
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener:()=>{},getElementById:()=>null,querySelector:()=>null,createElement:()=>({click(){downloads.push(1)},remove(){}}),body:{appendChild(){}}};
-  const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
+  const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const readers=[];let readerMode='load';
   function FileReader(){readers.push(this);this.readAsText=function(f){this.result=f.text;Promise.resolve().then(()=>{if(readerMode==='error')this.onerror({target:{error:new Error('simulated read failure')}});else this.onload()})}}
   const context={window,localStorage,document,location:{href:''},crypto:window.crypto,console:{log(){},error(){},warn(){}},

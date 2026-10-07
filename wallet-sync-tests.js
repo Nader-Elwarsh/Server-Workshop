@@ -2,7 +2,7 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const store={};
 const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
 const document={addEventListener:()=>{},getElementById:()=>null};
-const window={localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random()}};
+const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random()}};
 const context={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true};
 const c=vm.createContext(context);
 vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
