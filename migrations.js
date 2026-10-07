@@ -118,7 +118,7 @@
       id: ref, refKey: ref, legacyExpenseId: e.id || "", manualOverride: true, deleted: false, type: "out",
       amount: +e.amount || 0, wallet: fallbackWallet, category: "مصروف تشغيل",
       subCategory: e.category || "أخرى",
-      date: e.date || (e.createdAt || "").slice(0, 10) || localDateKey(new Date()),
+      date: e.date || (e.createdAt || "").slice(0, 10) || (typeof localDateKey === "function" ? localDateKey(new Date()) : (function (d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })(new Date())),
       time: "00:00", reason: e.category || "مصروف تشغيل", note: e.note || "",
       source: "migrated-expense", createdAt: e.createdAt || new Date().toISOString()
       };

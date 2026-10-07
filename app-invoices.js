@@ -31,6 +31,7 @@ function filterInvoicePartOptions() {
   host.querySelectorAll(".inv-add-new-part").forEach(btn => {
     btn.addEventListener("click", () => {
       const typedName = btn.dataset.newpart;
+      if (typeof openQuickAddPart !== "function") { alert("إضافة صنف جديد متاحة من صفحة المخزن."); return; }
       openQuickAddPart(typedName, {
         anchor: "invPartOptions",
         onCreated: (p) => {

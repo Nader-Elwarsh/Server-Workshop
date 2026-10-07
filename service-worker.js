@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v14-181-theme-flash-backup-race";
+const CACHE_NAME = "workshop-v14-182-review-fixes";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
