@@ -90,7 +90,7 @@ npm run browser-test
 
 - بعض الصفحات القديمة ما زالت تستخدم `onclick` و`innerHTML`، ويجري تحويلها تدريجيًا.
 - المزامنة السحابية تعتمد على إعداد Firebase وقواعد Firestore والاتصال؛ لا تعتبر متاحة إذا لم يتم تحميل SDK أو تسجيل الدخول.
-- رفع الصور إلى Cloudinary يستخدم إعداد الرفع الموجود في المشروع؛ يجب تقييد الحجم والصيغ من إعدادات الـ preset.
+- رفع الصور يمر عبر Firebase Function موثّقة. يلزم إعداد أسرار Cloudinary ونطاقات الاستضافة ونشر `uploadImage`؛ راجع [`SECURE-SYNC-PHASE2.md`](./SECURE-SYNC-PHASE2.md). لا تفعّل/تترك Cloudinary unsigned preset القديم بعد الترحيل.
 
 ## سجل التغييرات
 

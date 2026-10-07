@@ -56,25 +56,28 @@
   }
 
 
-  // رفع أي ملف (صورة/صوت) على Cloudinary بنفس إعداد الموقع القديم. بترجع الرابط أو "" لو فشل.
-  // الحد المحلي ليس بديلًا عن ضبط Cloudinary preset، لكنه يمنع تعليق الواجهة
-  // ورفع ملفات ضخمة بالخطأ عند العمل من الهاتف.
+  // مسار الرفع المركزي: يرسل الملف إلى Firebase Function موثّقة؛ مفتاح Cloudinary السري لا يصل للمتصفح.
   const MAX_REMOTE_UPLOAD_BYTES = 12 * 1024 * 1024;
-  async function imageStoreUploadRemote(dataUrl) {
-    if (!String(dataUrl || "").startsWith("data:") || navigator.onLine === false) return "";
+  async function imageStoreUploadBlob(blob) {
+    if (!blob || !blob.size || blob.size > MAX_REMOTE_UPLOAD_BYTES || navigator.onLine === false) return "";
     try {
-      const blob = await (await fetch(dataUrl)).blob();
-      if (blob.size > MAX_REMOTE_UPLOAD_BYTES) return "";
-      const fd = new FormData(); fd.append("file", blob); fd.append("upload_preset", "workshop_unsigned");
-      const kind = String(dataUrl).startsWith("data:image/") ? "image" : "auto";
-      const r = await fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/" + kind + "/upload", { method: "POST", body: fd });
-      if (!r.ok) return "";
-      const j = await r.json();
-      return j.secure_url || "";
+      const user = window.firebase && firebase.auth && firebase.auth().currentUser;
+      const projectId = window.firebase && firebase.apps && firebase.apps.length ? firebase.app().options.projectId : "";
+      if (!user || !projectId) return "";
+      const token = await user.getIdToken();
+      const endpoint = "https://us-central1-" + encodeURIComponent(projectId) + ".cloudfunctions.net/uploadImage";
+      const response = await fetch(endpoint, { method: "POST", headers: { "Authorization": "Bearer " + token, "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+      if (!response.ok) return "";
+      const result = await response.json();
+      return result && result.secure_url || "";
     } catch (e) { return ""; }
   }
+  async function imageStoreUploadRemote(dataUrl) {
+    if (!String(dataUrl || "").startsWith("data:")) return "";
+    try { return await imageStoreUploadBlob(await (await fetch(dataUrl)).blob()); } catch (e) { return ""; }
+  }
 
-  // لو فيه نت: ارفع فورًا. لو مفيش: خزّن محليًا، ومزامنة السحابة (firebase-sync.js) هترفعه أول ما النت يرجع.
+  // لو فشل الرفع الموثوق أو لم يتوفر الاتصال، نخزّن محليًا وترفعه دورة المزامنة لاحقًا.
   async function imageStoreSave(dataUrl, oldRef) {
     const url = await imageStoreUploadRemote(dataUrl);
     return url || imageStoreSaveLocal(dataUrl, oldRef);
@@ -182,6 +185,7 @@
   window.ImageStore = {
     save: imageStoreSave,
     uploadRemote: imageStoreUploadRemote,
+    uploadBlob: imageStoreUploadBlob,
     keys: imageStoreKeys,
     get: imageStoreGet,
     delete: imageStoreDelete,

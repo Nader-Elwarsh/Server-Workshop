@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v15-sync-status-backoff";
+const CACHE_NAME = "workshop-v16-conflict-secure-upload";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

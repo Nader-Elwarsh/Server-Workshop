@@ -49,8 +49,9 @@
   var isLogin = /login\.html$/.test(location.pathname);
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
-  var RETRY_KEY = "wf_sync_retry_state", retryState = {}, retryTimers = {}, lastSyncAt = +(ls.getItem("wf_last_sync_at") || 0), lastSyncError = ls.getItem("wf_sync_last_error") || "";
+  var RETRY_KEY = "wf_sync_retry_state", CONFLICT_KEY = "wf_sync_conflicts", retryState = {}, retryTimers = {}, conflicts = {}, lastSyncAt = +(ls.getItem("wf_last_sync_at") || 0), lastSyncError = ls.getItem("wf_sync_last_error") || "";
   try { retryState = JSON.parse(ls.getItem(RETRY_KEY) || "{}") || {}; } catch (e) { retryState = {}; }
+  try { conflicts = JSON.parse(ls.getItem(CONFLICT_KEY) || "{}") || {}; } catch (e) { conflicts = {}; }
   var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
   var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
   function saveBase() { origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
@@ -106,12 +107,16 @@
     var pending = pendingKeys().length, waiting = countPendingOperations();
     var status = navigator.onLine === false ? "غير متصل — محفوظ محليًا" : (pending ? (Object.keys(retryTimers).length ? "إعادة المحاولة بانتظار Backoff" : "توجد تعديلات تنتظر المزامنة") : (ready ? "متزامن" : "جارٍ التحقق/الاتصال"));
     var last = lastSyncAt ? new Date(lastSyncAt).toLocaleString("ar-EG") : "لم تتم مزامنة ناجحة بعد";
-    panel.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'><strong>☁️ حالة المزامنة</strong><button type='button' id='wfSyncNowBtn' style='border:0;border-radius:8px;padding:8px 12px;background:#0b57d0;color:#fff;font-weight:700'>مزامنة الآن</button></div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px'><div><b>الحالة</b><br><span id='wfSyncState'></span></div><div><b>آخر مزامنة</b><br><span id='wfSyncLast'></span></div><div><b>التعديلات المعلقة</b><br><span id='wfSyncPending'></span></div><div><b>عدد العمليات المنتظرة</b><br><span id='wfSyncWaiting'></span></div><div><b>آخر خطأ</b><br><span id='wfSyncError'></span></div></div>";
+    panel.innerHTML = "<div style='display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap'><strong>☁️ حالة المزامنة</strong><button type='button' id='wfSyncNowBtn' style='border:0;border-radius:8px;padding:8px 12px;background:#0b57d0;color:#fff;font-weight:700'>مزامنة الآن</button></div><div style='display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px'><div><b>الحالة</b><br><span id='wfSyncState'></span></div><div><b>آخر مزامنة</b><br><span id='wfSyncLast'></span></div><div><b>التعديلات المعلقة</b><br><span id='wfSyncPending'></span></div><div><b>عدد العمليات المنتظرة</b><br><span id='wfSyncWaiting'></span></div><div><b>آخر خطأ</b><br><span id='wfSyncError'></span></div><div><b>تعارضات تحتاج مراجعة</b><br><span id='wfSyncConflicts'></span> <button type='button' id='wfSyncConflictBtn' style='display:none;border:0;border-radius:7px;padding:5px 8px;background:#b45309;color:#fff'>مراجعة</button></div></div>";
     panel.querySelector("#wfSyncState").textContent = status;
     panel.querySelector("#wfSyncLast").textContent = last;
     panel.querySelector("#wfSyncPending").textContent = String(pending);
     panel.querySelector("#wfSyncWaiting").textContent = String(waiting);
     panel.querySelector("#wfSyncError").textContent = lastSyncError || "لا يوجد";
+    var conflictCount = Object.keys(conflicts).reduce(function (n, k) { return n + Object.keys(conflicts[k] || {}).length; }, 0);
+    panel.querySelector("#wfSyncConflicts").textContent = String(conflictCount);
+    panel.querySelector("#wfSyncConflictBtn").style.display = conflictCount ? "inline-block" : "none";
+    panel.querySelector("#wfSyncConflictBtn").onclick = showSyncConflicts;
     panel.querySelector("#wfSyncNowBtn").onclick = function () { var btn = this; btn.disabled = true; btn.textContent = "جارٍ المزامنة…"; window.wfCloudSyncNow().catch(function (e) { lastSyncError = String(e && e.message || e); origSet.call(ls, "wf_sync_last_error", lastSyncError); }).then(function () { btn.disabled = false; btn.textContent = "مزامنة الآن"; badge(); }); };
   }
   function badge() {
@@ -122,6 +127,44 @@
     el.textContent = navigator.onLine === false ? "📴 أوفلاين — محفوظ على الجهاز" : (pending ? (Object.keys(retryTimers).length ? "⏳ إعادة المزامنة لاحقًا" : "⏳ تعديلات بانتظار الرفع") : "☁️ متزامن");
     syncPanel();
   }
+
+  function showSyncConflicts() {
+    var rows = [];
+    Object.keys(conflicts).forEach(function (k) { Object.keys(conflicts[k] || {}).forEach(function (id) { rows.push({ key: k, id: id, value: conflicts[k][id] }); }); });
+    if (!rows.length) return;
+    var modal = document.createElement("div"); modal.style.cssText = "position:fixed;inset:0;z-index:100000;background:#0009;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl";
+    var box = document.createElement("div"); box.style.cssText = "background:#fff;color:#172033;border-radius:12px;padding:16px;max-width:620px;width:100%;max-height:80vh;overflow:auto";
+    var title = document.createElement("h3"); title.textContent = "تعارضات المزامنة — اختر النسخة لكل سجل"; box.appendChild(title);
+    var note = document.createElement("p"); note.textContent = "لم يُستبدل أي سجل أحدث. اختر الاحتفاظ بنسخة السحابة أو اعتماد نسخة هذا الجهاز لكل تعارض."; box.appendChild(note);
+    rows.forEach(function (item) {
+      var row = document.createElement("div"); row.style.cssText = "border-top:1px solid #ddd;padding:10px 0";
+      var label = document.createElement("b"); label.textContent = item.key + " / " + item.id; row.appendChild(label);
+      var localBtn = document.createElement("button"), cloudBtn = document.createElement("button");
+      localBtn.type = cloudBtn.type = "button"; localBtn.textContent = "اعتماد نسخة هذا الجهاز"; cloudBtn.textContent = "اعتماد نسخة السحابة";
+      localBtn.style.cssText = cloudBtn.style.cssText = "margin:8px 6px 0 0;padding:7px;border:0;border-radius:7px;background:#0b57d0;color:white";
+      localBtn.onclick = function () { resolveSyncConflict(item.key, item.id, "local", modal); };
+      cloudBtn.onclick = function () { resolveSyncConflict(item.key, item.id, "cloud", modal); };
+      row.appendChild(localBtn); row.appendChild(cloudBtn); box.appendChild(row);
+    });
+    var close = document.createElement("button"); close.type = "button"; close.textContent = "إغلاق"; close.onclick = function () { modal.remove(); }; box.appendChild(close); modal.appendChild(box); document.body.appendChild(modal);
+  }
+  function resolveSyncConflict(k, id, choice, modal) {
+    var item = conflicts[k] && conflicts[k][id]; if (!item) return;
+    if (choice === "cloud") {
+      var records = local(k), list = Array.isArray(records) ? records.slice() : [], at = list.findIndex(function (r) { return r && r.id === id; });
+      if (item.remote) { if (at < 0) list.push(item.remote); else list[at] = item.remote; }
+      else if (at >= 0) list.splice(at, 1);
+      origSet.call(ls, k, JSON.stringify(list));
+      SB.c[k] = SB.c[k] || {}; if (item.remoteHash) SB.c[k][id] = item.remoteHash; else delete SB.c[k][id]; saveBase();
+    } else {
+      SB.c[k] = SB.c[k] || {}; if (item.remoteHash) SB.c[k][id] = item.remoteHash; else delete SB.c[k][id]; saveBase();
+    }
+    delete conflicts[k][id]; if (!Object.keys(conflicts[k]).length) delete conflicts[k];
+    origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts));
+    if (modal && !Object.keys(conflicts).some(function (key) { return Object.keys(conflicts[key] || {}).length; })) modal.remove();
+    badge(); if (choice === "local") push(k, true); else pushAll(false);
+  }
+  window.wfResolveSyncConflicts = showSyncConflicts;
 
   /* ---------- أدوات ---------- */
   function h(s) { var x = 5381, i = s.length; while (i) x = ((x << 5) + x + s.charCodeAt(--i)) | 0; return (x >>> 0).toString(36) + s.length.toString(36); }
@@ -151,16 +194,51 @@
     var snapshotRaw = ls.getItem(k), ops = [], v = local(k), next;
     if (COLS[k]) {
       var col = db.collection(COLS[k]), B = SB.c[k] || {}, arr = Array.isArray(v) ? v : [], seen = {}, dels = 0;
-      next = {};
-      arr.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; var x = hr(r); next[r.id] = x; if (B[r.id] !== x) ops.push(function (bt) { bt.set(col.doc(r.id), toDoc(r)); }); });
-      Object.keys(B).forEach(function (id) { if (!seen[id]) { dels++; ops.push(function (bt) { bt.delete(col.doc(id)); }); } });
+      next = Object.assign({}, B);
+      var jobs = [];
+      arr.forEach(function (r) {
+        if (!r || !r.id) return;
+        seen[r.id] = 1; var localHash = hr(r); next[r.id] = localHash;
+        if (B[r.id] !== localHash) { if (conflicts[k] && conflicts[k][r.id]) next[r.id] = B[r.id]; else jobs.push({ id: r.id, ref: col.doc(r.id), record: r, localHash: localHash, baseHash: B[r.id], kind: "set" }); }
+      });
+      Object.keys(B).forEach(function (id) {
+        if (!seen[id]) { dels++; if (!(conflicts[k] && conflicts[k][id])) jobs.push({ id: id, ref: col.doc(id), localHash: null, baseHash: B[id], kind: "delete" }); }
+      });
       var total = Object.keys(B).length;
-      if (dels > 20 && dels > total / 2) { // حماية من المسح الجماعي
-        if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); } // انتظار موافقة يدوية عبر «مزامنة الآن»
+      if (dels > 20 && dels > total / 2) {
+        if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); }
         if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
-      if (!ops.length) { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-      return commitOps(ops).then(function () { SB.c[k] = next; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(); }).then(function () { if (k === "wf_r" || k === "wf_c" || k === "wf_d") projectOrders(); return done(true); }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false, e); });
+      var wrote = false, hasConflict = false, chain = Promise.resolve();
+      jobs.forEach(function (job) {
+        chain = chain.then(function () {
+          return withTimeout(db.runTransaction(async function (tx) {
+            var snap = await tx.get(job.ref), remote = snap.exists ? fromDoc(snap) : null, remoteHash = remote ? hr(remote) : null;
+            if (job.kind === "set" && remoteHash === job.localHash) return { state: "same", remote: remote, remoteHash: remoteHash };
+            if (job.kind === "delete" && !snap.exists) return { state: "same", remote: null, remoteHash: null };
+            var baselineMatches = job.baseHash === undefined ? !snap.exists : remoteHash === job.baseHash;
+            if (!baselineMatches) return { state: "conflict", remote: remote, remoteHash: remoteHash };
+            if (job.kind === "delete") tx.delete(job.ref); else tx.set(job.ref, toDoc(job.record));
+            return { state: "written", remote: remote, remoteHash: remoteHash };
+          })).then(function (result) {
+            if (result.state === "conflict") {
+              hasConflict = true; conflicts[k] = conflicts[k] || {};
+              conflicts[k][job.id] = { local: job.kind === "delete" ? null : job.record, remote: result.remote, remoteHash: result.remoteHash, localHash: job.localHash, createdAt: Date.now() };
+              next[job.id] = job.baseHash;
+            } else {
+              if (job.kind === "delete") delete next[job.id]; else next[job.id] = job.localHash;
+              if (result.state === "written") wrote = true;
+            }
+          });
+        });
+      });
+      return chain.then(function () {
+        SB.c[k] = next; saveBase();
+        if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
+        if (!hasConflict) lastRaw[k] = snapshotRaw;
+        var touch = wrote ? touchMeta() : Promise.resolve();
+        return touch.then(function () { if (wrote && (k === "wf_r" || k === "wf_c" || k === "wf_d")) projectOrders(); return done(!hasConflict, hasConflict ? new Error("تعارض إصدار: لم تتم الكتابة فوق السجل الأحدث") : null); });
+      }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false, e); });
     }
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));

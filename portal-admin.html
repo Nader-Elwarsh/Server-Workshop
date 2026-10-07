@@ -5,6 +5,7 @@
 <script src="./vendor/firebase-app-compat.js" defer></script>
 <script src="./vendor/firebase-auth-compat.js" defer></script>
 <script src="./vendor/firebase-firestore-compat.js" defer></script>
+<script src="image-store.js" defer></script>
 <script src="firebase-sync.js" defer></script>
 <script src="theme.js" defer></script>
 <script src="portal-ticker.js" defer></script>
@@ -256,7 +257,7 @@ function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;edi
 function togPost(id,v){db.collection("portalPosts").doc(id).update({published:v})}
 function delPost(id){if(confirm("تحذف المقال نهائيًا؟"))db.collection("portalPosts").doc(id).delete().catch(adminFail)}
 function resize(f){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var m=1000,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);c.toBlob(res,"image/jpeg",.7)};im.onerror=rej;im.src=URL.createObjectURL(f)})}
-function upl(b){if(!b||b.size>12*1024*1024)return Promise.reject(new Error("حجم الصورة أكبر من 12 ميجابايت."));var fd=new FormData();fd.append("file",b);fd.append("upload_preset","workshop_unsigned");return fetch("https://api.cloudinary.com/v1_1/ogmpqgu4/image/upload",{method:"POST",body:fd}).then(function(r){if(!r.ok)throw new Error("upload");return r.json()}).then(function(j){if(!j.secure_url)throw new Error("upload");return j.secure_url})}
+function upl(b){if(!b||b.size>12*1024*1024)return Promise.reject(new Error("حجم الصورة أكبر من 12 ميجابايت."));return window.ImageStore.uploadBlob(b).then(function(url){if(!url)throw new Error("تعذّر الرفع الآمن؛ تأكد من اتصال الحساب بالخادم." );return url})}
 function savePost(){var t=$("pt").value.trim(),b=$("pb").value.trim();if(!t||!b){$("pm").textContent="اكتب العنوان والنص.";return}$("pm").textContent="جاري الحفظ…";var f=$("pi").files[0];
 (f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:SV};
 if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=SV;return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
