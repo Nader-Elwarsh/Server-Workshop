@@ -22,6 +22,7 @@ localStorage.setItem("wf_theme", "dark");
 <script src="shared-data.js"></script>
 <script>
 WorkshopDBReady.then(async function () {
+  if (WFStorageStatus.ready !== true || WFStorageStatus.migrationComplete !== true || WFStorageStatus.legacySourceCleared !== true) throw Error("migration status must confirm ready, complete, and legacy source cleared");
   if (localStorage.length !== 0) throw Error("legacy localStorage should be cleared after a successful import");
   if (WFStorage.getItem("wf_theme") !== "dark") throw Error("preference key-value migration");
   if (!await WorkshopDB.readCollection("wf_c").then(x => x.length === 1 && x[0].id === "c1")) throw Error("legacy import");

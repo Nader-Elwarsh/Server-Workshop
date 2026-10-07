@@ -72,6 +72,11 @@
   }
   function runChecks(){
     var out = '';
+    var storageStatus = window.WFStorageStatus || {};
+    out += reportLine('قاعدة البيانات المحلية جاهزة', storageStatus.ready === true, storageStatus.ready === true ? 'IndexedDB تعمل' : (storageStatus.error && storageStatus.error.message ? storageStatus.error.message : 'لم تكتمل التهيئة'));
+    out += reportLine('سجل الترحيل مكتمل', storageStatus.migrationComplete === true, storageStatus.migrationComplete === true ? 'يمكن للتطبيق قراءة القيم بعد النقل' : 'لم يكتمل الترحيل');
+    out += reportLine('تم تأكيد تنظيف النسخة القديمة', storageStatus.legacySourceCleared === true, storageStatus.legacySourceCleared === true ? 'نعم' : 'لا؛ لا تمسح بيانات الموقع يدويًا');
+    out += reportLine('عدد المفاتيح المتاحة', storageStatus.ready === true, storageStatus.ready === true ? String(storageStatus.keys) : 'غير متاح');
     out += reportLine('تحميل app-data-management.js بنجاح', typeof initAutomaticBackup === 'function', typeof initAutomaticBackup);
     out += reportLine('دالة migrateLegacyAutoBackupOptOut موجودة (يعني آخر نسخة فعلاً محمّلة)', typeof migrateLegacyAutoBackupOptOut === 'function');
     // نجهز عنصر lastBackupInfo يدوي عشان نختبر renderAutomaticBackupControls زي ما بيحصل في صفحة الإعدادات

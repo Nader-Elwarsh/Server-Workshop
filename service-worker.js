@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v14-178-indexeddb-final-storage";
+const CACHE_NAME = "workshop-v14-179-mobile-storage-diagnostics";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -27,6 +27,7 @@ const CORE_FILES = [
   "./compcodes.html",
   "./faultcode.html",
   "./settings.html",
+  "./debug-check.html",
   "./treasury.html",
   "./wallets.html",
   "./wallet.html",

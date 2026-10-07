@@ -121,31 +121,45 @@
     storageReady = open().then(db => new Promise((resolve, reject) => {
       const tx = db.transaction([KV_STORE, META], "readwrite"), store = tx.objectStore(KV_STORE), meta = tx.objectStore(META);
       const allReq = store.getAll(), markReq = meta.get(KV_MIGRATION_KEY);
-      let rows = [], imported = false;
+      let rows = [], imported = false, migrationMarker = null;
       allReq.onsuccess = () => { rows = Array.isArray(allReq.result) ? allReq.result : []; };
       markReq.onsuccess = () => {
-        imported = !markReq.result;
+        migrationMarker = markReq.result || null;
+        imported = !migrationMarker;
         if (!imported) return;
         const known = new Set(rows.map(row => row && row.key));
         legacy.forEach(([key, value]) => { if (!known.has(key)) store.put({ key, value: String(value) }); });
-        meta.put({ key: KV_MIGRATION_KEY, at: Date.now(), count: legacy.length });
+        meta.put({ key: KV_MIGRATION_KEY, at: Date.now(), count: legacy.length, legacySourceCleared: false });
       };
       markReq.onerror = () => { try { tx.abort(); } catch (_) {} };
       tx.oncomplete = () => {
         const readTx = db.transaction([KV_STORE], "readonly"), req = readTx.objectStore(KV_STORE).getAll();
-        req.onsuccess = () => resolve({ rows: Array.isArray(req.result) ? req.result : [], imported });
+        req.onsuccess = () => resolve({ rows: Array.isArray(req.result) ? req.result : [], imported, migrationMarker });
         req.onerror = () => reject(req.error || new Error("تعذر تحميل القيم المحلية"));
       };
       tx.onerror = () => reject(tx.error || new Error("تعذرت تهيئة مخزن القيم"));
       tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة مخزن القيم"));
-    })).then(({ rows, imported }) => {
+    })).then(async ({ rows, imported, migrationMarker }) => {
       storageCache.clear();
       rows.forEach(row => { if (row && typeof row.key === "string") storageCache.set(row.key, String(row.value)); });
-      if (imported) {
-        try { window.localStorage.clear(); }
-        catch (error) { console.warn("[WFStorage] اكتمل الاستيراد لكن تعذر مسح التخزين القديم", error); }
+      let legacySourceCleared = !!(migrationMarker && migrationMarker.legacySourceCleared === true);
+      if (!legacySourceCleared) {
+        try {
+          window.localStorage.clear();
+          legacySourceCleared = true;
+          const db = await open();
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction([META], "readwrite"), meta = tx.objectStore(META), req = meta.get(KV_MIGRATION_KEY);
+            req.onsuccess = () => { const marker = req.result || { key: KV_MIGRATION_KEY, at: Date.now(), count: 0 }; marker.legacySourceCleared = true; meta.put(marker); };
+            req.onerror = () => reject(req.error || new Error("تعذر تحديث حالة الترحيل"));
+            tx.oncomplete = resolve; tx.onerror = () => reject(tx.error || new Error("تعذر حفظ حالة الترحيل"));
+          });
+        } catch (error) {
+          legacySourceCleared = false;
+          console.warn("[WFStorage] اكتمل الاستيراد لكن تعذر تأكيد مسح التخزين القديم", error);
+        }
       }
-      window.WFStorageStatus = { ready: true, importedLegacy: imported, keys: storageCache.size };
+      window.WFStorageStatus = { ready: true, migrationComplete: true, importedLegacy: imported, legacySourceCleared, keys: storageCache.size };
       return true;
     }).catch(error => {
       // لا نمسح المصدر القديم عند الفشل؛ يحتفظ الكاش بقيمه ويمكن قراءة القديم.
