@@ -17,8 +17,9 @@
   "use strict";
 
   function ready(fn) {
-    if (document.readyState !== "loading") fn();
-    else document.addEventListener("DOMContentLoaded", fn);
+    function go() { var r = window.WFStorageReady; if (r && typeof r.then === "function") r.then(fn, fn); else fn(); }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+    else go();
   }
 
   var TABS = [

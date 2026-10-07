@@ -24,7 +24,17 @@ function wfSavedThemePref() {
   }
 }
 
+function wfThemeCookie() {
+  try {
+    var m = document.cookie.match(/(?:^|; )wf_theme=(dark|light)/);
+    return m ? m[1] : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function wfApplyDark(isDark) {
+  try { document.documentElement.style.colorScheme = isDark ? "dark" : "light"; } catch (e) {}
   if (isDark) {
     document.documentElement.setAttribute("data-theme", "dark");
   } else {
@@ -33,7 +43,8 @@ function wfApplyDark(isDark) {
 }
 
 (function () {
-  var saved = wfSavedThemePref();
+  // التخزين لسه ممكن يكون بيتحمّل هنا؛ الكوكي نسخة متزامنة من اختيارك المحفوظ.
+  var saved = wfSavedThemePref() || wfThemeCookie();
   if (saved === "dark") wfApplyDark(true);
   else if (saved === "light") wfApplyDark(false);
   else wfApplyDark(wfSystemPrefersDark()); // تلقائي: زي مظهر الهاتف دلوقتي

@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v14-180-persist-reminder-snoozes";
+const CACHE_NAME = "workshop-v14-181-theme-flash-backup-race";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

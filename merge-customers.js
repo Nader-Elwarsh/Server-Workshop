@@ -45,6 +45,7 @@
     });
   }
   function init() { if (!window.arr || !window.K) return setTimeout(init, 150); render(); }
-  document.addEventListener("DOMContentLoaded", init);
-  if (document.readyState !== "loading") init();
+  function start() { var r = window.WFStorageReady; if (r && typeof r.then === "function") r.then(init, init); else init(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
 })();

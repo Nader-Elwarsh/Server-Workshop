@@ -30,7 +30,7 @@ function isAutomaticBackupAskSnoozed(){
 function renderAutomaticBackupPermission(){
   if(WFStorage.getItem(AUTO_BACKUP_PREF_KEY)!==null||isAutomaticBackupAskSnoozed())return;
   let host=document.getElementById("backupReminder")||document.getElementById("automaticBackupControls");
-  if(!host||document.getElementById("automaticBackupPermission"))return;
+  if(!host||document.getElementById("automaticBackupPermission")||document.getElementById("manualBackupReminder"))return;
   let box=document.createElement("div");box.id="automaticBackupPermission";box.className="notice backup-reminder-banner";
   box.innerHTML=`🔄 هل تسمح للنظام بفحص تغييرات البيانات كل 4 ساعات وطلب موافقتك قبل تنزيل نسخة احتياطية؟<div class="backup-reminder-actions"><button type="button" class="primary small-btn" id="enableAutomaticBackup">تفعيل النسخ التلقائي</button><button type="button" class="secondary small-btn" id="skipAutomaticBackup">لا الآن (اسألني تاني بعد ${AUTO_BACKUP_ASK_SNOOZE_DAYS} أيام)</button></div><small class="auto-backup-save-error" role="status" hidden></small>`;
   host.appendChild(box);

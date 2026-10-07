@@ -188,10 +188,12 @@
     setItem(key, value) {
       key = String(key); value = String(value);
       storageCache.set(key, value); notifyStorage(key, value, false);
+      if (key === "wf_theme") syncThemeCookie(value);
       persistStorageMutation(key, value, false).catch(() => {});
     },
     removeItem(key) {
       key = String(key); storageCache.delete(key); notifyStorage(key, null, true);
+      if (key === "wf_theme") syncThemeCookie(null);
       persistStorageMutation(key, null, true).catch(() => {});
     },
     clear() {
@@ -212,12 +214,24 @@
   };
   window.WFStorage = WFStorage;
   window.WFStorageReady = initializeStorage();
+  // كوكي صغير (wf_theme) نسخة متزامنة من اختيار المظهر: السكريبت اللي في <head>
+  // بيقراه قبل أول رسم للصفحة فمفيش وميض للوضع الليلي لما اختيارك "فاتح" (أو العكس).
+  function syncThemeCookie(value) {
+    try {
+      const secure = window.location && window.location.protocol === "https:" ? ";Secure" : "";
+      if (value === "dark" || value === "light") window.document.cookie = "wf_theme=" + value + ";path=/;max-age=31536000;SameSite=Lax" + secure;
+      else window.document.cookie = "wf_theme=;path=/;max-age=0;SameSite=Lax" + secure;
+    } catch (_) {}
+  }
   window.WFStorageReady.then(() => {
     try {
       const savedTheme = WFStorage.getItem("wf_theme");
       const systemDark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-      if (savedTheme === "dark" || (savedTheme !== "light" && systemDark)) window.document.documentElement.setAttribute("data-theme", "dark");
+      const dark = savedTheme === "dark" || (savedTheme !== "light" && systemDark);
+      if (dark) window.document.documentElement.setAttribute("data-theme", "dark");
       else window.document.documentElement.removeAttribute("data-theme");
+      window.document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      syncThemeCookie(savedTheme);
     } catch (_) {}
     try { window.document.documentElement.removeAttribute("data-wf-storage-pending"); } catch (_) {}
   });
@@ -226,7 +240,7 @@
   try {
     const nativeDocumentAdd = window.document.addEventListener.bind(window.document);
     window.document.addEventListener = function (type, listener, options) {
-      if (type === "DOMContentLoaded" && typeof listener === "function" && window.document.readyState === "loading") {
+      if (type === "DOMContentLoaded" && typeof listener === "function" && window.document.readyState !== "complete") {
         return nativeDocumentAdd(type, function (event) {
           window.WFStorageReady.then(() => listener.call(window.document, event));
         }, options);

@@ -9,9 +9,12 @@
   var REMINDER_AFTER_DAYS = 14;
   var SNOOZE_DAYS = 3;
 
+  // لازم ننتظر تحميل التخزين (IndexedDB) قبل القراءة؛ قبله آخر نسخة والتأجيل
+  // بيرجعوا فاضيين فالبانر كان بيظهر غلط حتى بعد النسخ أو التأجيل.
   function ready(fn) {
-    if (document.readyState !== "loading") fn();
-    else document.addEventListener("DOMContentLoaded", fn);
+    function go() { var r = window.WFStorageReady; if (r && typeof r.then === "function") r.then(fn, fn); else fn(); }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go);
+    else go();
   }
 
   function isSnoozed() {
@@ -79,6 +82,9 @@
     var existing = document.getElementById("manualBackupReminder");
     if (existing) existing.outerHTML = markup;
     else host.insertAdjacentHTML("afterbegin", markup);
+    // بانر واحد بس في كل مرة: سؤال النسخ التلقائي يستنى لحد ما يختفي التذكير ده.
+    var ask = document.getElementById("automaticBackupPermission");
+    if (ask) ask.remove();
   }
 
   window.renderBackupReminder = renderBackupReminder;
