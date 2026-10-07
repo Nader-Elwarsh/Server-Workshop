@@ -1,4 +1,4 @@
-/* طبقة قاعدة البيانات التشغيلية — IndexedDB للعملاء والأجهزة وأوامر الشغل.
+/* طبقة قاعدة البيانات التشغيلية — IndexedDB للعملاء والأجهزة وأوامر الشغل والمخزون والحركات المالية المرتبطة.
    المرحلة الانتقالية: المستودع غير المتزامن هو واجهة القراءة/الكتابة الجديدة،
    وتظل localStorage نسخة توافق مؤقتة للشاشات القديمة وFirebase.
    لا تُحذف البيانات القديمة؛ ويُعاد تشغيل التهيئة بأمان عند كل فتح. */
@@ -6,11 +6,14 @@
   "use strict";
 
   const DB_NAME = "wfOperationalDB";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORES = {
     wf_c: { name: "customers", indexes: [["phone", "phone"], ["portalUid", "portalUid"]] },
     wf_d: { name: "devices", indexes: [["customerId", "customerId"], ["type", "type"]] },
-    wf_r: { name: "requests", indexes: [["customerId", "customerId"], ["deviceId", "deviceId"], ["status", "status"], ["createdAt", "createdAt"]] }
+    wf_r: { name: "requests", indexes: [["customerId", "customerId"], ["deviceId", "deviceId"], ["status", "status"], ["createdAt", "createdAt"]] },
+    wf_p: { name: "parts", indexes: [["category", "category"], ["name", "name"], ["code", "code"], ["archived", "archived"]] },
+    wf_m: { name: "partMoves", indexes: [["partId", "partId"], ["requestId", "requestId"], ["type", "type"], ["at", "at"]] },
+    wf_wallet_tx: { name: "walletTx", indexes: [["refKey", "refKey"], ["wallet", "wallet"], ["orderId", "orderId"], ["deleted", "deleted"]] }
   };
   const META = "meta";
   let dbPromise = null;

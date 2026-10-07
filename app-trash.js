@@ -21,7 +21,7 @@ function walletRefKeysForOrders(orderIds) {
   return (orderIds || []).flatMap(rid => [`order-deposit-${rid}`, `order-final-${rid}`]);
 }
 
-function restoreFromTrash(trashId) {
+async function restoreFromTrash(trashId) {
   const list = arr(K.trash);
   const idx = list.findIndex(x => x.id === trashId);
   if (idx < 0) return;
@@ -70,7 +70,7 @@ function restoreFromTrash(trashId) {
   values[K.wtx] = arr(K.wtx).map(x => (refKeys.has(String(x.refKey || "")) || (x.source === "order-part" && x.deletedWithOrder && restoredOrderIds.has(String(x.orderId)))) ? { ...x, deleted: false, deletedWithOrder: undefined } : x);
   values[K.trash] = arr(K.trash).filter(x => x.id !== trashId);
 
-  if (!commitStorage(values)) { alert("تعذر الاسترجاع؛ لم يتم تنفيذ أي تغيير."); return; }
+  if (!await commitStorageAsync(values)) { alert("تعذر الاسترجاع؛ لم يتم تنفيذ أي تغيير."); return; }
   window.auditLog?.("استرجاع", entry.type === "customer" ? "عميل" : entry.type === "device" ? "جهاز" : "أمر شغل", entry.id, entry.label);
   refreshAllScreens?.();
   renderTrash();

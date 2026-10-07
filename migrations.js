@@ -186,8 +186,9 @@
       // localStorage كاملة كجسر للتوافق؛ وفشل IndexedDB لا يمنع فتح النظام.
       if (window.WorkshopDB && typeof window.WorkshopDB.initialize === "function") {
         try {
-          await window.WorkshopDB.initialize([window.K.c, window.K.d, window.K.r]);
-          window.WorkshopDBStatus = { ready: true, collections: [window.K.c, window.K.d, window.K.r] };
+          const collections = [window.K.c, window.K.d, window.K.r, window.K.p, window.K.m, window.K.wtx];
+          await window.WorkshopDB.initialize(collections);
+          window.WorkshopDBStatus = { ready: true, collections };
         } catch (e) {
           window.WorkshopDBStatus = { ready: false, fallback: "localStorage", error: e };
           console.warn("[migrations] تعذر تهيئة IndexedDB؛ سيستمر النظام مؤقتًا على localStorage", e);

@@ -1,8 +1,8 @@
 /* app-data-management.js — حذف كل البيانات التشغيلية + النسخ الاحتياطي واستعادته. */
 let backupBusy=false,destructiveBusy=false;
 function captureLocalDataState(){const raw={};Object.values(K).forEach(k=>raw[k]=localStorage.getItem(k));return{raw,notif:localStorage.getItem("wf_notif_enabled"),schema:localStorage.getItem("wf_schema_version"),lastBackup:localStorage.getItem("wf_last_backup_at")}}
-function restoreLocalDataState(state){if(!state)return;for(const [k,v] of Object.entries(state.raw||{})){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){console.error("[backup] تعذر إعادة مفتاح",k,e)}}for(const [k,v] of [["wf_notif_enabled",state.notif],["wf_schema_version",state.schema],["wf_last_backup_at",state.lastBackup]]){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){console.error("[backup] تعذر إعادة الإعداد",k,e)}}window.invalidateReadCache?.()}
-async function deleteAllOperationalData(){if(destructiveBusy)return;destructiveBusy=true;try{if(!confirm("سيتم حذف العملاء والأجهزة وأوامر الشغل وقطع الغيار وحركات المخزن والمصاريف وحركات الحسابات والخزنة. الإعدادات والمراكز والقرى لن تتأثر. هل تريد المتابعة؟"))return;if(!confirm("تأكيد نهائي جدًا: حذف كل البيانات التشغيلية؟"))return;const state=captureLocalDataState(),oldImages=window.ImageStore?.exportAll?await window.ImageStore.exportAll():{};try{if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");const values={};[K.c,K.d,K.r,K.p,K.m,K.e,K.tr,K.wtx,K.inv].forEach(k=>values[k]=[]);if(!commitStorage(values))throw new Error("storage-failed");alert("تم حذف كل البيانات التشغيلية. سيتم تحديث الصفحة.");location.reload()}catch(e){restoreLocalDataState(state);try{if(window.ImageStore?.clearAll){await window.ImageStore.clearAll();if(window.ImageStore?.importAll)await window.ImageStore.importAll(oldImages)}}catch(imageError){console.error("[backup] تعذر إعادة الصور بعد فشل الحذف",imageError)}alert("تعذر إكمال الحذف. تم إلغاء العملية وإعادة البيانات السابقة قدر الإمكان.")}}finally{destructiveBusy=false}}
+async function restoreLocalDataState(state){if(!state)return;for(const [k,v] of Object.entries(state.raw||{})){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){console.error("[backup] تعذر إعادة مفتاح",k,e)}}for(const [k,v] of [["wf_notif_enabled",state.notif],["wf_schema_version",state.schema],["wf_last_backup_at",state.lastBackup]]){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){console.error("[backup] تعذر إعادة الإعداد",k,e)}}window.invalidateReadCache?.();try{await window.WorkshopDB?.flush?.()}catch(e){console.error("[backup] تعذر انتظار إعادة بيانات IndexedDB",e)}}
+async function deleteAllOperationalData(){if(destructiveBusy)return;destructiveBusy=true;try{if(!confirm("سيتم حذف العملاء والأجهزة وأوامر الشغل وقطع الغيار وحركات المخزن والمصاريف وحركات الحسابات والخزنة. الإعدادات والمراكز والقرى لن تتأثر. هل تريد المتابعة؟"))return;if(!confirm("تأكيد نهائي جدًا: حذف كل البيانات التشغيلية؟"))return;const state=captureLocalDataState(),oldImages=window.ImageStore?.exportAll?await window.ImageStore.exportAll():{};try{if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");const values={};[K.c,K.d,K.r,K.p,K.m,K.e,K.tr,K.wtx,K.inv].forEach(k=>values[k]=[]);if(!await commitStorageAsync(values))throw new Error("storage-failed");alert("تم حذف كل البيانات التشغيلية. سيتم تحديث الصفحة.");location.reload()}catch(e){await restoreLocalDataState(state);try{if(window.ImageStore?.clearAll){await window.ImageStore.clearAll();if(window.ImageStore?.importAll)await window.ImageStore.importAll(oldImages)}}catch(imageError){console.error("[backup] تعذر إعادة الصور بعد فشل الحذف",imageError)}alert("تعذر إكمال الحذف. تم إلغاء العملية وإعادة البيانات السابقة قدر الإمكان.")}}finally{destructiveBusy=false}}
 
 function daysSinceLastBackup(){let last=localStorage.getItem("wf_last_backup_at");if(!last)return null;let d=new Date(last);if(Number.isNaN(d.getTime()))return null;return Math.floor((Date.now()-d.getTime())/86400000)}
 function lastBackupInfoText(){let days=daysSinceLastBackup();if(days===null)return "⚠️ لسه معملتش أي نسخة احتياطية أبدًا.";if(days===0)return "✅ آخر نسخة احتياطية: النهاردة.";if(days===1)return "✅ آخر نسخة احتياطية: من يوم واحد.";return `${days>=14?"⚠️":"✅"} آخر نسخة احتياطية: من ${days} يوم.`}
@@ -211,7 +211,7 @@ async function restoreBackupFile(input){
       const staged={},keys=Object.values(K);keys.forEach(k=>{if(k in data)staged[k]=data[k]});missing.forEach(x=>{staged[x.key]=[]});
       if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");
       if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");
-      if(!commitStorage(staged))throw new Error("storage-failed");
+      if(!await commitStorageAsync(staged))throw new Error("storage-failed");
       if("wf_notif_enabled" in data){if(data.wf_notif_enabled==null)localStorage.removeItem("wf_notif_enabled");else if(!put("wf_notif_enabled",data.wf_notif_enabled))throw new Error("notification-setting-failed")}
       if(window.setSchemaVersion)window.setSchemaVersion(Math.min(backupSchema,window.CURRENT_SCHEMA_VERSION||backupSchema));
       if(data._meta?.exportedAt)localStorage.setItem("wf_last_backup_at",data._meta.exportedAt);
@@ -220,7 +220,7 @@ async function restoreBackupFile(input){
       alert("✅ تم استرجاع النسخة الاحتياطية بنجاح. هيتم فتح الرئيسية الآن.");location.href="index.html";
     }catch(e){
       console.error("[backup] فشل الاسترجاع",e);
-      restoreLocalDataState(oldState);
+      await restoreLocalDataState(oldState);
       try{if(window.ImageStore?.clearAll&&oldImages){await window.ImageStore.clearAll();await window.ImageStore.importAll(oldImages)}}catch(restoreError){console.error("[backup] تعذر استعادة الصور القديمة",restoreError)}
       alert(safetyDownloaded?"تعذر استرجاع النسخة. تم إلغاء العملية وإعادة البيانات المحلية قدر الإمكان. ملف الأمان التلقائي موجود في التنزيلات.":"تعذر قراءة النسخة. لم يتم تغيير البيانات الحالية.");
     }
@@ -321,21 +321,21 @@ function runDataIntegrityCheck(){
     <span class="compact-actions">${x.link?`<a class="secondary mini-action" href="${esc(x.link)}">${esc(x.linkLabel||"فتح")} ›</a>`:""}${x.fix?`<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="applyIntegrityFix('${x.key}')">${x.fix.type==="restoreTrash"?"♻️ استرجاع":x.fix.type==="removeOrphanMove"?"🧹 مسح الحركة":"🔧 إصلاح"}</button>`:""}<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="ignoreIntegrityIssue('${x.key}')">✔️ مش خطأ</button></span>
   </li>`).join("")}</ul>${report.issues.length>80?`<div class="hint">تم عرض أول 80 ملاحظة فقط.</div>`:""}${ignNote}`;
 }
-function applyIntegrityFix(key){
+async function applyIntegrityFix(key){
   const issue=dataIntegrityReport().issues.find(x=>x.key===key);
   if(!issue||!issue.fix){runDataIntegrityCheck();return}
-  if(issue.fix.type==="restoreTrash"){if(typeof restoreFromTrash!=="function"){alert("سلة المهملات مش متاحة في الصفحة دي.");return}restoreFromTrash(issue.fix.args.trashId);runDataIntegrityCheck();return}
+  if(issue.fix.type==="restoreTrash"){if(typeof restoreFromTrash!=="function"){alert("سلة المهملات مش متاحة في الصفحة دي.");return}await restoreFromTrash(issue.fix.args.trashId);runDataIntegrityCheck();return}
   if(!confirm(issue.fix.detail+"\n\nمتأكد إنك عايز تنفّذ الإصلاح ده؟"))return;
   const {type,args}=issue.fix;
   if(type==="unlinkDeviceCustomer"){
     const all=arr(K.d),d=all.find(x=>x.id===args.deviceId);if(!d)return runDataIntegrityCheck();
     d.customerId="";
-    if(!saveJSONSafe(K.d,all))return;
+    if(!await putAsync(K.d,all))return;
     renderDevices?.();
   }else if(type==="zeroPartQty"){
     const all=arr(K.p),p=all.find(x=>x.id===args.partId);if(!p)return runDataIntegrityCheck();
     p.qty=0;
-    if(!saveJSONSafe(K.p,all))return;
+    if(!await putAsync(K.p,all))return;
     renderParts?.();
   }else if(type==="removeOrderPartLine"){
     const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r||!Array.isArray(r.parts))return runDataIntegrityCheck();
@@ -343,7 +343,7 @@ function applyIntegrityFix(key){
     const partsTotal=r.parts.reduce((n,x)=>n+(+x.qty||0)*(+x.sell||0),0),partsCost=r.parts.reduce((n,x)=>n+(+x.qty||0)*(+x.cost||0),0);
     r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=(+r.labor||0)+partsTotal;
     if(+r.deposit>r.total)r.deposit=r.total;
-    if(!saveJSONSafe(K.r,all))return;
+    if(!await putAsync(K.r,all))return;
     renderRequests?.();
   }else if(type==="recomputeOrderTotals"){
     const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r)return runDataIntegrityCheck();
@@ -351,17 +351,17 @@ function applyIntegrityFix(key){
     const partsTotal=partsList.reduce((n,x)=>n+(+x.qty||0)*(+x.sell||0),0),partsCost=partsList.reduce((n,x)=>n+(+x.qty||0)*(+x.cost||0),0);
     r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=(+r.labor||0)+partsTotal;
     if(+r.deposit>r.total)r.deposit=r.total;
-    if(!saveJSONSafe(K.r,all))return;
+    if(!await putAsync(K.r,all))return;
     renderRequests?.();
   }else if(type==="removeOrphanMove"){
     const all=arr(K.m);if(!all.some(x=>x.id===args.moveId))return runDataIntegrityCheck();
-    if(!saveJSONSafe(K.m,all.filter(x=>x.id!==args.moveId)))return;
+    if(!await putAsync(K.m,all.filter(x=>x.id!==args.moveId)))return;
   }else if(type==="clampOrderDeposit"){
     const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r)return runDataIntegrityCheck();
     const expectedTotal=+r.total||0;
     if(!Number.isFinite(+r.deposit)||+r.deposit<0)r.deposit=0;
     else if(+r.deposit>expectedTotal)r.deposit=expectedTotal;
-    if(!saveJSONSafe(K.r,all))return;
+    if(!await putAsync(K.r,all))return;
     renderRequests?.();
   }
   window.auditLog?.("إصلاح سلامة بيانات", "سجل", key, type);

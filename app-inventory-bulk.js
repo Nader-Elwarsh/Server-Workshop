@@ -11,7 +11,7 @@ function updateBulkOpUI(){
   document.getElementById("bulkValueWrap")?.classList.toggle("hidden",isMargin);
   document.getElementById("bulkMarginWrap")?.classList.toggle("hidden",!isMargin);
 }
-function applyBulkPriceChange(){
+async function applyBulkPriceChange(){
   const scope=document.getElementById("bulkScope")?.value||"";
   const op=document.getElementById("bulkOp")?.value||"adjust";
   const all=arr(K.p);
@@ -46,8 +46,7 @@ function applyBulkPriceChange(){
     if(!confirm(`سيتم ${dir==="up"?"زيادة":"خفض"} ${fieldLabel} بمقدار ${val}${type==="pct"?"%":" ج"} لكل ${targets.length} صنف${scope?` في تصنيف «${scope}»`:" (كل الأصناف)"}.\n\nمتابعة؟`))return;
     targets.forEach((p,i)=>fields.forEach((f,j)=>{p[f]=updates[i][j]}));
   }
-  const saved=withRollback([K.p],()=>put(K.p,all)?{ok:true}:{ok:false});
-  if(!saved?.ok)return;
+  if(!await putAsync(K.p,all))return;
   renderParts?.();
   refreshAllScreens?.();
   alert(`✅ تم تعديل ${targets.length} صنف بنجاح.`);

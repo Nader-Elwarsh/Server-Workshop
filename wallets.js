@@ -302,6 +302,41 @@ function syncWalletForOrderClose(order,collected,wallet){
     reason:`💳 تحصيل نهائي أمر الشغل ${order.no}`
   });
 }
+// يبني نسخة حركات المحفظة اللازمة لعملية المرتجع دون كتابتها منفردة؛
+// المستدعي يحفظها مع الأمر في commitStorageAsync واحد متعدد المخازن.
+function walletTxEntriesForOrderReturn(order,entries,depositAdded,depositWallet,separatePayment){
+  const a=(entries||[]).map(x=>x&&typeof x==="object"?{...x}:x);
+  const closeRef="order-final-"+order.id;
+  a.forEach(x=>{if(x&&x.refKey===closeRef&&!x.deleted)x.deleted=true});
+  if(!(+depositAdded>0))return a;
+  const refKey="order-deposit-"+order.id,amount=orderMainDeposit(order),wallet=String(order.depositWallet||"").trim();
+  let active=a.map((x,i)=>x&&x.refKey===refKey&&!x.deleted?i:-1).filter(i=>i>=0);
+  if(active.length>1){
+    active.sort((i,j)=>((a[j].manualOverride?1:0)-(a[i].manualOverride?1:0))||String(a[i].createdAt||"").localeCompare(String(a[j].createdAt||"")));
+    active.slice(1).forEach(i=>{a[i].deleted=true});active=active.slice(0,1);
+  }
+  let idx=active.length?active[0]:-1;
+  const preserveManual=idx>=0&&a[idx].manualOverride;
+  if(!preserveManual&&!wallet||!preserveManual&&amount<=0){if(idx>=0)a[idx].deleted=true}
+  else if(!preserveManual&&idx>=0){Object.assign(a[idx],{amount,wallet,category:"تحصيل عميل",reason:`💵 عربون أمر الشغل ${order.no}`})}
+  else if(!preserveManual){
+    let ti=a.findIndex(x=>x&&x.refKey===refKey&&x.deleted&&x.id===refKey);
+    if(ti<0)ti=a.map((x,i)=>x&&x.refKey===refKey&&x.deleted?i:-1).filter(i=>i>=0).pop()??-1;
+    if(ti>=0){
+      const t=a[ti];
+      if(!(t.userDeleted&&Math.abs((+t.deletedAmount||0)-amount)<0.005&&String(t.deletedWallet||"")===wallet)){
+        const {userDeleted,deletedAmount,deletedWallet,deletedAt,...rest}=t;
+        a[ti]={...rest,id:t.id||refKey,deleted:false,manualOverride:false,type:"in",amount,wallet,category:"تحصيل عميل",reason:`💵 عربون أمر الشغل ${order.no}`,date:t.date||localDateKey(new Date()),time:new Date().toTimeString().slice(0,5)};
+      }
+    }else{
+      a.push({id:refKey,refKey,manualOverride:false,deleted:false,type:"in",amount,wallet,category:"تحصيل عميل",reason:`💵 عربون أمر الشغل ${order.no}`,note:"",date:localDateKey(new Date()),time:new Date().toTimeString().slice(0,5),source:"order-link",createdAt:new Date().toISOString()});
+    }
+  }
+  if(separatePayment&&String(depositWallet||"").trim()&&+depositAdded>0){
+    a.push({id:id(),refKey:null,orderId:order.id,manualOverride:true,deleted:false,type:"in",amount:+depositAdded,wallet:String(depositWallet).trim(),category:"تحصيل عميل",reason:`💵 دفعة جزئية أمر الشغل ${order.no}`,note:"",date:localDateKey(new Date()),time:new Date().toTimeString().slice(0,5),source:"order-part",createdAt:new Date().toISOString()});
+  }
+  return a;
+}
 
 /* ---------------------------------------------------------------------
    التحويل بين المحافظ والخزنة (الدرج)

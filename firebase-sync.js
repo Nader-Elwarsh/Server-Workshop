@@ -336,7 +336,7 @@
       return { changed: changedAny, cloudEmpty: cloudEmpty };
     }).then(function (r) {
       var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
-        ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [] }).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
+        ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [], wf_p: local("wf_p") || [], wf_m: local("wf_m") || [], wf_wallet_tx: local("wf_wallet_tx") || [] }).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
         : Promise.resolve();
       return mirror.then(function () { hydrating = false; return r; });
     }, function (e) { hydrating = false; throw e; });

@@ -14,6 +14,7 @@
 /* ---------------------- 1) نافذة إضافة قطعة جديدة موحّدة ---------------------- */
 
 let _qapCtx = null;
+let _quickAddPartBusy=false;
 
 /* anchorEl (اختياري): عنصر في الصفحة نحط النافذة بعده مباشرة، عشان تفضل
    ظاهرة في نفس السياق اللي انتي شغالة فيه (تحت مربع البحث اللي كتبتي فيه
@@ -72,7 +73,8 @@ function closeQuickAddPart() {
   _qapCtx = null;
 }
 
-function saveQuickAddPart() {
+async function saveQuickAddPart() {
+  if(_quickAddPartBusy)return;
   const name = (document.getElementById("qapName")?.value || "").trim();
   if (!name) return alert("اكتب اسم القطعة.");
   const dup = findDuplicatePartName(name);
@@ -90,16 +92,16 @@ function saveQuickAddPart() {
   const p = { id: id(), name, category, code, location: "", qty, min: 0, buy, use, photo: "", createdAt: new Date().toISOString() };
   const all = arr(K.p);
   all.push(p);
-  const result=withRollback([K.p,K.m],()=>{
-    if(!put(K.p,all))return{ok:false};
-    if(qty>0){const moves=arr(K.m);moves.push({id:id(),partId:p.id,type:"توريد",note:"إضافة صنف جديد",qty,at:new Date().toISOString()});if(!put(K.m,moves))return{ok:false}}
-    return{ok:true};
-  });
-  if(!result?.ok)return;
+  _quickAddPartBusy=true;
+  const values={[K.p]:all};
+  if(qty>0){const moves=arr(K.m);moves.push({id:id(),partId:p.id,type:"توريد",note:"إضافة صنف جديد",qty,at:new Date().toISOString()});values[K.m]=moves}
+  let saved=false;
+  try{saved=await commitStorageAsync(values)}finally{_quickAddPartBusy=false}
+  if(!saved)return;
+  const ctx=_qapCtx;
   closeQuickAddPart();
   refreshAllScreens?.();
   renderParts?.();
-  const ctx = _qapCtx;
   _qapCtx = null;
   if (ctx?.onCreated) ctx.onCreated(p);
 }
@@ -213,13 +215,8 @@ async function saveRestock() {
     const nb = +buyEl.value;
     if (Number.isFinite(nb) && nb >= 0) p.buy = nb;
   }
-  const result=withRollback([K.p,K.m],()=>{
-    if(!put(K.p,all))return{ok:false};
-    const moves=arr(K.m);moves.push({id:id(),partId:pid,type:"توريد",note,qty,invoice,at:new Date().toISOString()});
-    if(!put(K.m,moves))return{ok:false};
-    return{ok:true};
-  });
-  if(!result?.ok)return;
+  const moves=arr(K.m);moves.push({id:id(),partId:pid,type:"توريد",note,qty,invoice,at:new Date().toISOString()});
+  if(!await commitStorageAsync({[K.p]:all,[K.m]:moves}))return;
   invoiceCommitted=true;
   refreshAllScreens?.();
   renderParts?.();

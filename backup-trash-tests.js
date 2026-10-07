@@ -13,7 +13,7 @@ function makeEnv(confirmAnswer){
     refreshAllScreens:()=>{},renderTrash:()=>{}};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
+  ['K','arr','get','put','putAsync','esc','escAttr','commitStorage','commitStorageAsync','withRollback','withRollbackAsync','saveJSONSafe'].forEach(n=>{if(window[n]!==undefined)context[n]=window[n]});
   context.id=window.id;
   ['app-shared.js','app-data-management.js','app-trash.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   return {store,alerts,confirms,downloads,readers,context,K:window.K,setReaderMode(mode){readerMode=mode}};
@@ -48,7 +48,7 @@ function makeEnv(confirmAnswer){
   {
     const e=makeEnv(true),x=e.context,K=e.K;
     e.store[K.trash]=JSON.stringify([{id:'t1',type:'request',label:'أمر 1',payload:{request:{id:'r1',deviceId:'d-gone',customerId:'c-gone'}},deletedAt:new Date().toISOString()}]);
-    x.restoreFromTrash('t1');
+    await x.restoreFromTrash('t1');
     assert.strictEqual(JSON.parse(e.store[K.r]||'[]').length,0,'orphan request must not be restored');
     assert.ok(/الجهاز/.test(e.alerts[0]),'tells the user to restore the device first');
     assert.strictEqual(e.confirms.length,0,'no confirmation for a blocked restore');
@@ -58,9 +58,9 @@ function makeEnv(confirmAnswer){
   {
     const e=makeEnv(true),x=e.context,K=e.K;
     e.store[K.trash]=JSON.stringify([{id:'t2',type:'device',label:'غسالة',payload:{device:{id:'d1',customerId:'c1'},requests:[],moves:[]},deletedAt:new Date().toISOString()}]);
-    x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]||'[]').length,0);assert.ok(/العميل/.test(e.alerts[0]));
+    await x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]||'[]').length,0);assert.ok(/العميل/.test(e.alerts[0]));
     e.store[K.c]=JSON.stringify([{id:'c1',name:'أحمد'}]);
-    x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]).length,1,'restores when the customer exists');
+    await x.restoreFromTrash('t2');assert.strictEqual(JSON.parse(e.store[K.d]).length,1,'restores when the customer exists');
     assert.strictEqual(JSON.parse(e.store[K.trash]).length,0);
   }
   // 4) استرجاع نسخة قديمة (مفيهاش الخزنة ولا المحافظ): الأقسام الناقصة بتتفرّغ ومذكورة في رسالة التأكيد، والإعدادات الحالية بتفضل

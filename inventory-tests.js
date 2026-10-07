@@ -11,7 +11,7 @@ function makeEnv(){
     refreshDualPhotoName:()=>{},renderLivePhotoPreview:()=>{}};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','saveJSONSafe'].forEach(n=>{if(window[n])context[n]=window[n]});
+  ['K','arr','get','put','putAsync','commitStorage','commitStorageAsync','withRollback','saveJSONSafe'].forEach(n=>{if(window[n])context[n]=window[n]});
   context.id=window.id;
   ['app-shared.js','app-parts.js','app-restock.js','app-inventory-bulk.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   // app-shared.js بيعرّف imageToDataURL الحقيقية (محتاجة canvas)، فبنستبدلها بعد التحميل.
@@ -25,12 +25,12 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     const e=makeEnv(),x=e.context,K=e.K;
     e.store[K.p]=JSON.stringify([{id:'p1',name:'مروحة',qty:10,min:2,buy:5,use:9,category:'x'}]);
     const existing=J(e,K.p)[0];
-    let r=x.persistPartRecord({name:'مروحة',code:'',category:'x',location:'',qty:7,min:2,buy:5,use:9,photo:''},existing);
+    let r=await x.persistPartRecord({name:'مروحة',code:'',category:'x',location:'',qty:7,min:2,buy:5,use:9,photo:''},existing);
     assert.ok(r.ok);assert.strictEqual(J(e,K.p)[0].qty,7);
     const mv=J(e,K.m);assert.strictEqual(mv.length,1);assert.strictEqual(mv[0].qty,3);assert.ok(/نقص/.test(mv[0].type));
     assert.ok(!/خروج|إرجاع/.test(mv[0].type),'inventory adjustment must not count as consumption');
     // تعديل بدون تغيير الكمية: مفيش حركة
-    x.persistPartRecord({name:'مروحة 2',code:'',category:'x',location:'',qty:7,min:2,buy:5,use:9,photo:''},J(e,K.p)[0]);
+    await x.persistPartRecord({name:'مروحة 2',code:'',category:'x',location:'',qty:7,min:2,buy:5,use:9,photo:''},J(e,K.p)[0]);
     assert.strictEqual(J(e,K.m).length,1);
   }
   // 2) كل كميات المخزون والتوريد أعداد صحيحة، ولا تُغيّر الكسور أي سجل.
@@ -38,10 +38,10 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     const e=makeEnv(),x=e.context,K=e.K;
     e.store[K.p]=JSON.stringify([{id:'p1',name:'مروحة',qty:10,min:2,buy:5,use:9,category:'x'}]);
     const before=e.store[K.p];
-    const fractional=x.persistPartRecord({name:'مروحة',code:'',category:'x',location:'',qty:1.5,min:2,buy:5,use:9,photo:''},J(e,K.p)[0]);
+    const fractional=await x.persistPartRecord({name:'مروحة',code:'',category:'x',location:'',qty:1.5,min:2,buy:5,use:9,photo:''},J(e,K.p)[0]);
     assert.strictEqual(fractional.ok,false);assert.strictEqual(e.store[K.p],before,'fractional manual inventory counts must not be saved');
     Object.assign(e.els,{qapName:{value:'فلتر'},qapCategory:{value:'x'},qapCode:{value:''},qapQty:{value:'1.5'},qapBuy:{value:'0'},qapUse:{value:'0'}});
-    x.saveQuickAddPart();assert.strictEqual(J(e,K.p).length,1,'quick-add must reject fractional initial stock');
+    await x.saveQuickAddPart();assert.strictEqual(J(e,K.p).length,1,'quick-add must reject fractional initial stock');
     Object.assign(e.els,{stkPart:{value:'p1'},stkQty:{value:'1.5'},stkBuy:{value:''},stkNote:{value:''},stkInvoice:{files:[]}});
     await x.saveRestock();assert.strictEqual(J(e,K.p)[0].qty,10,'restock must reject fractional units');
     assert.ok(e.alerts.some(a=>/عدد صحيح/.test(a)));
@@ -84,19 +84,19 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     e.store[K.p]=JSON.stringify([{id:'p1',name:'مروحة',qty:10,buy:5,use:9,category:'x'},{id:'p2',name:'فلتر',qty:2,buy:3,use:6,category:'x'}]);
     const before=e.store[K.p];
     Object.assign(e.els,{bulkScope:{value:''},bulkOp:{value:'margin'},bulkMarginValue:{value:'-10'}});
-    x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'negative margin must not modify prices');
-    e.els.bulkMarginValue.value='1e308';x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'overflowing margin must not modify any item');
+    await x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'negative margin must not modify prices');
+    e.els.bulkMarginValue.value='1e308';await x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'overflowing margin must not modify any item');
     Object.assign(e.els,{bulkOp:{value:'adjust'},bulkField:{value:'use'},bulkDir:{value:'up'},bulkType:{value:'pct'},bulkValue:{value:'1e308'}});
-    x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'overflowing bulk adjustment must be atomic');
+    await x.applyBulkPriceChange();assert.strictEqual(e.store[K.p],before,'overflowing bulk adjustment must be atomic');
   }
   // 7) النسب والمبالغ السليمة تظل قابلة للتطبيق على الأسعار المحددة.
   {
     const e=makeEnv(),x=e.context,K=e.K;
     e.store[K.p]=JSON.stringify([{id:'p1',name:'مروحة',qty:10,buy:5,use:9,category:'x'}]);
     Object.assign(e.els,{bulkScope:{value:''},bulkOp:{value:'margin'},bulkMarginValue:{value:'20'}});
-    x.applyBulkPriceChange();assert.strictEqual(J(e,K.p)[0].use,6);
+    await x.applyBulkPriceChange();assert.strictEqual(J(e,K.p)[0].use,6);
     Object.assign(e.els,{bulkOp:{value:'adjust'},bulkField:{value:'both'},bulkDir:{value:'down'},bulkType:{value:'fixed'},bulkValue:{value:'2'}});
-    x.applyBulkPriceChange();assert.strictEqual(J(e,K.p)[0].buy,3);assert.strictEqual(J(e,K.p)[0].use,4);
+    await x.applyBulkPriceChange();assert.strictEqual(J(e,K.p)[0].buy,3);assert.strictEqual(J(e,K.p)[0].use,4);
   }
   // 8) توريد بضغطتين متتاليتين = توريد واحد
   {

@@ -30,12 +30,12 @@ function check(condition, message) { if (!condition) throw new Error(message); }
 set(K.p, [{ id: 'p1', name: 'Part', qty: 0, buy: 5, use: 10 }]);
 set(K.m, []);
 set(K.r, [{ id: 'r1', no: 'R1', status: 'جاري التنفيذ', parts: [{ partId: 'p1', qty: 2, buy: 5, cost: 5, sell: 10 }], closed: false, paid: false }]);
-context.changeRequestStatus('r1', 'ملغي');
+await context.changeRequestStatus('r1', 'ملغي');
 check(get(K.p)[0].qty === 2, 'cancel did not persist returned stock');
 check(get(K.m).some(x => x.requestId === 'r1' && x.qty === 2), 'cancel did not persist stock movement');
 
 // Re-opening must consume the same quantity again and persist it.
-context.changeRequestStatus('r1', 'جديد');
+await context.changeRequestStatus('r1', 'جديد');
 check(get(K.p)[0].qty === 0, 'reopen did not persist stock deduction');
 check(get(K.m).filter(x => x.requestId === 'r1').length === 2, 'reopen did not persist second stock movement');
 

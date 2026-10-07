@@ -33,7 +33,7 @@ function freshStore(){const store={};
   assert.strictEqual(trash.length,1,'one trash entry created');
   assert.strictEqual(trash[0].type,'request');
 
-  window.restoreFromTrash(trash[0].id);
+  await window.restoreFromTrash(trash[0].id);
   assert.strictEqual(JSON.parse(store[ctx.K.r]).length,1,'order restored');
   assert.strictEqual(JSON.parse(store[ctx.K.r])[0].id,'r1');
   assert.strictEqual(JSON.parse(store[ctx.K.p])[0].qty,3,'part qty correctly subtracted back (5-2)');
@@ -54,7 +54,7 @@ function freshStore(){const store={};
   assert.strictEqual(window.trashEntries().length,1);
   assert.strictEqual(window.trashEntries()[0].type,'customer');
 
-  window.restoreFromTrash(window.trashEntries()[0].id);
+  await window.restoreFromTrash(window.trashEntries()[0].id);
   assert.strictEqual(JSON.parse(store[ctx.K.c]).length,1,'customer restored');
   assert.strictEqual(JSON.parse(store[ctx.K.d]).length,1,'device restored');
   assert.strictEqual(JSON.parse(store[ctx.K.r]).length,1,'order restored');

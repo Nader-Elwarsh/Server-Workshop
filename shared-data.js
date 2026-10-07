@@ -21,6 +21,7 @@
   "use strict";
 
   const K = { c: "wf_c", d: "wf_d", r: "wf_r", p: "wf_p", s: "wf_s", m: "wf_m", e: "wf_e", tr: "wf_tr", tasks: "wf_tasks", wtx: "wf_wallet_tx", fc: "wf_fault_codes", pc: "wf_pending_calls", inv: "wf_inv", trash: "wf_trash", followupLog: "wf_followup_log" };
+  const OPERATIONAL_KEYS = new Set([K.c, K.d, K.r, K.p, K.m, K.wtx]);
 
   const def = {
     centers: ["مطاي", "بني مزار"],
@@ -65,7 +66,7 @@
   function persistOperational(values) {
     if (!window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return;
     Object.entries(values || {}).forEach(([key, value]) => {
-      if ([K.c, K.d, K.r].includes(key) && typeof window.WorkshopDB.setSnapshot === "function") window.WorkshopDB.setSnapshot(key, value);
+      if (OPERATIONAL_KEYS.has(key) && typeof window.WorkshopDB.setSnapshot === "function") window.WorkshopDB.setSnapshot(key, value);
     });
     window.WorkshopDB.replaceMany(values).catch(function (error) {
       console.error("[WorkshopData] تعذر تحديث نسخة IndexedDB؛ بيانات التوافق المحلية ما زالت موجودة:", error);
@@ -78,7 +79,7 @@
     Object.defineProperty(proto, "__wfOperationalIDBBridge", { value: true });
     proto.setItem = function (key, value) {
       const result = originalSet.call(this, key, value);
-      if (this === window.localStorage && !writingThroughDataApi && [K.c, K.d, K.r].includes(String(key))) {
+      if (this === window.localStorage && !writingThroughDataApi && OPERATIONAL_KEYS.has(String(key))) {
         try { persistOperational({ [key]: JSON.parse(String(value)) }); }
         catch (e) { console.warn("[WorkshopData] تجاهل كتابة محلية غير صالحة في جسر IndexedDB", key, e); }
       }
@@ -86,7 +87,7 @@
     };
     proto.removeItem = function (key) {
       const result = originalRemove.call(this, key);
-      if (this === window.localStorage && !writingThroughDataApi && [K.c, K.d, K.r].includes(String(key))) persistOperational({ [key]: [] });
+      if (this === window.localStorage && !writingThroughDataApi && OPERATIONAL_KEYS.has(String(key))) persistOperational({ [key]: [] });
       return result;
     };
   }
@@ -169,7 +170,7 @@
   }
   async function commitStorageAsync(values) {
     const entries = Object.entries(values || {});
-    const operational = Object.fromEntries(entries.filter(([key]) => [K.c, K.d, K.r].includes(key)));
+    const operational = Object.fromEntries(entries.filter(([key]) => OPERATIONAL_KEYS.has(key)));
     if (!Object.keys(operational).length || !window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return commitStorage(values);
     if (window.WorkshopDBReady) {
       const ready = await window.WorkshopDBReady;

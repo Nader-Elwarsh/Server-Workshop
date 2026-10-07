@@ -11,7 +11,7 @@ function make(){
   vm.createContext(ctx);
   const run=f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),ctx,{filename:f});
   run('shared-data.js');
-  Object.assign(ctx,{K:window.K,arr:window.arr,get:window.get,put:window.put,esc:window.esc,id:window.id,settings:window.settings,withRollback:window.withRollback,commitStorage:window.commitStorage,localDateKey:window.localDateKey});
+  Object.assign(ctx,{K:window.K,arr:window.arr,get:window.get,put:window.put,esc:window.esc,id:window.id,settings:window.settings,withRollback:window.withRollback,commitStorage:window.commitStorage,commitStorageAsync:window.commitStorageAsync,putAsync:window.putAsync,withRollbackAsync:window.withRollbackAsync,localDateKey:window.localDateKey});
   ['app-shared.js','wallets.js','app-route-followup.js','app-delete-tools.js'].forEach(run);
   const A='محفظتي الشخصية',B='محفظة فودافون كاش';
   const s=ctx.settings();s.wallets=[A,B];ctx.put(ctx.K.s,s);
@@ -20,6 +20,7 @@ function make(){
   const order=()=>JSON.parse(store[ctx.K.r])[0];
   return{ctx,store,pay,order,A,B,bal:w=>ctx.walletBalance(w)};
 }
+async function main(){
 let t;
 // نفس المحفظة مرتين: بتتجمع في حركة واحدة زي الأول.
 t=make();t.pay(300,t.A);t.pay(200,t.A);
@@ -78,7 +79,7 @@ function makeReturn(confirms,prompts,o){
   vm.createContext(ctx);
   const run=f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),ctx,{filename:f});
   run('shared-data.js');
-  Object.assign(ctx,{K:window.K,arr:window.arr,get:window.get,put:window.put,esc:window.esc,id:window.id,settings:window.settings,withRollback:window.withRollback,commitStorage:window.commitStorage,localDateKey:window.localDateKey});
+  Object.assign(ctx,{K:window.K,arr:window.arr,get:window.get,put:window.put,esc:window.esc,id:window.id,settings:window.settings,withRollback:window.withRollback,commitStorage:window.commitStorage,commitStorageAsync:window.commitStorageAsync,putAsync:window.putAsync,withRollbackAsync:window.withRollbackAsync,localDateKey:window.localDateKey});
   ['app-shared.js','wallets.js'].forEach(run);
   vm.runInContext('var renderRequests=()=>{},renderDash=()=>{},requestProfile=()=>{};',ctx);
   run('app-requests.js');
@@ -93,7 +94,7 @@ function makeReturn(confirms,prompts,o){
 }
 // R1: التحصيل في نفس محفظة العربون → يتحوّل لعربون والرصيد ثابت، ومش هيتحصّل تاني.
 t=makeReturn([true],['عطل تاني'],{});
-assert.strictEqual(t.bal(t.A),1000);t.ctx.markRequestReturned('r1');
+assert.strictEqual(t.bal(t.A),1000);await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.bal(t.A),1000,'balance must not drop when the collected money becomes a deposit');
 assert.strictEqual(t.order().deposit,1000);assert.strictEqual(t.order().closed,false);assert.strictEqual(t.order().remain,0);assert.strictEqual(t.order().status,'جاري التنفيذ');
 assert.ok(t.txs().filter(x=>x.refKey==='order-final-r1'&&!x.deleted).length===0);
@@ -106,32 +107,34 @@ assert.ok(!t.ctx.walletAudit().issues.some(i=>['amount-mismatch','reopened-final
  const o=JSON.parse(q.store[q.ctx.K.r]);o[0].closeWallet=q.B;q.store[q.ctx.K.r]=JSON.stringify(o);
  const w=JSON.parse(q.store[q.ctx.K.wtx]);w.find(x=>x.refKey==='order-final-r1').wallet=q.B;q.store[q.ctx.K.wtx]=JSON.stringify(w);
  assert.strictEqual(q.bal(q.A),200);assert.strictEqual(q.bal(q.B),800);
- q.ctx.markRequestReturned('r1');
+ await q.ctx.markRequestReturned('r1');
  assert.strictEqual(q.bal(q.A),200);assert.strictEqual(q.bal(q.B),800,'money stays in the wallet it was collected in');
  assert.strictEqual(q.order().deposit,1000);assert.strictEqual(q.order().depositExtra,800);
  assert.ok(!q.ctx.walletAudit().issues.some(i=>['amount-mismatch','possible-duplicate'].includes(i.kind)));}
 // R3: اتردّت كلها → الرصيد ينقص بالمحصّل بس والعربون القديم يفضل.
-t=makeReturn([false,true],['800','العميل رفض'],{});t.ctx.markRequestReturned('r1');
+t=makeReturn([false,true],['800','العميل رفض'],{});await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.bal(t.A),200);assert.strictEqual(t.order().deposit,200);assert.strictEqual(t.order().remain,800);assert.strictEqual(t.order().returnMoney.choice,'refund');
 // R4: رد جزئي 300 → الباقي 500 يتحوّل لعربون.
-t=makeReturn([false,true],['300','رد جزئي'],{});t.ctx.markRequestReturned('r1');
+t=makeReturn([false,true],['300','رد جزئي'],{});await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.bal(t.A),700);assert.strictEqual(t.order().deposit,700);assert.strictEqual(t.order().remain,300);
 // رد أكبر من المحصّل مرفوض ومفيش تغيير.
-t=makeReturn([false,true],['900','x'],{});t.ctx.markRequestReturned('r1');
+t=makeReturn([false,true],['900','x'],{});await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.order().closed,true);assert.strictEqual(t.bal(t.A),1000);
 // R5: من غير تسجيل (السلوك القديم، بعد تحذير صريح): التحصيل يتشال من الرصيد.
-t=makeReturn([false,false,true],['x'],{});t.ctx.markRequestReturned('r1');
+t=makeReturn([false,false,true],['x'],{});await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.bal(t.A),200);assert.strictEqual(t.order().deposit,200);assert.strictEqual(t.order().returnMoney,undefined);
 // R6: إلغاء في آخر تحذير = مفيش مرتجع خالص.
-t=makeReturn([false,false,false],['x'],{});t.ctx.markRequestReturned('r1');
+t=makeReturn([false,false,false],['x'],{});await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.order().closed,true);assert.strictEqual(t.bal(t.A),1000);
 // R7: التحصيل كان من غير محفظة → يتحوّل لعربون من غير ما يتسجل في أي محفظة، وماينسخش فلوس وهمية.
 t=makeReturn([true],['x'],{closeWallet:''});
-assert.strictEqual(t.bal(t.A),200);t.ctx.markRequestReturned('r1');
+assert.strictEqual(t.bal(t.A),200);await t.ctx.markRequestReturned('r1');
 assert.strictEqual(t.bal(t.A),200);assert.strictEqual(t.order().deposit,1000);assert.strictEqual(t.order().depositExtra,800);
 // R8: حركة التحصيل معدّلة يدويًا ماتفضلش فاضلة ومتتحسبش مرتين.
 t=makeReturn([true],['x'],{});
 {const w=t.txs();w.find(x=>x.refKey==='order-final-r1').manualOverride=true;t.store[t.ctx.K.wtx]=JSON.stringify(w);}
-t.ctx.markRequestReturned('r1');assert.strictEqual(t.bal(t.A),1000);
+await t.ctx.markRequestReturned('r1');assert.strictEqual(t.bal(t.A),1000);
 
 console.log('wallet-partial-payment-tests: PASS');
+}
+main().catch(e=>{console.error(e);process.exitCode=1});
