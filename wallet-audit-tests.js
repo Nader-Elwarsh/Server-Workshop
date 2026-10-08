@@ -8,9 +8,9 @@ function makeEnv(){
   const context={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true,prompt:()=>null};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','settings','arrCached','localDateKey'].forEach(n=>context[n]=window[n]);
-  context.id=window.id;
-  ['app-shared.js','wallets.js','treasury.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
+  ['K','arr','get','put','putAsync','esc','escAttr','commitStorage','commitStorageAsync','withRollback','withRollbackAsync','settings','arrCached','localDateKey','WFStorage'].forEach(n=>context[n]=window[n]);
+  context.id=window.id;context.renderRequests=()=>{};
+  ['app-shared.js','wallets.js','treasury.js','app-data-management.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   return {store,context,K:window.K};
 }
 const kinds=a=>Array.from(a.issues,i=>i.kind);
@@ -100,4 +100,35 @@ const W='محفظتي الشخصية';
   list[list.length-1].amount=121;e.store[K.wtx]=JSON.stringify(list);
   a=x.walletAudit();assert.ok(!a.issues.some(i=>i.kind==='manual-vs-order'));
 }
+// طرفا التحويل لازم يكونا موجودين ومتطابقين في المبلغ والاتجاه والمحفظة
+{
+  const e=makeEnv(),{context:x,K}=e;
+  const walletSide={id:'wx',source:'transfer',transferId:'tx-1',type:'out',amount:100,wallet:W,deleted:false};
+  e.store[K.wtx]=JSON.stringify([walletSide]);e.store[K.tr]=JSON.stringify([]);
+  assert.ok(kinds(x.walletAudit()).includes('transfer-orphan'),'wallet-only transfer is reported');
+  const treasurySide={id:'tx',source:'transfer',transferId:'tx-1',type:'in',amount:90,counterparty:W,deleted:false};
+  e.store[K.tr]=JSON.stringify([treasurySide]);
+  let a=x.walletAudit();assert.ok(kinds(a).includes('transfer-mismatch'),'amount mismatch is reported');
+  treasurySide.amount=100;treasurySide.type='out';e.store[K.tr]=JSON.stringify([treasurySide]);
+  a=x.walletAudit();assert.ok(kinds(a).includes('transfer-mismatch'),'same-direction transfer sides are reported');
+  treasurySide.type='in';e.store[K.tr]=JSON.stringify([treasurySide]);
+  assert.ok(!kinds(x.walletAudit()).some(k=>k.startsWith('transfer-')),'matching transfer sides are clean');
+  e.store[K.wtx]=JSON.stringify([]);
+  assert.ok(kinds(x.walletAudit()).includes('transfer-orphan'),'treasury-only transfer is reported');
+}
+(async()=>{
+// إصلاح العربون من شاشة سلامة البيانات يجب أن يحدّث قيد المحفظة المرتبط في العملية نفسها.
+{
+  const e=makeEnv(),{context:x,K}=e;
+  const o={id:123,no:'OLD-123',status:'مكتمل',total:50,labor:50,partsTotal:0,partsCost:0,deposit:70,depositWallet:W,closed:true,closeWallet:'',closedAt:new Date().toISOString()};
+  e.store[K.r]=JSON.stringify([o]);x.syncWalletForOrderDeposit(o);
+  const issue=x.dataIntegrityReport().issues.find(i=>i.key==='req-deposit:123');
+  assert.ok(issue&&issue.fix?.type==='clampOrderDeposit','invalid legacy order deposit is detected');
+  await x.applyIntegrityFix(issue.key);
+  const savedOrder=JSON.parse(e.store[K.r])[0],tx=JSON.parse(e.store[K.wtx]).find(x=>x.refKey==='order-deposit-123'&&!x.deleted);
+  assert.strictEqual(savedOrder.deposit,50,'order deposit was clamped');
+  assert.strictEqual(tx.amount,50,'linked wallet movement was reconciled with the repaired deposit');
+  assert.strictEqual(x.walletBalance(W),50,'wallet balance matches the repaired order');
+}
 console.log('wallet-audit-tests: PASS');
+})().catch(e=>{console.error(e);process.exitCode=1});

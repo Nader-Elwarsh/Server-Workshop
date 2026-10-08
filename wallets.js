@@ -620,7 +620,12 @@ function walletAudit(){
   });
   // تحويل ناقص طرف
   const tr=arr(K.tr).filter(x=>x&&!x.deleted);
-  active.filter(x=>x.source==="transfer"&&x.transferId).forEach(x=>{if(!tr.some(t=>t.transferId===x.transferId))add({kind:"transfer-orphan",dir:"info",tx:x,amount:money(x.amount),text:"تحويل "+money(x.amount).toFixed(2)+" ج ليه طرف في المحفظة بس ومفيش طرف مقابل في الخزنة."})});
+  active.filter(x=>x.source==="transfer"&&x.transferId).forEach(x=>{
+    const t=tr.find(y=>y.source==="transfer"&&y.transferId===x.transferId);
+    if(!t)add({kind:"transfer-orphan",dir:"info",tx:x,amount:money(x.amount),text:"تحويل "+money(x.amount).toFixed(2)+" ج ليه طرف في المحفظة بس ومفيش طرف مقابل في الخزنة."});
+    else if(Math.abs(money(t.amount)-money(x.amount))>.01||((x.type==="out")===(t.type==="out"))||String(t.counterparty||"")!==String(x.wallet||""))add({kind:"transfer-mismatch",dir:"info",tx:x,amount:Math.abs(money(t.amount)-money(x.amount)),text:"طرفا التحويل "+(x.transferId||"")+" غير متطابقين في المبلغ أو الاتجاه أو اسم المحفظة."});
+  });
+  tr.filter(x=>x.source==="transfer"&&x.transferId).forEach(t=>{if(!active.some(x=>x.source==="transfer"&&x.transferId===t.transferId))add({kind:"transfer-orphan",dir:"info",tx:t,amount:money(t.amount),text:"تحويل "+money(t.amount).toFixed(2)+" ج ليه طرف في الخزنة بس ومفيش طرف مقابل في المحفظة."})});
   // الحد الأقصى
   const wallets=(settings().wallets||[]).map(name=>{
     const raw=walletRawBalance(name),bal=walletBalance(name),cap=walletCapOf(name);
@@ -631,7 +636,7 @@ function walletAudit(){
   const sum=d=>issues.filter(i=>i.dir===d).reduce((a,i)=>a+Math.abs(+i.amount||0),0);
   return{wallets,issues,upTotal:sum("up"),downTotal:sum("down")};
 }
-const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر اتحذفت","order-cancelled":"أوامر ملغية وحركاتها لسه محسوبة","final-on-open":"تحصيل نهائي على أوامر اتفتحت تاني","amount-mismatch":"مبلغ الحركة غير مطابق للأمر","possible-duplicate":"احتمال حركات مكررة","manual-vs-order":"وارد يدوي بنفس مبلغ حركة أمر","missing-deposit":"عرابين على أوامر ومفيش حركة ليها","missing-final":"تحصيلات مقفولة ومفيش حركة ليها","closed-no-wallet":"أوامر اتقفلت من غير محفظة","wallet-mismatch":"محفظة الحركة غير محفظة الأمر","late-entry":"حركات أوامر قديمة اتسجلت متأخر","unknown-wallet":"حركات على محفظة غير معروفة","transfer-orphan":"تحويلات ناقصة","cap":"حد أقصى بيخفّض المعروض","reopened-final":"أوامر اتفتحت تاني وتحصيلها اتشال من المحفظة"};
+const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر اتحذفت","order-cancelled":"أوامر ملغية وحركاتها لسه محسوبة","final-on-open":"تحصيل نهائي على أوامر اتفتحت تاني","amount-mismatch":"مبلغ الحركة غير مطابق للأمر","possible-duplicate":"احتمال حركات مكررة","manual-vs-order":"وارد يدوي بنفس مبلغ حركة أمر","missing-deposit":"عرابين على أوامر ومفيش حركة ليها","missing-final":"تحصيلات مقفولة ومفيش حركة ليها","closed-no-wallet":"أوامر اتقفلت من غير محفظة","wallet-mismatch":"محفظة الحركة غير محفظة الأمر","late-entry":"حركات أوامر قديمة اتسجلت متأخر","unknown-wallet":"حركات على محفظة غير معروفة","transfer-orphan":"تحويلات ناقصة","transfer-mismatch":"طرفا التحويل غير متطابقين","cap":"حد أقصى بيخفّض المعروض","reopened-final":"أوامر اتفتحت تاني وتحصيلها اتشال من المحفظة"};
 // يرجّع حركة عربون/تحصيل أمر اتشالت تلقائيًا من المحفظة، بعد تأكيد صريح منك (بتتسجل بنفس مبلغ ومحفظة الأمر).
 function restoreOrderWalletTx(orderId,kind){
   const r=arr(K.r).find(x=>String(x.id)===String(orderId));if(!r)return alert("الأمر مش موجود.");
@@ -648,12 +653,12 @@ function restoreOrderWalletTx(orderId,kind){
 function renderWalletAudit(){
   const box=document.getElementById("walletAuditBody");if(!box)return;
   const a=walletAudit(),fmt=n=>(+n||0).toFixed(2);
-  const order=["order-missing","order-cancelled","final-on-open","amount-mismatch","possible-duplicate","manual-vs-order","missing-deposit","missing-final","closed-no-wallet","wallet-mismatch","late-entry","unknown-wallet","transfer-orphan","reopened-final","cap"];
+  const order=["order-missing","order-cancelled","final-on-open","amount-mismatch","possible-duplicate","manual-vs-order","missing-deposit","missing-final","closed-no-wallet","wallet-mismatch","late-entry","unknown-wallet","transfer-orphan","transfer-mismatch","reopened-final","cap"];
   const link=i=>i.tx?(i.tx.wallet?'wallet.html?type=wallet&name='+encodeURIComponent(i.tx.wallet)+'#tx-'+encodeURIComponent(i.tx.id):"wallets.html"):(i.order?'request.html?id='+encodeURIComponent(i.order.id):"");
   const dirIcon={up:"⬆️",down:"⬇️",info:"ℹ️"};
   let html='<div class="profile-grid">'+a.wallets.map(w=>'<div class="kv"><b>'+esc(w.name)+'</b>وارد '+fmt(w.inSum)+' − صادر '+fmt(w.outSum)+' = <b>'+fmt(w.raw)+'</b>'+(w.cap!==null&&w.raw>w.cap?' (المعروض '+fmt(w.balance)+')':'')+' <small>('+w.count+' حركة)</small></div>').join("")+'</div>';
   html+='<div class="hint" style="margin:8px 0">⬆️ بنود بتخلّي الرصيد المعروض <b>أعلى</b> من الفعلي: '+fmt(a.upTotal)+' ج محتمل · ⬇️ بنود بتخليه <b>أقل</b>: '+fmt(a.downTotal)+' ج محتمل. مجرد مؤشرات للمراجعة — مفيش حاجة اتغيّرت.</div>';
-  if(!a.issues.length)html+='<div class="hint">✅ مفيش أي حاجة مريبة: كل الحركات المربوطة بأوامر مطابقة لأوامرها. فالفرق غالبًا في حركات يدوية (مصروف/وارد) أو فلوس اتحصّلت ومتسجلتش — راجع كشف المحفظة يدويًا.</div>';
+  if(!a.issues.length)html+='<div class="hint">✅ مفيش إشارات مريبة في ربط حركات أوامر الشغل أو التحويلات بين المحافظ والخزنة. فالفرق غالبًا في حركات يدوية (مصروف/وارد) أو فلوس اتحصّلت ومتسجلتش — راجع كشف المحفظة يدويًا.</div>';
   order.forEach(k=>{
     const l=a.issues.filter(i=>i.kind===k);if(!l.length)return;
     const tot=l.reduce((s,i)=>s+Math.abs(+i.amount||0),0);
@@ -687,7 +692,7 @@ function renderWallets(){dedupeWalletTxByRef();autoHealOrderWalletTx(true);
     ${walletTransferWidgetHtml()}
     <details class="expense-panel" id="walletAuditPanel">
       <summary>🔎 مطابقة الرصيد — ليه الرصيد في التطبيق مختلف عن الفعلي؟</summary>
-      <div class="hint" style="margin:8px 0">بيفحص كل حركة مربوطة بأمر شغل مقابل الأمر نفسه ويطلّع أي حاجة ممكن تفرّق الأرقام (أوامر ملغية/مرتجعة، مبالغ مش متطابقة، تكرار...). عرض بس، مش بيغيّر حاجة.</div>
+      <div class="hint" style="margin:8px 0">بيفحص حركات أوامر الشغل مقابل بياناتها، وكمان طرفَي كل تحويل بين المحافظ والخزنة؛ ويطلّع أي حاجة ممكن تفرّق الأرقام (مرتجعات، مبالغ مش متطابقة، تكرار، أو تحويل ناقص). عرض بس، مش بيغيّر حاجة.</div>
       <button type="button" class="secondary" data-wf-event="click" data-wf-code="renderWalletAudit()">🔎 افحص دلوقتي</button>
       <div id="walletAuditBody"></div>
     </details>

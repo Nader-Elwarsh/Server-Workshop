@@ -44,7 +44,8 @@ async function deleteDeviceRecord(did){
   window.auditLog?.("حذف", "جهاز", did, `${d.type||""} ${d.brand||""}`);renderDevices();
 }
 async function deleteRequestRecord(rid){
-  const r=arr(K.r).find(x=>x.id===rid);if(!r)return;
+  const r=arr(K.r).find(x=>String(x.id)===String(rid));if(!r)return;
+  const requestId=String(r.id);
   if(r.closed||r.paid){
     if(!confirm(`⚠️ أمر الشغل ${r.no||""} مغلق أو مدفوع بالكامل. حذفه هيشيله نهائيًا هو وأي حركة حسابات أو مخزون مرتبطة بيه من التقارير. متأكد إنك عايز تحذفه؟`))return;
   }
@@ -52,14 +53,14 @@ async function deleteRequestRecord(rid){
   const stock=arr(K.p),requests=arr(K.r);
   const partsDelta=(r.parts||[]).filter(x=>!x.external&&x.partId).map(x=>({partId:x.partId,qty:+x.qty||0}));
   restorePartsIntoStock(stock,[r]);
-  const removedMoves=arr(K.m).filter(x=>x.requestId===rid);
-  const tasks=arr(K.tasks),linkedTasks=tasks.filter(x=>x.requestId===rid);
-  const payload={request:r,moves:removedMoves,tasks:linkedTasks,partsDelta,walletRefKeys:walletRefKeysForOrders([rid])};
-  const values={[K.p]:stock,[K.m]:arr(K.m).filter(x=>x.requestId!==rid),[K.r]:requests.filter(x=>x.id!==rid),[K.wtx]:walletEntriesAfterRemovingRequests([rid]),[K.tasks]:tasks.map(x=>x.requestId===rid?{...x,requestId:""}:x)};
+  const removedMoves=arr(K.m).filter(x=>String(x.requestId)===requestId);
+  const tasks=arr(K.tasks),linkedTasks=tasks.filter(x=>String(x.requestId)===requestId);
+  const payload={request:r,moves:removedMoves,tasks:linkedTasks,partsDelta,walletRefKeys:walletRefKeysForOrders([r.id])};
+  const values={[K.p]:stock,[K.m]:arr(K.m).filter(x=>String(x.requestId)!==requestId),[K.r]:requests.filter(x=>String(x.id)!==requestId),[K.wtx]:walletEntriesAfterRemovingRequests([r.id]),[K.tasks]:tasks.map(x=>String(x.requestId)===requestId?{...x,requestId:""}:x)};
   const commitValues=typeof addTrashEntryToValues==="function"?addTrashEntryToValues(values,"request",`أمر شغل ${r.no||""}`,payload):values;
   const ok=await commitStorageAsync(commitValues);
   if(!ok)return;
-  window.auditLog?.("حذف", "أمر شغل", rid, r.no||"");
+  window.auditLog?.("حذف", "أمر شغل", r.id, r.no||"");
   renderRequests();
   if(document.getElementById("requestProfile"))location.href="requests.html";
 }

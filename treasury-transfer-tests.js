@@ -1,9 +1,9 @@
 /* اختبارات: تعديل حركة تحويل من الخزنة بيحدّث حركة المحفظة المقابلة، ومدخل المبلغ غير الصحيح مش بيتحوّل صفر بصمت، والضغط المزدوج على التحويل مايسجّلش مرتين. */
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 function makeEnv(){
-  const store={};
+  const store={},elements={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
-  const document={addEventListener:()=>{},getElementById:()=>null,querySelector:()=>null};
+  const document={addEventListener:()=>{},getElementById:id=>elements[id]||null,querySelector:()=>null};
   const window={localStorage,WFStorage:localStorage,document,crypto:{randomUUID:()=>"id-"+Math.random().toString(36).slice(2)}};
   const answers=[],alerts=[];
   const context={window,localStorage,document,crypto:window.crypto,console,alert:m=>alerts.push(m),confirm:()=>true,prompt:()=>answers.shift()};
@@ -12,7 +12,7 @@ function makeEnv(){
   ['K','arr','get','put','esc','escAttr','commitStorage','withRollback'].forEach(n=>context[n]=window[n]);
   context.id=window.id;
   ['app-shared.js','wallets.js','treasury.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
-  return {store,context,answers,alerts,K:window.K};
+  return {store,context,answers,alerts,elements,K:window.K};
 }
 const J=(e,k)=>JSON.parse(e.store[k]||'[]');
 
@@ -48,5 +48,17 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
   x.transferBetweenWalletAndTreasury('toTreasury','فودافون كاش',50,'2026-10-01','10:00','','');
   assert.strictEqual(J(e,K.tr).length,1,'double tap records one transfer');
   assert.strictEqual(J(e,K.wtx).length,1);
+}
+// 4) الرصيد الافتتاحي السالب لا يتحول إلى رصيد موجب بصمت
+{
+  const e=makeEnv(),x=e.context,K=e.K;
+  e.elements.trOpening={value:'-150'};e.elements.trOpeningDate={value:'2026-10-08'};
+  x.saveOpeningBalance();
+  assert.strictEqual(J(e,K.tr).length,0,'negative opening balance must be rejected');
+  assert.ok(e.alerts.length>0,'invalid opening balance gives feedback');
+  e.elements.trOpening.value='abc';x.saveOpeningBalance();
+  assert.strictEqual(J(e,K.tr).length,0,'malformed opening balance must not be saved as zero');
+  e.elements.trOpening.value='٧٥';x.saveOpeningBalance();
+  assert.strictEqual(J(e,K.tr)[0].amount,75,'Arabic digits remain supported');
 }
 console.log('treasury-transfer-tests: PASS');

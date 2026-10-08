@@ -269,7 +269,7 @@ function dataIntegrityReport(){
   for(const [key,label] of collections){for(const rec of arr(key)){if(!rec||typeof rec!=="object"){push({key:`bad:${key}:${Math.random()}`,message:`${label}: سجل غير صالح.`,link:null,fix:null});continue}if(rec.id){const token=key+":"+rec.id;if(seen.has(token))push({key:`dup:${token}`,message:`${label}: رقم مكرر ${rec.id}.`,link:null,fix:null});seen.add(token)}}}
   const customers=new Set(arr(K.c).map(x=>x?.id).filter(Boolean)),devices=new Set(arr(K.d).map(x=>x?.id).filter(Boolean)),parts=new Set(arr(K.p).map(x=>x?.id).filter(Boolean));
   arr(K.d).forEach(x=>{if(x?.customerId&&!customers.has(x.customerId))push({key:`dev-cust:${x.id}`,message:`الجهاز ${deviceName ? (x.type||"")+" — "+(x.brand||"") : x.id}: مرتبط بعميل غير موجود (رقم العميل المحفوظ: ${x.customerId}). المفروض تكون خانة العميل فاضية أو مربوطة بعميل موجود فعليًا.`,link:`device.html?id=${x.id}`,linkLabel:"فتح الجهاز نفسه",fix:{type:"unlinkDeviceCustomer",args:{deviceId:x.id},detail:"هيمسح ربط الجهاز بالعميل غير الموجود بس (تصبح خانة العميل فاضية)، من غير ما يمسح الجهاز نفسه. تقدر تربطه بعميل صحيح بعد كده من صفحة الجهاز."}})});
-  const requestIds=new Set(arr(K.r).map(x=>x?.id).filter(Boolean));
+  const requestIds=new Set(arr(K.r).map(x=>x?.id).filter(Boolean).map(String));
   arr(K.r).forEach(r=>{
     const label=r.no||r.id||"بدون رقم",link=`request.html?id=${r.id}`,partsList=Array.isArray(r.parts)?r.parts:[];
     if(r?.customerId&&!customers.has(r.customerId))push({key:`req-cust:${r.id}`,message:`الأمر ${label}: العميل المرتبط بيه (رقم ${r.customerId}) غير موجود. المفروض يكون مربوط بعميل فعلي أو تشيل الربط من الأمر نفسه.`,link,linkLabel:"فتح الأمر نفسه",fix:null});
@@ -297,16 +297,16 @@ function dataIntegrityReport(){
   // في الرسالة نفسها بدل الرابط.
   const trashAll=arr(K.trash),audits=typeof window.getAuditLog==="function"?window.getAuditLog():[];
   const fmtT=(iso)=>iso?new Date(iso).toLocaleString("ar-EG"):"";
-  const trashReq=(rid)=>{for(const e of trashAll){const pl=e.payload||{},list=e.type==="request"?[pl.request]:(Array.isArray(pl.requests)?pl.requests:[]);const r=list.find(x=>x&&x.id===rid);if(r)return{e,r}}return null};
+  const trashReq=(rid)=>{for(const e of trashAll){const pl=e.payload||{},list=e.type==="request"?[pl.request]:(Array.isArray(pl.requests)?pl.requests:[]);const r=list.find(x=>x&&String(x.id)===String(rid));if(r)return{e,r}}return null};
   const auditNote=(eid)=>{const a=audits.find(x=>x.entityId===eid);return a?`سجل العمليات بيقول: ${a.action} ${a.entity}${a.details?" ("+a.details+")":""} يوم ${fmtT(a.at)}.`:""};
   arr(K.m).forEach(m=>{
     const partOk=!!(m?.partId&&parts.has(m.partId));
     const moveLink=partOk?`part-moves.html?id=${m.partId}#move-${m.id}`:null;
     const whenText=m.at?new Date(m.at).toLocaleString("ar-EG"):"تاريخ غير معروف";
-    if(!partOk){const rq=m.requestId?arr(K.r).find(x=>x.id===m.requestId):null,pa=auditNote(m.partId);
+    if(!partOk){const rq=m.requestId?arr(K.r).find(x=>String(x.id)===String(m.requestId)):null,pa=auditNote(m.partId);
       push({key:`move-part:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): القطعة المرتبطة بيها (رقم ${m.partId||"غير معروف"}) مش موجودة في المخزن حاليًا. ${pa||"مفيش أثر لحذفها في سجل العمليات (ممكن تكون اتمسحت قبل تفعيل السجل أو من جهاز تاني)."}${rq?` الحركة دي تابعة لأمر الشغل ${rq.no||rq.id} الموجود.`:""} الحركة نفسها سجل تاريخي ومش بتأثر على كميات المخزن الحالية.`,link:rq?`request.html?id=${rq.id}`:null,linkLabel:rq?"فتح أمر الشغل المرتبط":null,fix:{type:"removeOrphanMove",args:{moveId:m.id},detail:"هيمسح حركة المخزن دي بس من السجل (هي سجل تاريخي لقطعة مش موجودة، ومش بتأثر على كميات المخزن الحالية). أي بيانات تانية مش هتتغير."}})}
     if(!Number.isFinite(+m.qty)||+m.qty<=0)push({key:`move-qty:${m.id}`,message:`حركة مخزن (${m.type||"بدون نوع"} — ${whenText}): الكمية المسجلة (${m.qty}) غير صالحة. المفروض تكون رقم أكبر من صفر.`,link:moveLink,linkLabel:moveLink?"فتح الحركة نفسها":null,fix:null});
-    if(m.requestId&&!requestIds.has(m.requestId)){const tr=trashReq(m.requestId),pa=tr?"":auditNote(m.requestId),head=`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): أمر الشغل المرتبط بيها (رقم ${m.requestId}) مش موجود. `;
+    if(m.requestId&&!requestIds.has(String(m.requestId))){const tr=trashReq(m.requestId),pa=tr?"":auditNote(m.requestId),head=`حركة مخزن (${m.type||"بدون نوع"} — كمية ${m.qty} — ${whenText}): أمر الشغل المرتبط بيها (رقم ${m.requestId}) مش موجود. `;
       const body=tr?`لقيته في سلة المهملات: «${tr.e.label}»${tr.r.no?` (أمر رقم ${tr.r.no})`:""} — اتحذف يوم ${fmtT(tr.e.deletedAt)}. لو الحذف كان غلط اضغط «استرجاع» وهيرجع بحركاته، ولو الحذف مقصود (زي عميل تجربة) اضغط «مش خطأ».`:`ومش موجود في سلة المهملات. ${pa||"مفيش أثر لحذفه في سجل العمليات، فغالبًا اتحذف حذف نهائي أو من جهاز تاني."} لو الحذف مقصود اضغط «مش خطأ»، أو امسح الحركة اليتيمة.`;
       push({key:`move-req:${m.id}`,message:head+body,link:tr?"settings.html#trash-panel":moveLink,linkLabel:tr?"فتح سلة المهملات":(moveLink?"فتح الحركة نفسها":null),fix:tr?{type:"restoreTrash",args:{trashId:tr.e.id},detail:`هيرجّع «${tr.e.label}» من سلة المهملات بكل بياناته.`}:{type:"removeOrphanMove",args:{moveId:m.id},detail:"هيمسح حركة المخزن دي بس من السجل (الأمر المرتبط بيها مش موجود). كميات المخزن الحالية مش هتتغير."}})}
   });
@@ -357,6 +357,12 @@ async function applyIntegrityFix(key){
   if(issue.fix.type==="restoreTrash"){if(typeof restoreFromTrash!=="function"){alert("سلة المهملات مش متاحة في الصفحة دي.");return}await restoreFromTrash(issue.fix.args.trashId);runDataIntegrityCheck();return}
   if(!confirm(issue.fix.detail+"\n\nمتأكد إنك عايز تنفّذ الإصلاح ده؟"))return;
   const {type,args}=issue.fix;
+  const persistIntegrityOrder=async(all,r,oldDeposit)=>withRollbackAsync([K.r,K.wtx],async()=>{
+    if(!await putAsync(K.r,all))return{ok:false};
+    const depositChanged=oldDeposit===null||Math.abs((+r.deposit||0)-oldDeposit)>.005;
+    if(depositChanged&&typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false};
+    return{ok:true};
+  });
   if(type==="unlinkDeviceCustomer"){
     const all=arr(K.d),d=all.find(x=>x.id===args.deviceId);if(!d)return runDataIntegrityCheck();
     d.customerId="";
@@ -368,30 +374,33 @@ async function applyIntegrityFix(key){
     if(!await putAsync(K.p,all))return;
     renderParts?.();
   }else if(type==="removeOrderPartLine"){
-    const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r||!Array.isArray(r.parts))return runDataIntegrityCheck();
+    const all=arr(K.r),r=all.find(x=>String(x.id)===String(args.requestId));if(!r||!Array.isArray(r.parts))return runDataIntegrityCheck();
+    const oldDeposit=Number.isFinite(+r.deposit)?+r.deposit:null;
     r.parts.splice(args.index,1);
     const partsTotal=r.parts.reduce((n,x)=>n+(+x.qty||0)*(+x.sell||0),0),partsCost=r.parts.reduce((n,x)=>n+(+x.qty||0)*(+x.cost||0),0);
     r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=(+r.labor||0)+partsTotal;
     if(+r.deposit>r.total)r.deposit=r.total;
-    if(!await putAsync(K.r,all))return;
+    if(!(await persistIntegrityOrder(all,r,oldDeposit))?.ok)return alert("تعذر حفظ الإصلاح ومزامنة حركة العربون؛ لم يتم تثبيت التغيير.");
     renderRequests?.();
   }else if(type==="recomputeOrderTotals"){
-    const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r)return runDataIntegrityCheck();
+    const all=arr(K.r),r=all.find(x=>String(x.id)===String(args.requestId));if(!r)return runDataIntegrityCheck();
+    const oldDeposit=Number.isFinite(+r.deposit)?+r.deposit:null;
     const partsList=Array.isArray(r.parts)?r.parts:[];
     const partsTotal=partsList.reduce((n,x)=>n+(+x.qty||0)*(+x.sell||0),0),partsCost=partsList.reduce((n,x)=>n+(+x.qty||0)*(+x.cost||0),0);
     r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=(+r.labor||0)+partsTotal;
     if(+r.deposit>r.total)r.deposit=r.total;
-    if(!await putAsync(K.r,all))return;
+    if(!(await persistIntegrityOrder(all,r,oldDeposit))?.ok)return alert("تعذر حفظ الإصلاح ومزامنة حركة العربون؛ لم يتم تثبيت التغيير.");
     renderRequests?.();
   }else if(type==="removeOrphanMove"){
     const all=arr(K.m);if(!all.some(x=>x.id===args.moveId))return runDataIntegrityCheck();
     if(!await putAsync(K.m,all.filter(x=>x.id!==args.moveId)))return;
   }else if(type==="clampOrderDeposit"){
-    const all=arr(K.r),r=all.find(x=>x.id===args.requestId);if(!r)return runDataIntegrityCheck();
+    const all=arr(K.r),r=all.find(x=>String(x.id)===String(args.requestId));if(!r)return runDataIntegrityCheck();
+    const oldDeposit=Number.isFinite(+r.deposit)?+r.deposit:null;
     const expectedTotal=+r.total||0;
     if(!Number.isFinite(+r.deposit)||+r.deposit<0)r.deposit=0;
     else if(+r.deposit>expectedTotal)r.deposit=expectedTotal;
-    if(!await putAsync(K.r,all))return;
+    if(!(await persistIntegrityOrder(all,r,oldDeposit))?.ok)return alert("تعذر حفظ الإصلاح ومزامنة حركة العربون؛ لم يتم تثبيت التغيير.");
     renderRequests?.();
   }
   window.auditLog?.("إصلاح سلامة بيانات", "سجل", key, type);

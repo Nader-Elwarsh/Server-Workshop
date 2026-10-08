@@ -38,8 +38,11 @@ function addTreasuryManual(type){
   if(!saveJSONSafe(K.tr,arr(K.tr).concat(entry)))return;window.auditLog?.("إضافة حركة", "خزنة", entry.id, `${type} ${amount.toFixed(2)} ج`);renderTreasury();
 }
 function saveOpeningBalance(){
-  let el=document.getElementById("trOpening"),amount=Math.abs(+el.value||0),
-      dateEl=document.getElementById("trOpeningDate"),date=dateEl?.value||localDateKey(new Date());
+  let el=document.getElementById("trOpening"),raw=String(el?.value??"").trim();
+  let normalized=raw.replace(/[\u0660-\u0669]/g,c=>c.charCodeAt(0)-1632).replace(/[\u06F0-\u06F9]/g,c=>c.charCodeAt(0)-1776).replace(/[٬,]/g,"").replace(/٫/g,".").trim();
+  if(raw&&!/^\d+(\.\d+)?$/.test(normalized))return alert("رصيد الافتتاح لازم يكون صفرًا أو مبلغًا موجبًا صحيحًا.");
+  let amount=raw?Number(normalized):0,dateEl=document.getElementById("trOpeningDate"),date=dateEl?.value||localDateKey(new Date());
+  if(!Number.isFinite(amount))return alert("رصيد الافتتاح غير صالح.");
   let a=arr(K.tr),existing=a.find(x=>x.refKey==="opening-balance"&&!x.deleted);
   if(existing){existing.amount=amount;existing.date=date;existing.type="in";existing.reason="رصيد افتتاحي";existing.source="cash-drawer"}
   else a.push({id:id(),refKey:"opening-balance",manualOverride:true,deleted:false,type:"in",amount,date,time:"00:00",reason:"رصيد افتتاحي",category:"رصيد افتتاحي",source:"cash-drawer",createdAt:new Date().toISOString()});

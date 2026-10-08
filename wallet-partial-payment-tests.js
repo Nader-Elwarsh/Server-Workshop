@@ -100,7 +100,7 @@ function makeReturn(confirms,prompts,o){
   const A='محفظتي الشخصية',B='محفظة فودافون كاش';
   const s=ctx.settings();s.wallets=[A,B];ctx.put(ctx.K.s,s);
   const now=new Date().toISOString();
-  const order={id:'r1',no:'W-9',customerId:'c1',status:'مكتمل',closed:true,paid:true,total:1000,deposit:200,depositWallet:A,closeWallet:o.closeWallet===undefined?A:o.closeWallet,remain:0,closedAt:now,paidAt:now,createdAt:now};
+  const order={id:o.id??'r1',no:'W-9',customerId:'c1',status:'مكتمل',closed:true,paid:true,total:1000,deposit:200,depositWallet:A,closeWallet:o.closeWallet===undefined?A:o.closeWallet,remain:0,closedAt:now,paidAt:now,createdAt:now};
   ctx.put(ctx.K.r,[order]);
   ctx.syncWalletForOrderDeposit(order);
   if(order.closeWallet)ctx.syncWalletForOrderClose(order,800,order.closeWallet);
@@ -148,6 +148,13 @@ assert.strictEqual(t.bal(t.A),200);assert.strictEqual(t.order().deposit,1000);as
 t=makeReturn([true],['x'],{});
 {const w=t.txs();w.find(x=>x.refKey==='order-final-r1').manualOverride=true;t.store[t.ctx.K.wtx]=JSON.stringify(w);}
 await t.ctx.markRequestReturned('r1');assert.strictEqual(t.bal(t.A),1000);
+// رابط الأمر يمرر id كنص، حتى لو كان id المحفوظ رقميًا؛ المرتجع يجب أن يزيل التحصيل النهائي ويحفظه كعربون.
+t=makeReturn([true],['معرّف قديم'],{id:123});
+assert.strictEqual(t.bal(t.A),1000);
+await t.ctx.markRequestReturned('123');
+assert.strictEqual(t.order().closed,false,'numeric legacy order can be returned from its detail page');
+assert.strictEqual(t.order().deposit,1000,'returned amount is converted to a deposit');
+assert.strictEqual(t.bal(t.A),1000,'return conversion does not change the actual wallet balance');
 
 console.log('wallet-partial-payment-tests: PASS');
 }
