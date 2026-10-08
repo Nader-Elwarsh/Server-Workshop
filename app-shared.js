@@ -294,8 +294,11 @@ function requestAgeMs(r){
 }
 
 function markPaidAndClose(i){
-  let a=arr(K.r),r=a.find(x=>x.id===i);
-  if(!r||r.closed||r.paid)return;
+  let a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
+  if(!r){alert("الأمر غير موجود (ممكن يكون اتحذف أو اتغير). حدّث الصفحة وجرّب تاني.");return}
+  if(r.closed&&r.paid){alert("الأمر ده متقفل ومدفوع بالفعل.");return}
+  // حالة نص-مقفولة (paid من غير closed أو العكس) كانت بتعمل return صامت والأمر يفضل عالق؛
+  // دلوقتي بنكمّل الإقفال ونصلّح الحالة بدل ما نتجاهل الضغطة.
   if(r.status!=="مكتمل"){alert("اجعل حالة أمر الشغل «مكتمل» أولًا.");return}
   let wallet=document.getElementById("rCloseWallet")?.value||"";
   const totalRaw=r.total==null||r.total===""?0:+r.total,depositRaw=r.deposit==null||r.deposit===""?0:+r.deposit;
@@ -333,6 +336,9 @@ function markPaidAndClose(i){
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الإغلاق والحركة المالية معًا؛ لم يتم إغلاق أمر الشغل.");return}
+  // تحقق فعلي بعد الحفظ: الأمر اتقفل، وحركة التحصيل موجودة لو فيه محفظة ومبلغ.
+  const chkR=arr(K.r).find(x=>String(x.id)===String(r.id)),chkTx=arr(K.wtx).some(x=>x&&x.refKey==="order-final-"+r.id&&!x.deleted);
+  if(!chkR||!chkR.closed||(collected>0&&wallet&&!chkTx)){alert("⚠️ الإغلاق ماتأكدش بعد الحفظ (الأمر أو حركة المحفظة مش ظاهرين). حدّث الصفحة وراجع الأمر والمحفظة قبل ما تعيد المحاولة.")}
   window.auditLog?.("تحصيل وإغلاق", "أمر شغل", r.id, `المبلغ المحصل ${collected.toFixed(2)} ج`);
   location.reload();
 }

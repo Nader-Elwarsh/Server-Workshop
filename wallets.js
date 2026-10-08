@@ -18,7 +18,7 @@
    قراءة وحساب الأرصدة
 --------------------------------------------------------------------- */
 function walletTxEntries(){return (typeof arrCached==="function"?arrCached(K.wtx):arr(K.wtx)).filter(x=>!x.deleted)}
-function walletTxFor(walletName){return walletTxEntries().filter(x=>x.wallet===walletName)}
+function walletTxFor(walletName){const n=String(walletName||"").trim();return walletTxEntries().filter(x=>String(x.wallet||"").trim()===n)}
 function walletRawBalance(walletName){return walletTxFor(walletName).reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)}
 // حد أقصى اختياري لمحفظة معينة (زي إنستاباي) — لو موجود، الرصيد المعروض/المحسوب
 // في الإجمالي بيتوقف عنده حتى لو الحركات الفعلية جمعت لرقم أعلى. راجع
@@ -279,7 +279,7 @@ function orderSnapshotForRef(refKey){
     ?{amount:orderMainDeposit(r),wallet:String(r.depositWallet||"").trim()}
     :{amount:Math.max(0,(+r.total||0)-(+r.deposit||0)),wallet:String(r.closeWallet||"").trim()};
 }
-function upsertWalletTxForRef(refKey,data){
+function upsertWalletTxForRef(refKey,data,force){
   dedupeWalletTxByRef();
   let a=arr(K.wtx),idx=a.findIndex(x=>x.refKey===refKey&&!x.deleted);
   // لو المستخدم عدّل الحركة دي يدويًا من صفحة المحفظة (editWalletTx بيحط
@@ -304,7 +304,7 @@ function upsertWalletTxForRef(refKey,data){
     if(ti<0)ti=a.map((x,i)=>x&&x.refKey===refKey&&x.deleted?i:-1).filter(i=>i>=0).pop()??-1;
     if(ti>=0){
       let t=a[ti];
-      if(t.userDeleted&&Math.abs((+t.deletedAmount||0)-amount)<0.005&&String(t.deletedWallet||"")===wallet)return true;
+      if(!force&&t.userDeleted&&Math.abs((+t.deletedAmount||0)-amount)<0.005&&String(t.deletedWallet||"")===wallet)return true;
       let {userDeleted,deletedAmount,deletedWallet,deletedAt,...rest}=t;
       a[ti]={...rest,id:t.id||refKey,deleted:false,manualOverride:false,type:"in",amount,wallet,
         category:data.category||t.category||"تحصيل عميل",reason:data.reason||t.reason||"",note:data.note||t.note||"",
@@ -336,7 +336,7 @@ function syncWalletForOrderClose(order,collected,wallet){
   return upsertWalletTxForRef("order-final-"+order.id,{
     amount:collected,wallet,category:"تحصيل عميل",
     reason:`💳 تحصيل نهائي أمر الشغل ${order.no}`
-  });
+  },true); // force: إقفال صريح من المستخدم لازم يتسجل حتى لو كان فيه تحصيل قديم اتمسح يدويًا
 }
 // يبني نسخة حركات المحفظة اللازمة لعملية المرتجع دون كتابتها منفردة؛
 // المستدعي يحفظها مع الأمر في commitStorageAsync واحد متعدد المخازن.
@@ -405,6 +405,12 @@ function transferBetweenWalletAndTreasury(direction,walletName,amount,date,time,
     return{ok:true};
   });
   if(!result?.ok)return alert("تعذر حفظ التحويل كاملًا؛ لم يتم تسجيل أي من طرفيه.");
+  // تأكيد فعلي إن الطرفين اتحفظوا (قراءة من التخزين بعد الكتابة) بدل الافتراض.
+  if(!arr(K.wtx).some(x=>x&&x.id===walletTx.id&&!x.deleted)||!arr(K.tr).some(x=>x&&x.id===treasuryTx.id&&!x.deleted)){
+    withRollback([K.wtx,K.tr],()=>{put(K.wtx,arr(K.wtx).filter(x=>!x||x.transferId!==transferId));put(K.tr,arr(K.tr).filter(x=>!x||x.transferId!==transferId));return{ok:true}});
+    renderWallets();renderTreasury();renderWalletDetail();
+    return alert("⚠️ التحويل ماتحفظش بشكل صحيح فاتلغى بالكامل. جرّب تاني، ولو اتكرر خد نسخة احتياطية وبلّغني.");
+  }
   window.auditLog?.("تحويل", "محفظة/خزنة", transferId, `${direction==="toTreasury"?walletName+" ← الخزنة":"الخزنة ← "+walletName} ${amount.toFixed(2)} ج`);
   renderWallets();renderTreasury();renderWalletDetail();
   return result;
