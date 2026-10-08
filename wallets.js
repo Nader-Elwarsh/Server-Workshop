@@ -237,23 +237,37 @@ function dedupeWalletTxByRef(){
 // تسجيل تلقائي لأي عربون/تحصيل نهائي على أمر ليه محفظة محددة لكن حركته ناقصة من المحفظة
 // (حفظ اتقطع، مزامنة، أمر اتعدّل من جهاز تاني...). بيتخطى أي حركة انت مسحتها بإيدك
 // (userDeleted) وأي أمر ملغي أو اتفتح تاني، فمفيش حاجة بتتسجل مرتين أو بتتعاد بعد حذفك.
-function autoHealOrderWalletTx(){
+let _autoHealAt=0;
+function _orderTxDate(v){const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?localDateKey(d):localDateKey(new Date())}
+function autoHealOrderWalletTx(force){
   try{
     if(typeof arr!=="function"||typeof K==="undefined"||!K.r||!K.wtx)return 0;
-    const orders=arr(K.r);if(!orders.length)return 0;
-    const wallets=(settings().wallets||[]).map(w=>String(w||"").trim());
-    const txs=arr(K.wtx),active={},userDel={};
-    txs.forEach(x=>{if(!x||!x.refKey)return;if(!x.deleted)active[x.refKey]=true;else if(x.userDeleted)userDel[x.refKey]=true});
-    let n=0;
+    // مرة كل دقيقة بالكتير (لو مش force) عشان الدالة متتكررش مع كل رسم للصفحة لما الداتا تكبر.
+    const nowMs=Date.now();if(!force&&nowMs-_autoHealAt<60000)return 0;_autoHealAt=nowMs;
+    const rd=typeof arrCached==="function"?arrCached:arr;
+    const orders=rd(K.r);if(!orders.length)return 0;
+    const wallets=new Set((settings().wallets||[]).map(w=>String(w||"").trim()));
+    const txs=rd(K.wtx).map(x=>x&&typeof x==="object"?x:x);
+    const active=new Set(),userDel=new Set(),goneIdx={};
+    txs.forEach((x,i)=>{if(!x||!x.refKey)return;if(!x.deleted)active.add(x.refKey);else if(x.userDeleted)userDel.add(x.refKey);else goneIdx[x.refKey]=i});
+    const todo=[];
     orders.forEach(r=>{
       if(!r||!r.id||r.status==="ملغي")return;
       const dRef="order-deposit-"+r.id,fRef="order-final-"+r.id;
-      const dw=String(r.depositWallet||"").trim();
-      if(orderMainDeposit(r)>0&&dw&&wallets.includes(dw)&&!active[dRef]&&!userDel[dRef]){if(syncWalletForOrderDeposit(r))n++}
-      const cw=String(r.closeWallet||"").trim(),collected=Math.max(0,(+r.total||0)-(+r.deposit||0));
-      if(r.closed&&r.paid&&collected>0&&cw&&wallets.includes(cw)&&!active[fRef]&&!userDel[fRef]){if(syncWalletForOrderClose(r,collected,cw))n++}
+      const dw=String(r.depositWallet||"").trim(),dAmt=orderMainDeposit(r);
+      if(dAmt>0&&dw&&wallets.has(dw)&&!active.has(dRef)&&!userDel.has(dRef))todo.push({ref:dRef,date:_orderTxDate(r.createdAt),amount:dAmt,wallet:dw,reason:`💵 عربون أمر الشغل ${r.no}`});
+      const cw=String(r.closeWallet||"").trim(),coll=Math.max(0,(+r.total||0)-(+r.deposit||0));
+      if(r.closed&&r.paid&&coll>0&&cw&&wallets.has(cw)&&!active.has(fRef)&&!userDel.has(fRef))todo.push({ref:fRef,date:_orderTxDate(r.closedAt||r.paidAt),amount:coll,wallet:cw,reason:`💳 تحصيل نهائي أمر الشغل ${r.no}`});
     });
-    return n;
+    if(!todo.length)return 0;
+    // كتابة واحدة لكل الحركات الناقصة (بدل كتابة كاملة لكل حركة) — مهم لما عدد الأوامر يكبر.
+    const a=arr(K.wtx).slice(),today=localDateKey(new Date()),time=new Date().toTimeString().slice(0,5);
+    todo.forEach(d=>{
+      const gi=a.findIndex(x=>x&&x.refKey===d.ref&&x.deleted&&!x.userDeleted);
+      if(gi>=0){const {userDeleted,deletedAmount,deletedWallet,deletedAt,...rest}=a[gi];a[gi]={...rest,deleted:false,manualOverride:false,type:"in",amount:d.amount,wallet:d.wallet,category:"تحصيل عميل",reason:d.reason,date:d.date||a[gi].date}}
+      else a.push({id:d.ref,refKey:d.ref,manualOverride:false,deleted:false,type:"in",amount:d.amount,wallet:d.wallet,category:"تحصيل عميل",reason:d.reason,note:"",date:d.date||today,time,source:"order-link",createdAt:new Date().toISOString()});
+    });
+    return put(K.wtx,a)?todo.length:0;
   }catch(e){console.warn("autoHealOrderWalletTx",e);return 0}
 }
 // المبلغ/المحفظة الحاليين على أمر الشغل المرتبطة بيه الحركة (عربون أو تحصيل نهائي)،
@@ -645,7 +659,7 @@ function renderWalletAudit(){
 /* ---------------------------------------------------------------------
    العرض: صفحة المحافظ الكاملة
 --------------------------------------------------------------------- */
-function renderWallets(){dedupeWalletTxByRef();autoHealOrderWalletTx();
+function renderWallets(){dedupeWalletTxByRef();autoHealOrderWalletTx(true);
   let el=document.getElementById("walletsPage");if(!el)return;
   let wallets=settings().wallets||[],categories=settings().walletCategories||[];
   let overview=walletsOverview(),catTotals=walletCategoryTotals(),pvw=personalVsWorkshopTotals();

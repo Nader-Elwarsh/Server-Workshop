@@ -27,7 +27,7 @@ context.put(context.K.r,[
   {id:'o4',no:'4',status:'جديد',deposit:70,depositWallet:'ب',total:300},
 ]);
 context.put(context.K.wtx,[{id:'order-deposit-o4',refKey:'order-deposit-o4',deleted:true,userDeleted:true,type:'in',amount:70,wallet:'ب'}]);
-let n=context.autoHealOrderWalletTx();
+let n=context.autoHealOrderWalletTx(true);
 let list=JSON.parse(store[context.K.wtx]).filter(x=>!x.deleted);
 const by=k=>list.filter(x=>x.refKey===k);
 assert.strictEqual(by('order-deposit-o1').length,1,'missing deposit recorded');
@@ -37,5 +37,5 @@ assert.strictEqual(by('order-final-o2')[0].amount,150,'final = total - deposit')
 assert.strictEqual(by('order-deposit-o3').length,0,'cancelled order skipped');
 assert.strictEqual(by('order-deposit-o4').length,0,'user-deleted tx not resurrected');
 assert.strictEqual(n,3);
-assert.strictEqual(context.autoHealOrderWalletTx(),0,'second run is a no-op');
+assert.strictEqual(context.autoHealOrderWalletTx(true),0,'second run is a no-op');
 console.log('wallet-autorecord-tests: PASS');
