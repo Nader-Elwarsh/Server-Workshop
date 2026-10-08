@@ -243,7 +243,7 @@ function routeQuickCloseFormHtml(x){
   const partsTotal=+x.partsTotal||0, deposit=+x.deposit||0;
   const draft=(routeViewState.quickCloseDraft&&routeViewState.quickCloseDraft.id===x.id)?routeViewState.quickCloseDraft:null;
   const labor=draft?draft.labor:(+x.labor||0), newDeposit=draft?draft.newDeposit:0;
-  const wallets=settings().wallets||[], defaultWallet=settings().defaultWallet||"";
+  const wallets=settings().wallets||[], defaultWallet=(typeof resolveDefaultWallet==="function"?resolveDefaultWallet():(settings().defaultWallet||""));
   const partsRows=(x.parts||[]).map(p=>{
     const stockPart=p.external?null:byIdCached(K.p).get(p.partId);
     const nm=p.external?(p.name||"قطعة خارجية"):(stockPart?.name||"قطعة محذوفة");

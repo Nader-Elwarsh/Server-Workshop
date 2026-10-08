@@ -234,6 +234,28 @@ function dedupeWalletTxByRef(){
     return changed;
   }catch(e){console.warn("dedupeWalletTxByRef",e);return false}
 }
+// تسجيل تلقائي لأي عربون/تحصيل نهائي على أمر ليه محفظة محددة لكن حركته ناقصة من المحفظة
+// (حفظ اتقطع، مزامنة، أمر اتعدّل من جهاز تاني...). بيتخطى أي حركة انت مسحتها بإيدك
+// (userDeleted) وأي أمر ملغي أو اتفتح تاني، فمفيش حاجة بتتسجل مرتين أو بتتعاد بعد حذفك.
+function autoHealOrderWalletTx(){
+  try{
+    if(typeof arr!=="function"||typeof K==="undefined"||!K.r||!K.wtx)return 0;
+    const orders=arr(K.r);if(!orders.length)return 0;
+    const wallets=(settings().wallets||[]).map(w=>String(w||"").trim());
+    const txs=arr(K.wtx),active={},userDel={};
+    txs.forEach(x=>{if(!x||!x.refKey)return;if(!x.deleted)active[x.refKey]=true;else if(x.userDeleted)userDel[x.refKey]=true});
+    let n=0;
+    orders.forEach(r=>{
+      if(!r||!r.id||r.status==="ملغي")return;
+      const dRef="order-deposit-"+r.id,fRef="order-final-"+r.id;
+      const dw=String(r.depositWallet||"").trim();
+      if(orderMainDeposit(r)>0&&dw&&wallets.includes(dw)&&!active[dRef]&&!userDel[dRef]){if(syncWalletForOrderDeposit(r))n++}
+      const cw=String(r.closeWallet||"").trim(),collected=Math.max(0,(+r.total||0)-(+r.deposit||0));
+      if(r.closed&&r.paid&&collected>0&&cw&&wallets.includes(cw)&&!active[fRef]&&!userDel[fRef]){if(syncWalletForOrderClose(r,collected,cw))n++}
+    });
+    return n;
+  }catch(e){console.warn("autoHealOrderWalletTx",e);return 0}
+}
 // المبلغ/المحفظة الحاليين على أمر الشغل المرتبطة بيه الحركة (عربون أو تحصيل نهائي)،
 // بنفس الطريقة اللي syncWalletForOrderDeposit/Close بيحسبوا بيها.
 function orderSnapshotForRef(refKey){
@@ -623,7 +645,7 @@ function renderWalletAudit(){
 /* ---------------------------------------------------------------------
    العرض: صفحة المحافظ الكاملة
 --------------------------------------------------------------------- */
-function renderWallets(){dedupeWalletTxByRef();
+function renderWallets(){dedupeWalletTxByRef();autoHealOrderWalletTx();
   let el=document.getElementById("walletsPage");if(!el)return;
   let wallets=settings().wallets||[],categories=settings().walletCategories||[];
   let overview=walletsOverview(),catTotals=walletCategoryTotals(),pvw=personalVsWorkshopTotals();

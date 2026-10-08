@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v18-sync-repairs";
+const CACHE_NAME = "workshop-v19-wallet-autorecord";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

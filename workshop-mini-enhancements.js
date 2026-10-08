@@ -86,7 +86,7 @@
       return a + ((r.closed || r.paid) ? (+r.total || 0) : Math.min(+r.deposit || 0, +r.total || 0));
     }, 0);
     const totalRemaining = rs.reduce(function (a, r) {
-      return a + (r.closed || r.paid ? 0 : Math.max(0, (+r.total || 0) - (+r.deposit || 0)));
+      return a + (r.closed || r.paid || r.status === "ملغي" ? 0 : Math.max(0, (+r.total || 0) - (+r.deposit || 0)));
     }, 0);
 
     // أكتر قطعة غيار اتصرفت مع هذا العميل عبر كل أوامره: بنجمع كل بنود
@@ -149,7 +149,7 @@
               ${rs.slice().sort(function (a, b) { return (a.createdAt || "").localeCompare(b.createdAt || ""); }).map(function (r) {
                 const total = +r.total || 0;
                 const paid = (r.closed || r.paid) ? total : Math.min(+r.deposit || 0, total);
-                const remaining = (r.closed || r.paid) ? 0 : Math.max(0, total - (+r.deposit || 0));
+                const remaining = (r.closed || r.paid || r.status === "ملغي") ? 0 : Math.max(0, total - (+r.deposit || 0));
                 const dateLabel = r.createdAt ? new Date(r.createdAt).toLocaleDateString("ar-EG") : "—";
                 return `<tr>
                   <td>${esc(dateLabel)}</td>

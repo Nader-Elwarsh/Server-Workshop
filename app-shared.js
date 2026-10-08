@@ -337,6 +337,10 @@ function markPaidAndClose(i){
   location.reload();
 }
 function closeOrder(i){markPaidAndClose(i)}
+// المحفظة الافتراضية الفعلية للعربون/التحصيل: المحددة في الإعدادات (لو لسه موجودة)،
+// وإلا أول محفظة في القايمة — عشان العربون والتحصيل يتسجلوا تلقائيًا في الحسابات
+// حتى لو ماحددتش محفظة افتراضية. تقدر دايمًا تغيّرها وقت العملية أو من الإعدادات.
+function resolveDefaultWallet(){let s=settings(),w=(s.wallets||[]).map(x=>String(x||"").trim()).filter(Boolean),d=String(s.defaultWallet||"").trim();return d&&w.includes(d)?d:(w[0]||"")}
 
 /* K, get, put, arr, esc, id, settings, duplicateCustomerByPhone: منقولة لملف
    shared-data.js (لازم يتحمّل قبل app.js في كل صفحة) عشان تبقى نسخة واحدة
