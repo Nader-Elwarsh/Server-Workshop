@@ -251,15 +251,16 @@
     values[window.K.m] = moveRows().filter(function (m) { return orderIds.indexOf(m.requestId) === -1; });
     values[window.K.r] = requestRows().filter(function (r) { return orderIds.indexOf(r.id) === -1; });
     values[window.K.d] = deviceRows().filter(function (d) { return d.customerId !== cid; });
-    values[window.K.c] = customerRows().filter(function (x) { return x.id !== cid; });
-    values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
-    if (!await window.commitStorageAsync(values)) { alert("تعذر حذف العميل بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
+values[window.K.c] = customerRows().filter(function (x) { return x.id !== cid; });
+values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
+const taskRows = arr(window.K.tasks), linkedTasks = taskRows.filter(function (t) { return t.customerId === cid; });
+values[window.K.tasks] = taskRows.map(function (t) { return t.customerId === cid ? Object.assign({}, t, { customerId: "", requestId: "" }) : t; });
+const trashPayload = { customer: c, devices: devices, requests: orders, moves: removedMoves, partsDelta: partsDelta,
+  tasks: linkedTasks, walletRefKeys: typeof walletRefKeysForOrders === "function" ? walletRefKeysForOrders(orderIds) : [] };
+    const commitValues = typeof addTrashEntryToValues === "function" ? addTrashEntryToValues(values, "customer", `العميل ${c.name || ""}`, trashPayload) : values;
+    if (!await window.commitStorageAsync(commitValues)) { alert("تعذر حذف العميل بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
 
     window.auditLog?.("حذف", "عميل", cid, `${c.name || ""} (${devices.length} جهاز، ${orders.length} أمر شغل)`);
-    if (typeof pushToTrash === "function") pushToTrash("customer", `العميل ${c.name || ""}`, {
-      customer: c, devices: devices, requests: orders, moves: removedMoves, partsDelta: partsDelta,
-      walletRefKeys: typeof walletRefKeysForOrders === "function" ? walletRefKeysForOrders(orderIds) : []
-    });
 
     refreshAllScreens();
 
@@ -292,15 +293,16 @@
     values[window.K.p] = stock;
     values[window.K.m] = moveRows().filter(function (m) { return orderIds.indexOf(m.requestId) === -1; });
     values[window.K.r] = requestRows().filter(function (r) { return r.deviceId !== did; });
-    values[window.K.d] = deviceRows().filter(function (x) { return x.id !== did; });
-    values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
-    if (!await window.commitStorageAsync(values)) { alert("تعذر حذف الجهاز بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
+values[window.K.d] = deviceRows().filter(function (x) { return x.id !== did; });
+values[window.K.wtx] = typeof walletEntriesAfterRemovingRequests === "function" ? walletEntriesAfterRemovingRequests(orderIds) : arr(window.K.wtx);
+const taskRows = arr(window.K.tasks), linkedTasks = taskRows.filter(function (t) { return orderIds.indexOf(t.requestId) !== -1; });
+values[window.K.tasks] = taskRows.map(function (t) { return orderIds.indexOf(t.requestId) !== -1 ? Object.assign({}, t, { requestId: "" }) : t; });
+const trashPayload = { device: d, requests: orders, moves: removedMoves, partsDelta: partsDelta,
+  tasks: linkedTasks, walletRefKeys: typeof walletRefKeysForOrders === "function" ? walletRefKeysForOrders(orderIds) : [] };
+    const commitValues = typeof addTrashEntryToValues === "function" ? addTrashEntryToValues(values, "device", `الجهاز ${d.type || ""} — ${d.brand || ""}`, trashPayload) : values;
+    if (!await window.commitStorageAsync(commitValues)) { alert("تعذر حذف الجهاز بالكامل؛ لم يتم تنفيذ أي تغيير."); return; }
 
     window.auditLog?.("حذف", "جهاز", did, `${d.type || ""} — ${d.brand || ""} (${orders.length} أمر شغل)`);
-    if (typeof pushToTrash === "function") pushToTrash("device", `الجهاز ${d.type || ""} — ${d.brand || ""}`, {
-      device: d, requests: orders, moves: removedMoves, partsDelta: partsDelta,
-      walletRefKeys: typeof walletRefKeysForOrders === "function" ? walletRefKeysForOrders(orderIds) : []
-    });
 
     refreshAllScreens();
 

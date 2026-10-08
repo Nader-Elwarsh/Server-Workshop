@@ -6,10 +6,34 @@
    زي ما كانت، مش مجرد إعادة إضافة السجل الأساسي لوحده. */
 const TRASH_LIMIT = 200;
 
-function pushToTrash(type, label, payload) {
-  const list = arr(K.trash);
+function addTrashEntryToValues(values, type, label, payload) {
+  const list = arr(K.trash).slice();
   list.push({ id: id(), type, label: String(label || ""), payload, deletedAt: new Date().toISOString() });
-  put(K.trash, list.slice(-TRASH_LIMIT));
+  return Object.assign({}, values || {}, { [K.trash]: list.slice(-TRASH_LIMIT) });
+}
+
+async function commitTrashValues(values) {
+  const storage = window.WFStorage;
+  if (!storage) return false;
+  const previous = {};
+  Object.keys(values || {}).forEach(key => { previous[key] = storage.getItem(key); });
+  if (!await commitStorageAsync(values)) return false;
+  if (typeof storage.flush !== "function") return true;
+  try {
+    await storage.flush();
+    return true;
+  } catch (error) {
+    if (window.WFStorageStatus && window.WFStorageStatus.fallback) return true;
+    Object.keys(previous).forEach(key => {
+      try { if (previous[key] === null) storage.removeItem(key); else storage.setItem(key, previous[key]); } catch (_) {}
+    });
+    console.error("[trash] لم يتم تأكيد حفظ السلة", error);
+    return false;
+  }
+}
+
+async function pushToTrash(type, label, payload) {
+  return commitTrashValues(addTrashEntryToValues({}, type, label, payload));
 }
 
 function trashEntries() { return arr(K.trash).slice().reverse(); }
@@ -68,6 +92,19 @@ async function restoreFromTrash(trashId) {
   const refKeys = new Set(p.walletRefKeys || []);
   const restoredOrderIds = new Set([p.request, ...(p.requests || [])].filter(Boolean).map(r => String(r.id)));
   values[K.wtx] = arr(K.wtx).map(x => (refKeys.has(String(x.refKey || "")) || (x.source === "order-part" && x.deletedWithOrder && restoredOrderIds.has(String(x.orderId)))) ? { ...x, deleted: false, deletedWithOrder: undefined } : x);
+  const taskSnapshots = new Map((p.tasks || []).filter(Boolean).map(task => [String(task.id), task]));
+  if (taskSnapshots.size && K.tasks) {
+    values[K.tasks] = arr(K.tasks).map(task => {
+      const original = taskSnapshots.get(String(task.id));
+      if (!original) return task;
+      const sameCustomer = !task.customerId || String(task.customerId) === String(original.customerId || "");
+      return {
+        ...task,
+        customerId: task.customerId || original.customerId || "",
+        requestId: task.requestId || (sameCustomer ? original.requestId : "") || ""
+      };
+    });
+  }
   values[K.trash] = arr(K.trash).filter(x => x.id !== trashId);
 
   if (!await commitStorageAsync(values)) { alert("تعذر الاسترجاع؛ لم يتم تنفيذ أي تغيير."); return; }
@@ -77,11 +114,11 @@ async function restoreFromTrash(trashId) {
   alert(shortfall ? "تم الاسترجاع، لكن كمية بعض القطع في المخزون حاليًا أقل مما كان قبل الحذف (اتصرفت في حاجة تانية)، فرجعت لصفر بدل ما تبقى بالكمية الكاملة." : "تم الاسترجاع بنجاح.");
 }
 
-function permanentlyDeleteTrash(trashId) {
+async function permanentlyDeleteTrash(trashId) {
   const entry = arr(K.trash).find(x => x.id === trashId);
   if (!entry) return;
   if (!confirm(`حذف "${entry.label}" نهائيًا من سلة المهملات؟ بعدها مش هينفع يترجع خالص.`)) return;
-  if (!put(K.trash, arr(K.trash).filter(x => x.id !== trashId))) { alert("تعذر الحذف النهائي؛ لم يتم حذف السجل."); return; }
+  if (!await commitTrashValues({ [K.trash]: arr(K.trash).filter(x => x.id !== trashId) })) { alert("تعذر الحذف النهائي؛ لم يتم حذف السجل أو مرفقاته."); return; }
   const payload = entry.payload || {};
   if (entry.type === "request") cleanupRequestRecordings?.(payload.request ? [payload.request] : []);
   if (entry.type === "device") {

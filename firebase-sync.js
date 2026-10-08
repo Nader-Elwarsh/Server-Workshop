@@ -46,6 +46,7 @@
   var EXTRA = ["wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"];
   var SETTINGS = "wf_s", CHUNK = 250000, TIMEOUT = 25000;
   var ALL = Object.keys(COLS).concat(EXTRA, [SETTINGS]);
+  var REMOTE_RETRY_KEYS = ["remote:portalOrders", "remote:portalConfig", "remote:portalTicker"];
   var HYD = "wf_cloud_hydrated_uid", BASEKEY = "wf_syncbase", FULL = "wf_last_full_sync", SEEN = "wf_meta_seen";
   var isLogin = /login\.html$/.test(location.pathname);
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
@@ -70,20 +71,29 @@
   }
   function forgetLogin() { try { if (navigator.credentials && navigator.credentials.preventSilentAccess) navigator.credentials.preventSilentAccess().catch(function () {}); } catch (e) {} }
   function banner() { if (document.getElementById("wfCloudBanner")) return; var b = document.createElement("div"); b.id = "wfCloudBanner"; b.style.cssText = "position:fixed;bottom:70px;left:12px;right:12px;z-index:9999;background:#0b57d0;color:#fff;padding:12px;border-radius:10px;text-align:center;direction:rtl;font:600 15px sans-serif;cursor:pointer"; b.textContent = "🔄 فيه تحديث من جهاز تاني — اضغط لإعادة التحميل"; b.onclick = function () { location.reload(); }; (document.body || document.documentElement).appendChild(b); }
-  function pendingKeys() { return ALL.filter(function (k) { return (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) || !!timers[k] || !!pushing[k] || !!retryTimers[k]; }); }
+  function pendingKeys() { return ALL.filter(function (k) { return (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) || !!timers[k] || !!pushing[k] || !!retryTimers[k]; }).concat(REMOTE_RETRY_KEYS.filter(function (k) { return !!retryState[k] || !!retryTimers[k]; })); }
   function retryDelay(attempt) { return Math.min(5 * 60 * 1000, 2000 * Math.pow(2, Math.max(0, attempt - 1))); }
   function saveRetryState() { try { origSet.call(ls, RETRY_KEY, JSON.stringify(retryState)); } catch (e) {} }
   function scheduleRetry(k) {
     var item = retryState[k]; if (!item) return;
     saveRetryState(); clearTimeout(retryTimers[k]);
-    retryTimers[k] = setTimeout(function () { delete retryTimers[k]; if (ready && online()) push(k, false); else badge(); }, Math.max(0, (+item.nextAt || Date.now()) - Date.now()));
+    retryTimers[k] = setTimeout(function () {
+      delete retryTimers[k]; if (!ready || !online()) { badge(); return; }
+      if (REMOTE_RETRY_KEYS.indexOf(k) > -1) {
+        var currentSettings = typeof window.settings === "function" ? window.settings() : {};
+        var job = k === "remote:portalOrders" ? projectOrders() : (k === "remote:portalConfig" ? publishPortalConfig() : publishTicker(currentSettings.portalTicker || null));
+        Promise.resolve(job).then(function (ok) { if (ok === false && !retryTimers[k]) retryLater(k); }).catch(function () { if (!retryTimers[k]) retryLater(k); });
+      } else push(k, false);
+      badge();
+    }, Math.max(0, (+item.nextAt || Date.now()) - Date.now()));
   }
   function retryLater(k) {
     var item = retryState[k] || (retryState[k] = { attempts: 0 });
     item.attempts = Math.min(12, (+item.attempts || 0) + 1); item.nextAt = Date.now() + retryDelay(item.attempts);
     scheduleRetry(k);
   }
-  function resumeRetries() { Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1) scheduleRetry(k); }); }
+  function clearRetry(k) { delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; saveRetryState(); }
+  function resumeRetries() { Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) scheduleRetry(k); }); }
   function countPendingOperations() {
     var count = 0;
     ALL.forEach(function (k) {
@@ -93,7 +103,7 @@
         Object.keys(base).forEach(function (id) { if (!seen[id]) count++; });
       } else if (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) count++;
     });
-    return count;
+    return count + REMOTE_RETRY_KEYS.filter(function (k) { return !!retryState[k]; }).length;
   }
   function isHomePage() { return !!document.getElementById("dashboard"); }
   function syncPanel() {
@@ -157,6 +167,18 @@
   }
   function resolveSyncConflict(k, id, choice, modal) {
     var item = conflicts[k] && conflicts[k][id]; if (!item) return;
+    if (k === SETTINGS) {
+      var remoteRaw = JSON.stringify(item.remote || {});
+      if (choice === "cloud") { raw(k, remoteRaw); lastRaw[k] = remoteRaw; }
+      else lastRaw[k] = remoteRaw;
+      SB.x[k] = h(remoteRaw); saveBase();
+      delete conflicts[k][id]; if (!Object.keys(conflicts[k]).length) delete conflicts[k];
+      origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts));
+      if (modal && !Object.keys(conflicts).some(function (key) { return Object.keys(conflicts[key] || {}).length; })) modal.remove();
+      badge();
+      if (choice === "local") push(k, true); else { publishPortalConfig(); projectOrders(); pushAll(false); }
+      return;
+    }
     if (choice === "cloud") {
       var records = local(k), list = Array.isArray(records) ? records.slice() : [], at = list.findIndex(function (r) { return r && r.id === id; });
       if (item.remote) { if (at < 0) list.push(item.remote); else list[at] = item.remote; }
@@ -178,6 +200,7 @@
   function clean(v) { if (v && typeof v.toDate === "function") return v.toDate().toISOString(); if (Array.isArray(v)) return v.map(clean); if (v && typeof v === "object") { var o = {}; Object.keys(v).forEach(function (k) { o[k] = clean(v[k]); }); return o; } return v; }
   var ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?$/;
   function stable(v) { if (typeof v === "string" && ISO.test(v)) { var t = Date.parse(v); if (!isNaN(t)) return JSON.stringify("~" + t); } if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
+  function sameField(a, b, key) { var ah = Object.prototype.hasOwnProperty.call(a || {}, key), bh = Object.prototype.hasOwnProperty.call(b || {}, key); return ah === bh && (!ah || stable(a[key]) === stable(b[key])); }
   function hr(r) { var o = Object.assign({}, r); delete o.id; return h(stable(o)); }
   function fromDoc(d) { var o = clean(d.data()); o.id = d.id; return o; }
   function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; ["createdAt", "updatedAt", "at"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
@@ -250,7 +273,42 @@
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));
       if (SB.x[k] === h(snapshotRaw)) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-      return withTimeout(db.collection("settings").doc("global").set(toDoc(v), { merge: true })).then(function () { SB.x[k] = h(snapshotRaw); saveBase(); lastRaw[k] = snapshotRaw; publishPortalConfig(); projectOrders(); return touchMeta(); }).then(function () { return done(true); }).catch(function (e) { return done(false, e); });
+      if (conflicts[k] && conflicts[k].global) { pushing[k] = false; badge(); return Promise.resolve(false); }
+      var settingsRef = db.collection("settings").doc("global"), baseRaw = lastRaw[k], baseKnown = baseRaw !== undefined, base = {};
+      if (baseKnown && baseRaw !== null) { try { base = JSON.parse(baseRaw) || {}; } catch (e) { baseKnown = false; } }
+      return withTimeout(db.runTransaction(async function (tx) {
+        var snap = await tx.get(settingsRef), remote = snap.exists ? clean(snap.data()) : {};
+        if (!baseKnown) {
+          if (snap.exists) return { state: "conflict", remote: remote, fields: Object.keys(v) };
+          tx.set(settingsRef, toDoc(v));
+          return { state: "written", merged: Object.assign({}, v), remote: remote };
+        }
+        if (!snap.exists && baseRaw !== null) return { state: "conflict", remote: remote, fields: Object.keys(base).concat(Object.keys(v)) };
+        var keys = Array.from(new Set(Object.keys(base).concat(Object.keys(v))));
+        var changed = keys.filter(function (key) { return !sameField(base, v, key); });
+        var changedConflict = changed.filter(function (key) { return !sameField(remote, base, key) && !sameField(remote, v, key); });
+        if (changedConflict.length) return { state: "conflict", remote: remote, fields: changedConflict };
+        var patch = {}, merged = Object.assign({}, remote), localDoc = toDoc(v);
+        changed.forEach(function (key) {
+          if (Object.prototype.hasOwnProperty.call(v, key)) { patch[key] = localDoc[key]; merged[key] = v[key]; }
+          else { patch[key] = firebase.firestore.FieldValue.delete(); delete merged[key]; }
+        });
+        if (changed.length) tx.set(settingsRef, patch, { merge: true });
+        return { state: changed.length ? "written" : "same", merged: merged, remote: remote };
+      })).then(function (result) {
+        if (result.state === "conflict") {
+          conflicts[k] = conflicts[k] || {};
+          conflicts[k].global = { local: v, remote: result.remote, fields: result.fields || [], createdAt: Date.now() };
+          origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts));
+          delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; saveRetryState();
+          pushing[k] = false; lastSyncError = "تعارض إعدادات: لم تتم الكتابة فوق النسخة الأحدث"; origSet.call(ls, "wf_sync_last_error", lastSyncError); badge();
+          return false;
+        }
+        var mergedRaw = JSON.stringify(result.merged || v);
+        raw(k, mergedRaw); SB.x[k] = h(mergedRaw); saveBase(); lastRaw[k] = mergedRaw;
+        publishPortalConfig(); projectOrders();
+        return touchMeta().then(function () { return done(true); });
+      }).catch(function (e) { return done(false, e); });
     }
     var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
     if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
@@ -270,7 +328,7 @@
     flushing = true;
     return window.ImageStore.keys().then(async function (keys) {
       if (!keys.length) return;
-      var targets = Object.keys(COLS).concat(EXTRA), map = {}, raws = {}, changed = {};
+      var targets = Object.keys(COLS).concat(EXTRA), raws = {}, uploaded = [];
       targets.forEach(function (t) { raws[t] = ls.getItem(t) || ""; });
       for (var ki = 0; ki < keys.length; ki++) {
         var ref = String(keys[ki]), needle = '"' + ref + '"';
@@ -278,11 +336,19 @@
         if (!holders.length) continue;
         var data = await window.ImageStore.get(ref); if (!data) continue;
         var url = await window.ImageStore.uploadRemote(data); if (!url) continue;
-        map[ref] = url;
-        holders.forEach(function (t) { raws[t] = raws[t].split(needle).join('"' + url + '"'); changed[t] = 1; });
+        uploaded.push(ref);
+        // لا نكتب snapshot قديمًا أخِذ قبل الرفع؛ اقرأ أحدث قيمة الآن
+        // وبدّل المرجع المرفوع فقط، حتى لا تضيع تعديلات متزامنة من تبويب آخر.
+        holders.forEach(function (t) {
+          var current = ls.getItem(t) || "";
+          var next = current.split(needle).join('"' + url + '"');
+          if (next !== current) ls.setItem(t, next);
+        });
       }
-      Object.keys(changed).forEach(function (t) { ls.setItem(t, raws[t]); });
-      Object.keys(map).forEach(function (ref) { if (!targets.some(function (t) { return raws[t].indexOf('"' + ref + '"') > -1; })) window.ImageStore.delete(ref); });
+      uploaded.forEach(function (ref) {
+        var needle = '"' + ref + '"';
+        if (!targets.some(function (t) { return String(ls.getItem(t) || "").indexOf(needle) > -1; })) window.ImageStore.delete(ref);
+      });
     }).catch(function (e) { console.warn("image flush", e); }).then(function () { flushing = false; });
   }
 
@@ -295,7 +361,8 @@
   function cleanPortal(r) { return r && r.portal === true ? sanitize(r) : r; }
   var poBusy = false;
   function projectOrders() { // نسخة آمنة من أوامر عملاء البوابة (من غير تكلفة القطع) عشان العميل يتابع حالته
-    if (!online() || poBusy) return Promise.resolve();
+    if (!online()) { retryLater("remote:portalOrders"); return Promise.resolve(false); }
+    if (poBusy) return Promise.resolve(false);
     var cs = local("wf_c") || [], ds = local("wf_d") || [], rs = local("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
     var pm = {}; (local("wf_p") || []).forEach(function (x) { if (x && x.id) pm[x.id] = x; });
     cs.forEach(function (c) { if (c && c.portal === true) portal[c.id] = 1; });
@@ -319,30 +386,32 @@
       var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
     Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });
-    if (!ops.length) return Promise.resolve();
+    if (!ops.length) { clearRetry("remote:portalOrders"); return Promise.resolve(true); }
     poBusy = true;
-    return commitOps(ops).then(function () { SB.po = next; saveBase(); }).catch(function (e) { console.warn("portal projection pending", e && e.message); }).then(function () { poBusy = false; });
+    return commitOps(ops).then(function () { SB.po = next; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
   }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
-    if (!online() || typeof window.settings !== "function") return;
+    if (!online()) { retryLater("remote:portalConfig"); return Promise.resolve(false); }
+    if (typeof window.settings !== "function") return Promise.resolve(true);
     var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] };
     // شريط الإعلانات: بيتنشر مع نفس المستند. لو الجهاز ده ماعندوش إعداد شريط (نسخة قديمة) مانبعتش الحقل خالص،
     // ومع mergeFields أدناه ده معناه إن الشريط المنشور من جهاز تاني مايتمسحش.
     if (s.portalTicker && typeof s.portalTicker === "object") c.ticker = window.PortalTicker ? (window.PortalTicker.sanitize(s.portalTicker) || s.portalTicker) : s.portalTicker;
     var x = h(stable(c));
     publishTicker(c.ticker); // لها بصمة مستقلة: تتنشر حتى لو بقية إعدادات البوابة ماتغيّرتش
-    if (SB.x.pc === x) return;
+    if (SB.x.pc === x) { clearRetry("remote:portalConfig"); return Promise.resolve(true); }
     // mergeFields: نستبدل الحقول اللي بنبعتها بالكامل (زي set القديمة بالظبط) من غير ما نلمس أي حقل تاني في المستند.
-    db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); }).catch(function () {});
+    return db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); clearRetry("remote:portalConfig"); return true; }).catch(function (e) { console.warn("portal config publish pending", e && e.message); retryLater("remote:portalConfig"); return false; });
   }
   // الشريط الإعلاني لازم يظهر للزوار قبل تسجيل الدخول كمان: portal/config ممكن يكون مقفول على المسجّلين،
   // فبننشره كمان في portalPosts (نفس المكان اللي الزوار بيقروا منه المقالات أصلًا) بمعرّف ثابت وبيتفلتر بره قايمة المقالات.
   function publishTicker(t) {
-    if (!t) return;
+    if (!online()) { retryLater("remote:portalTicker"); return Promise.resolve(false); }
+    if (!t) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
     var x = h(stable(t));
-    if (SB.x.pt === x) return;
-    db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      .then(function () { SB.x.pt = x; saveBase(); }).catch(function (e) { console.warn("ticker publish pending", e && e.message); });
+    if (SB.x.pt === x) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
+    return db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      .then(function () { SB.x.pt = x; saveBase(); clearRetry("remote:portalTicker"); return true; }).catch(function (e) { console.warn("ticker publish pending", e && e.message); retryLater("remote:portalTicker"); return false; });
   }
   var inboxN = { a: 0, b: 0, c: 0, q: 0, g: 0 }; // g = طلبات الزوار (guestRequests)
   window.wfPortalInbox = inboxN;
@@ -826,7 +895,7 @@
 
   window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
-  window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1 && !retryTimers[k]) scheduleRetry(k); }); });
+  window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if ((ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) && !retryTimers[k]) scheduleRetry(k); }); });
   window.addEventListener("offline", badge);
   window.addEventListener("pagehide", function () { Object.keys(timers).forEach(function (k) { clearTimeout(timers[k]); delete timers[k]; push(k, false); }); });
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") pushAll(false); });

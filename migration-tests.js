@@ -4,4 +4,17 @@ const window={localStorage,WFStorage:localStorage,crypto:{randomUUID:()=>"test"}
 vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c);
 context.K=window.K;context.arr=window.arr;context.get=window.get;context.put=window.put;context.id=window.id;vm.runInContext(fs.readFileSync(`${__dirname}/image-store.js`,'utf8'),c);vm.runInContext(fs.readFileSync(`${__dirname}/migrations.js`,'utf8'),c);
 assert.strictEqual(window.runMigrations(),window.runMigrations(),'migrations must share one promise');
-Promise.resolve(window.workshopReady).then(ok=>{assert.strictEqual(ok,true);console.log('migration-single-flight-test: PASS')}).catch(e=>{console.error(e);process.exit(1)});
+Promise.resolve(window.workshopReady).then(async ok=>{
+  assert.strictEqual(ok,true);assert.strictEqual(window.runMigrations(),window.workshopReady,'completed migrations keep the same promise');
+  const failedData={wf_schema_version:'2',wf_r:'[]'};
+  const failedStorage={getItem:k=>failedData[k]??null,setItem:(k,v)=>{if(k==='wf_r')throw new Error('simulated migration persistence failure');failedData[k]=String(v)},removeItem:k=>delete failedData[k]};
+  const failedWindow={localStorage:failedStorage,WFStorage:failedStorage,crypto:{randomUUID:()=>"test-failure"}};
+  const failedContext={window:failedWindow,localStorage:failedStorage,crypto:failedWindow.crypto,console:{warn(){},error(){}},alert(){}};
+  const failedVm=vm.createContext(failedContext);
+  vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),failedVm);
+  failedContext.K=failedWindow.K;failedContext.arr=failedWindow.arr;failedContext.get=failedWindow.get;failedContext.put=failedWindow.put;failedContext.id=failedWindow.id;
+  vm.runInContext(fs.readFileSync(`${__dirname}/migrations.js`,'utf8'),failedVm);
+  assert.strictEqual(await failedWindow.workshopReady,false,'failed migration must stop without reporting success');
+  assert.strictEqual(failedWindow.getSchemaVersion(),2,'schema version stays at the last successfully saved version');
+  console.log('migration-single-flight-test: PASS (failed persistence does not advance schema)');
+}).catch(e=>{console.error(e);process.exit(1)});

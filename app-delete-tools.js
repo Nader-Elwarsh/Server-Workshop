@@ -26,7 +26,9 @@ async function deleteCustomerRecord(cid){
   // المهام المرتبطة بالعميل بتتفك منه (بدل ما تفضل بتشاور على عميل مش موجود).
   const values={[K.c]:arr(K.c).filter(x=>x.id!==cid)};
   if(linkedTasks.length)values[K.tasks]=arr(K.tasks).map(t=>t.customerId===cid?{...t,customerId:"",requestId:""}:t);
-  if(!await commitStorageAsync(values))return;
+  const trashPayload={customer:c,devices:[],requests:[],moves:[],tasks:linkedTasks,partsDelta:[],walletRefKeys:[]};
+  const commitValues=typeof addTrashEntryToValues==="function"?addTrashEntryToValues(values,"customer",`العميل ${c.name||""}`,trashPayload):values;
+  if(!await commitStorageAsync(commitValues))return;
   window.auditLog?.("حذف", "عميل", cid, c.name||"");
   renderCustomers();
 }
@@ -34,8 +36,12 @@ async function deleteDeviceRecord(did){
   const d=arr(K.d).find(x=>x.id===did);if(!d)return;
   if(arr(K.r).some(r=>r.deviceId===did)){alert("لا يمكن حذف الجهاز لأنه مرتبط بأمر شغل. احذف أمر الشغل المرتبط أولًا أو استخدم الحذف العام.");return}
   if(!confirm("حذف الجهاز نهائيًا؟"))return;
-  if(!await commitStorageAsync({[K.d]:arr(K.d).filter(x=>x.id!==did)}))return;
-  if(window.ImageStore?.delete&&d.photo)window.ImageStore.delete(d.photo);window.auditLog?.("حذف", "جهاز", did, `${d.type||""} ${d.brand||""}`);renderDevices();
+  const values={[K.d]:arr(K.d).filter(x=>x.id!==did)};
+  const trashPayload={device:d,requests:[],moves:[],partsDelta:[],walletRefKeys:[]};
+  const commitValues=typeof addTrashEntryToValues==="function"?addTrashEntryToValues(values,"device",`الجهاز ${d.type||""} — ${d.brand||""}`,trashPayload):values;
+  if(!await commitStorageAsync(commitValues))return;
+  // الصورة تظل متاحة في السلة حتى الحذف النهائي، كي لا يفقدها الاسترجاع.
+  window.auditLog?.("حذف", "جهاز", did, `${d.type||""} ${d.brand||""}`);renderDevices();
 }
 async function deleteRequestRecord(rid){
   const r=arr(K.r).find(x=>x.id===rid);if(!r)return;
@@ -47,10 +53,13 @@ async function deleteRequestRecord(rid){
   const partsDelta=(r.parts||[]).filter(x=>!x.external&&x.partId).map(x=>({partId:x.partId,qty:+x.qty||0}));
   restorePartsIntoStock(stock,[r]);
   const removedMoves=arr(K.m).filter(x=>x.requestId===rid);
-  const ok=await commitStorageAsync({[K.p]:stock,[K.m]:arr(K.m).filter(x=>x.requestId!==rid),[K.r]:requests.filter(x=>x.id!==rid),[K.wtx]:walletEntriesAfterRemovingRequests([rid])});
+  const tasks=arr(K.tasks),linkedTasks=tasks.filter(x=>x.requestId===rid);
+  const payload={request:r,moves:removedMoves,tasks:linkedTasks,partsDelta,walletRefKeys:walletRefKeysForOrders([rid])};
+  const values={[K.p]:stock,[K.m]:arr(K.m).filter(x=>x.requestId!==rid),[K.r]:requests.filter(x=>x.id!==rid),[K.wtx]:walletEntriesAfterRemovingRequests([rid]),[K.tasks]:tasks.map(x=>x.requestId===rid?{...x,requestId:""}:x)};
+  const commitValues=typeof addTrashEntryToValues==="function"?addTrashEntryToValues(values,"request",`أمر شغل ${r.no||""}`,payload):values;
+  const ok=await commitStorageAsync(commitValues);
   if(!ok)return;
   window.auditLog?.("حذف", "أمر شغل", rid, r.no||"");
-  pushToTrash("request",`أمر شغل ${r.no||""}`,{request:r,moves:removedMoves,partsDelta,walletRefKeys:walletRefKeysForOrders([rid])});
   renderRequests();
   if(document.getElementById("requestProfile"))location.href="requests.html";
 }
@@ -59,7 +68,7 @@ async function deleteAllCustomers(){
   if(!confirm(`حذف جميع العملاء (${c.length}) وما يرتبط بهم من أجهزة وأوامر شغل؟`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
   const devices=arr(K.d),requests=arr(K.r),stock=arr(K.p);restorePartsIntoStock(stock,requests);
-  const ok=await commitStorageAsync({[K.p]:stock,[K.c]:[],[K.d]:[],[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(requests.map(r=>r.id))});
+  const ok=await commitStorageAsync({[K.p]:stock,[K.c]:[],[K.d]:[],[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(requests.map(r=>r.id)),[K.tasks]:arr(K.tasks).map(t=>({...t,customerId:"",requestId:""}))});
   if(!ok)return;
   cleanupDevicePhotos(devices);cleanupRequestRecordings(requests);renderCustomers?.();renderDevices?.();renderRequests?.();alert("تم حذف جميع العملاء والبيانات المرتبطة بهم.");
 }
@@ -68,7 +77,7 @@ async function deleteAllDevices(){
   if(!confirm(`حذف جميع الأجهزة (${d.length}) وأوامر الشغل المرتبطة بها؟`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
   const requests=arr(K.r),stock=arr(K.p);restorePartsIntoStock(stock,requests);
-  const ok=await commitStorageAsync({[K.p]:stock,[K.d]:[],[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(requests.map(r=>r.id))});
+  const ok=await commitStorageAsync({[K.p]:stock,[K.d]:[],[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(requests.map(r=>r.id)),[K.tasks]:arr(K.tasks).map(t=>({...t,requestId:""}))});
   if(!ok)return;
   cleanupDevicePhotos(d);cleanupRequestRecordings(requests);renderDevices?.();renderRequests?.();alert("تم حذف جميع الأجهزة وأوامر الشغل المرتبطة بها.");
 }
@@ -77,7 +86,8 @@ async function deleteAllRequests(){
   if(!confirm(`حذف جميع أوامر الشغل (${r.length}) وإرجاع قطع الغيار المصروفة للمخزن؟`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
   const stock=arr(K.p);restorePartsIntoStock(stock,r);
-  const ok=await commitStorageAsync({[K.p]:stock,[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(r.map(x=>x.id))});
+  const orderIds=new Set(r.map(x=>String(x.id)));
+  const ok=await commitStorageAsync({[K.p]:stock,[K.r]:[],[K.m]:[],[K.wtx]:walletEntriesAfterRemovingRequests(r.map(x=>x.id)),[K.tasks]:arr(K.tasks).map(t=>orderIds.has(String(t.requestId))?{...t,requestId:""}:t)});
   if(!ok)return;
   cleanupRequestRecordings(r);renderRequests?.();renderDash?.();monthReport?.();alert("تم حذف جميع أوامر الشغل وإرجاع القطع للمخزن.");
 }

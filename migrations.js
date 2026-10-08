@@ -11,11 +11,34 @@
 (function (window) {
   "use strict";
 
+  async function flushMigration() {
+    if (!window.WFStorage || typeof window.WFStorage.flush !== "function") return;
+    try {
+      await window.WFStorage.flush();
+    } catch (error) {
+      const fallback = window.WFStorageStatus && window.WFStorageStatus.fallback;
+      // عند تعطل IndexedDB تعتمد المنظومة صراحةً على WFStorage كمسار
+      // احتياطي؛ لا نقرأ مخزن المتصفح مباشرةً خارج واجهته الرسمية.
+      if (!fallback) throw error;
+    }
+  }
+
+  async function persistMigration(values) {
+    if (typeof window.commitStorageAsync === "function") {
+      if (!await window.commitStorageAsync(values)) throw new Error("تعذر تأكيد حفظ بيانات الترحيل");
+    } else {
+      for (const [key, value] of Object.entries(values || {})) {
+        if (!put(key, value)) throw new Error("تعذر حفظ " + key + " أثناء الترحيل");
+      }
+    }
+    await flushMigration();
+  }
+
   // ترحيل 1 → 2: نقل صور الأجهزة والقطع من base64 جوه WFStorage
   // إلى IndexedDB (image-store.js)، والاستبدال بمرجع قصير بدل الصورة
   // نفسها. راجع شرح السبب في أعلى image-store.js.
   async function migrate1to2() {
-    if (!window.ImageStore) return; // الصفحة لسه ما حمّلتش image-store.js
+    if (!window.ImageStore) throw new Error("ملف image-store.js غير متاح أثناء ترحيل الصور");
     let K = window.K;
     for (const key of [K.d, K.p]) {
       let list = arr(key);
@@ -27,10 +50,11 @@
             changed = true;
           } catch (e) {
             console.error("[migrations] تعذر ترحيل صورة سجل", rec.id, e);
+            throw e;
           }
         }
       }
-      if (changed) put(key, list);
+      if (changed) await persistMigration({ [key]: list });
     }
   }
 
@@ -38,7 +62,7 @@
   // / مكتمل / ملغي) وحالات الورشة الرسمية (غير مطلوب / تم السحب / تم
   // التسليم)، وإزالة حقل الأولوية اللي بقى غير مستخدم في أوامر الشغل.
   // راجع WORK_ORDER_LIFECYCLE_APPROVED.md لتفاصيل الدورة المعتمدة.
-  function migrate2to3() {
+  async function migrate2to3() {
     let K = window.K;
     const STATUS_MAP = {
       "جديد": "جديد",
@@ -69,14 +93,14 @@
         r.statusHistory = [{ from: "", to: r.status, at: r.createdAt || new Date().toISOString() }];
       }
     });
-    put(K.r, requests);
-
     let s = get(K.s, null);
     if (s) {
       s.orderStatuses = ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"];
       s.workshopStatuses = ["غير مطلوب", "تم السحب", "تم التسليم"];
       delete s.priorities;
-      put(K.s, s);
+      await persistMigration({ [K.r]: requests, [K.s]: s });
+    } else {
+      await persistMigration({ [K.r]: requests });
     }
   }
 
@@ -84,7 +108,7 @@
   // لأي حساب كان موجود قبل إضافتهم لقائمة الافتراضي، من غير ما نمسح أو
   // نعدّل أي محفظة موجودة بالفعل عند المستخدم (بنضيف بس لو مش موجودين
   // بنفس الاسم أصلاً).
-  function migrate3to4() {
+  async function migrate3to4() {
     let K = window.K;
     let s = get(K.s, null);
     if (!s) return; // مفيش إعدادات محفوظة أصلاً؛ default الجديد في shared-data.js هيتطبق عادي
@@ -92,7 +116,7 @@
     ["محفظة فودافون كاش", "محفظة أورنج كاش"].forEach(w => {
       if (!s.wallets.includes(w)) s.wallets.push(w);
     });
-    put(K.s, s);
+    await persistMigration({ [K.s]: s });
   }
 
   // ترحيل 4 → 5: توحيد "مصاريف التشغيل" في مكان واحد. كان فيه قايمة
@@ -103,7 +127,7 @@
   // أول محفظة في الإعدادات كمحفظة افتراضية للترحيل. القايمة القديمة
   // (K.e) بتفضل في مكانها كنسخة احتياطية بس من غير ما يقرأها أي كود
   // تاني بعد كده.
-  function migrate4to5() {
+  async function migrate4to5() {
     let K = window.K;
     let oldExpenses = arr(K.e);
     if (!oldExpenses.length) return;
@@ -123,7 +147,7 @@
       source: "migrated-expense", createdAt: e.createdAt || new Date().toISOString()
       };
     });
-    put(K.wtx, existing.concat(migrated));
+    await persistMigration({ [K.wtx]: existing.concat(migrated) });
   }
 
   // ترحيل 5 → 6: إصلاح خطأ قديم في شاشة الإعدادات كان بيسجّل أي عنصر
@@ -133,7 +157,7 @@
   // العناصر المُضافة من الإعدادات بتختفي ومتظهرش في باقي الشاشات. أي
   // عنصر اتسجل بالغلط قبل كده بينتقل هنا لمكانه الصحيح (بدون تكرار لو
   // موجود بالفعل)، ومفيش أي بيانات بتتمسح.
-  function migrate5to6() {
+  async function migrate5to6() {
     let K = window.K;
     let s = get(K.s, null);
     if (!s) return;
@@ -167,7 +191,7 @@
         if (bad in s) { delete s[bad]; changed = true; }
       });
     });
-    if (changed) put(K.s, s);
+    if (changed) await persistMigration({ [K.s]: s });
   }
 
   const MIGRATIONS = [
@@ -201,8 +225,10 @@
         if (v !== m.from) continue;
         try {
           await m.run();
+          window.setSchemaVersion(m.to);
+          await flushMigration();
+          if (window.getSchemaVersion && window.getSchemaVersion() !== m.to) throw new Error("لم يُحفظ إصدار المخطط الجديد");
           v = m.to;
-          window.setSchemaVersion(v);
         } catch (e) {
           console.error(`[migrations] فشل الترحيل من ${m.from} إلى ${m.to}`, e);
           return false; // نوقف السلسلة عند أول فشل بدل ما نكمل على بيانات غير متسقة

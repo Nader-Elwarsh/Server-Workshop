@@ -80,5 +80,16 @@ function makeEnv(confirmAnswer){
     const e=makeEnv(true),x=e.context,K=e.K;
     assert.throws(()=>x.validateBackupData({[K.c]:[],_meta:{schemaVersion:0}}),/invalid-schema/);
   }
+  // الحذف النهائي من السلة: فشل حفظ سجل السلة يمنع حذف الصورة المرتبطة.
+  {
+    const e=makeEnv(true),x=e.context,K=e.K;let cleaned=0;
+    e.store[K.trash]=JSON.stringify([{id:'t3',type:'device',label:'جهاز محفوظ',payload:{device:{id:'d3',photo:'local-image-ref'}},deletedAt:new Date().toISOString()}]);
+    x.window.ImageStore={delete:async()=>{cleaned++}};
+    const original=x.window.WFStorage.setItem;
+    x.window.WFStorage.setItem=function(key,value){if(key===K.trash)throw new Error('simulated trash write failure');return original.call(this,key,value)};
+    await x.permanentlyDeleteTrash('t3');
+    assert.strictEqual(JSON.parse(e.store[K.trash]).length,1,'trash entry remains when its removal is not saved');
+    assert.strictEqual(cleaned,0,'attachment cleanup waits until durable trash removal');
+  }
   console.log('backup-trash-tests: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});
