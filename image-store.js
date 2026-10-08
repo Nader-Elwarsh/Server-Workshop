@@ -66,7 +66,12 @@
       if (!user || !projectId) return "";
       const token = await user.getIdToken();
       const endpoint = "https://us-central1-" + encodeURIComponent(projectId) + ".cloudfunctions.net/uploadImage";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Authorization": "Bearer " + token, "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+      // مهلة 20 ثانية: من غيرها الرفع البطيء كان بيعلّق شاشة المشاركة، ودلوقتي بنرجع للتخزين المحلي.
+      const ctl = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), 20000) : null;
+      let response;
+      try { response = await fetch(endpoint, { method: "POST", headers: { "Authorization": "Bearer " + token, "Content-Type": blob.type || "application/octet-stream" }, body: blob, signal: ctl ? ctl.signal : undefined }); }
+      finally { if (timer) clearTimeout(timer); }
       if (!response.ok) return "";
       const result = await response.json();
       return result && result.secure_url || "";

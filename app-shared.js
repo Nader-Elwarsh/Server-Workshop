@@ -340,7 +340,8 @@ function markPaidAndClose(i){
   const chkR=arr(K.r).find(x=>String(x.id)===String(r.id)),chkTx=arr(K.wtx).some(x=>x&&x.refKey==="order-final-"+r.id&&!x.deleted);
   if(!chkR||!chkR.closed||(collected>0&&wallet&&!chkTx)){alert("⚠️ الإغلاق ماتأكدش بعد الحفظ (الأمر أو حركة المحفظة مش ظاهرين). حدّث الصفحة وراجع الأمر والمحفظة قبل ما تعيد المحاولة.")}
   window.auditLog?.("تحصيل وإغلاق", "أمر شغل", r.id, `المبلغ المحصل ${collected.toFixed(2)} ج`);
-  location.reload();
+  // استنى تأكيد الحفظ في IndexedDB قبل الـ reload (كان الإقفال بيضيع لو الـ reload سبق الكتابة).
+  if(typeof wfReload==="function")wfReload();else location.reload();
 }
 function closeOrder(i){markPaidAndClose(i)}
 // المحفظة الافتراضية الفعلية للعربون/التحصيل: المحددة في الإعدادات (لو لسه موجودة)،

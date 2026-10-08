@@ -35,6 +35,33 @@
   const snapshots = new Map(), snapshotVersions = new Map();
   const storageCache = new Map(), storageListeners = new Set();
 
+  /* سجل كتابة احتياطي (write-ahead journal) في localStorage.
+     IndexedDB بيتكتب فيه بشكل غير متزامن؛ لو الصفحة اتنقلت أو اتعملها reload أو اتقفلت
+     بعد الحفظ مباشرة (إنشاء أمر، إقفال أمر...) الكتابة كانت بتضيع. دلوقتي كل كتابة بتتسجل هنا
+     متزامنًا، وتتشال بعد ما IndexedDB يأكد، ولو ضاعت بتتعاد تلقائيًا عند فتح التطبيق. */
+  const WAL_PREFIX = "wf_wal_v1:";
+  const walBoot = new Map(), walSeq = new Map();
+  try {
+    const ls = window.localStorage;
+    for (let i = 0; ls && i < ls.length; i++) {
+      const k = ls.key(i);
+      if (k && k.indexOf(WAL_PREFIX) === 0) {
+        try { const e = JSON.parse(ls.getItem(k)); if (e && typeof e === "object") walBoot.set(k.slice(WAL_PREFIX.length), e); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  function walPut(key, value, remove) {
+    try {
+      const seq = (walSeq.get(key) || 0) + 1; walSeq.set(key, seq);
+      window.localStorage.setItem(WAL_PREFIX + key, JSON.stringify({ t: Date.now(), s: seq, r: remove ? 1 : 0, v: remove ? null : String(value) }));
+      return seq;
+    } catch (_) { return 0; }
+  }
+  function walDone(key, seq) {
+    if (!seq || walSeq.get(key) !== seq) return;
+    try { window.localStorage.removeItem(WAL_PREFIX + key); } catch (_) {}
+  }
+
   function fingerprint(value) {
     const text = JSON.stringify(value);
     let h = 2166136261;
@@ -111,7 +138,7 @@
       const source = window.localStorage;
       for (let i = 0; source && i < source.length; i++) {
         const key = source.key(i);
-        if (key != null) entries.push([String(key), source.getItem(key)]);
+        if (key != null && String(key).indexOf(WAL_PREFIX) !== 0) entries.push([String(key), source.getItem(key)]);
       }
     } catch (error) { console.warn("[WFStorage] تعذرت قراءة التخزين القديم", error); }
     return entries;
@@ -139,7 +166,7 @@
       }
       return open().then(db => new Promise((resolve, reject) => {
         const tx = db.transaction([KV_STORE], "readwrite"), store = tx.objectStore(KV_STORE);
-        if (remove) store.delete(key); else store.put({ key, value: String(value) });
+        if (remove) store.delete(key); else store.put({ key, value: String(value), at: Date.now() });
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error || new Error("تعذر حفظ قيمة التخزين"));
         tx.onabort = () => reject(tx.error || new Error("أُلغيت كتابة التخزين"));
@@ -180,6 +207,36 @@
     })).then(async ({ rows, imported, migrationMarker }) => {
       storageCache.clear();
       rows.forEach(row => { if (row && typeof row.key === "string") storageCache.set(row.key, String(row.value)); });
+      // استرجاع الكتابات اللي ضاعت قبل ما IndexedDB يأكدها (راجع سجل الكتابة الاحتياطي فوق).
+      if (walBoot.size) {
+        const replay = [];
+        walBoot.forEach((e, key) => {
+          const row = rows.find(r => r && r.key === key);
+          if ((Number(e.t) || 0) > (row && Number(row.at) || 0)) replay.push([key, e]);
+        });
+        try {
+          if (replay.length) {
+            const rdb = await open();
+            await new Promise((resolve, reject) => {
+              const tx = rdb.transaction([KV_STORE], "readwrite"), st = tx.objectStore(KV_STORE);
+              replay.forEach(([key, e]) => {
+                if (e.r) { st.delete(key); storageCache.delete(key); }
+                else { st.put({ key, value: String(e.v), at: Number(e.t) || Date.now() }); storageCache.set(key, String(e.v)); }
+              });
+              tx.oncomplete = () => resolve(true);
+              tx.onerror = () => reject(tx.error || new Error("تعذر استرجاع الكتابات المعلقة"));
+              tx.onabort = () => reject(tx.error || new Error("أُلغي استرجاع الكتابات المعلقة"));
+            });
+            console.warn("[WFStorage] اتسترجعت كتابات ضاعت قبل التأكيد:", replay.map(x => x[0]).join(", "));
+          }
+          walBoot.forEach((e, key) => {
+            try {
+              const cur = JSON.parse(window.localStorage.getItem(WAL_PREFIX + key) || "null");
+              if (cur && cur.t === e.t) window.localStorage.removeItem(WAL_PREFIX + key);
+            } catch (_) {}
+          });
+        } catch (error) { console.warn("[WFStorage] تعذر استرجاع سجل الكتابة الاحتياطي؛ تم الإبقاء عليه", error); }
+      }
       let legacySourceCleared = !!(migrationMarker && migrationMarker.legacySourceCleared === true);
       if (!legacySourceCleared) {
         try {
@@ -216,12 +273,14 @@
       key = String(key); value = String(value);
       storageCache.set(key, value); notifyStorage(key, value, false);
       if (key === "wf_theme") syncThemeCookie(value);
-      persistStorageMutation(key, value, false).catch(() => {});
+      const seq = walPut(key, value, false);
+      persistStorageMutation(key, value, false).then(() => walDone(key, seq)).catch(() => {});
     },
     removeItem(key) {
       key = String(key); storageCache.delete(key); notifyStorage(key, null, true);
       if (key === "wf_theme") syncThemeCookie(null);
-      persistStorageMutation(key, null, true).catch(() => {});
+      const seq = walPut(key, null, true);
+      persistStorageMutation(key, null, true).then(() => walDone(key, seq)).catch(() => {});
     },
     clear() {
       const keys = Array.from(storageCache.keys()); storageCache.clear();
@@ -302,7 +361,7 @@
           const records = validRecords(value), store = tx.objectStore(STORES[key].name);
           store.clear(); records.forEach(record => store.put(record));
           meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
-          kv.put({ key, value: JSON.stringify(records) });
+          kv.put({ key, value: JSON.stringify(records), at: Date.now() });
         });
         tx.oncomplete = () => {
           entries.forEach(([key, value]) => {
@@ -407,7 +466,7 @@
                 const records = validRecords(draft[k]), store = tx.objectStore(STORES[k].name);
                 store.clear(); records.forEach(record => store.put(record));
                 meta.put({ key: k, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
-                kv.put({ key: k, value: JSON.stringify(records) });
+                kv.put({ key: k, value: JSON.stringify(records), at: Date.now() });
               });
             } catch (error) { callbackError = error; try { tx.abort(); } catch (_) {} }
           };

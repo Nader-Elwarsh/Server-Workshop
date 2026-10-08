@@ -80,7 +80,7 @@ async function quickCreateRequest(){
   recordStatusHistory(r,"",r.status);
   applyStatusTimestamp(r,r.status);
   if(!await saveQuickOperational("requests",K.r,arr(K.r).concat(r)))return;
-  location.href=`request.html?id=${r.id}`;
+  if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${r.id}`);else location.href=`request.html?id=${r.id}`;
 }
 
 // روابط اتصال/واتساب موحدة لأي رقم تليفون في النظام.

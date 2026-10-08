@@ -486,6 +486,15 @@ var WFStorage = window.WFStorage;
   window.getSchemaVersion = getSchemaVersion;
   window.setSchemaVersion = setSchemaVersion;
   window.CURRENT_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
+  // استنى تأكيد كتابة IndexedDB قبل أي تنقل/reload (الكتابة بتتم في الخلفية).
+  function wfFlushWrites(ms) {
+    const jobs = [];
+    try { if (window.WorkshopDB && window.WorkshopDB.flush) jobs.push(window.WorkshopDB.flush()); else if (window.WFStorage && window.WFStorage.flush) jobs.push(window.WFStorage.flush()); } catch (_) {}
+    return Promise.race([Promise.all(jobs).then(() => true, () => false), new Promise(r => setTimeout(() => r(false), ms || 4000))]);
+  }
+  window.wfFlushWrites = wfFlushWrites;
+  window.wfNavigate = async function (url) { await wfFlushWrites(); window.location.href = url; };
+  window.wfReload = async function () { await wfFlushWrites(); window.location.reload(); };
   window.withRollback = withRollback;
   window.withRollbackAsync = withRollbackAsync;
 })(window);

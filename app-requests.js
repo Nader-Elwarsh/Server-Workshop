@@ -132,7 +132,7 @@ async function saveRequest(e,existing=null){
   try{
     let result=await persistRequestRecord(formData,existing);
     if(!result.ok)return alert(result.error);
-    location.href=`request.html?id=${result.request.id}`
+    if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${result.request.id}`);else location.href=`request.html?id=${result.request.id}`
   }finally{_requestSaving=false}
 }
 // renderRequests: كانت هنا نسخة "أساسية" بتفلتر بعناصر statusFilter/workshopFilter

@@ -16,6 +16,9 @@ let __audioRef = null;
 // رقم الأمر المفتوح (لو لقينا واحد لنفس العميل) — لو المستخدم اختار
 // "ألحق بالأمر ده" بدل ما ينشئ أمر جديد.
 let __existingOpenRequestId = null;
+// حفظ التسجيل الصوتي بيتم في الخلفية (الرفع ممكن ياخد وقت)، وزرار الإنشاء بيستناه لو لسه شغال.
+let __audioPromise = null;
+let __creating = false;
 
 function extractPhoneFromText(s) {
   if (!s) return "";
@@ -74,6 +77,11 @@ async function initShareTarget() {
       return;
     }
     title = payload.title; text = payload.text; url = payload.url; fileName = payload.fileName;
+    let combinedTextForPhone = [title, text, url].filter(Boolean).join("\n");
+    let phone0 = extractPhoneFromText(combinedTextForPhone) || extractPhoneFromText(fileName);
+    entryId = id();
+    // نحفظ المكالمة المعلّقة ونملا الفورم فورًا؛ رفع التسجيل ما بقاش بيعطّل التحقق من الرقم.
+    savePendingCall({ id: entryId, title, text, url, fileName, audioRef: null, phone: phone0, at: Date.now() });
     if (payload.file) {
       let audioBox = document.getElementById("shareAudioPreview");
       if (audioBox) {
@@ -83,16 +91,20 @@ async function initShareTarget() {
           audioBox.classList.remove("hidden");
         } catch (e) { console.error("[share-target] تعذرت معاينة الملف", e); }
       }
-      let dataUrl = await fileToDataURL(payload.file).catch(() => "");
-      if (dataUrl && window.ImageStore) {
-        try { audioRef = await window.ImageStore.save(dataUrl); }
-        catch (e) { console.error("[share-target] فشل حفظ التسجيل مؤقتًا", e); }
-      }
+      const thisEntry = entryId;
+      __audioPromise = (async () => {
+        try {
+          let dataUrl = await fileToDataURL(payload.file).catch(() => "");
+          if (dataUrl && window.ImageStore) {
+            let ref = await window.ImageStore.save(dataUrl);
+            if (ref) {
+              __audioRef = ref;
+              put(K.pc, arr(K.pc).map(x => x.id === thisEntry ? Object.assign({}, x, { audioRef: ref }) : x));
+            }
+          }
+        } catch (e) { console.error("[share-target] فشل حفظ التسجيل", e); }
+      })();
     }
-    let combinedTextForPhone = [title, text, url].filter(Boolean).join("\n");
-    let phone = extractPhoneFromText(combinedTextForPhone) || extractPhoneFromText(fileName);
-    entryId = id();
-    savePendingCall({ id: entryId, title, text, url, fileName, audioRef, phone, at: Date.now() });
   } else {
     let pending = arr(K.pc).find(x => x.id === resumeId);
     if (!pending) {
@@ -113,7 +125,7 @@ async function initShareTarget() {
   }
 
   __pendingCallId = entryId;
-  __audioRef = audioRef;
+  if (audioRef) __audioRef = audioRef;
 
   let combinedText = [title, text, url].filter(Boolean).join("\n");
   let phone = extractPhoneFromText(combinedText) || extractPhoneFromText(fileName);
@@ -177,7 +189,10 @@ async function maybeDiscardRecording(ref) {
 // إلحاق التسجيل/الملاحظة الجديدة بأمر شغل مفتوح بالفعل، بدل إنشاء أمر
 // مكرر لنفس العميل ونفس المشكلة.
 async function attachRecordingToExistingRequest() {
-  if (!__existingOpenRequestId) return;
+  if (!__existingOpenRequestId || __creating) return;
+  __creating = true;
+  try {
+  if (__audioPromise) await __audioPromise;
   let list = arr(K.r);
   let idx = list.findIndex(x => x.id === __existingOpenRequestId);
   if (idx === -1) { alert("الأمر ده مش موجود، جرب تاني."); return; }
@@ -198,7 +213,8 @@ async function attachRecordingToExistingRequest() {
   list[idx] = r;
   if(!saveJSONSafe(K.r,list))return;
   removePendingCall(__pendingCallId);
-  location.href = `request.html?id=${r.id}`;
+  await wfNavigate(`request.html?id=${r.id}`);
+  } finally { __creating = false; }
 }
 
 // إنشاء أمر شغل جديد بالكامل من بيانات المكالمة — نفس منطق
@@ -207,6 +223,10 @@ async function attachRecordingToExistingRequest() {
 // تعديل quickCreateRequest الأصلية عشان الأخيرة دي مستخدمة في "أمر شغل
 // سريع" بالشاشة الرئيسية ومالهاش أي علاقة بمشاركة المكالمات.
 async function createRequestFromCallShare() {
+  if (__creating) return;
+  __creating = true;
+  try {
+  if (__audioPromise) await __audioPromise;
   let cid = document.getElementById("qoCustomer")?.value, did = document.getElementById("qoDevice")?.value, fault = (document.getElementById("qoFault")?.value || "").trim();
   if (!cid) return alert("اختر العميل أولاً.");
   if (!did) return alert("اختر الجهاز أولاً.");
@@ -226,7 +246,9 @@ async function createRequestFromCallShare() {
   applyStatusTimestamp(r, r.status);
   if(!saveJSONSafe(K.r,arr(K.r).concat(r)))return;
   removePendingCall(__pendingCallId);
-  location.href = `request.html?id=${r.id}`;
+  // استنى تأكيد الحفظ قبل التنقل: التنقل الفوري كان بيضيّع الأمر وحذف المكالمة المعلّقة.
+  await wfNavigate(`request.html?id=${r.id}`);
+  } finally { __creating = false; }
 }
 
 // لازم نستنى initQuickOrder (بتاعة app-quick-add.js) تخلص الأول، لأنها

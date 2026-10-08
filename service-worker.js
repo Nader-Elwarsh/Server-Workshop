@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v21-idb-hardening";
+const CACHE_NAME = "workshop-v22-wal-flush-fix";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
