@@ -41,9 +41,36 @@
     for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(36) + ":" + text.length;
   }
+  // سجل بدون id مش بيتخزن في مخازن IndexedDB: قبل كده كان بيتشال بصمت (فقد بيانات غير ملحوظ).
+  // دلوقتي بنسجّل تحذير وبنحفظ العدد في WFStorageStatus.droppedRecords عشان يتشخّص.
   function validRecords(value) {
     if (!Array.isArray(value)) return [];
-    return value.filter(x => x && typeof x === "object" && !Array.isArray(x) && x.id !== undefined && x.id !== null && String(x.id) !== "");
+    const ok = value.filter(x => x && typeof x === "object" && !Array.isArray(x) && x.id !== undefined && x.id !== null && String(x.id) !== "");
+    if (ok.length !== value.length) {
+      console.warn("[WorkshopDB] تم استبعاد " + (value.length - ok.length) + " سجل بدون id من الحفظ");
+      window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { droppedRecords: value.length - ok.length });
+    }
+    return ok;
+  }
+  // فشل الحفظ في IndexedDB (مساحة ممتلئة، تبويب قديم، خطأ متصفح) كان بيتسجل في الـconsole بس،
+  // والمستخدم يفتكر إن البيانات اتحفظت. دلوقتي بيظهر شريط تحذير واضح لحد ما الحفظ ينجح تاني.
+  function storageFailure(error) {
+    window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { writeError: error || true });
+    try {
+      const doc = window.document;
+      if (!doc || !doc.body || doc.getElementById("wf-storage-alert")) return;
+      const bar = doc.createElement("div");
+      bar.id = "wf-storage-alert"; bar.setAttribute("role", "alert"); bar.dir = "rtl";
+      bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483000;background:#b00020;color:#fff;padding:10px 14px;font:600 14px/1.5 sans-serif;text-align:center";
+      bar.textContent = "⚠️ تعذر حفظ آخر تغييرات في قاعدة البيانات (ممكن المساحة امتلت). خد نسخة احتياطية فورًا من الإعدادات، وفرّغ مساحة على الجهاز.";
+      doc.body.appendChild(bar);
+    } catch (_) {}
+  }
+  function storageRecovered() {
+    const st = window.WFStorageStatus;
+    if (!st || !st.writeError) return;
+    window.WFStorageStatus = Object.assign({}, st, { writeError: null });
+    try { const el = window.document && window.document.getElementById("wf-storage-alert"); if (el && el.remove) el.remove(); } catch (_) {}
   }
   function setSnapshot(key, records) {
     if (!STORES[key]) return;
@@ -117,10 +144,10 @@
         tx.onerror = () => reject(tx.error || new Error("تعذر حفظ قيمة التخزين"));
         tx.onabort = () => reject(tx.error || new Error("أُلغيت كتابة التخزين"));
       }));
-    });
+    }).then(v => { storageRecovered(); return v; });
     storageTail = current.catch(error => {
       console.error("[WFStorage] تعذر حفظ القيمة في IndexedDB", key, error);
-      window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { writeError: error });
+      storageFailure(error);
       try { if (remove) window.localStorage.removeItem(key); else window.localStorage.setItem(key, String(value)); } catch (_) {}
       return false;
     });
@@ -234,6 +261,13 @@
       syncThemeCookie(savedTheme);
     } catch (_) {}
     try { window.document.documentElement.removeAttribute("data-wf-storage-pending"); } catch (_) {}
+    // المتصفح ممكن يمسح IndexedDB لو المساحة قلّت إلا لو التخزين "دائم": بنطلبه هنا (مرة لكل تحميل)
+    // ونسجّل النتيجة في WFStorageStatus.persistent للتشخيص.
+    try {
+      const sm = window.navigator && window.navigator.storage;
+      if (sm && sm.persisted) sm.persisted().then(p => p || (sm.persist ? sm.persist() : false))
+        .then(p => { window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { persistent: !!p }); }).catch(() => {});
+    } catch (_) {}
   });
   // صفّ تشغيل واجهات DOMContentLoaded إلى ما بعد تحميل كاش IndexedDB؛
   // واجهات التطبيق المتزامنة لا ترى مجموعة فارغة أثناء ترطيب قاعدة قائمة.
@@ -250,8 +284,8 @@
   } catch (_) {}
 
   function enqueueWrite(work) {
-    const current = writeTail.then(work);
-    writeTail = current.catch(error => { console.error("[WorkshopDB] فشل حفظ IndexedDB:", error); });
+    const current = writeTail.then(work).then(v => { storageRecovered(); return v; });
+    writeTail = current.catch(error => { console.error("[WorkshopDB] فشل حفظ IndexedDB:", error); storageFailure(error); });
     return current;
   }
   function writeCollections(values) {
