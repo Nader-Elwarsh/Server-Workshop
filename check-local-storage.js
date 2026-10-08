@@ -8,7 +8,7 @@ const path = require('node:path');
 const LEGACY_TOKEN = ['local', 'Storage'].join('');
 const DEFAULT_ROOT = process.cwd();
 const MIGRATION_FILE = 'workshop-idb.js';
-const APPROVED_MIGRATION_TOKEN_COUNT = 11;
+const APPROVED_MIGRATION_TOKEN_COUNT = 17; // 11 للترحيل + 6 لسجل الكتابة الاحتياطي (WAL)
 const RUNTIME_EXTENSIONS = new Set([
   '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.html', '.css', '.json',
   '.vue', '.svelte', '.astro', '.sh', '.py', '.php', '.go', '.rs'

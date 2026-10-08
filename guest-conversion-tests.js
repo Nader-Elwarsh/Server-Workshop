@@ -120,10 +120,13 @@ function shareEnv() {
     alert(message) { alerts.push(String(message)); },
     location: { href: '' },
     __audioRef: null,
+    __audioPromise: null,
+    __creating: false,
     __pendingCallId: 'call-1',
     Date,
     String
   };
+  context.wfNavigate = async url => { context.location.href = url; };
   vm.createContext(context);
   vm.runInContext(`${shareFunction}\nthis.createRequestFromCallShare=createRequestFromCallShare;`, context, { filename: 'share-target.createRequestFromCallShare' });
   return { context, store, K, controls, alerts, removed };

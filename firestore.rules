@@ -130,7 +130,8 @@ service cloud.firestore {
         && request.resource.data.answer == ''
         && request.resource.data.text is string && request.resource.data.text.size() >= 5 && request.resource.data.text.size() <= 1500
         && ownsDevice(request.resource.data.customerId, request.resource.data.get('deviceId', ''))
-        && request.resource.data.keys().hasOnly(['customerId', 'customerName', 'deviceId', 'deviceLabel', 'text', 'status', 'answer', 'published', 'postId', 'portal', 'createdAt']);
+        && request.resource.data.keys().hasOnly(['customerId', 'customerName', 'deviceId', 'deviceLabel', 'text', 'status', 'answer', 'published', 'postId', 'portal', 'createdAt', 'images'])
+        && (!('images' in request.resource.data) || (request.resource.data.images is list && request.resource.data.images.size() <= 3));
     }
 
     match /portalSuggestions/{id} {
