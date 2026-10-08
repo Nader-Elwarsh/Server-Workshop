@@ -218,7 +218,7 @@ function renderRoute(){
       let toggleBtn=`<button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();toggleVisited('${x.id}')">${visitedToday?"↩️ إلغاء تسجيل الزيارة":"✅ تسجيل الزيارة"}</button>`;
       let quickCloseBtn=`<button type="button" class="route-quickclose-btn mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();toggleQuickClose('${x.id}')">🏁 تقفيل سريع</button>`;
       let tagBtns=`<button type="button" class="route-contact-unavailable mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();setRouteContactStatus('${x.id}','unavailable')">📵 غير متاح</button><button type="button" class="route-contact-noanswer mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();setRouteContactStatus('${x.id}','no-answer')">📞 لم يرد</button><button type="button" class="route-contact-needspart mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();setRouteContactStatus('${x.id}','needs-part')">🔁 زيارة تانية/قطعة</button><button type="button" class="route-up-btn mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();moveRouteItem('${x.id}',-1)" title="تحريك لأعلى">⬆️</button><button type="button" class="route-down-btn mini-action" data-wf-event="click" data-wf-code="event.preventDefault();event.stopPropagation();moveRouteItem('${x.id}',1)" title="تحريك لأسفل">⬇️</button>`;
-      const quickCloseOpen=routeViewState.quickCloseId===x.id;
+      const quickCloseOpen=String(routeViewState.quickCloseId)===String(x.id);
       const quickCloseForm=quickCloseOpen?routeQuickCloseFormHtml(x):"";
       return `<div class="item route-order-card route-order-card-active${age?" "+age.cls:""}" data-route-id="${x.id}" data-wf-event="click" data-wf-code="location.href='request.html?id=${x.id}'" title="اضغط لعرض تفاصيل أمر الشغل"><div class="route-turn-flag">🔵 الدور عليك دلوقتي</div><div class="route-order-head"><a href="request.html?id=${x.id}" data-wf-event="click" data-wf-code="event.stopPropagation()"><b>🛠️ ${esc(x.no)}</b></a><span class="route-order-name">👤 ${esc(x._c.name||"")}</span><span class="route-head-status">${stateBadge}${lateBadge}${ageBadgeHtml}</span></div><div class="route-order-data"><div class="route-data-cell">📍 <span>${esc(addressText(x._addr))}</span></div><div class="route-data-cell">📞 <span>${contactLinksHtml(x._c.phone)}</span></div><div class="route-data-cell">🔧 <span>${esc(deviceName(x.deviceId))}</span></div><div class="route-data-cell">📝 <span>${esc(x.fault||"")}</span></div><div class="route-data-cell">⏰ <span>${x.visit?new Date(x.visit).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):""}</span></div></div><div class="route-order-actions"><div class="route-primary-row">${toggleBtn}${quickCloseBtn}</div><div class="route-actions-compact">${tagBtns}</div>${quickCloseForm}</div></div>`;
     }).join("");
@@ -267,7 +267,7 @@ function routeQuickCloseFormHtml(x){
   </div>`;
 }
 function updateQuickCloseTotal(i){
-  const r=arr(K.r).find(x=>x.id===i);if(!r)return;
+  const r=arr(K.r).find(x=>String(x.id)===String(i));if(!r)return;
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value||0), newDeposit=+(document.getElementById(`qcNewDeposit-${i}`)?.value||0);
   routeViewState.quickCloseDraft={id:i,labor,newDeposit};
   const partsTotal=+r.partsTotal||0, deposit=+r.deposit||0;
@@ -277,7 +277,7 @@ function updateQuickCloseTotal(i){
   if(remainEl)remainEl.value=Math.max(0,total-deposit-newDeposit).toFixed(2)+" ج";
 }
 function toggleQuickClose(i){
-  routeViewState.quickCloseId=routeViewState.quickCloseId===i?null:i;
+  routeViewState.quickCloseId=String(routeViewState.quickCloseId)===String(i)?null:String(i);
   routeViewState.quickCloseDraft=null;
   renderRoute();
 }
@@ -302,7 +302,7 @@ async function routeConfirmAddExternalPart(requestId){
 // تسجيل دفعة/عربون جزئي دلوقتي من غير تقفيل الأمر — للحالة اللي العميل
 // بيدفع جزء بس دلوقتي وهيكمل الباقي بعدين.
 function confirmQuickPartialPayment(i){
-  const a=arr(K.r),r=a.find(x=>x.id===i);
+  const a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
   if(!r||r.closed||r.paid)return;
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value||0);
   const newDeposit=+(document.getElementById(`qcNewDeposit-${i}`)?.value||0);
@@ -338,7 +338,7 @@ function confirmQuickPartialPayment(i){
   refreshRouteViews();
 }
 function confirmQuickClose(i){
-  const a=arr(K.r),r=a.find(x=>x.id===i);
+  const a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
   if(!r||r.closed||r.paid)return;
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value||0);
   if(!Number.isFinite(labor)||labor<0){alert("اكتب قيمة مصنعية صحيحة.");return}

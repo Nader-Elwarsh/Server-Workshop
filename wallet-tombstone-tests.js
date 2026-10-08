@@ -9,7 +9,7 @@ function makeEnv(){
   const context={window,localStorage,document,crypto:window.crypto,console,alert:()=>{},confirm:()=>true,prompt:()=>answers.shift()};
   const c=vm.createContext(context);
   vm.runInContext(fs.readFileSync(`${__dirname}/shared-data.js`,'utf8'),c,{filename:'shared-data.js'});
-  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback'].forEach(n=>context[n]=window[n]);
+  ['K','arr','get','put','esc','escAttr','commitStorage','withRollback','settings'].forEach(n=>context[n]=window[n]);
   context.id=window.id;
   ['app-shared.js','wallets.js','treasury.js'].forEach(f=>vm.runInContext(fs.readFileSync(`${__dirname}/${f}`,'utf8'),c,{filename:f}));
   return {store,context,answers,K:window.K};

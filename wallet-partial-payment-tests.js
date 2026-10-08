@@ -2,7 +2,7 @@
    - الدفعة الجديدة بمحفظة مختلفة/بدون محفظة/بعد تعديل يدوي ماتنقلش فلوس العربون السابق ولا تتحسب في محفظة غلط.
    - فحص «مطابقة الرصيد» بيلقط عربون/تحصيل اتشال تلقائيًا من المحفظة ويقدر يرجّعه بتأكيد. */
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-function make(){
+function make(orderId='o1'){
   const store={},els={};
   const localStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
   const document={addEventListener(){},getElementById:i=>els[i]||null,querySelector:()=>null,querySelectorAll:()=>[]};
@@ -13,12 +13,13 @@ function make(){
   run('shared-data.js');
   Object.assign(ctx,{K:window.K,arr:window.arr,get:window.get,put:window.put,esc:window.esc,id:window.id,settings:window.settings,withRollback:window.withRollback,commitStorage:window.commitStorage,commitStorageAsync:window.commitStorageAsync,putAsync:window.putAsync,withRollbackAsync:window.withRollbackAsync,localDateKey:window.localDateKey});
   ['app-shared.js','wallets.js','app-route-followup.js','app-delete-tools.js'].forEach(run);
+  ctx.applyStatusTimestamp=()=>{}; // يوفّره app-requests.js في صفحة خط السير الفعلية.
   const A='محفظتي الشخصية',B='محفظة فودافون كاش';
   const s=ctx.settings();s.wallets=[A,B];ctx.put(ctx.K.s,s);
-  ctx.put(ctx.K.r,[{id:'o1',no:'W-1',customerId:'c1',status:'جاري التنفيذ',closed:false,paid:false,partsTotal:0,labor:0,total:0,deposit:0,depositWallet:'',createdAt:new Date().toISOString()}]);
-  const pay=(amount,wallet)=>{els['qcLabor-o1']={value:'1000'};els['qcNewDeposit-o1']={value:String(amount)};els['qcWallet-o1']={value:wallet};ctx.confirmQuickPartialPayment('o1')};
+  ctx.put(ctx.K.r,[{id:orderId,no:'W-1',customerId:'c1',status:'جاري التنفيذ',closed:false,paid:false,partsTotal:0,labor:0,total:0,deposit:0,depositWallet:'',createdAt:new Date().toISOString()}]);
+  const pay=(amount,wallet)=>{const key=String(orderId);els[`qcLabor-${key}`]={value:'1000'};els[`qcNewDeposit-${key}`]={value:String(amount)};els[`qcWallet-${key}`]={value:wallet};ctx.confirmQuickPartialPayment(key)};
   const order=()=>JSON.parse(store[ctx.K.r])[0];
-  return{ctx,store,pay,order,A,B,bal:w=>ctx.walletBalance(w)};
+  return{ctx,store,pay,order,orderId,A,B,bal:w=>ctx.walletBalance(w)};
 }
 async function main(){
 let t;
@@ -29,6 +30,19 @@ assert.strictEqual(t.bal(t.A),500);assert.strictEqual(JSON.parse(t.store[t.ctx.K
 t=make();t.pay(300,t.A);t.pay(200,t.B);
 assert.strictEqual(t.bal(t.A),300,'old deposit must stay in its wallet');assert.strictEqual(t.bal(t.B),200);
 assert.strictEqual(t.order().deposit,500);assert.strictEqual(t.order().depositWallet,t.A);
+// المعرّفات الرقمية القديمة تظهر كنص داخل أزرار HTML؛ حافظ على فتح النموذج وتسجيل الدفعة والإغلاق.
+t=make(123);t.ctx.toggleQuickClose('123');
+assert.strictEqual(vm.runInContext('routeViewState.quickCloseId',t.ctx),'123','numeric legacy order can open quick-close form');
+t.pay(250,t.A);
+assert.strictEqual(t.order().deposit,250,'partial payment for numeric legacy order is saved');
+assert.strictEqual(t.bal(t.A),250,'partial payment for numeric legacy order reaches its wallet');
+{const key=String(t.orderId),els2={};
+  t.ctx.document.getElementById=id=>els2[id]||null;
+  els2[`qcLabor-${key}`]={value:'1000'};els2[`qcWallet-${key}`]={value:t.A};
+  t.ctx.confirmQuickClose(key);
+  assert.strictEqual(t.order().closed,true,'numeric legacy order can close from the route');
+  assert.strictEqual(t.bal(t.A),1000,'final collection for numeric legacy order is recorded');
+}
 // دفعة من غير محفظة: مفيش فلوس وهمية في المحفظة القديمة.
 t=make();t.pay(300,t.A);t.pay(200,'');
 assert.strictEqual(t.bal(t.A),300,'untracked payment must not be credited to the old wallet');assert.strictEqual(t.order().deposit,500);
