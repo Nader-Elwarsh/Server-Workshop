@@ -61,12 +61,12 @@ const guard=setTimeout(()=>{console.error('portal-sw-tests: FAIL (timeout - page
     const sw=makeSW(()=>Promise.reject(new Error('offline')),{failInstall:true});
     let installation;sw.handlers.install({waitUntil:p=>{installation=p}});
     await assert.rejects(installation,/simulated shell failure/);
-    assert.ok(sw.deleted.includes('portal-v14-fb-posts-bottomnav'),'partial new cache removed');
+    assert.ok(sw.deleted.includes('portal-v15-editor-address'),'partial new cache removed');
     assert.strictEqual(sw.calls.skipWaiting,0,'failed install is not activated');
   }
   // 8) عامل الورشة لا يحذف كاش البوابة أو كاشات أخرى عند التفعيل.
   {
-    const handlers={},deleted=[],keys=['workshop-v17-home-sync-strip','portal-v14-fb-posts-bottomnav','unrelated-cache'];
+    const handlers={},deleted=[],keys=['workshop-v17-home-sync-strip','portal-v15-editor-address','unrelated-cache'];
     const self={addEventListener:(t,f)=>{handlers[t]=f},location:{origin:'https://x.test'},skipWaiting(){},clients:{claim:()=>Promise.resolve()}};
     const caches={keys:async()=>keys,delete:async k=>{deleted.push(k);return true}};
     const ctx={self,caches,importScripts(){},URL,Request,Promise,Map,console,fetch:async()=>({ok:true}),Response:{error:()=>({error:true})}};

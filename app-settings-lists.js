@@ -50,3 +50,15 @@ function moveOrderTag(i,d){
   [a[i],a[j]]=[a[j],a[i]];s.orderTags=a;put(K.s,s);settingsPage();
 }
 
+
+/* توحيد المراكز والقرى: معاينة ثم تطبيق (إضافة الناقص للقايمة + توحيد الكتابة عند العملاء) */
+function unifyAddresses(){
+  if(typeof wfSyncAddressLists!=="function")return alert("حدّث الصفحة وجرّب تاني.");
+  const r=wfSyncAddressLists({dry:true});
+  if(!r.addedCenters.length&&!r.addedVillages.length&&!r.unified&&!r.dupRemoved)return alert("✅ المراكز والقرى موحّدة بالفعل — مفيش حاجة تتعدّل.");
+  const sample=r.addedVillages.slice(0,12).join("\n")+(r.addedVillages.length>12?"\n… و"+(r.addedVillages.length-12)+" كمان":"");
+  if(!confirm("هيتم:\n• إضافة "+r.addedCenters.length+" مركز و"+r.addedVillages.length+" قرية للقايمة\n• توحيد كتابة "+r.unified+" عنوان عميل\n\n"+(sample?sample+"\n\n":"")+"تكمّل؟"))return;
+  const d=wfSyncAddressLists();
+  alert("✅ تم: أُضيف "+d.addedCenters.length+" مركز و"+d.addedVillages.length+" قرية، ووُحّدت "+d.unified+" عنوان.");
+  settingsPage();
+}

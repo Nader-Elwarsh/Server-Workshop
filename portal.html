@@ -104,7 +104,7 @@ if($("g_new"))$("g_new").addEventListener("click",function(){GDONE=null;GP=null;
 function sendGuest(){var m=$("g_msg"),b=$("g_go");function gs(t,ok){m.innerHTML="";var q=document.createElement("p");q.className=ok?"ok":"err";q.textContent=t;m.appendChild(q)}
 if($("g_hp")&&$("g_hp").value)return;
 var name=val("g_name"),raw=val("g_phone"),center=val("gc_t"),village=val("gv_t"),street=val("g_street"),type=val("g_type"),fault=val("g_fault"),ph=normPhone(raw)||(function(){var d=raw.replace(/[٠-٩]/g,function(x){return x.charCodeAt(0)-1632}).replace(/[۰-۹]/g,function(x){return x.charCodeAt(0)-1776}).replace(/\D/g,"");return d.length>=8&&d.length<=15?d:""})();
-if(name.length<2)return gs("اكتب اسمك.");if(!ph)return gs("رقم التليفون غير صحيح.");if(!center)return gs("اختار أو اكتب المركز.");if(street.length<3)return gs("اكتب العنوان بالتفصيل.");if(fault.length<3)return gs("اكتب وصف العطل.");
+if(name.length<2)return gs("اكتب اسمك.");if(!ph)return gs("رقم التليفون غير صحيح.");if(!center)return gs("اختار أو اكتب المركز.");if(!village)return gs("اختار أو اكتب القرية.");if(street.length<3)return gs("اكتب العنوان بالتفصيل.");if(fault.length<3)return gs("اكتب وصف العطل.");
 var last=0;try{last=+WFStorage.getItem("wf_guest_last")||0}catch(e){}if(Date.now()-last<60000)return gs("استنى دقيقة قبل ما تبعت طلب تاني، أو كلّم الورشة مباشرة.");
 b.disabled=true;gs("جاري الإرسال…",true);
 var data={name:name.slice(0,80),phone:ph,center:center.slice(0,80),village:village.slice(0,80),street:street.slice(0,200),deviceType:type.slice(0,60),fault:fault.slice(0,1000),handled:false,guest:true,createdAt:FV.serverTimestamp()};

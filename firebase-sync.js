@@ -396,7 +396,7 @@
     var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] };
     // شريط الإعلانات: بيتنشر مع نفس المستند. لو الجهاز ده ماعندوش إعداد شريط (نسخة قديمة) مانبعتش الحقل خالص،
     // ومع mergeFields أدناه ده معناه إن الشريط المنشور من جهاز تاني مايتمسحش.
-    if (s.portalTicker && typeof s.portalTicker === "object") c.ticker = window.PortalTicker ? (window.PortalTicker.sanitize(s.portalTicker) || s.portalTicker) : s.portalTicker;
+    if (s.portalTicker && typeof s.portalTicker === "object") c.ticker = window.PortalTicker ? ((window.PortalTicker.prune ? window.PortalTicker.prune(s.portalTicker).ticker : window.PortalTicker.sanitize(s.portalTicker)) || s.portalTicker) : s.portalTicker;
     var x = h(stable(c));
     publishTicker(c.ticker); // لها بصمة مستقلة: تتنشر حتى لو بقية إعدادات البوابة ماتغيّرتش
     if (SB.x.pc === x) { clearRetry("remote:portalConfig"); return Promise.resolve(true); }
@@ -408,6 +408,7 @@
   function publishTicker(t) {
     if (!online()) { retryLater("remote:portalTicker"); return Promise.resolve(false); }
     if (!t) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
+    try { if (window.PortalTicker && window.PortalTicker.prune) t = window.PortalTicker.prune(t).ticker || t; } catch (e) {} // العروض المنتهية ما بتتنشرش
     var x = h(stable(t));
     if (SB.x.pt === x) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
     return db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })

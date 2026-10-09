@@ -475,6 +475,87 @@ var WFStorage = window.WFStorage;
   window.esc = esc;
   window.escAttr = escAttr;
   window.id = id;
+
+  /* ---------------------------------------------------------------
+     توحيد المراكز والقرى في كل النظام
+     - مصدر الحقيقة: settings().centers و settings().villages[المركز].
+     - أي عنوان عميل (أساسي/إضافي) بيتطابق مع القايمة بصرف النظر عن اختلاف
+       الهمزة/التاء المربوطة/المسافات (إبوان = أبوان)، وبياخد كتابة القايمة.
+     - أي مركز/قرية جديدة مكتوبة في عنوان عميل بتتضاف للقايمة تلقائيًا (الإضافة لسه موجودة).
+     --------------------------------------------------------------- */
+  function wfAddrKey(x) { return String(x == null ? "" : x).replace(/[\u064B-\u0652\u0640]/g, "").replace(/[\s.\-_\/،,]+/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي"); }
+  function wfAddrClean(x) { return String(x == null ? "" : x).replace(/\s+/g, " ").trim(); }
+  function wfAddrCore(customers, s, rep) {
+    s.centers = Array.isArray(s.centers) ? s.centers : [];
+    s.villages = s.villages && typeof s.villages === "object" && !Array.isArray(s.villages) ? s.villages : {};
+    rep.dupRemoved = rep.dupRemoved || 0;
+    const dedupe = list => { const seen = new Set(); return (list || []).filter(x => { const k = wfAddrKey(x); if (!k || seen.has(k)) { rep.dupRemoved++; return false; } seen.add(k); return true; }); };
+    s.centers = dedupe(s.centers);
+    Object.keys(s.villages).forEach(c => { if (Array.isArray(s.villages[c])) s.villages[c] = dedupe(s.villages[c]); });
+    const cKey = new Map(); s.centers.forEach(c => { if (!cKey.has(wfAddrKey(c))) cKey.set(wfAddrKey(c), c); });
+    const vKeys = new Map();
+    const vmap = c => { if (!vKeys.has(c)) { const m = new Map(); (s.villages[c] || []).forEach(v => { if (!m.has(wfAddrKey(v))) m.set(wfAddrKey(v), v); }); vKeys.set(c, m); } return vKeys.get(c); };
+    const canon = a => {
+      if (!a || typeof a !== "object") return;
+      let ce = wfAddrClean(a.center), vi = wfAddrClean(a.village);
+      if (ce) {
+        const k = wfAddrKey(ce);
+        if (cKey.has(k)) ce = cKey.get(k);
+        else { cKey.set(k, ce); s.centers.push(ce); s.villages[ce] = s.villages[ce] || []; rep.addedCenters.push(ce); }
+      }
+      if (ce && vi) {
+        const m = vmap(ce), k = wfAddrKey(vi);
+        if (m.has(k)) vi = m.get(k);
+        else { m.set(k, vi); (s.villages[ce] = s.villages[ce] || []).push(vi); rep.addedVillages.push(ce + " — " + vi); }
+      }
+      if (a.center !== ce || a.village !== vi) { if (a.center !== undefined || ce) a.center = ce; if (a.village !== undefined || vi) a.village = vi; rep.unified++; }
+    };
+    (customers || []).forEach(c => {
+      if (!c) return;
+      canon(c.mainAddress); canon(c.extraAddress);
+      if (Array.isArray(c.extraAddresses)) c.extraAddresses.forEach(canon);
+    });
+    return rep;
+  }
+  let wfAddrBusy = false;
+  function wfSyncAddressLists(opts) {
+    opts = opts || {};
+    const rep = { addedCenters: [], addedVillages: [], unified: 0, dupRemoved: 0 };
+    if (wfAddrBusy) return rep;
+    wfAddrBusy = true;
+    try {
+      let s = window.settings(), cs = arr(K.c);
+      if (opts.dry) { s = JSON.parse(JSON.stringify(s)); cs = JSON.parse(JSON.stringify(cs)); }
+      wfAddrCore(cs, s, rep);
+      if (!opts.dry) {
+        if (rep.addedCenters.length || rep.addedVillages.length || rep.dupRemoved) _wfPut(K.s, s);
+        if (rep.unified) _wfPut(K.c, cs);
+      }
+    } finally { wfAddrBusy = false; }
+    return rep;
+  }
+  const _wfPut = put;
+  window.put = function (k, v) {
+    if (k === K.c && Array.isArray(v) && !wfAddrBusy) {
+      wfAddrBusy = true;
+      try {
+        const s = window.settings(), rep = { addedCenters: [], addedVillages: [], unified: 0 };
+        wfAddrCore(v, s, rep);
+        if (rep.addedCenters.length || rep.addedVillages.length) _wfPut(K.s, s);
+      } catch (e) { console.warn("[address-unify]", e); } finally { wfAddrBusy = false; }
+    }
+    return _wfPut(k, v);
+  };
+  window.wfSyncAddressLists = wfSyncAddressLists;
+  window.wfAddrKey = wfAddrKey;
+  // مرة واحدة في كل جلسة بعد ما التخزين يجهز: يضيف أي مركز/قرية ناقصة من العملاء الحاليين ويوحّد الكتابة.
+  try {
+    if (/\/(index|customers|devices|requests|settings|share-target)\.html$|\/$/.test(location.pathname) && !sessionStorage.getItem("wf_addr_sync")) {
+      const run = () => { try { sessionStorage.setItem("wf_addr_sync", "1"); const r = wfSyncAddressLists(); if (r.addedVillages.length || r.addedCenters.length || r.unified) console.info("[address-unify]", r); } catch (e) { console.warn("[address-unify]", e); } };
+      const ready = window.WFStorageReady && window.WFStorageReady.then ? window.WFStorageReady : Promise.resolve();
+      ready.then(() => setTimeout(run, 2500));
+    }
+  } catch (_) {}
   window.settings = settings;
   window.duplicateCustomerByPhone = duplicateCustomerByPhone;
   window.customerName = customerName;

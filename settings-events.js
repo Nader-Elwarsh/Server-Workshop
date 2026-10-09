@@ -3,6 +3,7 @@
   const actions={
     'toggle-theme':()=>window.toggleTheme?.(),
     'add-center':()=>window.addCenter?.(),
+    'unify-addresses':()=>window.unifyAddresses?.(),
     'add-type':()=>window.addType?.(),
     'add-brand':()=>window.addBrand?.(),
     'add-part-category':()=>window.addPartCategory?.(),

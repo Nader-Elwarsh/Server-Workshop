@@ -32,6 +32,9 @@
 .pa-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .pa-bar{height:8px;border-radius:5px;background:var(--bg-sunken);overflow:hidden}.pa-bar i{display:block;height:100%;background:#0b57d0}
 .pa-pre{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.pa-pre button,.sm{padding:6px 10px;font-size:12.5px}.pa-vg{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:6px 12px;margin:8px 0}.pa-vg h3{font-size:14px;margin:6px 0 2px}.pa-vrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px;cursor:pointer}.pa-vg h3+.pa-vrow{border-top:0}.pa-vrow b{font-weight:600;font-size:14px}.pa-vrow small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:1px}.pa-vrow input{width:22px;height:22px;flex:0 0 auto;margin:0}.pa-sum{background:var(--bg-sunken);border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}.pa-sec{display:none}.pa-sec.on{display:block}
+
+.pvwrap{background:#eef1f7;border-radius:12px;padding:10px;margin:8px 0;max-width:520px}.pvp{background:#fff;color:#14213d;border:1px solid #d6dbe6;border-radius:14px;overflow:hidden}.pvh{display:flex;gap:10px;align-items:center;padding:12px 14px 4px}.pvh img{width:40px;height:40px;border-radius:50%;background:#e6ebf5}.pvh small{display:block;color:#6b7690;font-size:12px}.pvb{background:#e3e8f2;border-radius:10px;padding:1px 8px}
+.pvp h3{margin:4px 14px;font-size:17px}.pvbody,.pvq,.pva{margin:4px 14px 10px;white-space:pre-line;overflow-wrap:anywhere}.pvq{padding:10px 12px;border-radius:12px;background:#f3f5fa;border:1px solid #d6dbe6}.pva{padding:10px 12px;border-radius:12px;background:#e8f5ec;border:1px solid #9fd1ae}.pvq b,.pva b{display:block;font-size:12.5px}.pvph{color:#9aa3b8}.pvimg{display:block;width:100%;max-height:420px;object-fit:cover}.pvact{display:flex;border-top:1px solid #d6dbe6;margin-top:4px}.pvact span{flex:1;text-align:center;padding:10px 4px;font-size:13px;color:#6b7690}.pvact span+span{border-inline-start:1px solid #d6dbe6}
 </style>
 </head>
 <body>
@@ -119,12 +122,12 @@
 <label>النوع<select id="pc"><option>نصيحة</option><option>مقال</option><option>سؤال وجواب</option><option>عرض</option><option>تنبيه</option></select></label>
 </div>
 <label>النص<textarea id="pb" rows="6"></textarea></label>
-<label>صورة (اختياري)<input id="pi" type="file" accept="image/*"></label>
+<div class="pa-photo"><b>صورة (اختياري)</b><div class="pa-actions"><button type="button" class="secondary sm" data-act="pCam" data-m="1">📷 كاميرا</button><button type="button" class="secondary sm" data-act="pCam" data-m="0">🖼️ صور</button><button type="button" class="secondary sm hidden" id="pRm" data-act="pRm">✖ حذف الصورة</button></div><input id="pi" type="file" accept="image/*" hidden></div>
 <label><input type="checkbox" id="pp"> تثبيت في الأول</label>
 <label><input type="checkbox" id="pu" checked> منشور للعملاء</label>
 <button type="button" data-act="savePost">💾 حفظ</button>
 <button type="button" class="secondary" data-act="clearPost">جديد</button>
-<span id="pm" class="hint"></span>
+<span id="pm" class="hint"></span> <h3 style="margin-top:14px">👁️ شكل المقال عند العميل</h3><p class="hint">بيتغيّر فورًا وانت بتكتب. بعد النشر دوس «✏️ تعديل» على المقال وهتشوفه هنا وتعدّل فيه.</p><div class="pvwrap"><div id="pPrev"></div></div>
 <div id="pl"></div>
 </div>
 </section>
@@ -256,14 +259,14 @@ function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإ
 function sgNo(id){if(confirm("ترفض الاقتراح ده؟"))db.collection("portalSuggestions").doc(id).update({status:"rejected"}).catch(adminFail)}
 /* ---- المقالات ---- */
 function rPt(){$("pl").innerHTML=PT.map(function(p){return'<div class="pa-item"><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span><div class="pa-actions"><button type="button" class="secondary" data-act="editPost" data-id="'+esc(p.id)+'">✏️ تعديل</button><button type="button" class="secondary" data-act="togPost" data-id="'+esc(p.id)+'" data-v="'+(p.published?"0":"1")+'">'+(p.published?"إخفاء":"نشر")+'</button><button type="button" class="secondary" data-act="delPost" data-id="'+esc(p.id)+'">🗑️ حذف</button></div></div>'}).join("")}
-function clearPost(){editId="";editImg="";$("pt").value="";$("pb").value="";$("pi").value="";$("pp").checked=false;$("pu").checked=true;$("pc").value="نصيحة";$("pm").textContent=""}
-function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;editImg=p.image||"";$("pt").value=p.title;$("pb").value=p.body;$("pc").value=p.category||"نصيحة";$("pp").checked=!!p.pinned;$("pu").checked=!!p.published;$("pm").textContent="بتعدّل مقال — اضغط حفظ";scrollTo(0,$("pt").offsetTop-80)}
+function clearPost(){editId="";editImg="";pRm=false;if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}pUrl=""}$("pt").value="";$("pb").value="";$("pi").value="";$("pp").checked=false;$("pu").checked=true;$("pc").value="نصيحة";$("pm").textContent="";pPrev()}
+function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;editImg=p.image||"";$("pt").value=p.title;$("pb").value=p.body;$("pc").value=p.category||"نصيحة";$("pp").checked=!!p.pinned;$("pu").checked=!!p.published;pRm=false;$("pi").value="";if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}pUrl=""}pPrev();$("pm").textContent="بتعدّل مقال — اضغط حفظ";scrollTo(0,$("pt").offsetTop-80)}
 function togPost(id,v){db.collection("portalPosts").doc(id).update({published:v})}
 function delPost(id){if(confirm("تحذف المقال نهائيًا؟"))db.collection("portalPosts").doc(id).delete().catch(adminFail)}
 function resize(f){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var m=1000,s=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*s;c.height=im.height*s;c.getContext("2d").drawImage(im,0,0,c.width,c.height);c.toBlob(res,"image/jpeg",.7)};im.onerror=rej;im.src=URL.createObjectURL(f)})}
 function upl(b){if(!b||b.size>12*1024*1024)return Promise.reject(new Error("حجم الصورة أكبر من 12 ميجابايت."));return window.ImageStore.uploadBlob(b).then(function(url){if(!url)throw new Error("تعذّر الرفع الآمن؛ تأكد من اتصال الحساب بالخادم." );return url})}
 function savePost(){var t=$("pt").value.trim(),b=$("pb").value.trim();if(!t||!b){$("pm").textContent="اكتب العنوان والنص.";return}$("pm").textContent="جاري الحفظ…";var f=$("pi").files[0];
-(f?resize(f).then(upl):Promise.resolve(editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:SV};
+(f?resize(f).then(upl):Promise.resolve(pRm?"":editImg)).then(function(img){var d={title:t.slice(0,150),category:$("pc").value,body:b.slice(0,8000),image:img||"",pinned:$("pp").checked,published:$("pu").checked,updatedAt:SV};
 if(editId)return db.collection("portalPosts").doc(editId).set(d,{merge:true});d.createdAt=SV;return db.collection("portalPosts").add(d)}).then(function(){clearPost();$("pm").textContent="✅ اتحفظ"}).catch(function(){$("pm").textContent="تعذّر الحفظ أو رفع الصورة."})}
 /* ---- الظهور ---- */
 function vget(v,k){if(v[k]!==undefined)return v[k]!==false;var b=({total:1,deposit:1,remain:1,partPrices:1})[k];return b&&v.price!==undefined?v.price!==false:true}
@@ -348,16 +351,28 @@ ACT.addWaTpl=addWaTpl;
 $("acLink").value=portalUrl();$("acTpl").value=tpl();
 $("acTpl").addEventListener("input",function(){try{WFStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
 $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
+/* ---- محرر المقال: كاميرا/صور + معاينة حية ---- */
+var pUrl="",pRm=false;
+function pSafe(u){return/^(https:\/\/|data:image\/|blob:)/.test(u||"")?u:""}
+function pPrev(){var box=$("pPrev");if(!box)return;var t=$("pt").value.trim(),b=$("pb").value.trim(),cat=$("pc").value,f=$("pi").files[0],img=pSafe(f?pUrl:(pRm?"":editImg)),qa=/^❓ السؤال:\n([\s\S]*?)\n\n✅ الرد:\n([\s\S]*)$/.exec(b),nm=window.WL&&WL.name?WL.name():"الورشة الفنية";
+box.innerHTML='<article class="pvp"><div class="pvh"><img src="app-icon.svg" alt=""><div><b>'+esc(nm)+($("pp").checked?" 📌":"")+'</b><small>الآن · <span class="pvb">'+esc(cat)+'</span>'+($("pu").checked?"":' · <span style="color:#c62828">مخفي عن العملاء</span>')+'</small></div></div>'+(t?'<h3>'+esc(t)+'</h3>':'<h3 class="pvph">العنوان هيظهر هنا</h3>')+(qa?'<div class="pvq"><b>❓ السؤال</b>'+esc(qa[1])+'</div><div class="pva"><b>✅ رد الورشة</b>'+esc(qa[2])+'</div>':'<div class="pvbody">'+(b?esc(b):'<span class="pvph">نص المقال هيظهر هنا</span>')+'</div>')+(img?'<img class="pvimg" src="'+esc(img)+'" alt="">':"")+'<div class="pvact"><span>❓ اسأل الورشة</span><span>🔧 اطلب صيانة</span><span>↗️ مشاركة</span></div></article>';var rm=$("pRm");if(rm)rm.classList.toggle("hidden",!img)}
+ACT.pCam=function(b){var i=$("pi");if(b.dataset.m==="1")i.setAttribute("capture","environment");else i.removeAttribute("capture");i.click()};
+ACT.pRm=function(){pRm=true;$("pi").value="";if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}pUrl=""}pPrev()};
+$("pi").addEventListener("change",function(){if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}}var f=this.files[0];pUrl=f?URL.createObjectURL(f):"";pRm=false;pPrev()});
+["pt","pb","pc","pp","pu"].forEach(function(id){var e=$(id);if(e)e.addEventListener(e.tagName==="SELECT"||e.type==="checkbox"?"change":"input",pPrev)});
+pPrev();
 /* ---- الشريط الإعلاني ---- */
 var TKD=null,tkDirty=false,tkT=null,PTK=null;
 var TK_LINKS=[["","بدون رابط"],["tab:mine","🧾 يفتح «طلباتي» (طلب صيانة)"],["tab:learn","📰 يفتح «نصايح»"],["tab:devices","🔧 يفتح «أجهزتي»"],["tab:ask","❓ يفتح «اسأل الورشة»"],["signup","📝 يفتح شاشة التسجيل (للزوار)"],["custom","🔗 رابط خارجي / واتساب / اتصال…"]];
 var TK_TPL={welcome:{type:"welcome",icon:"👋",text:"أهلاً بيك في "+(window.WL?WL.name():"الورشة الفنية")+" — سجّل جهازك وتابع صيانتك من موبايلك"},offer:{type:"offer",icon:"🎁",text:"اكتب نص العرض هنا",audience:"member"},alert:{type:"alert",icon:"⚠️",text:"اكتب التنبيه هنا (مثال: مواعيد الإجازة)"}};
 function tkBlank(){return{enabled:false,mode:"scroll",speed:"normal",dismissible:true,controls:true,rev:0,items:[]}}
-function tkLoad(){TKD=PTK.sanitize(window.settings().portalTicker)||tkBlank();tkDirty=false}
+var tkAuto=0;
+/* العروض اللي تاريخ نهايتها عدّى بتتشال لوحدها (من الشريط ومن الإعدادات) لما الصفحة تتفتح */
+function tkLoad(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank(),p=PTK.prune(c);if(p.dropped){c=p.ticker;c.rev=Date.now();var s=window.settings();s.portalTicker=c;window.put(window.K.s,s);tkAuto=p.dropped}TKD=c;tkDirty=false}
 function tkNew(tpl){return Object.assign({id:"i"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),text:"",icon:"",type:"info",enabled:true,audience:"all",start:"",end:"",link:""},tpl||{})}
 function tkOpts(map,sel){return Object.keys(map).map(function(k){var l=typeof map[k]==="string"?map[k]:(map[k].icon+" "+map[k].label);return'<option value="'+esc(k)+'"'+(k===sel?" selected":"")+'>'+esc(l)+'</option>'}).join("")}
 function tkItemHtml(it,i,n){var id=esc(it.id),lk=it.link||"",pre=TK_LINKS.some(function(l){return l[0]===lk&&l[0]!=="custom"}),sel=pre?lk:(lk?"custom":"");
-return'<div class="pa-item"><div class="pa-row"><label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column"><input type="checkbox" data-tk="'+id+'" data-f="enabled" style="width:22px;height:22px;margin:0"'+(it.enabled!==false?" checked":"")+'> <b>رسالة رقم '+(i+1)+' — ظاهرة</b></label><span class="pa-actions" style="margin:0"><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="-1" aria-label="تحريك لفوق"'+(i===0?" disabled":"")+'>⬆</button><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="1" aria-label="تحريك لتحت"'+(i===n-1?" disabled":"")+'>⬇</button><button type="button" class="secondary sm" data-act="tkDel" data-id="'+id+'" aria-label="حذف الرسالة">🗑️</button></span></div>'+
+return'<div class="pa-item"><div class="pa-row"><label style="display:flex;gap:8px;align-items:center;grid-auto-flow:column"><input type="checkbox" data-tk="'+id+'" data-f="enabled" style="width:22px;height:22px;margin:0"'+(it.enabled!==false?" checked":"")+'> <b>رسالة رقم '+(i+1)+' — ظاهرة</b>'+(PTK.isExpired(it)?' <span class="hint" style="color:#c62828">⛔ منتهية — هتتشال تلقائيًا</span>':'')+'</label><span class="pa-actions" style="margin:0"><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="-1" aria-label="تحريك لفوق"'+(i===0?" disabled":"")+'>⬆</button><button type="button" class="secondary sm" data-act="tkMove" data-id="'+id+'" data-d="1" aria-label="تحريك لتحت"'+(i===n-1?" disabled":"")+'>⬇</button><button type="button" class="secondary sm" data-act="tkDel" data-id="'+id+'" aria-label="حذف الرسالة">🗑️</button></span></div>'+
 '<label>النص<textarea rows="2" maxlength="'+PTK.MAX_TEXT+'" data-tk="'+id+'" data-f="text" placeholder="اكتب الرسالة هنا...">'+esc(it.text)+'</textarea></label><small class="hint" data-cnt="'+id+'">'+String(it.text||"").length+'/'+PTK.MAX_TEXT+'</small>'+
 '<div class="form-grid"><label>النوع (اللون)<select data-tk="'+id+'" data-f="type">'+tkOpts(PTK.TYPES,it.type)+'</select></label><label>يظهر لـ<select data-tk="'+id+'" data-f="audience">'+tkOpts(PTK.AUDIENCES,it.audience)+'</select></label>'+
 '<label>أيقونة (اختياري)<input type="text" maxlength="4" data-tk="'+id+'" data-f="icon" value="'+esc(it.icon)+'" placeholder="مثال: 🎁"></label><label>عند الضغط عليها<select data-tk="'+id+'" data-f="linksel">'+TK_LINKS.map(function(l){return'<option value="'+esc(l[0])+'"'+(l[0]===sel?" selected":"")+'>'+esc(l[1])+'</option>'}).join("")+'</select></label>'+
@@ -368,7 +383,7 @@ function tkPreview(){var el=$("tkPrev");PTK.mount(el,TKD,{forceShow:true,preview
 function tkStatus(){var c=PTK.sanitize(window.settings().portalTicker)||tkBlank(),g=PTK.visible(c,{member:false}).length,m=PTK.visible(c,{member:true}).length;
 $("tkStatus").innerHTML=c.enabled?"🟢 <b>الشريط شغّال</b> — ظاهر دلوقتي: "+g+" رسالة للزوار، "+m+" رسالة للعملاء المسجّلين":"⚪ <b>الشريط مقفول</b> — العملاء مش شايفين أي حاجة"+(c.items.length?" ("+c.items.length+" رسالة محفوظة)":"");
 $("tkQuick").textContent=c.enabled?"⏸ إخفاء الشريط الآن":"▶ تشغيل الشريط الآن"}
-function rTk(){if(!PTK)return;if(!TKD)tkLoad();$("tkOn").checked=!!TKD.enabled;$("tkMode").value=TKD.mode;$("tkSpeed").value=TKD.speed;$("tkDis").checked=!!TKD.dismissible;$("tkCtl").checked=TKD.controls!==false;rTkItems();tkPreview();tkStatus()}
+function rTk(){if(!PTK)return;if(!TKD)tkLoad();if(tkAuto){$("tkMsg").textContent="🧹 اتشال "+tkAuto+" عرض منتهي تلقائيًا (عدّى تاريخ نهايته).";tkAuto=0}$("tkOn").checked=!!TKD.enabled;$("tkMode").value=TKD.mode;$("tkSpeed").value=TKD.speed;$("tkDis").checked=!!TKD.dismissible;$("tkCtl").checked=TKD.controls!==false;rTkItems();tkPreview();tkStatus()}
 function tkTouch(){tkDirty=true;$("tkMsg").textContent="⚠️ فيه تعديلات لسه ما اتحفظتش — اضغط «حفظ ونشر».";clearTimeout(tkT);tkT=setTimeout(tkPreview,150)}
 function tkField(t){var f=t.dataset.f,it=TKD.items.find(function(x){return x.id===t.dataset.tk});if(!it)return;var v=t.type==="checkbox"?t.checked:t.value;
 if(f==="linksel"){var w=[].slice.call(document.querySelectorAll("[data-clw]")).filter(function(x){return x.dataset.clw===it.id})[0];if(v==="custom"){it.link="";if(w){w.classList.remove("hidden");var i=w.querySelector("input");if(i)i.value=""}}else{it.link=v;if(w)w.classList.add("hidden")}}

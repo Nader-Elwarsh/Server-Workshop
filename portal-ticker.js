@@ -91,6 +91,24 @@
     return true;
   }
 
+  // العرض المنتهي: تاريخ النهاية عدّى (اليوم نفسه لسه شغال)
+  function isExpired(item, ctx) {
+    ctx = ctx || {};
+    var today = ctx.today || dayKey(ctx.now);
+    return !!(item && item.end && today > item.end);
+  }
+
+  // بيشيل الرسائل المنتهية ويرجّع { ticker, dropped } من غير ما يعدّل الأصل
+  function prune(t, ctx) {
+    var c = sanitize(t);
+    if (!c) return { ticker: t, dropped: 0 };
+    var keep = c.items.filter(function (i) { return !isExpired(i, ctx); });
+    var dropped = c.items.length - keep.length;
+    if (!dropped) return { ticker: c, dropped: 0 };
+    c.items = keep;
+    return { ticker: c, dropped: dropped };
+  }
+
   function visible(t, ctx) {
     var c = sanitize(t);
     if (!c || !c.enabled) return [];
@@ -254,7 +272,7 @@
     if (!el) return;
     ctx = ctx || {};
     var c = sanitize(t) || { enabled: false, mode: "scroll", speed: "normal", dismissible: true, controls: true, rev: 0, items: [] };
-    var items = ctx.forceShow ? c.items.filter(function (i) { return i.enabled !== false && i.text; }) : (c.enabled ? c.items.filter(function (i) { return isLive(i, ctx); }) : []);
+    var items = ctx.forceShow ? c.items.filter(function (i) { return i.enabled !== false && i.text && !isExpired(i, ctx); }) : (c.enabled ? c.items.filter(function (i) { return isLive(i, ctx); }) : []);
     var reduce = false;
     try { reduce = !!(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
     var eff = { mode: (reduce && c.mode === "scroll") ? "rotate" : c.mode, speed: c.speed, dismissible: c.dismissible, controls: c.controls, rev: c.rev };
@@ -288,7 +306,7 @@
   }
 
   var API = { TYPES: TYPES, AUDIENCES: AUDIENCES, SPEEDS: SPEEDS, TABS: TABS, MAX_ITEMS: MAX_ITEMS, MAX_TEXT: MAX_TEXT,
-    sanitize: sanitize, cleanLink: cleanLink, dayKey: dayKey, isLive: isLive, visible: visible, signature: signature, buildHtml: buildHtml, mount: mount };
+    sanitize: sanitize, cleanLink: cleanLink, dayKey: dayKey, isLive: isLive, isExpired: isExpired, prune: prune, visible: visible, signature: signature, buildHtml: buildHtml, mount: mount };
   root.PortalTicker = API;
   if (typeof module !== "undefined" && module.exports) module.exports = API;
 })(typeof window !== "undefined" ? window : globalThis);
