@@ -63,6 +63,13 @@
     }
     return undefined;
   }
+  /* يمنع javascript:/data:/vbscript: وأي بروتوكول غير http(s) أو الروابط النسبية؛ حتى لو اتحقن attribute بالغلط. */
+  function safeNavTarget(u) {
+    var s = String(u == null ? "" : u).replace(/[\u0000-\u0020\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g, "");
+    if (!s) return false;
+    var m = s.match(/^([a-zA-Z][a-zA-Z0-9+.\-]*):/);
+    return !m || /^https?$/i.test(m[1]);
+  }
   function callCode(code, el, event) {
     var statements = splitStatements((code || "").trim());
     if (!statements.length) return false;
@@ -73,7 +80,7 @@
       var remove = text.match(/^this\.closest\((["'])(.*?)\1\)\.remove\(\)$/);
       if (remove) { var target = el.closest(remove[2]); if (target) target.remove(); continue; }
       var navigate = text.match(/^(?:window\.)?location\.href\s*=\s*(["'])(.*?)\1$/);
-      if (navigate) { window.location.href = navigate[2]; continue; }
+      if (navigate) { if (safeNavTarget(navigate[2])) window.location.href = navigate[2]; continue; }
       var m = text.match(/^([A-Za-z_$][\w$]*)\s*\((.*)\)$/s);
       if (!m) return false;
       var fn = window[m[1]];

@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v26-sync-settings-base";
+const CACHE_NAME = "workshop-v27-security-headers-perf";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -27,7 +27,6 @@ const CORE_FILES = [
   "./compcodes.html",
   "./faultcode.html",
   "./settings.html",
-  "./debug-check.html",
   "./treasury.html",
   "./wallets.html",
   "./wallet.html",

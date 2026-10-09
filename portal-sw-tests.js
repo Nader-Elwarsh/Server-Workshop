@@ -61,7 +61,8 @@ const guard=setTimeout(()=>{console.error('portal-sw-tests: FAIL (timeout - page
     const sw=makeSW(()=>Promise.reject(new Error('offline')),{failInstall:true});
     let installation;sw.handlers.install({waitUntil:p=>{installation=p}});
     await assert.rejects(installation,/simulated shell failure/);
-    assert.ok(sw.deleted.includes('portal-v15-editor-address'),'partial new cache removed');
+    const currentCache=(fs.readFileSync(`${__dirname}/portal-sw.js`,'utf8').match(/const CACHE\s*=\s*"([^"]+)"/)||[])[1];
+    assert.ok(currentCache&&sw.deleted.includes(currentCache),'partial new cache removed');
     assert.strictEqual(sw.calls.skipWaiting,0,'failed install is not activated');
   }
   // 8) عامل الورشة لا يحذف كاش البوابة أو كاشات أخرى عند التفعيل.

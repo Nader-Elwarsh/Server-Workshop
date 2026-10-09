@@ -96,7 +96,8 @@ async function saveInvoice() {
     // هتتشال من الربط)، ننبّه قبل الحفظ عشان تتأكدي إنه مقصود ومش بغلط.
     const removedIds = (inv.partIds || []).filter(pid => !partIds.includes(pid));
     if (removedIds.length) {
-      const removedNames = removedIds.map(pid => arr(K.p).find(p => p.id === pid)?.name).filter(Boolean);
+      const partsById = byIdCached(K.p);
+      const removedNames = removedIds.map(pid => partsById.get(pid)?.name).filter(Boolean);
       const namesText = removedNames.length ? removedNames.join("، ") : `${removedIds.length} صنف`;
       if (!confirm(`دا هيلغي ربط هذه الفاتورة بـ: ${namesText}.\nمتأكدة إنك عايزة تكمّلي الحفظ كده؟`)) return;
     }
@@ -128,7 +129,8 @@ function deleteInvoiceRecord(invId) {
   if (typeof partProfile === "function") partProfile();
 }
 function invoicePartNames(inv) {
-  return (inv.partIds || []).map(pid => arr(K.p).find(p => p.id === pid)?.name).filter(Boolean);
+  const partsById = byIdCached(K.p);
+  return (inv.partIds || []).map(pid => partsById.get(pid)?.name).filter(Boolean);
 }
 // بيملا صور الفواتير (اللي اتحطت كـplaceholder فاضي وقت الرندر) بعد ما
 // نجيبها من مخزن الصور بشكل غير متزامن — نفس الأسلوب المستخدم لصورة
