@@ -6,6 +6,7 @@
     'unify-addresses':()=>window.unifyAddresses?.(),
     'add-type':()=>window.addType?.(),
     'add-brand':()=>window.addBrand?.(),
+    'unify-brands':()=>window.unifyBrandsNow?.(),
     'add-part-category':()=>window.addPartCategory?.(),
     'backup':()=>window.backupAllData?.(),
     'integrity':()=>window.runDataIntegrityCheck?.(),

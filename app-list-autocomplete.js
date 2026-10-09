@@ -49,11 +49,15 @@ const LIST_SOURCES = {
   },
   brand: {
     emptyHint: "لا توجد نتائج. اكتب اسم الماركة واضغط إضافة.",
+    // الماركات موحّدة: أي كتابة (إنجليزي/عربي/إملاء مختلف) بتتحول للاسم الموحّد، والبحث بيلاقيها بكل أشكالها.
+    canon(name) { return typeof wfCanonicalBrand === "function" ? wfCanonicalBrand(name) : name; },
+    searchText(x) { return typeof wfBrandSearchText === "function" ? wfBrandSearchText(x) : x; },
     getList() { return settings().brands || []; },
     addNew(name) {
       let s = settings();
       s.brands = s.brands || [];
-      if (!s.brands.includes(name)) s.brands.push(name);
+      let key = typeof wfBrandKey === "function" ? wfBrandKey(name) : name;
+      if (!s.brands.some(b => (typeof wfBrandKey === "function" ? wfBrandKey(b) : b) === key)) s.brands.push(name);
       put(K.s, s);
       return true;
     }
@@ -153,11 +157,13 @@ function filterListOptions(fieldId, q) {
   q = String(q ?? document.getElementById(fieldId + "Search")?.value ?? "").trim();
   const list = src.getList(ctx) || [];
   const qLower = q.toLowerCase();
-  const matches = (qLower ? list.filter(x => x.toLowerCase().includes(qLower)) : list).slice(0, 50);
+  const hay = x => String(src.searchText ? src.searchText(x) : x).toLowerCase();
+  const matches = (qLower ? list.filter(x => hay(x).includes(qLower)) : list).slice(0, 50);
   let html = matches.length
     ? matches.map(x => `<div class="part-ac-item" data-value="${esc(x)}"><b>${esc(x)}</b></div>`).join("")
     : `<div class="part-ac-empty">${esc(src.emptyHint || "لا توجد نتائج مطابقة.")}</div>`;
-  if (q && !list.some(x => x.toLowerCase() === qLower)) {
+  const qCanon = src.canon ? src.canon(q) : q;
+  if (q && !list.some(x => x.toLowerCase() === qLower || (src.canon && src.canon(x) === qCanon))) {
     html += `<div class="part-ac-item ac-add-new" data-add="${esc(q)}"><b>➕ إضافة "${esc(q)}" كخيار جديد</b></div>`;
   }
   box.innerHTML = html;
@@ -188,6 +194,7 @@ function addNewListOption(fieldId, name) {
   const src = LIST_SOURCES[hidden.dataset.listKind];
   if (!src) return;
   const ctx = _listCtx(hidden, src);
+  if (src.canon) name = src.canon(name) || name;
   if (src.addNew(name, ctx) === false) return;
   selectListOption(fieldId, name);
 }

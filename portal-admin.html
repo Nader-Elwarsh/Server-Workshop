@@ -165,7 +165,7 @@
 </div>
 </section>
 </main>
-<script src="shared-data.js" defer></script>
+<script src="shared-data.js" defer></script><script src="brand-unify.js" defer></script>
 <script>
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
@@ -250,7 +250,7 @@ function rSg(){$("sg").innerHTML=SG.length?SG.map(function(g){return'<div class=
 function addOpt(g,v){var s=window.settings();function ec(c){s.centers=s.centers||[];if(c&&s.centers.indexOf(c)<0)s.centers.push(c)}
 if(g.kind==="center")ec(v);
 else if(g.kind==="village"){ec(g.parent);if(Array.isArray(s.villages)){if(s.villages.indexOf(v)<0)s.villages.push(v)}else{s.villages=s.villages||{};var a=s.villages[g.parent]=s.villages[g.parent]||[];if(a.indexOf(v)<0)a.push(v)}}
-else if(g.kind==="brand"){s.brands=s.brands||[];if(s.brands.indexOf(v)<0)s.brands.push(v)}
+else if(g.kind==="brand"){s.brands=s.brands||[];var bk=window.wfBrandKey||function(x){return x},bc=window.wfCanonicalBrand?window.wfCanonicalBrand(v):v;if(!s.brands.some(function(b){return bk(b)===bk(bc)}))s.brands.push(bc)}
 else if(g.kind==="type"){s.types=s.types||{};if(!s.types[v])s.types[v]=[]}
 else if(g.kind==="category"){s.types=s.types||{};var c=s.types[g.parent]=s.types[g.parent]||[];if(c.indexOf(v)<0)c.push(v)}
 return window.put(window.K.s,s)}

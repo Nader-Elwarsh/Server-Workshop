@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v24-ux-lists-dates";
+const CACHE_NAME = "workshop-v25-brand-unify";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -37,6 +37,7 @@ const CORE_FILES = [
   "./theme.js",
   "./workshop-idb.js",
   "./shared-data.js",
+  "./brand-unify.js",
   "./firebase-sync.js",
   "./login.html",
   "./privacy.html",

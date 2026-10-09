@@ -5,7 +5,7 @@ function setVillagePosition(center,i,pos){let s=settings(),a=[...(s.villages[cen
 function villageGroupOf(center,village){let s=arrCached(K.s)||{};return (s.villageGroups&&s.villageGroups[center]&&s.villageGroups[center][village])||"village"}
 function toggleVillageGroup(center,village){let s=settings();s.villageGroups=s.villageGroups||{};s.villageGroups[center]=s.villageGroups[center]||{};let cur=s.villageGroups[center][village]||"village";s.villageGroups[center][village]=cur==="city"?"village":"city";put(K.s,s);settingsPage()}
 function editTypeOptions(x){let s=settings(),v=prompt("التصنيفات مفصولة بفاصلة",(s.types[x]||[]).join(", "));if(v===null)return;s.types[x]=v.split(",").map(a=>a.trim()).filter(Boolean);put(K.s,s);settingsPage()}
-function renameBrand(x){let n=prompt("الاسم الجديد للماركة",x);if(!n||n===x)return;let s=settings(),i=s.brands.indexOf(x);if(i>=0)s.brands[i]=n;put(K.s,s);settingsPage()}
+function renameBrand(x){let n=prompt("الاسم الجديد للماركة",x);if(!n)return;n=(typeof wfCanonicalBrand==="function"?wfCanonicalBrand(n):n.trim());if(!n||n===x)return;let s=settings(),i=s.brands.indexOf(x);let k=typeof wfBrandKey==="function"?wfBrandKey(n):n;if(s.brands.some((b,j)=>j!==i&&(typeof wfBrandKey==="function"?wfBrandKey(b):b)===k))return alert("الماركة دي موجودة بالفعل بنفس الاسم.");if(i>=0)s.brands[i]=n;put(K.s,s);settingsPage()}
 function renamePartCategory(x){let n=prompt("الاسم الجديد للتصنيف",x);if(!n||n===x)return;let s=settings(),i=s.partCats.indexOf(x);if(i>=0)s.partCats[i]=n;put(K.s,s);settingsPage()}
 
 /* ---------------------------------------------------------------------
