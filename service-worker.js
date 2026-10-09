@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v23-address-unify";
+const CACHE_NAME = "workshop-v24-ux-lists-dates";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

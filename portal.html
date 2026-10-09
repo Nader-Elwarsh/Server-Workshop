@@ -142,7 +142,7 @@ if("serviceWorker"in navigator)navigator.serviceWorker.register("portal-sw.js",{
 function installCard(){if(window.matchMedia&&matchMedia("(display-mode: standalone)").matches||navigator.standalone)return"";var ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
 return'<div class="card" id="inst"><b>📲 ثبّت التطبيق على موبايلك</b><div class="mut">يفتح زي أي تطبيق من الشاشة الرئيسية.</div>'+(deferred?'<button style="margin-top:8px" onclick="deferred.prompt()">تثبيت الآن</button>':ios?'<div class="mut" style="margin-top:6px">من Safari: اضغط زر المشاركة ⬆️ ثم «إضافة إلى الشاشة الرئيسية».</div>':'<div class="mut" style="margin-top:6px">من Chrome: قايمة ⋮ ثم «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</div>')+'</div>'}
 /* ---- مقالات ونصايح ---- */
-function loadPosts(){return db.collection("portalPosts").where("published","==",true).get().then(function(s){posts=s.docs.filter(function(d){return d.id!=="wf-ticker"}).map(function(d){return Object.assign({id:d.id},d.data())}).sort(function(a,b){return(b.pinned?1:0)-(a.pinned?1:0)||ms(b.createdAt)-ms(a.createdAt)})}).catch(function(){posts=[]})}
+function loadPosts(){return db.collection("portalPosts").where("published","==",true).get().then(function(s){posts=s.docs.filter(function(d){return d.id!=="wf-ticker"}).map(function(d){return Object.assign({id:d.id},d.data())}).sort(function(a,b){var pa=a.pinned?1:0,pb=b.pinned?1:0;if(pa!==pb)return pb-pa;var oa=typeof a.order==="number",ob=typeof b.order==="number";if(oa&&ob&&a.order!==b.order)return a.order-b.order;if(oa!==ob)return oa?1:-1;return ms(b.createdAt)-ms(a.createdAt)})}).catch(function(){posts=[]})}
 function body(t){return esc(t).replace(/\n/g,"<br>")}
 function catChips(){var cs=[];posts.forEach(function(p){var c=p.category||"نصيحة";if(cs.indexOf(c)<0)cs.push(c)});if(cs.indexOf(postCat)<0)postCat="";if(cs.length<2)return"";return'<div class="dp" style="margin:6px 0">'+[""].concat(cs).map(function(c){return'<button type="button" class="sm'+(postCat===c?"":" sec")+'" data-c="'+esc(c)+'" onclick="postCat=this.dataset.c;render()">'+(c?esc(c):"الكل")+'</button>'}).join("")+'</div>'}
 function isImg(u){return/^(https:\/\/|data:image\/)/.test(String(u||""))}
@@ -278,4 +278,16 @@ function vMe(){var a=me.mainAddress||{};return'<div class="card"><h4>بيانا�
 '<div class="card"><h4>🔑 تغيير كلمة المرور</h4><label>الحالية</label><input id="pw0" type="password" autocomplete="current-password"><label>الجديدة (6 حروف على الأقل)</label><input id="pw1" type="password" autocomplete="new-password"><label>تأكيد الجديدة</label><input id="pw2" type="password" autocomplete="new-password"><button onclick="chPw()">تغيير</button><div id="msg2"></div></div>'+installCard()}
 function saveMe(){var n=val("m_name"),c=val("mc_t"),v=val("mv_t"),cN=cbNew("mc"),vN=cbNew("mv")&&v;if(n.length<2)return say("اكتب اسمك.");if(!c)return say("اكتب المركز.");var ad={center:c,village:v,street:val("m_street")};db.collection("customers").doc(CID).update({name:n,mainAddress:ad,updatedAt:FV.serverTimestamp()}).then(function(){me.name=n;me.mainAddress=ad;return cN?suggest("center",c):0}).then(function(){return vN?suggest("village",v,c):0}).then(function(){say("اتحفظ ✅",true)}).catch(function(e){say(errText(e))})}
 function chPw(){var m=$("msg2"),o=$("pw0").value,n=$("pw1").value,c=$("pw2").value,er=function(t){m.innerHTML='<p class="err">'+esc(t)+'</p>'};if(!o)return er("اكتب كلمة المرور الحالية.");if(n.length<6)return er("الجديدة 6 حروف على الأقل.");if(n!==c)return er("الجديدة وتأكيدها مش متطابقين.");if(n===o)return er("الجديدة لازم تختلف عن الحالية.");var u=auth.currentUser;u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,o)).then(function(){return u.updatePassword(n)}).then(function(){wsCall("remember",u.email,n);$("pw0").value=$("pw1").value=$("pw2").value="";m.innerHTML='<p class="ok">اتغيّرت ✅</p>'}).catch(function(e){m.innerHTML='<p class="err">'+esc(errText(e))+'</p>'})}
-</script></body></html>
+</script><script>/* فتح منتقي التاريخ/الوقت بالضغط على أي مكان في الخانة (مش أيقونة التقويم بس) — بيشتغل
+   على كل خانات date / time / datetime-local حتى اللي بتتولّد بعد تحميل الصفحة. */
+(function(){
+  if (window.__wfPickerOpen) return; window.__wfPickerOpen = true;
+  var T = { "date":1, "time":1, "datetime-local":1, "month":1, "week":1 };
+  document.addEventListener("click", function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== "INPUT" || !T[el.type] || el.disabled || el.readOnly) return;
+    if (typeof el.showPicker !== "function") return;
+    try { el.showPicker(); } catch (_) { /* مفتوح بالفعل أو المتصفح مش بيسمح */ }
+  }, true);
+})();</script>
+</body></html>

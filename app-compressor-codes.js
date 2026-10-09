@@ -51,6 +51,7 @@
     return loadScript("compressor-index.js").then(()=>{window.COMPRESSOR_DB_BRANDS=window.COMPRESSOR_DB_BRANDS||{};compressorDbReady=true});
   }
   function allBrands() { if (!brandsCache) brandsCache = Object.keys(window.COMPRESSOR_INDEX?.brands||db()).sort((a, b) => a.localeCompare(b, "ar")); return brandsCache; }
+  window.compressorBrandList = function () { try { const set = new Set(allBrands()); customEntries().forEach(c => { if (c && c.brand) set.add(c.brand); }); return Array.from(set).sort((a, b) => a.localeCompare(b, "ar")); } catch (e) { return allBrands(); } };
   function totalRecords(){return window.COMPRESSOR_INDEX?.total||flatRecords().length}
   function loadAllCompressorBrands(){
     if(compressorAllReady)return Promise.resolve();
@@ -126,6 +127,7 @@
     editingCustomId=id;toggle("compAddBox");
     const fields={ccModel:item.rec?.model||"",ccBrand:item.brand||"",ccHp:item.rec?.hp||"",ccAmp:item.rec?.amp||"",ccBtu:item.rec?.btu||"",ccFreon:item.rec?.refrigerant||"",ccApp:item.rec?.application||"",ccRunCap:item.rec?.run_capacitor||"",ccStartCap:item.rec?.start_capacitor||"",ccOil:item.rec?.oil_qty||"",ccNote:item.rec?.notes||""};
     Object.entries(fields).forEach(([key,value])=>{const el=document.getElementById(key);if(el)el.value=value});
+    {const bs=document.getElementById("ccBrandSearch");if(bs)bs.value=fields.ccBrand}
     const save=document.getElementById("compSaveCustom");if(save)save.textContent="💾 حفظ التعديل";
     document.getElementById("ccModel")?.focus();
   }
@@ -422,7 +424,7 @@
   window.saveCustomCompressor = function () {
     const model = document.getElementById("ccModel").value.trim();
     if (!model) { alert("لازم تكتب كود الموديل"); return; }
-    const brand = document.getElementById("ccBrand").value.trim() || "إضافات يدوية";
+    const brand = (document.getElementById("ccBrand").value || document.getElementById("ccBrandSearch")?.value || "").trim() || "إضافات يدوية";
     const key=compressorKey(brand,model);
     const duplicateBase=Object.entries(db()).some(([b,rows])=>rows.some(r=>compressorKey(b,r.model)===key));
     const duplicateCustom=customEntries().some(c=>c.id!==editingCustomId&&compressorKey(c.brand,c.rec?.model)===key);
@@ -441,6 +443,7 @@
     recordsCache = null;
     searchCache.clear();
     ["ccModel", "ccBrand", "ccHp", "ccAmp", "ccBtu", "ccFreon", "ccApp", "ccRunCap", "ccStartCap", "ccOil", "ccNote"].forEach(x => { const e = document.getElementById(x); if (e) e.value = ""; });
+    {const bs=document.getElementById("ccBrandSearch");if(bs)bs.value=""}
     editingCustomId=null;const save=document.getElementById("compSaveCustom");if(save)save.textContent="💾 حفظ";toggle("compAddBox");
     document.getElementById("compSearch").value = model;
     renderCompressorResults();
@@ -500,6 +503,7 @@
   }
 
   window.initCompressorCodesPage = function () {
+    if(typeof fillListSearch==="function")fillListSearch("ccBrand","compBrand","");
     const search=document.getElementById("compSearch"),brand=document.getElementById("compBrandFilter");
     const loadAndRender=()=>{const q=search?.value.trim(),b=brand?.value;return (b&&!q?loadCompressorBrand(b):loadAllCompressorBrands()).then(()=>renderCompressorResults())};
     search?.addEventListener("input",loadAndRender);

@@ -147,3 +147,16 @@
     }, type === "focus" || type === "blur");
   });
 })();
+
+/* فتح منتقي التاريخ/الوقت بالضغط على أي مكان في الخانة (مش أيقونة التقويم بس) — بيشتغل
+   على كل خانات date / time / datetime-local حتى اللي بتتولّد بعد تحميل الصفحة. */
+(function(){
+  if (window.__wfPickerOpen) return; window.__wfPickerOpen = true;
+  var T = { "date":1, "time":1, "datetime-local":1, "month":1, "week":1 };
+  document.addEventListener("click", function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== "INPUT" || !T[el.type] || el.disabled || el.readOnly) return;
+    if (typeof el.showPicker !== "function") return;
+    try { el.showPicker(); } catch (_) { /* مفتوح بالفعل أو المتصفح مش بيسمح */ }
+  }, true);
+})();

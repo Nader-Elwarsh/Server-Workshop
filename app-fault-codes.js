@@ -209,10 +209,11 @@ function confirmBulkFaultCodes(){
 function initFaultCodes(){
   let f=document.getElementById("faultForm");if(!f)return;
   let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.fc).find(x=>x.id===editId):null;
-  fillFaultDeviceTypes(fcDeviceType,existing?.deviceType||"");
-  fillFaultBrands(fcBrand,existing?.brand||"");
-  fillFaultDeviceTypes(document.getElementById("bfDeviceType"));
-  fillFaultBrands(document.getElementById("bfBrand"));
+  // نوع الجهاز والماركة بقوا قوائم بحث + "إضافة جديد" زي باقي النظام (فاضي = عام).
+  fillListSearch("fcDeviceType","type",existing?.deviceType||"");
+  fillListSearch("fcBrand","brand",existing?.brand||"");
+  fillListSearch("bfDeviceType","type","");
+  fillListSearch("bfBrand","brand","");
   if(existing){
     fcCode.value=existing.code||"";fcTitle.value=existing.title||"";fcCause.value=existing.cause||"";
     fcFix.value=existing.fix||"";fcNote.value=existing.note||"";fcAddedBy.value=existing.addedBy||"";
@@ -229,8 +230,15 @@ function initFaultCodes(){
   };
   fcCode.addEventListener("input",checkDup);fcDeviceType.addEventListener("change",checkDup);fcBrand.addEventListener("change",checkDup);
   let typeFilter=document.getElementById("fcFilterType"),brandFilter=document.getElementById("fcFilterBrand"),search=document.getElementById("faultSearch");
-  if(typeFilter){typeFilter.innerHTML='<option value="">🔧 كل الأنواع</option>'+Object.keys(settings().types||{}).map(t=>`<option>${esc(t)}</option>`).join("");typeFilter.onchange=renderFaultCodes}
-  if(brandFilter){brandFilter.innerHTML='<option value="">🏷️ كل الماركات</option>'+(settings().brands||[]).map(b=>`<option>${esc(b)}</option>`).join("");brandFilter.onchange=renderFaultCodes}
+  let fillFilters=()=>{
+    if(typeFilter){let v=typeFilter.value;typeFilter.innerHTML='<option value="">🔧 كل الأنواع</option>'+Object.keys(settings().types||{}).map(t=>`<option>${esc(t)}</option>`).join("");typeFilter.value=v}
+    if(brandFilter){let v=brandFilter.value;brandFilter.innerHTML='<option value="">🏷️ كل الماركات</option>'+(settings().brands||[]).map(b=>`<option>${esc(b)}</option>`).join("");brandFilter.value=v}
+  };
+  fillFilters();
+  if(typeFilter)typeFilter.onchange=renderFaultCodes;
+  if(brandFilter)brandFilter.onchange=renderFaultCodes;
+  // لو أضفت نوع/ماركة جديدة من الفورم تظهر فورًا في فلاتر القائمة.
+  ["fcDeviceType","fcBrand","bfDeviceType","bfBrand"].forEach(i=>document.getElementById(i)?.addEventListener("change",fillFilters));
   if(search)search.oninput=renderFaultCodes;
   renderFaultCodes();
 }

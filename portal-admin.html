@@ -31,7 +31,7 @@
 .pa-item textarea,.pa-item input[type=text]{width:100%;margin:4px 0}
 .pa-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .pa-bar{height:8px;border-radius:5px;background:var(--bg-sunken);overflow:hidden}.pa-bar i{display:block;height:100%;background:#0b57d0}
-.pa-pre{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.pa-pre button,.sm{padding:6px 10px;font-size:12.5px}.pa-vg{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:6px 12px;margin:8px 0}.pa-vg h3{font-size:14px;margin:6px 0 2px}.pa-vrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px;cursor:pointer}.pa-vg h3+.pa-vrow{border-top:0}.pa-vrow b{font-weight:600;font-size:14px}.pa-vrow small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:1px}.pa-vrow input{width:22px;height:22px;flex:0 0 auto;margin:0}.pa-sum{background:var(--bg-sunken);border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}.pa-sec{display:none}.pa-sec.on{display:block}
+.pa-pre{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}.pa-pre button,.sm{padding:6px 10px;font-size:12.5px}.pa-vg{background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;padding:6px 12px;margin:8px 0}.pa-vg h3{font-size:14px;margin:6px 0 2px}.pa-vrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:14px;cursor:pointer}.pa-vg h3+.pa-vrow{border-top:0}.pa-vrow b{font-weight:600;font-size:14px}.pa-vrow small{display:block;color:var(--text-muted);font-size:11.5px;margin-top:1px}.pa-vrow input{width:22px;height:22px;flex:0 0 auto;margin:0}.pa-sum{background:var(--bg-sunken);border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}.pa-sec{display:none}.pa-vrow input[type=checkbox]{min-height:0;min-width:0;padding:0}.pa-ord{display:inline-flex;gap:4px;margin-inline-start:auto}.pa-ord button{padding:4px 10px;font-size:14px}.pa-no{display:inline-block;min-width:22px;text-align:center;background:var(--bg-sunken);border-radius:8px;font-size:12px;font-weight:700;padding:1px 6px;margin-inline-end:6px}.pa-sec.on{display:block}
 
 .pvwrap{background:#eef1f7;border-radius:12px;padding:10px;margin:8px 0;max-width:520px}.pvp{background:#fff;color:#14213d;border:1px solid #d6dbe6;border-radius:14px;overflow:hidden}.pvh{display:flex;gap:10px;align-items:center;padding:12px 14px 4px}.pvh img{width:40px;height:40px;border-radius:50%;background:#e6ebf5}.pvh small{display:block;color:#6b7690;font-size:12px}.pvb{background:#e3e8f2;border-radius:10px;padding:1px 8px}
 .pvp h3{margin:4px 14px;font-size:17px}.pvbody,.pvq,.pva{margin:4px 14px 10px;white-space:pre-line;overflow-wrap:anywhere}.pvq{padding:10px 12px;border-radius:12px;background:#f3f5fa;border:1px solid #d6dbe6}.pva{padding:10px 12px;border-radius:12px;background:#e8f5ec;border:1px solid #9fd1ae}.pvq b,.pva b{display:block;font-size:12.5px}.pvph{color:#9aa3b8}.pvimg{display:block;width:100%;max-height:420px;object-fit:cover}.pvact{display:flex;border-top:1px solid #d6dbe6;margin-top:4px}.pvact span{flex:1;text-align:center;padding:10px 4px;font-size:13px;color:#6b7690}.pvact span+span{border-inline-start:1px solid #d6dbe6}
@@ -123,12 +123,11 @@
 </div>
 <label>النص<textarea id="pb" rows="6"></textarea></label>
 <div class="pa-photo"><b>صورة (اختياري)</b><div class="pa-actions"><button type="button" class="secondary sm" data-act="pCam" data-m="1">📷 كاميرا</button><button type="button" class="secondary sm" data-act="pCam" data-m="0">🖼️ صور</button><button type="button" class="secondary sm hidden" id="pRm" data-act="pRm">✖ حذف الصورة</button></div><input id="pi" type="file" accept="image/*" hidden></div>
-<label><input type="checkbox" id="pp"> تثبيت في الأول</label>
-<label><input type="checkbox" id="pu" checked> منشور للعملاء</label>
+<div class="pa-vg"><label class="pa-vrow"><span><b>📌 تثبيت في الأول</b><small>المقال المثبّت بيظهر فوق كل المقالات عند العميل</small></span><input type="checkbox" id="pp"></label><label class="pa-vrow"><span><b>منشور للعملاء</b><small>لو مقفول المقال بيفضل محفوظ عندك بس ومش بيظهر للعميل</small></span><input type="checkbox" id="pu" checked></label></div>
 <button type="button" data-act="savePost">💾 حفظ</button>
 <button type="button" class="secondary" data-act="clearPost">جديد</button>
 <span id="pm" class="hint"></span> <h3 style="margin-top:14px">👁️ شكل المقال عند العميل</h3><p class="hint">بيتغيّر فورًا وانت بتكتب. بعد النشر دوس «✏️ تعديل» على المقال وهتشوفه هنا وتعدّل فيه.</p><div class="pvwrap"><div id="pPrev"></div></div>
-<div id="pl"></div>
+<h3 style="margin-top:16px">📋 المقالات المنشورة (بالترتيب اللي بتظهر بيه للعميل)</h3><p class="hint" id="plHint">استخدم الأسهم ⬆ ⬇ لترتيب المقالات. المقالات المثبّتة بتفضل فوق، وترتيبها بيتحدد بينها بس.</p><div id="pl"></div>
 </div>
 </section>
 
@@ -179,6 +178,8 @@ function ms(v){if(!v)return 0;if(v.toDate)return v.toDate().getTime();if(typeof 
 function fdt(v){var t=ms(v);return t?new Date(t).toLocaleDateString("ar-EG",{day:"numeric",month:"short",year:"numeric"}):""}
 function money(n){return(+n||0).toLocaleString("ar-EG")}
 function byNew(a,b){return ms(b.createdAt)-ms(a.createdAt)}
+/* ترتيب المقالات (نفس ترتيب بوابة العميل بالظبط): المثبّت الأول، وبعدين الجديد اللي لسه ماتحددلوش ترتيب، وبعدين اللي ليه ترتيب يدوي (order) تصاعديًا. */
+function postCmp(a,b){var pa=a.pinned?1:0,pb=b.pinned?1:0;if(pa!==pb)return pb-pa;var oa=typeof a.order==="number",ob=typeof b.order==="number";if(oa&&ob&&a.order!==b.order)return a.order-b.order;if(oa!==ob)return oa?1:-1;return ms(b.createdAt)-ms(a.createdAt)}
 function docs(s){return s.docs.map(function(d){return Object.assign({id:d.id},d.data())})}
 /* ---- بيانات محلية (عملاء وأوامر البوابة) ---- */
 function custs(){return window.arr(window.K.c).filter(function(c){return c&&c.portal===true})}
@@ -258,7 +259,9 @@ function sgOk(id,v){var g=sgFind(id);v=(v||g.value).trim();if(!v)return;if(!addO
 function sgEdit(id){var g=sgFind(id),v=prompt("عدّل الاسم قبل الإضافة:",g.value);if(v)sgOk(id,v)}
 function sgNo(id){if(confirm("ترفض الاقتراح ده؟"))db.collection("portalSuggestions").doc(id).update({status:"rejected"}).catch(adminFail)}
 /* ---- المقالات ---- */
-function rPt(){$("pl").innerHTML=PT.map(function(p){return'<div class="pa-item"><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span><div class="pa-actions"><button type="button" class="secondary" data-act="editPost" data-id="'+esc(p.id)+'">✏️ تعديل</button><button type="button" class="secondary" data-act="togPost" data-id="'+esc(p.id)+'" data-v="'+(p.published?"0":"1")+'">'+(p.published?"إخفاء":"نشر")+'</button><button type="button" class="secondary" data-act="delPost" data-id="'+esc(p.id)+'">🗑️ حذف</button></div></div>'}).join("")}
+function rPt(){$("pl").innerHTML=PT.map(function(p,i){var pv=PT[i-1],nx=PT[i+1],up=pv&&!!pv.pinned===!!p.pinned,dn=nx&&!!nx.pinned===!!p.pinned;return'<div class="pa-item"><div class="pa-row"><span><span class="pa-no">'+(i+1)+'</span><b>'+(p.pinned?"📌 ":"")+esc(p.title)+'</b> <span class="hint">['+esc(p.category)+' — '+(p.published?"منشور":"مخفي")+']</span></span><span class="pa-ord"><button type="button" class="secondary" data-act="movePost" data-id="'+esc(p.id)+'" data-d="-1" aria-label="تحريك لفوق"'+(up?"":" disabled")+'>⬆</button><button type="button" class="secondary" data-act="movePost" data-id="'+esc(p.id)+'" data-d="1" aria-label="تحريك لتحت"'+(dn?"":" disabled")+'>⬇</button></span></div><div class="pa-actions"><button type="button" class="secondary" data-act="editPost" data-id="'+esc(p.id)+'">✏️ تعديل</button><button type="button" class="secondary" data-act="togPost" data-id="'+esc(p.id)+'" data-v="'+(p.published?"0":"1")+'">'+(p.published?"إخفاء":"نشر")+'</button><button type="button" class="secondary" data-act="delPost" data-id="'+esc(p.id)+'">🗑️ حذف</button></div></div>'}).join("");var h=$("plHint");if(h)h.style.display=PT.length>1?"":"none"}
+/* تحريك مقال لفوق/لتحت (داخل نفس المجموعة: المثبّت مع المثبّت). بنكتب رقم ترتيب لكل المقالات في دفعة واحدة. */
+function movePost(id,d){var i=PT.findIndex(function(x){return x.id===id}),j=i+d;if(i<0||j<0||j>=PT.length||!!PT[i].pinned!==!!PT[j].pinned)return;var a=PT.slice(),t=a[i];a[i]=a[j];a[j]=t;var b=db.batch();a.forEach(function(p,k){b.set(db.collection("portalPosts").doc(p.id),{order:k},{merge:true})});b.commit().catch(adminFail)}
 function clearPost(){editId="";editImg="";pRm=false;if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}pUrl=""}$("pt").value="";$("pb").value="";$("pi").value="";$("pp").checked=false;$("pu").checked=true;$("pc").value="نصيحة";$("pm").textContent="";pPrev()}
 function editPost(id){var p=PT.find(function(x){return x.id===id});editId=id;editImg=p.image||"";$("pt").value=p.title;$("pb").value=p.body;$("pc").value=p.category||"نصيحة";$("pp").checked=!!p.pinned;$("pu").checked=!!p.published;pRm=false;$("pi").value="";if(pUrl){try{URL.revokeObjectURL(pUrl)}catch(e){}pUrl=""}pPrev();$("pm").textContent="بتعدّل مقال — اضغط حفظ";scrollTo(0,$("pt").offsetTop-80)}
 function togPost(id,v){db.collection("portalPosts").doc(id).update({published:v})}
@@ -279,7 +282,7 @@ $("visSum").innerHTML="👁️ العميل هيشوف: "+(t.length?t.join(" •
 function vpre(i){var p=PRE[i][1];Object.keys(p).forEach(function(k){var e=$("v_"+k);if(e)e.checked=!!p[k]});vSum()}
 function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;if(!window.put(window.K.s,s)){$("visMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
 /* ---- ربط الأحداث ---- */
-var ACT={tab:function(b){go(b.dataset.k)},guConv:function(b){guConv(b.dataset.id,b)},guDone:function(b){guDone(b.dataset.id)},guDel:function(b){guDel(b.dataset.id)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
+var ACT={tab:function(b){go(b.dataset.k)},movePost:function(b){movePost(b.dataset.id,+b.dataset.d)},guConv:function(b){guConv(b.dataset.id,b)},guDone:function(b){guDone(b.dataset.id)},guDel:function(b){guDel(b.dataset.id)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
 document.addEventListener("change",function(e){var t=e.target;if(t.id&&t.id.indexOf("v_")===0&&$("visSum"))vSum();if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
 document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
@@ -412,12 +415,24 @@ go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
-db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).filter(function(p){return p.id!=="wf-ticker"}).sort(byNew);rTabs();rStats();rOv();rPt()});
+db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).filter(function(p){return p.id!=="wf-ticker"}).sort(postCmp);rTabs();rStats();rOv();rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});
 db.collection("portalQuestions").onSnapshot(function(s){QS=docs(s);rTabs();rStats();rOv();rQs()});
 db.collection("portalRequests").where("handled","==",false).onSnapshot(function(s){RQ=docs(s);rTabs();rStats();rRq()});
 db.collection("guestRequests").where("handled","==",false).onSnapshot(function(s){GR=docs(s);rTabs();rStats();rGu()},function(){})})}
 ready();
 </script>
+<script>/* فتح منتقي التاريخ/الوقت بالضغط على أي مكان في الخانة (مش أيقونة التقويم بس) — بيشتغل
+   على كل خانات date / time / datetime-local حتى اللي بتتولّد بعد تحميل الصفحة. */
+(function(){
+  if (window.__wfPickerOpen) return; window.__wfPickerOpen = true;
+  var T = { "date":1, "time":1, "datetime-local":1, "month":1, "week":1 };
+  document.addEventListener("click", function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== "INPUT" || !T[el.type] || el.disabled || el.readOnly) return;
+    if (typeof el.showPicker !== "function") return;
+    try { el.showPicker(); } catch (_) { /* مفتوح بالفعل أو المتصفح مش بيسمح */ }
+  }, true);
+})();</script>
 </body>
 </html>

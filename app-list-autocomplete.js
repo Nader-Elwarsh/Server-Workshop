@@ -83,6 +83,12 @@ const LIST_SOURCES = {
       return true;
     }
   },
+  // ماركات الكباسات (من قاعدة أكواد الكباسات + إضافاتك اليدوية) — الإضافة هنا بتتحفظ مع الموديل نفسه.
+  compBrand: {
+    emptyHint: "لا توجد نتائج. اكتب اسم الماركة واضغط إضافة.",
+    getList() { return typeof window.compressorBrandList === "function" ? window.compressorBrandList() : []; },
+    addNew() { return true; }
+  },
   partCat: {
     emptyHint: "لا توجد نتائج. اكتب اسم التصنيف واضغط إضافة.",
     getList() { return settings().partCats || []; },

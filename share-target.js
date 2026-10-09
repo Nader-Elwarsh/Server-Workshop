@@ -167,6 +167,28 @@ async function initShareTarget() {
   }
 }
 
+// خروج من صفحة المكالمة من غير أي تغيير: المكالمة بتفضل في "مكالمات معلّقة" وتقدر تكمّلها بعدين.
+function leaveCallShare() {
+  if (history.length > 1 && document.referrer) { history.back(); return; }
+  location.href = "pending-calls.html";
+}
+
+// تجاهل المكالمة نهائيًا من نفس الصفحة (من غير ما تدخل على "مكالمات معلّقة"): بنمسح السجل
+// الأول، ولو نجح نمسح التسجيل الصوتي. نفس منطق dismissPendingCall في pending-calls.html.
+async function ignoreCallShare() {
+  if (__creating) return;
+  if (!confirm("تتجاهل المكالمة دي؟ لو فيها تسجيل صوتي هيتمسح ومش هتتحول لأمر شغل.")) return;
+  try {
+    if (__audioPromise) await __audioPromise;
+    let callId = __pendingCallId;
+    let entry = callId ? arr(K.pc).find(x => x.id === callId) : null;
+    if (callId && !put(K.pc, arr(K.pc).filter(x => x.id !== callId))) return;
+    let ref = (entry && entry.audioRef) || __audioRef;
+    if (ref && window.ImageStore && window.ImageStore.delete) { try { await window.ImageStore.delete(ref); } catch (e) { console.error("[share-target] فشل حذف التسجيل", e); } }
+  } catch (e) { console.error("[share-target] تعذر تجاهل المكالمة", e); }
+  await wfNavigate("index.html");
+}
+
 function dismissAttachExisting() {
   __existingOpenRequestId = null;
   let attachBox = document.getElementById("shareAttachExistingBox");

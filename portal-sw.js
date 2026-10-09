@@ -1,5 +1,5 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v15-editor-address";
+const CACHE = "portal-v16-post-order";
 const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
 self.addEventListener("install", e => {
   e.waitUntil((async () => {

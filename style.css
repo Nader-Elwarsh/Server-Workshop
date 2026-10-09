@@ -700,3 +700,5 @@ input,select,textarea{min-height:40px;box-sizing:border-box}
 .report-shortcuts{display:flex;gap:7px;overflow-x:auto;overscroll-behavior-x:contain;padding:2px 1px 8px;margin:0 0 8px;-webkit-overflow-scrolling:touch}
 .report-shortcuts a{flex:0 0 auto;display:inline-flex;align-items:center;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:999px;background:var(--bg-elevated);color:var(--accent-text);font-size:13px;font-weight:700;text-decoration:none;white-space:nowrap}
 .report-shortcuts a:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
+
+input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"]{cursor:pointer}
