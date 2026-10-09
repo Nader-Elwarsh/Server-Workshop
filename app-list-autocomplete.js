@@ -52,7 +52,7 @@ const LIST_SOURCES = {
     // الماركات موحّدة: أي كتابة (إنجليزي/عربي/إملاء مختلف) بتتحول للاسم الموحّد، والبحث بيلاقيها بكل أشكالها.
     canon(name) { return typeof wfCanonicalBrand === "function" ? wfCanonicalBrand(name) : name; },
     searchText(x) { return typeof wfBrandSearchText === "function" ? wfBrandSearchText(x) : x; },
-    getList() { return settings().brands || []; },
+    getList() { return typeof wfBrandList === "function" ? wfBrandList(settings().brands) : (settings().brands || []); },
     addNew(name) {
       let s = settings();
       s.brands = s.brands || [];

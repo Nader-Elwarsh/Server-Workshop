@@ -232,7 +232,7 @@ function initFaultCodes(){
   let typeFilter=document.getElementById("fcFilterType"),brandFilter=document.getElementById("fcFilterBrand"),search=document.getElementById("faultSearch");
   let fillFilters=()=>{
     if(typeFilter){let v=typeFilter.value;typeFilter.innerHTML='<option value="">🔧 كل الأنواع</option>'+Object.keys(settings().types||{}).map(t=>`<option>${esc(t)}</option>`).join("");typeFilter.value=v}
-    if(brandFilter){let v=brandFilter.value;brandFilter.innerHTML='<option value="">🏷️ كل الماركات</option>'+(settings().brands||[]).map(b=>`<option>${esc(b)}</option>`).join("");brandFilter.value=v}
+    if(brandFilter){let v=brandFilter.value;brandFilter.innerHTML='<option value="">🏷️ كل الماركات</option>'+(typeof wfBrandList==="function"?wfBrandList(settings().brands):(settings().brands||[])).map(b=>`<option>${esc(b)}</option>`).join("");brandFilter.value=v}
   };
   fillFilters();
   if(typeFilter)typeFilter.onchange=renderFaultCodes;

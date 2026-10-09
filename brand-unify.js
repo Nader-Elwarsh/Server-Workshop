@@ -90,7 +90,8 @@
   }
 
   // بتوحّد قايمة الماركات في الإعدادات + ماركة الأجهزة + ماركة أكواد الأعطال.
-  function wfUnifyBrands() {
+  function wfUnifyBrands(opts) {
+    var auto = !!(opts && opts.auto);
     var K = window.K, res = { brandsBefore: 0, brandsAfter: 0, devices: 0, faultCodes: 0, ok: true };
     if (!K || typeof window.settings !== "function" || typeof window.put !== "function") { res.ok = false; return res; }
 
@@ -109,7 +110,9 @@
       var c = wfCanonicalBrand(d.brand);
       if (c !== d.brand) { d.brand = c; devChanged++; }
       var k = wfBrandKey(c);
-      if (k && !seen[k]) { seen[k] = 1; out.push(c); } // ماركة جهاز مش في القايمة: نضمها بدل ما تضيع
+      // ماركة جهاز مش في القايمة: بنضمها في الزر اليدوي بس. التشغيل التلقائي بيكتفي بتحويل/حذف
+      // التكرار من القايمة الموجودة (نتيجة ثابتة على كل الأجهزة، فمفيش تعارض مزامنة بين جهازين).
+      if (!auto && k && !seen[k]) { seen[k] = 1; out.push(c); }
     });
 
     var fcs = window.arr(K.fc), fcChanged = 0;
@@ -118,7 +121,7 @@
       var c = wfCanonicalBrand(f.brand);
       if (c !== f.brand) { f.brand = c; fcChanged++; }
       var k = wfBrandKey(c);
-      if (k && !seen[k]) { seen[k] = 1; out.push(c); }
+      if (!auto && k && !seen[k]) { seen[k] = 1; out.push(c); }
     });
 
     res.brandsBefore = old.length; res.brandsAfter = out.length; res.devices = devChanged; res.faultCodes = fcChanged;
@@ -129,13 +132,27 @@
       if (!window.put(K.fc, fcs)) { res.ok = false; return res; }
       try { if (window.FaultCodesIDB && window.FaultCodesIDB.replace) window.FaultCodesIDB.replace(fcs); } catch (e) { /* WFStorage fallback */ }
     }
-    if (sChanged || !s.brandsUnified) {
-      s.brands = out; s.brandsUnified = true;
+    // التشغيل التلقائي مابيكتبش الإعدادات أبدًا: الكتابة في الإعدادات وقت فتح الصفحة (قبل ما المزامنة تجهز)
+    // كانت بتسبّب نافذة «تعارضات المزامنة» حتى على جهاز واحد. القوايم بتتنضف وقت العرض (wfBrandList)،
+    // وتنضيف الإعدادات نفسها بتتم بزر «توحيد الماركات» أو أول ما تعدّل الماركات من الإعدادات.
+    if (sChanged && !auto) {
+      s.brands = out;
       if (!window.put(K.s, s)) { res.ok = false; return res; }
     }
     return res;
   }
 
+  // قايمة ماركات للعرض: أسماء موحّدة ومن غير تكرار (من غير ما نكتب أي حاجة).
+  function wfBrandList(list) {
+    var seen = Object.create(null), out = [];
+    (Array.isArray(list) ? list : []).forEach(function (b) {
+      var c = wfCanonicalBrand(b), k = wfBrandKey(c);
+      if (!k || seen[k]) return; seen[k] = 1; out.push(c);
+    });
+    return out;
+  }
+
+  window.wfBrandList = wfBrandList;
   window.wfBrandKey = wfBrandKey;
   window.wfCanonicalBrand = wfCanonicalBrand;
   window.wfBrandSearchText = wfBrandSearchText;
@@ -146,8 +163,7 @@
     Promise.resolve(window.workshopReady).then(function () {
       try {
         if (typeof window.settings !== "function" || !window.K) return;
-        if (window.settings().brandsUnified) return;
-        wfUnifyBrands();
+        wfUnifyBrands({ auto: true });
       } catch (e) { console.warn("[brand-unify] تعذر التوحيد التلقائي", e); }
     });
   });
