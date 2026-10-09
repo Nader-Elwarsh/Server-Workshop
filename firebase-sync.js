@@ -169,8 +169,8 @@
     var item = conflicts[k] && conflicts[k][id]; if (!item) return;
     if (k === SETTINGS) {
       var remoteRaw = JSON.stringify(item.remote || {});
-      if (choice === "cloud") { raw(k, remoteRaw); lastRaw[k] = remoteRaw; }
-      else lastRaw[k] = remoteRaw;
+      if (choice === "cloud") { raw(k, remoteRaw); setSettingsBase(remoteRaw); }
+      else setSettingsBase(remoteRaw);
       SB.x[k] = h(remoteRaw); saveBase();
       delete conflicts[k][id]; if (!Object.keys(conflicts[k]).length) delete conflicts[k];
       origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts));
@@ -207,6 +207,11 @@
   function byCreated(a, b) { return (Date.parse(a.createdAt || a.at) || 0) - (Date.parse(b.createdAt || b.at) || 0); }
   function local(k) { try { return JSON.parse(ls.getItem(k) || "null"); } catch (e) { return null; } }
   function raw(k, v) { applying = true; origSet.call(ls, k, v); applying = false; }
+  /* أصل الإعدادات (آخر نسخة معروفة إنها متطابقة مع السحابة) بيتحفظ على الجهاز كمان، مش في الذاكرة بس:
+     من غيره كل فتح للصفحة بيبدأ بأصل مجهول، وأي تعديل بسيط في الإعدادات وقت الفتح كان بيتعامل كتعارض
+     مع السحابة حتى على جهاز واحد («تعارض إعدادات: لم تتم الكتابة فوق النسخة الأحدث»). */
+  var SBASE = "wf_settings_base_raw";
+  function setSettingsBase(v) { lastRaw[SETTINGS] = v; if (typeof v === "string") { try { origSet.call(ls, SBASE, v); } catch (e) {} } }
   function withTimeout(p) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, TIMEOUT); })]); }
   function online() { return navigator.onLine !== false && !!db; }
 
@@ -272,9 +277,11 @@
     }
     if (k === SETTINGS) {
       if (!v) return Promise.resolve(done(true));
-      if (SB.x[k] === h(snapshotRaw)) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
+      if (SB.x[k] === h(snapshotRaw)) { setSettingsBase(snapshotRaw); return Promise.resolve(done(true)); }
       if (conflicts[k] && conflicts[k].global) { pushing[k] = false; badge(); return Promise.resolve(false); }
-      var settingsRef = db.collection("settings").doc("global"), baseRaw = lastRaw[k], baseKnown = baseRaw !== undefined, base = {};
+      var settingsRef = db.collection("settings").doc("global"), baseRaw = lastRaw[k], baseKnown, base = {};
+      if (baseRaw === undefined) { var pb = ls.getItem(SBASE); if (pb) baseRaw = pb; }
+      baseKnown = baseRaw !== undefined;
       if (baseKnown && baseRaw !== null) { try { base = JSON.parse(baseRaw) || {}; } catch (e) { baseKnown = false; } }
       return withTimeout(db.runTransaction(async function (tx) {
         var snap = await tx.get(settingsRef), remote = snap.exists ? clean(snap.data()) : {};
@@ -305,7 +312,7 @@
           return false;
         }
         var mergedRaw = JSON.stringify(result.merged || v);
-        raw(k, mergedRaw); SB.x[k] = h(mergedRaw); saveBase(); lastRaw[k] = mergedRaw;
+        raw(k, mergedRaw); SB.x[k] = h(mergedRaw); saveBase(); setSettingsBase(mergedRaw);
         publishPortalConfig(); projectOrders();
         return touchMeta().then(function () { return done(true); });
       }).catch(function (e) { return done(false, e); });
@@ -512,7 +519,7 @@
       });
       return commitOps(ops).then(function () { keys.forEach(function (k) { SB.c[k] = next[k]; }); saveBase(); });
     }).then(function () {
-      var rest = EXTRA.concat([SETTINGS]); rest.forEach(function (k) { delete SB.x[k]; delete lastRaw[k]; });
+      var rest = EXTRA.concat([SETTINGS]); rest.forEach(function (k) { delete SB.x[k]; delete lastRaw[k]; }); try { origRemove.call(ls, SBASE); } catch (e) {}
       return Promise.all(rest.map(function (k) { return push(k, false); }));
     }).then(function () { origSet.call(ls, HYD, CURRENT_UID || ls.getItem(HYD) || ""); origSet.call(ls, FULL, String(Date.now())); return touchMeta(); }).then(function () { projectOrders(); badge(); return true; });
   };
@@ -537,6 +544,8 @@
       if (g) { var lo = local(SETTINGS) || {}; var m = lchanged ? Object.assign({}, g, lo) : Object.assign({}, lo, g); if (stable(lo) !== stable(m)) { raw(SETTINGS, JSON.stringify(m)); changedAny = true; } if (!lchanged) SB.x[SETTINGS] = h(ls.getItem(SETTINGS)); }
       raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
       lastRaw = {}; ALL.forEach(function (k) { if (!isDirty(k)) lastRaw[k] = ls.getItem(k); }); // ارفع بس اللي اتغيّر فعلًا
+      // الإعدادات: لو متغيّرة محليًا، أصلها هو نسخة السحابة اللي لسه نازلين بيها (عشان الرفع يبقى دمج حقول مش تعارض).
+      if (lastRaw[SETTINGS] !== undefined) setSettingsBase(lastRaw[SETTINGS]); else if (g) setSettingsBase(JSON.stringify(g));
       return { changed: changedAny, cloudEmpty: cloudEmpty };
     }).then(function (r) {
       var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"

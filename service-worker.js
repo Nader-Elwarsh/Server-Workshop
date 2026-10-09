@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v25-brand-unify";
+const CACHE_NAME = "workshop-v26-sync-settings-base";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
