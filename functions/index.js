@@ -49,7 +49,13 @@ exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], t
     const staff = await db.doc(`staff/${decoded.uid}`).get();
     if (!staff.exists) {
       const link = await db.doc(`portalLinks/${decoded.uid}`).get();
-      if (!link.exists || link.data().disabled === true || typeof link.data().customerId !== "string") return json(res, 403, { error: "upload_not_authorized" });
+      let allowed = false;
+      if (link.exists) allowed = link.data().disabled !== true && typeof link.data().customerId === "string";
+      else { // عميل سجّل بنفسه من البوابة: مفيش portalLinks، والهوية = customers/{uid} (نفس منطق قواعد Firestore own()).
+        const own = await db.doc(`customers/${decoded.uid}`).get();
+        allowed = own.exists && own.data().portal === true;
+      }
+      if (!allowed) return json(res, 403, { error: "upload_not_authorized" });
     }
     const mime = String(req.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const file = req.rawBody;
