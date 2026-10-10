@@ -160,7 +160,51 @@ async function main() {
     await assertSucceeds(getDoc(doc(staff, 'guestRequests/G-ABC234')));
     await assertSucceeds(updateDoc(doc(staff, 'guestRequests/G-ABC234'), { handled: true }));
 
-    console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering)');
+    // ---- phoneIndex: مرحلة 1 (القواعد الحالية) — قيود الإنشاء، والقراءة لسه مفتوحة ----
+    const signedUp = env.authenticatedContext('phone-user', { email: 'New@Example.com' }).firestore();
+    const otherUser = env.authenticatedContext('phone-other', { email: 'other@example.com' }).firestore();
+    const noEmailUser = env.authenticatedContext('phone-noemail').firestore();
+    await assertSucceeds(setDoc(doc(signedUp, 'phoneIndex/01012345678'), { email: 'new@example.com', uid: 'phone-user' })); // مقارنة الإيميل غير حساسة لحالة الحروف
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/01112345678'), { email: 'new@example.com', uid: 'phone-other' })); // إيميل شخص تاني
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/01112345678'), { email: 'other@example.com', uid: 'phone-user' })); // uid شخص تاني
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/abc'), { email: 'other@example.com', uid: 'phone-other' })); // مفتاح مش رقم موبايل
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/0131234567'), { email: 'other@example.com', uid: 'phone-other' }));
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/01212345678'), { email: 'other@example.com', uid: 'phone-other', role: 'x' })); // حقل زيادة
+    await assertFails(setDoc(doc(noEmailUser, 'phoneIndex/01212345678'), { email: 'x@example.com', uid: 'phone-noemail' })); // توكن من غير إيميل
+    await assertFails(setDoc(doc(anonymous, 'phoneIndex/01212345678'), { email: 'x@example.com', uid: 'x' }));
+    await assertFails(setDoc(doc(otherUser, 'phoneIndex/01012345678'), { email: 'other@example.com', uid: 'phone-other' })); // حجز رقم موجود = تعديل ← مرفوض
+    await assertFails(updateDoc(doc(signedUp, 'phoneIndex/01012345678'), { email: 'z@example.com' }));
+    await assertSucceeds(getDoc(doc(anonymous, 'phoneIndex/01012345678'))); // مؤقتًا حتى نشر الدوال (المرحلة 2)
+    await assertFails(getDocs(collection(anonymous, 'phoneIndex')));
+    await assertSucceeds(updateDoc(doc(staff, 'phoneIndex/01012345678'), { email: 'staff-fixed@example.com' }));
+    await assertSucceeds(deleteDoc(doc(staff, 'phoneIndex/01012345678')));
+
+    // ---- phoneIndex: مرحلة 2 (firestore.rules.proposed) — القراءة للموظفين وصاحب الحساب فقط ----
+    const PROPOSED = fs.readFileSync(path.join(__dirname, '..', 'firestore.rules.proposed'), 'utf8');
+    const env2 = await initializeTestEnvironment({ projectId: PROJECT_ID + '-phase2', firestore: { host: '127.0.0.1', port: 8091, rules: PROPOSED } });
+    try {
+      await env2.withSecurityRulesDisabled(async context => {
+        const db2 = context.firestore();
+        await setDoc(doc(db2, 'staff/staff-1'), { name: 'Authorized staff' });
+        await setDoc(doc(db2, 'phoneIndex/01012345678'), { email: 'owner@example.com', uid: 'phone-owner' });
+      });
+      const p2Owner = env2.authenticatedContext('phone-owner', { email: 'owner@example.com' }).firestore();
+      const p2Other = env2.authenticatedContext('phone-other', { email: 'other@example.com' }).firestore();
+      const p2Staff = env2.authenticatedContext('staff-1', { email: 'staff@example.com' }).firestore();
+      const p2Anon = env2.unauthenticatedContext().firestore();
+      await assertFails(getDoc(doc(p2Anon, 'phoneIndex/01012345678')));
+      await assertFails(getDoc(doc(p2Other, 'phoneIndex/01012345678')));
+      await assertFails(getDoc(doc(p2Other, 'phoneIndex/01999999999'))); // غير موجود: مفيش تلميح
+      await assertFails(getDocs(collection(p2Other, 'phoneIndex')));
+      await assertSucceeds(getDoc(doc(p2Owner, 'phoneIndex/01012345678')));
+      await assertSucceeds(getDoc(doc(p2Staff, 'phoneIndex/01012345678')));
+      await assertSucceeds(setDoc(doc(p2Other, 'phoneIndex/01112345678'), { email: 'other@example.com', uid: 'phone-other' })); // التسجيل الجديد لسه شغال
+      await assertFails(setDoc(doc(p2Other, 'phoneIndex/01012345678'), { email: 'other@example.com', uid: 'phone-other' }));
+    } finally {
+      await env2.cleanup();
+    }
+
+    console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock)');
   } finally {
     await env.cleanup();
   }
