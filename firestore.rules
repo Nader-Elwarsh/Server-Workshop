@@ -65,12 +65,20 @@ service cloud.firestore {
     }
 
     match /phoneIndex/{phone} {
-      // أبقينا البحث الدقيق مطلوبًا لمسار تسجيل الدخول بالهاتف الحالي؛ list محظور.
-      // ملاحظة: قيمة email/uid المقروءة مباشرة ستتطلب Cloud Function لإخفائها بالكامل.
+      // المرحلة 1 (آمنة النشر دلوقتي): القراءة المباشرة لسه مفتوحة عشان نسخ المتصفح القديمة
+      // تفضل شغالة لحد ما دوال portalLoginLookup / portalPhoneAvailable تتنشر والواجهة تتحدّث.
+      // بعدها انشر firestore.rules.proposed (المرحلة 2) اللي بتقفل get للموظفين وصاحب الحساب بس.
       allow get: if true;
       allow list: if false;
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
-        && request.resource.data.keys().hasOnly(['email', 'uid']);
+      // الإنشاء: مفتاح المستند لازم يكون رقم موبايل مصري صحيح، والإيميل المسجّل لازم يكون
+      // إيميل حساب المستخدم نفسه (يمنع توجيه رقم لإيميل شخص تاني أو مفاتيح عشوائية).
+      allow create: if signedIn()
+        && phone.matches('^01[0125][0-9]{8}$')
+        && request.resource.data.keys().hasOnly(['email', 'uid'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && 'email' in request.auth.token
+        && request.resource.data.email.lower() == request.auth.token.email.lower();
       allow update, delete: if isStaff();
     }
 

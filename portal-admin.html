@@ -6,6 +6,7 @@
 <script src="./vendor/firebase-auth-compat.js" defer></script>
 <script src="./vendor/firebase-firestore-compat.js" defer></script>
 <script src="image-store.js" defer></script>
+<script src="app-check.js" defer></script>
 <script src="firebase-sync.js" defer></script>
 <script src="theme.js" defer></script>
 <script src="portal-ticker.js" defer></script>
@@ -338,7 +339,7 @@ function rAc(){if(!window.K)return;var rows=acRows(),n={ok:0,wait:0,bad:0,none:0
 $("acSum").innerHTML='<span>✅ '+n.ok+' عندهم حساب</span><span>🟡 '+n.wait+' جاهزين</span><span>⚪ '+n.none+' بدون حساب</span><span>⚠️ '+n.bad+' محتاجين تصحيح رقم</span>';
 var ord={none:0,bad:1,wait:2,ok:3},l=rows.filter(function(r){return!q||[r.c.name,r.c.phone].join(" ").indexOf(q)>-1}).sort(function(a,b){return ord[a.s[0]]-ord[b.s[0]]});
 $("acl").innerHTML=l.slice(0,80).map(function(r){var c=r.c,k=r.s[0],has=k==="wait"||k==="ok";return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">'+esc(r.s[1])+'</span></div><div class="hint">📞 '+esc(c.phone||"—")+'</div><div class="pa-actions">'+(k==="none"?'<button type="button" data-act="actC" data-id="'+esc(c.id)+'">⚡ تفعيل الحساب</button>':"")+(has&&normPhone(c.phone)?'<a class="btn secondary" target="_blank" rel="noopener" href="'+esc(waHref(c))+'">📲 ابعت دعوة واتساب</a>':"")+(has&&normPhone(c.phone)?'<button type="button" class="secondary" data-act="actReset" data-id="'+esc(c.id)+'">🔑 إعادة تعيين كلمة السر</button>':"")+'</div></div>'}).join("")+(l.length>80?'<p class="hint">معروض أول 80 — استخدم البحث.</p>':"")||'<p class="hint">مفيش عملاء.</p>'}
-function secApp(){if(!SEC)SEC=firebase.apps.filter(function(a){return a.name==="sec"})[0]||firebase.initializeApp(firebase.app().options,"sec");return SEC}
+function secApp(){if(!SEC)SEC=firebase.apps.filter(function(a){return a.name==="sec"})[0]||firebase.initializeApp(firebase.app().options,"sec");try{if(window.WFAppCheck)WFAppCheck.attach(SEC)}catch(e){}return SEC}
 function actOne(c){var p=normPhone(c.phone);if(!p)return Promise.resolve("bad");var em=p+"@phone.elwarsha.app",sa=secApp().auth();
 return db.collection("phoneIndex").doc(p).get().then(function(d){if(d.exists)return"dup";
 var tp=tempPw();return sa.createUserWithEmailAndPassword(em,tp).then(function(cr){var uid=cr.user.uid;return secApp().firestore().collection("phoneIndex").doc(p).set({email:em,uid:uid}).then(function(){return db.collection("portalLinks").doc(uid).set({customerId:c.id,phone:p,mustChange:true,pwKind:"random",createdAt:SV})}).then(function(){return sa.signOut()}).then(function(){TEMP[c.id]=tp;return"ok"})})}).catch(function(e){try{sa.signOut()}catch(x){}return(e&&e.code)||"err"})}

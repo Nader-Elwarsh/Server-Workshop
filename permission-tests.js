@@ -77,7 +77,16 @@ for (const name of fs.readdirSync(__dirname).filter(name => name.endsWith('.html
 }
 
 const rules = fs.readFileSync(path.join(__dirname, 'firestore.rules'), 'utf8');
-assert.strictEqual(fs.readFileSync(path.join(__dirname, 'firestore.rules.proposed'), 'utf8'), rules, 'the proposed rules file must not diverge from the canonical secured rules');
+// firestore.rules.proposed = المرحلة 2 من phoneIndex: لازم يطابق firestore.rules تمامًا ماعدا قاعدة get بتاعة phoneIndex.
+const proposed = fs.readFileSync(path.join(__dirname, 'firestore.rules.proposed'), 'utf8');
+const phoneBlock = (txt) => { const i = txt.indexOf('match /phoneIndex/{phone} {'); const j = txt.indexOf('match /customers/{id} {'); assert.ok(i > 0 && j > i, 'phoneIndex block present'); return [txt.slice(0, i) + txt.slice(j), txt.slice(i, j)]; };
+const [restRules, phoneRules] = phoneBlock(rules), [restProposed, phoneProposed] = phoneBlock(proposed);
+assert.strictEqual(restProposed, restRules, 'the proposed rules file must not diverge from the canonical secured rules (outside phoneIndex)');
+assert.ok(/allow get: if true;/.test(phoneRules), 'phase 1 keeps public phoneIndex get until the functions are deployed');
+assert.ok(/allow get: if isStaff\(\) \|\| \(signedIn\(\) && resource != null && resource\.data\.uid == request\.auth\.uid\);/.test(phoneProposed) && !/allow get: if true;/.test(phoneProposed), 'phase 2 locks phoneIndex get');
+const createRule = (b) => b.slice(b.indexOf('allow create'), b.indexOf('allow update'));
+assert.strictEqual(createRule(phoneProposed), createRule(phoneRules), 'both phases share the same create constraints');
+for (const needle of ["phone.matches('^01[0125][0-9]{8}$')", "hasOnly(['email', 'uid'])", 'request.resource.data.uid == request.auth.uid', 'request.resource.data.email.lower() == request.auth.token.email.lower()']) assert.ok(createRule(phoneRules).includes(needle), 'phoneIndex create constraint: ' + needle);
 assert(/function\s+isStaff\s*\(/.test(rules), 'Firestore rules must define a staff authorization predicate');
 assert(/allow\s+read,\s*write:\s*if\s+isStaff\(\)/.test(rules), 'staff-only cloud writes must remain protected by the staff predicate');
 assert(/match\s+\/staff\//.test(rules), 'staff membership must be represented in Firestore rules');

@@ -673,7 +673,7 @@
   function portalPhone(x) { var d = nph(x); return /^01[0125]\d{8}$/.test(d) ? d : ""; }
   // كلمة مؤقتة عشوائية من 8 أرقام (crypto) للحسابات الجديدة وإعادة التعيين.
   function tempPassword() { var a = new Uint32Array(1); (window.crypto || window.msCrypto).getRandomValues(a); return String(10000000 + (a[0] % 90000000)); }
-  function secApp() { if (!SEC) SEC = firebase.apps.filter(function (a) { return a.name === "sec"; })[0] || firebase.initializeApp(firebase.app().options, "sec"); return SEC; }
+  function secApp() { if (!SEC) SEC = firebase.apps.filter(function (a) { return a.name === "sec"; })[0] || firebase.initializeApp(firebase.app().options, "sec"); try { if (window.WFAppCheck) WFAppCheck.attach(SEC); } catch (e) {} return SEC; }
   // temp: كلمة مؤقتة اتولّدت دلوقتي. legacy: حساب قديم كلمته نفس رقم التليفون. غير كده (كلمة اتبعتت قبل كده) مانكتبش كلمة.
   function inviteText(c, p, mustChange, temp, legacy) {
     var tpl = ls.getItem(INV_KEY) || INV_DEF;
@@ -913,6 +913,7 @@
   document.addEventListener("DOMContentLoaded", badge);
 
   firebase.initializeApp(CFG);
+  try { if (window.WFAppCheck) WFAppCheck.attach(firebase.app()); } catch (e) {}
   try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {}); } catch (e) {}
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {} // اطلب تخزين دائم عشان المتصفح مايمسحش الجلسة
   if (!isLogin && !fastHint()) cover("جارٍ التحقق من صلاحيات حساب الموظف…");
