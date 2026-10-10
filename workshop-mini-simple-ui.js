@@ -229,7 +229,7 @@
   }
 
   function customerHasUnpaid(cid) {
-    return ordersOfCustomer(cid).some(r => !r.closed && r.status !== "ملغي" && Math.max(0, (+r.total || 0) - (+r.deposit || 0)) > 0);
+    return ordersOfCustomer(cid).some(r => !r.closed && r.status !== "ملغي" && Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100) > 0);
   }
 
   function lastOrderTime(list) {
@@ -266,7 +266,7 @@
 
   function customerRemainingTotal(cid) {
     return ordersOfCustomer(cid).filter(r => !r.closed && r.status !== "ملغي")
-      .reduce((a, r) => a + Math.max(0, (+r.total || 0) - (+r.deposit || 0)), 0);
+      .reduce((a, r) => a + Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100), 0);
   }
 
   function customerLastContactDate(cid) {
@@ -748,7 +748,7 @@
     if (b === "new") return r.status === "جديد";
     if (b === "active") return r.status === "جاري التنفيذ";
     if (b === "cancelled") return r.status === "ملغي";
-    if (b === "unpaid") return !r.closed && r.status !== "ملغي" && Math.max(0, (+r.total || 0) - (+r.deposit || 0)) > 0;
+    if (b === "unpaid") return !r.closed && r.status !== "ملغي" && Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100) > 0;
     return true;
   }
 

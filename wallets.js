@@ -19,7 +19,8 @@
 --------------------------------------------------------------------- */
 function walletTxEntries(){return (typeof arrCached==="function"?arrCached(K.wtx):arr(K.wtx)).filter(x=>!x.deleted)}
 function walletTxFor(walletName){const n=String(walletName||"").trim();return walletTxEntries().filter(x=>String(x.wallet||"").trim()===n)}
-function walletRawBalance(walletName){return walletTxFor(walletName).reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)}
+// تقريب لأقرب قرش عشان مجموع أرقام عشرية ما يطلعش فيه فروق كسرية زي 0.9999999999999999
+function walletRawBalance(walletName){return Math.round(walletTxFor(walletName).reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)*100)/100}
 // حد أقصى اختياري لمحفظة معينة (زي إنستاباي) — لو موجود، الرصيد المعروض/المحسوب
 // في الإجمالي بيتوقف عنده حتى لو الحركات الفعلية جمعت لرقم أعلى. راجع
 // s.walletCaps في shared-data.js وقسم الحسابات في الإعدادات لتعديله.
@@ -69,7 +70,7 @@ function linkedOrderForWalletTx(tx){
 }
 function walletsOverview(){return (settings().wallets||[]).map(w=>({name:w,balance:walletBalance(w),raw:walletRawBalance(w),cap:walletCapOf(w)}))}
 // إجمالي الرصيد الكلي عبر كل المحافظ مع بعض، للعرض السريع فوق الصفحة.
-function walletsTotalBalance(){return walletsOverview().reduce((a,w)=>a+w.balance,0)}
+function walletsTotalBalance(){return Math.round(walletsOverview().reduce((a,w)=>a+w.balance,0)*100)/100}
 // ملخص حسب تصنيف الحركة (شخصي/تشغيل/تحصيل عميل...): إجمالي وارد وصادر لكل تصنيف،
 // عشان "أنا بصرف إيه شخصيًا وإيه مصاريف تشغيل" يبقى رقم واحد واضح.
 function walletCategoryTotals(){
@@ -256,7 +257,7 @@ function autoHealOrderWalletTx(force){
       const dRef="order-deposit-"+r.id,fRef="order-final-"+r.id;
       const dw=String(r.depositWallet||"").trim(),dAmt=orderMainDeposit(r);
       if(dAmt>0&&dw&&wallets.has(dw)&&!active.has(dRef)&&!userDel.has(dRef))todo.push({ref:dRef,date:_orderTxDate(r.createdAt),amount:dAmt,wallet:dw,reason:`💵 عربون أمر الشغل ${r.no}`});
-      const cw=String(r.closeWallet||"").trim(),coll=Math.max(0,(+r.total||0)-(+r.deposit||0));
+      const cw=String(r.closeWallet||"").trim(),coll=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
       if(r.closed&&r.paid&&coll>0&&cw&&wallets.has(cw)&&!active.has(fRef)&&!userDel.has(fRef))todo.push({ref:fRef,date:_orderTxDate(r.closedAt||r.paidAt),amount:coll,wallet:cw,reason:`💳 تحصيل نهائي أمر الشغل ${r.no}`});
     });
     if(!todo.length)return 0;
@@ -277,7 +278,7 @@ function orderSnapshotForRef(refKey){
   let r=arr(K.r).find(x=>String(x.id)===m[2]);if(!r)return null;
   return m[1]==="deposit"
     ?{amount:orderMainDeposit(r),wallet:String(r.depositWallet||"").trim()}
-    :{amount:Math.max(0,(+r.total||0)-(+r.deposit||0)),wallet:String(r.closeWallet||"").trim()};
+    :{amount:Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100),wallet:String(r.closeWallet||"").trim()};
 }
 function upsertWalletTxForRef(refKey,data,force){
   dedupeWalletTxByRef();
@@ -641,7 +642,7 @@ const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر
 function restoreOrderWalletTx(orderId,kind){
   const r=arr(K.r).find(x=>String(x.id)===String(orderId));if(!r)return alert("الأمر مش موجود.");
   const isDep=kind==="deposit";
-  const amount=isDep?orderMainDeposit(r):Math.max(0,(+r.total||0)-(+r.deposit||0));
+  const amount=isDep?orderMainDeposit(r):Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
   const wallet=String((isDep?r.depositWallet:r.closeWallet)||"").trim();
   if(!(amount>0)||!wallet)return alert("مفيش مبلغ أو محفظة على الأمر لتسجيلهم.");
   if(!confirm(`هتتسجل ${isDep?"عربون":"تحصيل"} أمر ${r.no||""} بمبلغ ${amount.toFixed(2)} ج كوارد في «${wallet}». لو الفلوس دي اتسجلت عندك بطريقة تانية (وارد يدوي مثلًا) هتتحسب مرتين. تأكيد؟`))return;

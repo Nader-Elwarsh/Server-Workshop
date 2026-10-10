@@ -145,7 +145,7 @@ function renderRoute(){
   }
   if(summaryEl){
     let scheduledOnly=list;
-    let closedToday=scheduledOnly.filter(x=>x.closed),visitedNotClosed=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day),notVisited=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&!(x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day)),collected=closedToday.reduce((a,x)=>a+Math.max(0,(+x.total||0)-(+x.deposit||0)),0),offSchedule=scheduledOnly.filter(x=>x._viaClosedOffSchedule).length;
+    let closedToday=scheduledOnly.filter(x=>x.closed),visitedNotClosed=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day),notVisited=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&!(x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day)),collected=closedToday.reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-(+x.deposit||0))*100)/100),0),offSchedule=scheduledOnly.filter(x=>x._viaClosedOffSchedule).length;
     // شريط تقدم اليوم + تفصيله: نقسّم كل أمر لحالة واحدة بس (بنفس أولوية
     // routeRowStatusInfo) عشان العدّ يبقى صحيح من غير تكرار.
     let buckets={done:0,cancelled:0,workshop:0,needspart:0,contact:0,pending:0,late:0};
@@ -359,7 +359,7 @@ function confirmQuickClose(i){
   if(r.status==="جديد"){r.status="جاري التنفيذ";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);from=r.status;}
   if(r.status==="جاري التنفيذ"){r.status="مكتمل";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);}
   const now=new Date().toISOString();
-  const collected=Math.max(0,(+r.total||0)-(+r.deposit||0));
+  const collected=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
   r.paid=true;r.remain=0;r.paidAt=now;r.closed=true;r.closedAt=now;r.closeWallet=wallet;
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};

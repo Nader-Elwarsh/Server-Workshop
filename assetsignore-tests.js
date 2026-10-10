@@ -26,6 +26,6 @@ for (const m of psw.matchAll(/"\.\/([^"]+)"/g)) needed.add(m[1]);
 const blocked = [...needed].filter((f) => fs.existsSync(path.join(root, f)) && ignored(f));
 assert.deepStrictEqual(blocked, [], '.assetsignore would exclude files the app needs: ' + blocked.join(', '));
 // ولازم يفضل مستبعد الحاجات الحساسة/الداخلية
-for (const f of ['functions/index.js', 'firestore.rules', 'firestore.rules.proposed', 'firebase.json', 'phone-lookup-tests.js', 'syntax-check.js', 'debug-check.html', 'README.md']) assert.ok(ignored(f), `${f} should stay unpublished`);
+for (const f of ['functions/index.js', 'firestore.rules', 'firestore.rules.proposed', 'firebase.json', 'phone-lookup-tests.js', 'syntax-check.js', 'debug-check.html', 'README.md', '.github/workflows/tests.yml']) assert.ok(ignored(f), `${f} should stay unpublished`);
 assert.ok(!ignored('app-check.js') && !ignored('firebase-sync.js') && !ignored('shared-data.js'));
 console.log('assetsignore-tests: PASS (' + needed.size + ' referenced files checked)');

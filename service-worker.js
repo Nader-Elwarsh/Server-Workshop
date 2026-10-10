@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v29-phone-lookup-app-check";
+const CACHE_NAME = "workshop-v30-errorlog-money";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -38,6 +38,7 @@ const CORE_FILES = [
   "./shared-data.js",
   "./brand-unify.js",
   "./app-check.js",
+  "./error-log.js",
   "./firebase-sync.js",
   "./login.html",
   "./privacy.html",

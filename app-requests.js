@@ -279,7 +279,7 @@ async function markRequestReturned(i){
     }
     if(!canTransitionStatus(r.status,"جاري التنفيذ")){alert(`لا يمكن الانتقال من حالة «${r.status}» إلى «جاري التنفيذ» مباشرة.`);return}
     const fin=r.closed?arr(K.wtx).find(x=>x&&x.refKey==="order-final-"+r.id&&!x.deleted):null;
-    const collected=r.closed?(fin?(+fin.amount||0):Math.max(0,(+r.total||0)-(+r.deposit||0))):0;
+    const collected=r.closed?(fin?(+fin.amount||0):Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100)):0;
     const finWallet=fin?String(fin.wallet||"").trim():String(r.closeWallet||"").trim();
     let choice="none",refund=0;
     if(r.closed&&collected>0){
@@ -308,7 +308,7 @@ async function markRequestReturned(i){
       depAmount=choice==="deposit"?collected:(choice==="refund"?Math.max(0,collected-refund):0);
       if(depAmount>0&&typeof applyAdditionalDeposit==="function")separate=applyAdditionalDeposit(r,depAmount,finWallet).separate;
       else depAmount=0;
-      r.remain=Math.max(0,(+r.total||0)-(+r.deposit||0));
+      r.remain=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
       if(choice!=="none")r.returnMoney={choice,collected,refund,at:r.reopenedAt};
     }
     applyStatusTimestamp(r,r.status);
@@ -381,7 +381,7 @@ function fillWaTemplate(text,r){
     "الحالة": r.paid?"مدفوع بالكامل":(r.status||""),
     "العطل": r.fault||"",
     "الإجمالي": (+r.total||0).toFixed(2)+" ج",
-    "المتبقي": Math.max(0,(+r.total||0)-(+r.deposit||0)).toFixed(2)+" ج",
+    "المتبقي": Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100).toFixed(2)+" ج",
     "اسم_الورشة": (info.name||"").trim()||(window.WL?WL.name():"الورشة الفنية"),
     "التوقيع": (info.footer||"").trim(),
     "شروط_الضمان": ((settings().warranty||{}).terms||"").trim()
@@ -423,7 +423,7 @@ function buildReceiptHtml(r){
     partsTotal: (+r.partsTotal||0).toFixed(2)+" ج",
     total: (+r.total||0).toFixed(2)+" ج",
     deposit: (+r.deposit||0).toFixed(2)+" ج",
-    remaining: Math.max(0,(+r.total||0)-(+r.deposit||0)).toFixed(2)+" ج",
+    remaining: Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100).toFixed(2)+" ج",
     paymentStatus: r.paid?"مدفوع بالكامل":"غير مكتمل",
     warranty: r.warrantyUntil?(new Date(r.warrantyUntil)>=new Date()?`سارٍ حتى ${esc(new Date(r.warrantyUntil).toLocaleDateString("ar-EG"))}`:`انتهى في ${esc(new Date(r.warrantyUntil).toLocaleDateString("ar-EG"))}`):"—",
     warrantyTerms: esc((settings().warranty||{}).terms||"")
@@ -465,7 +465,7 @@ function buildReceiptText(r){
     partsTotal: (+r.partsTotal||0).toFixed(2)+" ج",
     total: (+r.total||0).toFixed(2)+" ج",
     deposit: (+r.deposit||0).toFixed(2)+" ج",
-    remaining: Math.max(0,(+r.total||0)-(+r.deposit||0)).toFixed(2)+" ج",
+    remaining: Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100).toFixed(2)+" ج",
     paymentStatus: r.paid?"مدفوع بالكامل":"غير مكتمل",
     warranty: r.warrantyUntil?(new Date(r.warrantyUntil)>=new Date()?`سارٍ حتى ${new Date(r.warrantyUntil).toLocaleDateString("ar-EG")}`:`انتهى في ${new Date(r.warrantyUntil).toLocaleDateString("ar-EG")}`):"—",
     warrantyTerms: (settings().warranty||{}).terms||""
@@ -540,7 +540,7 @@ async function buildAndShareReceiptImage(r){
     partsTotal: (+r.partsTotal||0).toFixed(2)+" ج",
     total: (+r.total||0).toFixed(2)+" ج",
     deposit: (+r.deposit||0).toFixed(2)+" ج",
-    remaining: Math.max(0,(+r.total||0)-(+r.deposit||0)).toFixed(2)+" ج",
+    remaining: Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100).toFixed(2)+" ج",
     paymentStatus: r.paid?"مدفوع بالكامل":"غير مكتمل",
     warranty: r.warrantyUntil?(new Date(r.warrantyUntil)>=new Date()?`سارٍ حتى ${new Date(r.warrantyUntil).toLocaleDateString("ar-EG")}`:`انتهى في ${new Date(r.warrantyUntil).toLocaleDateString("ar-EG")}`):"—",
     warrantyTerms: (settings().warranty||{}).terms||""

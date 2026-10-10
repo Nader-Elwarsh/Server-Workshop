@@ -16,7 +16,7 @@
    يمكن عرض ملخص التشغيل للمتابعة فقط، لكنه لا يدخل في رصيد الخزنة.
 --------------------------------------------------------------------- */
 function treasuryEntries(){return arr(K.tr).filter(x=>!x.deleted)}
-function treasuryBalance(){return treasuryEntries().reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)}
+function treasuryBalance(){return Math.round(treasuryEntries().reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)*100)/100}
 function syncTreasuryForOrderDeposit(order){return null}
 function syncTreasuryForOrderClose(order,collected){return null}
 function addTreasuryManual(type){
@@ -96,7 +96,7 @@ function deleteTreasuryEntry(entryId){
 }
 function operationalTreasurySummary(){
   let deposits=arr(K.r).reduce((a,x)=>a+(+x.deposit||0),0);
-  let finalCollections=arr(K.r).filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,(+x.total||0)-(+x.deposit||0)),0);
+  let finalCollections=arr(K.r).filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-(+x.deposit||0))*100)/100),0);
   let expenses=(typeof walletTxEntries==="function"?walletTxEntries():[]).filter(x=>x.category==="مصروف تشغيل").reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0);
   return {deposits,finalCollections,orderCollections:deposits+finalCollections,expenses};
 }

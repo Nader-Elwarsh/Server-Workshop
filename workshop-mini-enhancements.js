@@ -86,7 +86,7 @@
       return a + ((r.closed || r.paid) ? (+r.total || 0) : Math.min(+r.deposit || 0, +r.total || 0));
     }, 0);
     const totalRemaining = rs.reduce(function (a, r) {
-      return a + (r.closed || r.paid || r.status === "ملغي" ? 0 : Math.max(0, (+r.total || 0) - (+r.deposit || 0)));
+      return a + (r.closed || r.paid || r.status === "ملغي" ? 0 : Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100));
     }, 0);
 
     // أكتر قطعة غيار اتصرفت مع هذا العميل عبر كل أوامره: بنجمع كل بنود
