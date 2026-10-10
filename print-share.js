@@ -28,6 +28,7 @@
   function printTarget(btn){
     const target=btn?.closest('.ps-context-target')||document.querySelector('main');
     if(!target)return;
+    try{window.WFPager&&window.WFPager.expandAll(target)}catch(_){}
     const title=target.dataset.psTitle||pageTitle();
     const area=document.createElement('div');area.id='psPrintArea';area.className='ps-print-area';
     // الإيصال عنده رأسه الكامل الخاص بيه فعلًا (اسم الورشة + التليفون +
@@ -45,6 +46,7 @@
   async function shareTarget(btn){
     const target=btn?.closest('.ps-context-target')||document.querySelector('main');
     if(!target)return;
+    try{window.WFPager&&window.WFPager.expandAll(target,{maxRows:150})}catch(_){}
     const title=target.dataset.psTitle||pageTitle();
     let text=cleanText(target,title);if(text.length>7000)text=text.slice(0,7000)+'\n…';
     if(navigator.share){try{await navigator.share({title:workshopBrandName()+' — '+title,text})}catch(e){if(e?.name!=='AbortError')copyFallback(text)}}else copyFallback(text);

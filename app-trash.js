@@ -195,7 +195,7 @@ function renderTrash() {
   // الحساسة في الإعدادات يقدر يربط مباشرة للسجل المحذوف ده بالتحديد لو
   // لسه موجود في السلة.
   host.innerHTML = rows.length
-    ? `<div class="audit-list">${rows.map(x => `<div class="setting-row trash-row" id="trash-entry-${x.id}"><details><summary><b>${icon[x.type] || "🗑️"} ${esc(x.label)}</b> <small class="hint">اتحذف ${esc(new Date(x.deletedAt).toLocaleString("ar-EG"))}</small></summary>${trashEntryDetailsHtml(x)}<span class="compact-actions"><button class="secondary small-btn" type="button" data-wf-event="click" data-wf-code="restoreFromTrash('${x.id}')">↩️ استرجاع</button><button class="danger-btn small-btn" type="button" data-wf-event="click" data-wf-code="permanentlyDeleteTrash('${x.id}')">🗑️ حذف نهائي</button></span></details></div>`).join("")}</div>`
+    ? `<div class="audit-list">${WFPager.render("trash", rows, x => `<div class="setting-row trash-row" id="trash-entry-${x.id}"><details><summary><b>${icon[x.type] || "🗑️"} ${esc(x.label)}</b> <small class="hint">اتحذف ${esc(new Date(x.deletedAt).toLocaleString("ar-EG"))}</small></summary>${trashEntryDetailsHtml(x)}<span class="compact-actions"><button class="secondary small-btn" type="button" data-wf-event="click" data-wf-code="restoreFromTrash('${x.id}')">↩️ استرجاع</button><button class="danger-btn small-btn" type="button" data-wf-event="click" data-wf-code="permanentlyDeleteTrash('${x.id}')">🗑️ حذف نهائي</button></span></details></div>`, "trash", { step: 20, hashPrefix: "trash-entry-" }).html}</div>`
     : `<div class="hint">سلة المهملات فاضية حاليًا.</div>`;
 }
 document.addEventListener("DOMContentLoaded", renderTrash);

@@ -150,7 +150,7 @@ function renderTreasury(){
       <div class="hint">هذه الأرقام للعرض والمراجعة فقط. لا تُضاف ولا تُخصم من درج الخزنة.</div>
     </details>
     <h3 class="treasury-list-title">📋 كشف درج الخزنة</h3>
-    ${list.length?list.map(x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
+    ${list.length?WFPager.render("treasury-tx",list,x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
       <div class="treasury-row-main">
         <b>${esc(x.reason||"—")}</b>
         <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))} • ${esc(x.category||"أخرى")}${x.counterparty?` • 👤 ${esc(x.counterparty)}`:""}${x.place?` • 📍 ${esc(x.place)}`:""}</small>
@@ -158,6 +158,6 @@ function renderTreasury(){
       </div>
       <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>
       <div class="treasury-row-actions"><button type="button" class="mini-action" data-wf-event="click" data-wf-code="editTreasuryEntry('${x.id}')">✏️</button><button type="button" class="mini-action" data-wf-event="click" data-wf-code="deleteTreasuryEntry('${x.id}')">🗑️</button></div>
-    </div>`).join(""):`<div class="hint">لا توجد حركات في درج الخزنة بعد.</div>`}
+    </div>`,"treasury",{step:40,hashPrefix:"tx-"}).html:`<div class="hint">لا توجد حركات في درج الخزنة بعد.</div>`}
   `;
 }

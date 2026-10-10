@@ -535,7 +535,7 @@ function renderWalletDetail(){dedupeWalletTxByRef();
       <select id="wdFilterCategory" data-wf-event="change" data-wf-code="renderWalletDetail()"><option value="">كل التصنيفات</option>${categories.map(c=>`<option ${c===filterCategory?"selected":""}>${esc(c)}</option>`).join("")}</select>
     </div>
     <h3 class="treasury-list-title">📋 كشف حركات ${isWallet?"المحفظة":"التصنيف"}</h3>
-    ${entries.length?entries.map(x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
+    ${entries.length?WFPager.render("wallet-tx",entries,x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
       <div class="treasury-row-main">
         <b>${(()=>{let order=linkedOrderForWalletTx(x);return order?`<a href="request.html?id=${encodeURIComponent(order.id)}" title="فتح أمر الشغل ${escAttr(order.no||"")}">${esc(x.reason||"—")} ↗</a>`:esc(x.reason||"—")})()}</b>
         <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
@@ -543,7 +543,7 @@ function renderWalletDetail(){dedupeWalletTxByRef();
       </div>
       <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>
       <div class="treasury-row-actions"><button type="button" class="mini-action" data-wf-event="click" data-wf-code="editWalletTx('${x.id}')">✏️</button><button type="button" class="mini-action" data-wf-event="click" data-wf-code="deleteWalletTx('${x.id}')">🗑️</button></div>
-    </div>`).join(""):`<div class="hint">لا توجد حركات بعد.</div>`}
+    </div>`,[type,name,filterCategory].join("|"),{step:40,hashPrefix:"tx-"}).html:`<div class="hint">لا توجد حركات بعد.</div>`}
   `;
 }
 

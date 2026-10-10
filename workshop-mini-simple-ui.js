@@ -321,6 +321,7 @@
     const all = customerRows();
 
     if (!state.customers) {
+      WFPager.reset("customers");
       const cnt = (b) => all.filter(c => customerBucketMatch(c, b)).length;
       const unpaidCount = cnt("unpaid");
       el.innerHTML = `
@@ -385,7 +386,7 @@
     </select>`;
     el.innerHTML = `
       <div class="simple-list-head"><b>${title}</b><div class="simple-list-head-actions">${sortSelectHtml}<button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="hideAllCustomers()">رجوع للملخص</button></div></div>
-      ${filtered.length ? filtered.map(c => {
+      ${filtered.length ? WFPager.render("customers", filtered, c => {
         const ds = deviceCountByCustomer.get(c.id) || 0;
         const rs = requestCountByCustomer.get(c.id) || 0;
         const ao = activeOrdersForCustomer(c.id);
@@ -399,7 +400,7 @@
           <small>🔧 ${ds} أجهزة • 🛠️ ${rs} أوامر${ao.length ? ` • 🔴 ${ao.length} فعال` : ""}${hw ? " • 🏭 جهاز في الورشة" : ""}</small>
           <small>${lastDate ? `📅 آخر تعامل: ${lastDate.toLocaleDateString("ar-EG",{day:"2-digit",month:"2-digit",year:"2-digit"})}` : "📅 بدون تعامل سابق"}${remain > 0 ? ` • 💰 متبقي ${remain.toFixed(2)} ج` : ""}${age ? ` • <span class="age-badge ${age.cls}" title="⏱️ أقدم أمر مفتوح: ${esc2(age.range)}">${age.dot} ${esc2(age.label)}</span>` : ""}</small>
         </div><div class="simple-record-actions"><a class="secondary small-btn" href="customer.html?id=${c.id}">فتح</a><button class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteCustomerRecord('${c.id}')">حذف</button></div></div>`;
-      }).join("") : `<div class="item">لا توجد نتائج.</div>`}`;
+      }, [q, bucket, sortKey].join("|")).html : `<div class="item">لا توجد نتائج.</div>`}`;
   });
 
   /* ---------- الأجهزة ---------- */
@@ -437,6 +438,7 @@
     if (!el) return;
     const all = deviceRows();
     if (!state.devices) {
+      WFPager.reset("devices");
       const cnt = (b) => all.filter(d => deviceBucketMatch(d, b)).length;
       const types = [...new Set(all.map(d => d.type).filter(Boolean))];
       const recurringCount = cnt("recurring");
@@ -486,12 +488,12 @@
       <option value="type" ${sortKey === "type" ? "selected" : ""}>النوع أبجديًا</option>
     </select>`;
     el.innerHTML = `<div class="simple-list-head"><b>${title}</b><div class="simple-list-head-actions">${sortSelectHtml}<button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="hideAllDevices()">رجوع للملخص</button></div></div>
-      ${filtered.length ? filtered.map(d => {
+      ${filtered.length ? WFPager.render("devices", filtered, d => {
         const ao = activeOrdersForDevice(d.id); const age = worstRequestAgeInfo(ao);
         const cust = customerById.get(d.customerId) || {};
         const latest = ao.length ? ao.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0))[0] : null;
         return `<div class="simple-record${age ? " " + age.cls : ""}"><div class="simple-record-icon">🔧</div><div class="simple-record-main"><a href="device.html?id=${d.id}"><b>${esc2(d.type)} — ${esc2(d.brand)}</b></a><span>${esc2(d.category||"—")} • ${esc2(d.model||"بدون موديل")}</span><small>👤 ${d.customerId ? `<a href="customer.html?id=${d.customerId}" data-wf-event="click" data-wf-code="event.stopPropagation()">${esc2(customerName(d.customerId))}</a>` : "عميل غير محدد"}</small>${cust.phone ? `<small>${`<a class="tel-link" href="tel:${esc2(cust.phone)}" target="_blank" rel="noopener">📞 ${esc2(cust.phone)}</a>`}</small>` : ""}<small>${ao.length ? `🔴 ${ao.length} أمر فعال${latest ? ` (${esc2(latest.status)}${latest.fault ? ` — ${esc2(latest.fault)}` : ""})` : ""}` : "لا يوجد أمر فعال"}${hasWorkshopDevice(d.id) ? " • 🏭 في الورشة" : ""}${age ? ` • <span class="age-badge ${age.cls}" title="⏱️ أقدم أمر مفتوح: ${esc2(age.range)}">${age.dot} ${esc2(age.label)}</span>` : ""}</small></div><div class="simple-record-actions"><a class="secondary small-btn" href="device.html?id=${d.id}">فتح</a><button class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteDeviceRecord('${d.id}')">حذف</button></div></div>`;
-      }).join("") : `<div class="item">لا توجد نتائج.</div>`}`;
+      }, [q, bucket, sortKey].join("|")).html : `<div class="item">لا توجد نتائج.</div>`}`;
   });
 
   /* ---------- المخزن ---------- */
@@ -556,6 +558,7 @@
     const all = partRows().filter(p => !p.archived);
 
     if (!state.parts) {
+      WFPager.reset("parts");
       const period = state.partsStatsPeriod || "30";
       const cats = {};
       all.forEach(p => {
@@ -634,13 +637,12 @@
     const viewMode = state.partsViewMode === "table" ? "table" : "cards";
     const toggleBtn = `<button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="setInventoryViewMode('${viewMode === "table" ? "cards" : "table"}')">${viewMode === "table" ? "🗂️ عرض كبطاقات" : "📊 عرض كجدول"}</button>`;
 
+    const pgSig = [q, bucket, cat, valueMode, viewMode, period].join("|");
     let bodyHtml;
     if (!filtered.length) {
       bodyHtml = `<div class="item">لا توجد نتائج.</div>`;
     } else if (viewMode === "table") {
-      bodyHtml = `<div class="report-table-wrap"><table class="report-table-full">
-        <tr><th>الصنف</th><th>الكمية</th><th>سعر الاستخدام</th><th>الإجمالي</th><th>مرات الاستخدام</th><th>الحالة</th></tr>
-        ${filtered.map(p => {
+      const pgT = WFPager.render("parts", filtered, p => {
           const qty = +p.qty || 0, use = +p.use || 0, total = qty * use;
           const isLow = qty <= (+p.min || 0);
           return `<tr class="report-row-clickable" data-wf-event="click" data-wf-code="location.href='part.html?id=${p.id}'">
@@ -651,10 +653,13 @@
             <td>${partUsageCount(p.id)}</td>
             <td>${isLow ? '<span class="badge">⚠️ منخفض</span>' : "✅"}</td>
           </tr>`;
-        }).join("")}
-      </table></div>`;
+        }, pgSig, { step: 50 });
+      bodyHtml = `<div class="report-table-wrap"><table class="report-table-full" ${pgT.attr}>
+        <tr><th>الصنف</th><th>الكمية</th><th>سعر الاستخدام</th><th>الإجمالي</th><th>مرات الاستخدام</th><th>الحالة</th></tr>
+        ${pgT.rows}
+      </table></div>${pgT.more}`;
     } else {
-      bodyHtml = filtered.map(p => {
+      bodyHtml = WFPager.render("parts", filtered, p => {
         const qty = +p.qty || 0, use = +p.use || 0, buy = +p.buy || 0;
         const itemTotal = qty * use;
         const pct = use > 0 ? ((use - buy) / use * 100) : 0;
@@ -670,7 +675,7 @@
           <span class="simple-qty ${qty <= (+p.min||0) ? "low" : ""}">${qty}</span>
           <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a><button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
         </div>`;
-      }).join("");
+      }, pgSig).html;
     }
 
     el.innerHTML = `
@@ -817,6 +822,7 @@
     const all = requestRows();
 
     if (!state.requests) {
+      WFPager.reset("requests");
       renderRequestSummary();
       return;
     }
@@ -885,7 +891,7 @@
         </div>
       </div>
       ${requestAgeLegendHtml()}
-      ${filtered.length ? filtered.map(r => {
+      ${filtered.length ? WFPager.render("requests", filtered, r => {
         const loc = locationForOrder(r);
         const status = r.closed ? "مغلق" : (r.status || "—");
         const canEditStatus = !r.closed && !r.paid;
@@ -915,7 +921,7 @@
             ${(+r.deposit||0) > 0 ? `<small class="deposit-chip">💵 عربون ${(+r.deposit).toFixed(2)} ج</small>` : ""}
           </div>
         </div>`;
-      }).join("") : `<div class="item">لا توجد أوامر في هذا القسم.</div>`}`;
+      }, [q, sf, wf, focus, sort].join("|")).html : `<div class="item">لا توجد أوامر في هذا القسم.</div>`}`;
   });
 
   /* markPaidAndClose / closeOrder: بقوا نسخة واحدة موحّدة في app-shared.js

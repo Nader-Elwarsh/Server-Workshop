@@ -252,11 +252,11 @@ function renderFaultCodes(){
     .filter(f=>!brandFilter||f.brand===brandFilter)
     .filter(f=>!q||(f.code+" "+f.title+" "+f.cause+" "+f.fix+" "+f.deviceType+" "+f.brand).toLowerCase().includes(q))
     .sort((x,y)=>(x.deviceType||"").localeCompare(y.deviceType||"","ar")||(x.brand||"").localeCompare(y.brand||"","ar")||(x.code||"").localeCompare(y.code||"","ar"));
-  el.innerHTML=a.length?a.map(f=>`<div class="item ps-context-target" data-ps-title="كود عطل ${esc(f.code)}">
+  el.innerHTML=a.length?WFPager.render("faultcodes",a,f=>`<div class="item ps-context-target" data-ps-title="كود عطل ${esc(f.code)}">
     <div class="item-head"><a href="faultcode.html?id=${f.id}"><b>🧯 ${esc(f.code)} — ${esc(f.title)}</b></a>${psActions("كود عطل "+f.code)}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteFaultCodeRecord('${f.id}')">🗑️ حذف</button></div>
     <div>${esc(f.deviceType)||"كل الأنواع"} • 🏷️ ${esc(f.brand)||"كل الماركات"}</div>
     ${f.cause?`<div>السبب: ${esc(f.cause)}</div>`:""}
-  </div>`).join(""):'<div class="item">لا توجد أكواد مسجّلة بهذا الفلتر بعد.</div>';
+  </div>`,[q,typeFilter,brandFilter].join("|")).html:'<div class="item">لا توجد أكواد مسجّلة بهذا الفلتر بعد.</div>';
 }
 
 /* ---------------------------------------------------------------------

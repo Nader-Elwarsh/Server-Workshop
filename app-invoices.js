@@ -137,18 +137,20 @@ function invoicePartNames(inv) {
 // الصنف/الجهاز في partProfile، عشان الصورة تظهر واضحة على الصفحة نفسها
 // من غير ما تحتاجي تضغطي "عرض" الأول.
 async function resolveInvoiceThumbs(root) {
-  const imgs = Array.from((root || document).querySelectorAll(".invoice-thumb[data-photo-ref]"));
+  const imgs = Array.from((root || document).querySelectorAll(".invoice-thumb[data-photo-ref]")).filter(img => !img.getAttribute("src"));
   await Promise.all(imgs.map(async img => {
     const ref = img.dataset.photoRef;
     const src = window.ImageStore ? await window.ImageStore.resolveSrc(ref) : ref;
     if (src) img.src = src;
   }));
 }
+// «عرض المزيد» بيضيف فواتير جديدة في القائمة: نحمّل صورها المصغّرة.
+document.addEventListener("wf-pager-more", e => { if (e.detail && e.detail.key === "invoices") resolveInvoiceThumbs(e.detail.host); });
 function renderInvoices() {
   const host = document.getElementById("invoicesList"); if (!host) return;
   const list = arr(K.inv).slice().reverse();
   if (!list.length) { host.innerHTML = `<div class="hint">لا توجد فواتير مسجّلة بعد.</div>`; return; }
-  host.innerHTML = list.map(inv => {
+  host.innerHTML = WFPager.render("invoices", list, inv => {
     const names = invoicePartNames(inv);
     return `<div class="item invoice-row">
       <img class="invoice-thumb" loading="lazy" decoding="async" alt="🧾" data-photo-ref="${esc(inv.photo)}" data-wf-event="click" data-wf-code="showImagePreview('${esc(inv.photo)}','🧾 فاتورة مخزن')">
@@ -158,7 +160,7 @@ function renderInvoices() {
       </div>
       <div class="compact-actions"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="editInvoiceLinks('${inv.id}')">✏️ تعديل الربط</button><button type="button" class="danger-btn mini-action" data-wf-event="click" data-wf-code="deleteInvoiceRecord('${inv.id}')">🗑️ حذف</button></div>
     </div>`;
-  }).join("");
+  }, "invoices", { step: 20 }).html;
   resolveInvoiceThumbs(host);
 }
 /* يستخدم من صفحة الصنف نفسه: بيعرض الفواتير المرتبطة بيه فعلًا (مع زرار

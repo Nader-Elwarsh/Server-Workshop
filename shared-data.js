@@ -580,6 +580,111 @@ var WFStorage = window.WFStorage;
   window.withRollbackAsync = withRollbackAsync;
 })(window);
 
+/* WFPAGER:BEGIN */
+/* ---------------------------------------------------------------------
+   تقسيم القوائم الطويلة لصفحات («عرض المزيد») بدل رسم كل السجلات مرة واحدة.
+   - WFPager.render(key, items, rowFn, sig, opts) بيرسم أول دفعة بس ويرجّع
+     { html, rows, more, attr }: html = الحاوية + زر العرض، rows = صفوف أول دفعة بس.
+   - «عرض المزيد» بيضيف الصفوف الجديدة في آخر القائمة (من غير إعادة رسم الصفحة،
+     فالحقول المكتوبة والسكرول مايتأثروش).
+   - sig = توقيع الفلاتر (بحث/ترتيب/تصنيف): لو اتغير بترجع القائمة لأول دفعة، ولو
+     ثبت (مثلًا بعد تعديل/حذف سجل) بيفضل نفس عدد الصفوف المعروضة.
+   - opts.hashPrefix: لو الرابط فيه #tx-<id> بنوسّع الدفعة لحد ما السجل ده يظهر.
+   --------------------------------------------------------------------- */
+(function (w) {
+  "use strict";
+  var DEFAULT_STEP = 30, CONFIRM_ALL_OVER = 300, S = {};
+  function num(n) { try { return Number(n).toLocaleString("ar-EG"); } catch (_) { return String(n); } }
+  function safeKey(k) { return String(k == null ? "" : k).replace(/[^\w-]/g, ""); }
+  function rowHtml(st, i) {
+    try { var h = st.rowFn(st.items[i], i); return h == null ? "" : String(h); }
+    catch (e) { try { console.error("[WFPager] تعذر عرض سجل في القائمة", st.key, e); } catch (_) {} return ""; }
+  }
+  function rowsHtml(st, from, to) { var out = ""; for (var i = from; i < to; i++) out += rowHtml(st, i); return out; }
+  function hashIndex(items, opts) {
+    if (!opts || !opts.hashPrefix || typeof location === "undefined") return -1;
+    var h = String(location.hash || "").slice(1);
+    if (h.indexOf(opts.hashPrefix) !== 0) return -1;
+    var id = h.slice(opts.hashPrefix.length);
+    try { id = decodeURIComponent(id); } catch (_) {}
+    for (var i = 0; i < items.length; i++) if (items[i] && String(items[i].id) === id) return i;
+    return -1;
+  }
+  function moreBox(key) {
+    var st = S[key], rem = st ? st.items.length - st.shown : 0, inner = "";
+    if (rem > 0) {
+      inner = '<button type="button" class="secondary" data-wf-event="click" data-wf-code="wfPagerMore(\'' + key + '\')">⬇️ عرض المزيد (' + num(st.shown) + " من " + num(st.items.length) + ')</button>' +
+        (rem > st.step ? ' <button type="button" class="secondary" data-wf-event="click" data-wf-code="wfPagerAll(\'' + key + '\')">عرض الكل</button>' : "");
+    } else if (st && st.items.length > st.step) {
+      inner = '<small class="hint">تم عرض كل السجلات (' + num(st.items.length) + ')</small>';
+    }
+    return '<div class="actions wf-pg-more" data-wf-pg-more="' + key + '" style="margin:10px 0">' + inner + "</div>";
+  }
+  function render(key, items, rowFn, sig, opts) {
+    key = safeKey(key); opts = opts || {};
+    items = Array.isArray(items) ? items : [];
+    var step = opts.step > 0 ? opts.step : DEFAULT_STEP, prev = S[key];
+    var shown = prev && prev.sig === sig ? Math.max(prev.shown, step) : step;
+    var hi = hashIndex(items, opts);
+    if (hi >= shown) shown = Math.ceil((hi + 1) / step) * step;
+    shown = Math.min(shown, items.length);
+    var st = S[key] = { key: key, items: items, rowFn: rowFn, sig: sig, shown: shown, step: step };
+    var rows = rowsHtml(st, 0, shown), attr = 'data-wf-pg-rows="' + key + '"', more = moreBox(key);
+    return { rows: rows, more: more, attr: attr, shown: shown, total: items.length, html: "<div " + attr + ">" + rows + "</div>" + more };
+  }
+  function more(key, all) {
+    key = safeKey(key);
+    var st = S[key]; if (!st || typeof document === "undefined") return false;
+    var rem = st.items.length - st.shown; if (rem <= 0) return false;
+    if (all && rem > CONFIRM_ALL_OVER && typeof confirm === "function" &&
+        !confirm("هيتم عرض " + num(rem) + " سجل إضافي، وده ممكن يبطّئ الصفحة. تكمل؟")) return false;
+    var host = document.querySelector('[data-wf-pg-rows="' + key + '"]');
+    if (!host) return false;
+    var to = all ? st.items.length : Math.min(st.items.length, st.shown + st.step);
+    host.insertAdjacentHTML("beforeend", rowsHtml(st, st.shown, to));
+    st.shown = to;
+    var box = document.querySelector('[data-wf-pg-more="' + key + '"]');
+    if (box) box.outerHTML = moreBox(key);
+    try { document.dispatchEvent(new CustomEvent("wf-pager-more", { detail: { key: key, host: host } })); } catch (_) {}
+    return true;
+  }
+  /* الطباعة والمشاركة لازم يشوفوا كل السجلات مش الدفعة المعروضة بس (مثلًا كشف المحفظة).
+     root: نوسّع القوائم اللي جوه العنصر ده بس. opts.maxRows: حد أقصى للصفوف الإضافية لكل قائمة. */
+  function expandAll(root, opts) {
+    if (typeof document === "undefined") return 0;
+    var max = opts && opts.maxRows > 0 ? opts.maxRows : Infinity, added = 0;
+    Object.keys(S).forEach(function (key) {
+      var st = S[key], rem = st.items.length - st.shown;
+      if (rem <= 0) return;
+      var host = document.querySelector('[data-wf-pg-rows="' + key + '"]');
+      if (!host || (root && root.contains && !root.contains(host))) return;
+      var to = Math.min(st.items.length, st.shown + max);
+      host.insertAdjacentHTML("beforeend", rowsHtml(st, st.shown, to));
+      added += to - st.shown; st.shown = to;
+      var box = document.querySelector('[data-wf-pg-more="' + key + '"]');
+      if (box) box.outerHTML = moreBox(key);
+      try { document.dispatchEvent(new CustomEvent("wf-pager-more", { detail: { key: key, host: host } })); } catch (_) {}
+    });
+    return added;
+  }
+  function reset(key) { if (key === undefined) S = {}; else delete S[safeKey(key)]; }
+  w.WFPager = { render: render, more: more, expandAll: expandAll, reset: reset, DEFAULT_STEP: DEFAULT_STEP };
+  // طباعة الصفحة بالكامل (Ctrl+P أو printWorkshopPage): نعرض كل السجلات. طباعة عنصر واحد بتوسّعه print-share.js بنفسه.
+  try {
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("beforeprint", function () {
+        if (typeof document !== "undefined" && document.body && document.body.classList && document.body.classList.contains("ps-printing")) return;
+        expandAll();
+      });
+    }
+  } catch (_) {}
+  if (typeof window !== "undefined") {
+    window.wfPagerMore = function (key) { return more(key, false); };
+    window.wfPagerAll = function (key) { return more(key, true); };
+  }
+})(typeof window !== "undefined" ? window : globalThis);
+/* WFPAGER:END */
+
 /* ---------------------------------------------------------------------
    دعم الروابط اللي بتوجّه لسجل معيّن جوه صفحة (زي فحص سلامة البيانات في
    الإعدادات، اللي بقى بيودّي لسجل الحركة/الحساب نفسه مش لقسمه العام بس):

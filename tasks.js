@@ -73,7 +73,7 @@ function renderTasks(){
   }).sort((a,b)=>Number(a.completed)-Number(b.completed)||String(a.date||"").localeCompare(String(b.date||""))||String(a.time||"").localeCompare(String(b.time||"")));
   let open=taskRows().filter(x=>!x.completed).length,done=taskRows().filter(x=>x.completed).length;
   let stats=document.getElementById("taskStats");if(stats)stats.innerHTML=`<div class="compact-stats"><div class="stat"><b>${open}</b><span>مفتوحة</span></div><div class="stat"><b>${done}</b><span>مكتملة</span></div><div class="stat"><b>${taskRows().filter(x=>!x.completed&&x.date===today).length}</b><span>مهام اليوم</span></div><div class="stat"><b>${taskRows().filter(x=>!x.completed&&x.date&&x.date<today).length}</b><span>متأخرة</span></div></div>`;
-  el.innerHTML=rows.length?rows.map(t=>{
+  el.innerHTML=rows.length?WFPager.render("tasks",rows,t=>{
     let c=t.customerId?customerName(t.customerId):"";
     let r=t.requestId?(byIdCached(K.r).get(t.requestId)||null):null;
     return `<div class="item record-card ${t.completed?"task-done":""}">
@@ -90,7 +90,7 @@ function renderTasks(){
         ${t.note?`<div>📝 ${esc(t.note)}</div>`:""}
       </div>
     </div>`;
-  }).join(""):'<div class="item">لا توجد مهام بهذا الفلتر.</div>';
+  },[q,filter].join("|")).html:'<div class="item">لا توجد مهام بهذا الفلتر.</div>';
 }
 function initTasks(){
   if(!document.getElementById("taskList"))return;

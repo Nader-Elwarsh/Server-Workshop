@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v27-security-headers-perf";
+const CACHE_NAME = "workshop-v28-list-paging";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
