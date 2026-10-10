@@ -1,8 +1,9 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const { onRequest } = require("firebase-functions/v2/https");
-const { defineString, defineSecret } = require("firebase-functions/params");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineString, defineSecret, defineBoolean } = require("firebase-functions/params");
+const { createPhoneHandlers, PhoneError } = require("./phone-lookup");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -12,6 +13,8 @@ const cloudName = defineString("CLOUDINARY_CLOUD_NAME");
 const apiKey = defineString("CLOUDINARY_API_KEY");
 const allowedOrigins = defineString("UPLOAD_ALLOWED_ORIGINS");
 const apiSecret = defineSecret("CLOUDINARY_API_SECRET");
+// فعّله (true) بعد ما تتأكد في Firebase Console إن طلبات App Check المعتمدة بقت شبه 100%.
+const enforceAppCheckParam = defineBoolean("ENFORCE_APP_CHECK", { default: false });
 const MAX_BYTES = 12 * 1024 * 1024;
 const MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif", "audio/mpeg", "audio/wav", "audio/ogg", "audio/webm"]);
 
@@ -86,3 +89,34 @@ exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], t
     return json(res, 500, { error: "upload_failed" });
   }
 });
+
+/* ---------------------------------------------------------------------
+   البحث عن حساب البوابة بالتليفون (بديل قراءة phoneIndex المباشرة من المتصفح).
+   - بتتحقق من Origin المسموح (نفس UPLOAD_ALLOWED_ORIGINS) وApp Check (لو ENFORCE_APP_CHECK=true).
+   - عدد الطلبات محدود لكل IP ولكل رقم (مجموعة rateLimits).
+   --------------------------------------------------------------------- */
+const phoneHandlers = createPhoneHandlers({
+  db: { collection: (...a) => getFirestore().collection(...a), runTransaction: (...a) => getFirestore().runTransaction(...a) },
+  enforceAppCheck: () => enforceAppCheckParam.value(),
+  allowedOrigins: () => allowedOrigins.value().split(",").map((x) => x.trim()).filter(Boolean),
+  log: (...a) => console.warn("[phone-lookup]", ...a)
+});
+function callable(name, handler) {
+  return onCall({ region: "us-central1", cors: true, maxInstances: 10, timeoutSeconds: 15, memory: "256MiB" }, async (request) => {
+    try {
+      const raw = request.rawRequest;
+      return await handler({
+        data: request.data,
+        appVerified: !!request.app,
+        origin: (raw && raw.get && raw.get("origin")) || "",
+        ip: (raw && raw.ip) || ""
+      });
+    } catch (e) {
+      if (e instanceof PhoneError) throw new HttpsError(e.code, e.message);
+      console.error(`[${name}]`, e && e.message);
+      throw new HttpsError("internal", "internal");
+    }
+  });
+}
+exports.portalLoginLookup = callable("portalLoginLookup", phoneHandlers.lookup);
+exports.portalPhoneAvailable = callable("portalPhoneAvailable", phoneHandlers.available);
