@@ -147,7 +147,11 @@ function filterListOptions(fieldId, q) {
   // زي فكرة filterCustomerOptions بالظبط: أول ما المستخدم يبدأ يكتب، الاختيار
   // القديم (لو موجود) بيتلغى لحد ما يختار حاجة من القايمة تاني أو يضيف جديد —
   // عشان مايفضلش في الحقل قيمة قديمة متجاهلها كتابة جزئية.
-  hidden.value = "";
+  // لو النص الظاهر في خانة البحث هو نفس القيمة المختارة بالظبط، يبقى ده مش "كتابة جديدة" —
+  // ده حدث input/focus متأخر (لوحة مفاتيح الموبايل بتثبّت النص المكتوب بعد الضغط على النتيجة)،
+  // وكان بيمسح الاختيار فيظهر "اختر نوع الجهاز..." رغم إن الحقل ظاهر عليه الاختيار.
+  const _s = document.getElementById(fieldId + "Search");
+  if (!(hidden.value && _s && String(_s.value).trim() === hidden.value)) hidden.value = "";
   const ctx = _listCtx(hidden, src);
   if (src.ctxKey && !ctx[src.ctxKey]) {
     box.innerHTML = `<div class="part-ac-empty">اختر ${esc(src.ctxLabel)} أولاً.</div>`;
