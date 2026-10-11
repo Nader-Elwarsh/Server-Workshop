@@ -8,7 +8,7 @@
   "use strict";
   var PROD = { apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8", authDomain: "elwarsha-elfanya.firebaseapp.com", projectId: "elwarsha-elfanya", storageBucket: "elwarsha-elfanya.firebasestorage.app", messagingSenderId: "916075814550", appId: "1:916075814550:web:90e6b0c01b58abc614ecb7" };
   // الصق هنا إعدادات تطبيق الويب بتاع المشروع التجريبي (Firebase Console ← Project settings ← Your apps ← Config).
-  var STAGING = { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };
+  var STAGING = { apiKey: "AIzaSyDJQr58rGVO6A5AAPNup4dgmiTCImBc08w", authDomain: "elwarsha-staging.firebaseapp.com", projectId: "elwarsha-staging", storageBucket: "elwarsha-staging.firebasestorage.app", messagingSenderId: "746270137332", appId: "1:746270137332:web:f554ba86e5d33bf98df7a1" };
   // دومينات تجريبية إضافية (اسم الدومين بالظبط، من غير https://) لو مش فيها كلمة staging.
   var STAGING_HOSTS = [];
 

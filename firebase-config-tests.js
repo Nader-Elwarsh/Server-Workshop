@@ -3,7 +3,10 @@ const fs = require('fs'), vm = require('vm'), assert = require('assert'), path =
 const src = fs.readFileSync(`${__dirname}/firebase-config.js`, 'utf8');
 function load(host, { stagingFilled = false, hosts = null } = {}) {
   let code = src;
-  if (stagingFilled) code = code.replace('var STAGING = { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };', 'var STAGING = { apiKey: "K", authDomain: "s.firebaseapp.com", projectId: "stg-proj", storageBucket: "b", messagingSenderId: "1", appId: "1:1:web:x" };');
+  const EMPTY = 'var STAGING = { apiKey: "", authDomain: "", projectId: "", storageBucket: "", messagingSenderId: "", appId: "" };';
+  const FILLED = 'var STAGING = { apiKey: "K", authDomain: "s.firebaseapp.com", projectId: "stg-proj", storageBucket: "b", messagingSenderId: "1", appId: "1:1:web:x" };';
+  assert.ok(/var STAGING = \{[^}]*\};/.test(code));
+  if (stagingFilled !== 'real') code = code.replace(/var STAGING = \{[^}]*\};/, stagingFilled ? FILLED : EMPTY);
   if (hosts) code = code.replace('var STAGING_HOSTS = [];', 'var STAGING_HOSTS = ' + JSON.stringify(hosts) + ';');
   const inited = [], appended = [];
   const document = { readyState: 'complete', body: { appendChild: (e) => appended.push(e) }, getElementById: () => null, createElement: () => ({ style: {} }), addEventListener() {} };
@@ -35,4 +38,9 @@ for (const h of ['staging.example.com', 'staging-workshop.user.workers.dev', 'ab
   assert.ok(pages >= 30);
   for (const f of ['service-worker.js', 'portal-sw.js']) assert.ok(fs.readFileSync(path.join(__dirname, f), 'utf8').includes('./firebase-config.js'), f);
   const sync = fs.readFileSync(`${__dirname}/firebase-sync.js`, 'utf8'); assert.ok(/var CFG = window\.WF_FIREBASE_CONFIG/.test(sync) && /if \(!CFG\) \{[\s\S]*?return;\s*\}/.test(sync)); }
+// الإعدادات الحقيقية للتجريبي المدخلة في الملف: مشروع تجريبي مختلف عن الإنتاج وكل القيم متسقة
+{ const m = src.match(/var STAGING = (\{[^}]*\});/); const c = vm.runInNewContext('(' + m[1] + ')'); const prod = vm.runInNewContext('(' + src.match(/var PROD = (\{[^}]*\});/)[1] + ')');
+  assert.ok(/staging/.test(c.projectId) && c.projectId !== prod.projectId && c.apiKey !== prod.apiKey && c.appId !== prod.appId);
+  assert.strictEqual(c.authDomain, c.projectId + '.firebaseapp.com'); assert.ok(c.storageBucket.startsWith(c.projectId)); assert.ok(c.appId.startsWith('1:' + c.messagingSenderId + ':web:')); assert.ok(/^AIza[\w-]{35}$/.test(c.apiKey), 'apiKey format');
+  const e = load('staging.example.com', { stagingFilled: 'real' }); }
 console.log('firebase-config-tests: PASS');
