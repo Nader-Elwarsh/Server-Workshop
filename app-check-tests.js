@@ -100,7 +100,7 @@ const fails = async (p, check) => { try { await p; } catch (e) { check(e); retur
     assert.ok(sync >= 20, 'staff pages found');
     for (const f of ['privacy.html', 'terms.html']) { const h = fs.readFileSync(`${__dirname}/${f}`, 'utf8'); assert.ok(h.indexOf('app-check.js') > -1 && h.indexOf('app-check.js') < h.indexOf('wl-public-init.js'), f); }
     const portal = fs.readFileSync(`${__dirname}/portal.html`, 'utf8');
-    assert.ok(portal.indexOf('app-check.js') < portal.indexOf('firebase.initializeApp({'), 'portal loads app-check before init');
+    assert.ok(portal.indexOf('app-check.js') < portal.indexOf('firebase.initializeApp(window.WF_FIREBASE_CONFIG)'), 'portal loads app-check before init');
     assert.ok(/WFAppCheck\.call\("portalLoginLookup"/.test(portal) && /WFAppCheck\.call\("portalPhoneAvailable"/.test(portal));
     assert.ok(!/db\.collection\("phoneIndex"\)\.doc\(p\)\.get\(\)\.then\(function\(d\)\{if\(d\.exists\)throw\{code:"phone-exists"\}/.test(portal), 'signup pre-check no longer reads phoneIndex directly first');
     const sync2 = fs.readFileSync(`${__dirname}/firebase-sync.js`, 'utf8');

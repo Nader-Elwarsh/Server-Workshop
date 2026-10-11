@@ -39,11 +39,12 @@ body{padding-bottom:calc(78px + env(safe-area-inset-bottom,0px))}
 .fbprompt{display:flex;align-items:center;gap:10px;cursor:pointer;padding:10px 14px}.fbprompt span.in{flex:1;padding:10px 14px;border-radius:22px;background:var(--field);border:1px solid var(--bd);color:var(--mut);font-size:14.5px}
 </style>
 <script src="./vendor/firebase-app-compat.js"></script><script src="./vendor/firebase-auth-compat.js"></script><script src="./vendor/firebase-firestore-compat.js"></script>
-<script src="app-check.js"></script><script src="image-store.js"></script><script src="branding.js" defer></script></head>
+<script src="firebase-config.js"></script><script src="app-check.js"></script><script src="image-store.js"></script><script src="branding.js" defer></script></head>
 <body><script src="portal-ticker.js"></script><script src="pw-eye.js"></script><script src="wf-session.js"></script><header class="wf-head"><div class="wf-head-in"><div class="wf-brand"><img class="wf-logo" src="app-icon.svg" alt="شعار الورشة الفنية" width="46" height="46"><div><b>الورشة الفنية</b><span>بوابة العملاء</span></div></div><button type="button" class="sec" id="outBtn" style="display:none" onclick="doOut()">خروج</button></div></header><div id="tk" style="display:none"></div><div style="max-width:680px;margin:auto;padding:0 12px"><button type="button" class="tipsbar" id="tipsBar" onclick="goTips()"><i>📰</i><span><b>مقالات ونصايح</b><small class="tipsSub">نصايح صيانة وإجابات من الورشة</small></span><em>‹</em></button></div><main id="app">جاري التحميل…</main>
 <footer class="wf-foot"><div class="wf-links"><a href="privacy.html">سياسة الخصوصية</a><a href="terms.html">شروط الاستخدام</a></div><div>الورشة الفنية</div></footer>
 <script>
-firebase.initializeApp({apiKey:"AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8",authDomain:"elwarsha-elfanya.firebaseapp.com",projectId:"elwarsha-elfanya",storageBucket:"elwarsha-elfanya.firebasestorage.app",messagingSenderId:"916075814550",appId:"1:916075814550:web:90e6b0c01b58abc614ecb7"});
+if(!window.WF_FIREBASE_CONFIG){document.body.innerHTML='<div style="padding:40px 20px;text-align:center;font:600 18px sans-serif;direction:rtl">بيئة تجريبية غير مجهّزة بعد.</div>';throw new Error("no firebase config")}
+firebase.initializeApp(window.WF_FIREBASE_CONFIG);
 try{if(window.WFAppCheck)WFAppCheck.attach(firebase.app())}catch(e){}
 var auth=firebase.auth(),db=firebase.firestore(),FV=firebase.firestore.FieldValue,app=document.getElementById("app"),SYN="@phone.elwarsha.app";
 var cfg={centers:["مطاي","بني مزار"],villages:{"مطاي":["مطاي البلد","أبو عزيز","بردنوها","منبال","أبوان","حلوة","سيلة الشرقية","سيلة الغربية","عزبة بطرس","عزبة أبو شحاته"],"بني مزار":[]},types:{"غسالات":["هاف أوتوماتيك","فوق أوتوماتيك","أمامي أوتوماتيك"],"ثلاجات":["عادية","نوفروست","ديب فريزر"],"تكييفات":["سبليت","شباك"],"سخانات":["كهرباء","غاز"],"كولديرات":["كولدير"],"أجهزة_أخرى":["عام"]},brands:[],executionPlaces:["عند العميل","الورشة"]};

@@ -41,7 +41,17 @@
     console.warn("Firebase SDK غير متاح — التطبيق يعمل محليًا إذا كان الجهاز موثّقًا سابقًا.");
     return;
   }
-  var CFG = { apiKey: "AIzaSyAISlRIHOVKhupLS8l2hG_QwY6Wkchq9W8", authDomain: "elwarsha-elfanya.firebaseapp.com", projectId: "elwarsha-elfanya", storageBucket: "elwarsha-elfanya.firebasestorage.app", messagingSenderId: "916075814550", appId: "1:916075814550:web:90e6b0c01b58abc614ecb7" };
+  var CFG = window.WF_FIREBASE_CONFIG; // من firebase-config.js (حسب الدومين: إنتاج أو تجريبي)
+  if (!CFG) {
+    // بيئة تجريبية لسه مش مجهّزة: نقفل الصفحة بدل ما نتصل بأي بيانات.
+    try {
+      var envLock = document.createElement("div"); envLock.id = "wfCloudCover";
+      envLock.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:24px";
+      envLock.textContent = "هذه بيئة تجريبية غير مجهّزة بعد. أضف إعدادات مشروع Firebase التجريبي في firebase-config.js.";
+      (document.body || document.documentElement).appendChild(envLock);
+    } catch (e) {}
+    return;
+  }
   var COLS = { wf_c: "customers", wf_d: "devices", wf_r: "requests", wf_p: "parts", wf_tr: "treasury", wf_tasks: "tasks", wf_wallet_tx: "walletTx", wf_fault_codes: "faultCodes", wf_inv: "invoices", wf_m: "partMoves" };
   var EXTRA = ["wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"];
   var SETTINGS = "wf_s", CHUNK = 250000, TIMEOUT = 25000;
