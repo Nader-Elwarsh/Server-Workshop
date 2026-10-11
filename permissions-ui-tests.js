@@ -11,8 +11,8 @@ function el(tag, attrs, cls) {
     getAttribute: (k) => (k in a ? a[k] : null), setAttribute(k, v) { a[k] = String(v); }, removeAttribute(k) { delete a[k]; }, hasAttribute: (k) => k in a,
     appendChild(ch) { this.children.push(ch); return ch; }, remove() { this.removed = true; }, querySelectorAll() { return []; }, _a: a };
 }
-function run(url, { profile, config, nodes } = {}) {
-  const store = new Map();
+function run(url, { profile, config, nodes, preview } = {}) {
+  const store = new Map(), sess = new Map(); if (preview) sess.set('wf_perm_preview', preview);
   if (profile) store.set('wf_perm_profile', JSON.stringify(profile));
   if (config) store.set('wf_perm_config', JSON.stringify(config));
   const alerts = [], docListeners = {};
@@ -29,11 +29,12 @@ function run(url, { profile, config, nodes } = {}) {
   };
   const winListeners = {};
   const ctx = { document, alert: (m) => alerts.push(String(m)), setTimeout: (fn) => { return 1; }, clearTimeout() {}, location: { pathname: url.split('?')[0], search: url.includes('?') ? '?' + url.split('?')[1] : '' },
+    sessionStorage: { getItem: (k) => (sess.has(k) ? sess.get(k) : null), setItem: (k, v) => sess.set(k, String(v)), removeItem: (k) => sess.delete(k) },
     WFStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) }, WFRoles: core, navigator: { onLine: false },
     MutationObserver: function () { this.observe = () => {}; }, firebase: undefined, Promise };
   ctx.window = ctx; ctx.addEventListener = (t, fn) => { (winListeners[t] ||= []).push(fn); };
   vm.runInNewContext(src, ctx, { filename: 'app-permissions.js' });
-  return { ctx, alerts, body, docListeners, winListeners, store };
+  return { ctx, alerts, body, docListeners, winListeners, store, sess };
 }
 const flush = () => new Promise((r) => setImmediate(r));
 const TECH = { name: 'ف', role: 'tech', acl: 1, allow: [], deny: [] };
@@ -120,6 +121,33 @@ const denied = (t) => !!t.body.children.find((c) => c.id === 'wfPermDenied');
 
   // 7) صفحات الدخول/البوابة: مفيش حراسة
   t = run('/login.html', { profile: TECH }); assert.strictEqual(t.ctx.WFPerm, undefined); t = run('/portal.html', { profile: TECH }); assert.strictEqual(t.ctx.WFPerm, undefined);
+
+  // 8) زر الحساب (خروج/تبديل) ظاهر دايمًا حتى لو الإعدادات مقفولة على الفني
+  t = run('/index.html', { profile: TECH }); await flush();
+  const chip = t.body.children.find((c) => c.id === 'wfAccountChip');
+  assert(chip, 'account chip rendered for tech (no settings access)'); assert.strictEqual(t.ctx.WFPerm.can('settings.view'), false);
+  assert.strictEqual(typeof chip.onclick, 'function'); chip.onclick();
+  const panel = t.body.children.find((c) => c.id === 'wfAccountPanel'); assert(panel, 'panel opens');
+  const texts = []; (function walk(n) { texts.push(n.textContent || ''); (n.children || []).forEach(walk); })(panel);
+  assert(texts.some((x) => x.includes('تسجيل الخروج')) && texts.some((x) => x.includes('تبديل الحساب')) && texts.some((x) => x.includes('بوابة العملاء')));
+  assert(!texts.some((x) => x.includes('معاينة النظام')), 'preview is owner-only');
+  t = run('/users.html', { profile: TECH }); await flush();
+  assert(t.body.children.find((c) => c.id === 'wfAccountChip'), 'chip also visible over the denied overlay page');
+
+  // 9) معاينة دور للمالك: يشوف النظام كفني بدون ما يفقد حسابه، ويرجع بزر
+  const cfg = core.defaultConfig();
+  t = run('/index.html', { profile: { name: 'م', role: 'owner', acl: 1 }, config: cfg, preview: 'tech' }); await flush();
+  assert.strictEqual(t.ctx.WFPerm.isOwner(), false, 'preview drops owner view'); assert.strictEqual(t.ctx.WFPerm.can('wallets.view'), false); assert.strictEqual(t.ctx.WFPerm.can('requests.view'), true);
+  assert.strictEqual(t.ctx.WFPerm.preview(), 'tech');
+  t = run('/users.html', { profile: { name: 'م', role: 'owner', acl: 1 }, config: cfg, preview: 'tech' }); await flush(); assert(denied(t), 'users page closed while previewing');
+  t = run('/index.html', { profile: { name: 'م', role: 'owner', acl: 1 }, config: cfg }); await flush();
+  assert.strictEqual(t.ctx.WFPerm.isOwner(), true); assert.strictEqual(t.ctx.WFPerm.preview(), '');
+  const chip2 = t.body.children.find((c) => c.id === 'wfAccountChip'); chip2.onclick();
+  const p2 = t.body.children.find((c) => c.id === 'wfAccountPanel'); const tx2 = []; (function walk(n) { tx2.push(n.textContent || ''); (n.children || []).forEach(walk); })(p2);
+  assert(tx2.some((x) => x.includes('معاينة النظام')), 'owner sees preview option');
+  // غير المالك مايقدرش يفعّل معاينة بتلاعب في sessionStorage
+  t = run('/index.html', { profile: TECH, config: cfg, preview: 'manager' }); await flush();
+  assert.strictEqual(t.ctx.WFPerm.preview(), ''); assert.strictEqual(t.ctx.WFPerm.can('wallets.view'), false);
 
   console.log('permissions-ui-tests: PASS (حراسة الصفحات، الروابط والعناوين، data-perm، الدوال add/edit/all/any، النماذج، idempotent)');
 })().catch((e) => { console.error(e); process.exit(1); });

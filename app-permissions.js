@@ -26,15 +26,27 @@
   function readJSON(k) { try { var s = store(); var v = s && s.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
   function writeJSON(k, v) { try { var s = store(); if (s) s.setItem(k, JSON.stringify(v)); } catch (e) {} }
 
+  /* معاينة دور (للمالك فقط، لهذه الجلسة/التبويب): بيشوف الواجهة كأنه الدور ده. تنظيم واجهة مش حماية، ونهايتها بزر «إنهاء المعاينة». */
+  var K_PREVIEW = "wf_perm_preview";
+  function realOwner() { return state.profile ? R.isOwner(state.config, state.profile) : true; }
+  function previewRole() {
+    try {
+      var id = w.sessionStorage && w.sessionStorage.getItem(K_PREVIEW);
+      if (!id || !state.profile || !state.config || !realOwner()) return "";
+      var r = state.config.roles && state.config.roles[id];
+      return r && !R.isOwner(state.config, { role: id, acl: 1 }) ? id : "";
+    } catch (e) { return ""; }
+  }
   function recompute() {
     state.version++;
     if (!state.profile) { state.set = null; return; }
-    var perms = R.effectivePerms(state.config, state.profile), set = {};
+    var pv = previewRole();
+    var perms = R.effectivePerms(state.config, pv ? { role: pv, acl: 1 } : state.profile), set = {};
     perms.forEach(function (k) { set[k] = 1; });
     state.set = set;
   }
   function can(key) { return state.set === null ? true : R.satisfies(state.set, key); }
-  function isOwner() { return state.profile ? R.isOwner(state.config, state.profile) : true; }
+  function isOwner() { return previewRole() ? false : realOwner(); }
   function denyLabel(rule) {
     var keys = typeof rule === "string" ? [rule] : (rule && (rule.all || rule.any)) || [];
     return keys.map(function (k) { return R.LABELS[k] || k; }).join(" / ");
@@ -161,12 +173,98 @@
   /* ---------- تطبيق الكل ---------- */
   var pending = false;
   function applyAll() {
-    guardPage(); applyAttrs(); applyLinks();
+    guardPage(); applyAttrs(); applyLinks(); ensureChip();
   }
   function schedule() {
     if (pending) return;
     pending = true;
     setTimeout(function () { pending = false; applyLinks(); applyAttrs(); }, 60);
+  }
+
+
+  /* ---------- 6) زر الحساب (دايمًا ظاهر مهما كانت الصلاحيات): خروج، تبديل حساب، دخول كعميل، معاينة دور ---------- */
+  var K_KNOWN = "wf_known_accounts";
+  function knownAccounts() { try { var a = readJSON(K_KNOWN) || []; return Array.isArray(a) ? a.filter(function (x) { return x && typeof x.email === "string"; }).slice(0, 8) : []; } catch (e) { return []; } }
+  function curUser() { try { return w.firebase && w.firebase.auth && w.firebase.auth().currentUser; } catch (e) { return null; } }
+  function roleLabel() {
+    var pv = previewRole(), p = state.profile; if (!p) return "";
+    var id = pv || R.roleIdOf(p), r = state.config && state.config.roles && state.config.roles[id];
+    return r ? r.name : id;
+  }
+  function rememberAccount() {
+    var u = curUser(); if (!u || !u.email || !state.profile) return;
+    var list = knownAccounts().filter(function (x) { return x.email.toLowerCase() !== u.email.toLowerCase(); });
+    var real = state.config && state.config.roles && state.config.roles[R.roleIdOf(state.profile)];
+    list.unshift({ email: u.email, name: state.profile.name || "", role: real ? real.name : "" });
+    writeJSON(K_KNOWN, list.slice(0, 8));
+  }
+  function signOutTo(to, email) {
+    try { w.sessionStorage.removeItem(K_PREVIEW); } catch (e) {}
+    try { if (email) w.sessionStorage.setItem("wf_login_prefill", email); else w.sessionStorage.removeItem("wf_login_prefill"); } catch (e) {}
+    if (typeof w.wfCloudSignOut === "function") return w.wfCloudSignOut(to);
+    return w.firebase.auth().signOut().then(function () { w.location.href = to || "login.html"; });
+  }
+  var chipEl = null, panelEl = null, panelOpen = false;
+  function mk(tag, css, text) { var e = w.document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
+  var BTN = "display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font:600 15px system-ui;text-align:start;cursor:pointer";
+  function closePanel() { panelOpen = false; if (panelEl) { try { panelEl.remove(); } catch (e) {} panelEl = null; } }
+  function openPanel() {
+    closePanel(); panelOpen = true;
+    var u = curUser(), pv = previewRole();
+    panelEl = mk("div", "position:fixed;left:12px;bottom:64px;z-index:2147483600;width:min(300px,calc(100vw - 24px));box-sizing:border-box;background:#0b2a66;color:#fff;border-radius:14px;padding:14px;box-shadow:0 8px 28px rgba(0,0,0,.45);font:15px system-ui;direction:rtl;text-align:start;max-height:80vh;overflow:auto");
+    panelEl.id = "wfAccountPanel";
+    panelEl.appendChild(mk("div", "font-weight:700;font-size:16px", (state.profile && state.profile.name) || (u && u.email) || "حسابي"));
+    var sub = roleLabel(); if (u && u.email) sub = (sub ? sub + " • " : "") + u.email;
+    panelEl.appendChild(mk("div", "opacity:.8;font-size:13px;margin-top:2px;word-break:break-all", sub));
+    if (pv) panelEl.appendChild(mk("div", "margin-top:8px;padding:6px 8px;border-radius:8px;background:#b45309;font-size:13px", "👁 وضع المعاينة: بتشوف النظام كأنك «" + roleLabel() + "» (بدون تغيير حسابك)."));
+    if (pv) { var endB = mk("button", BTN + ";background:#b45309;border-color:#b45309", "↩️ إنهاء المعاينة والرجوع كمالك"); endB.type = "button"; endB.onclick = function () { try { w.sessionStorage.removeItem(K_PREVIEW); } catch (e) {} closePanel(); recompute(); applyAll(); notify(); renderChip(); }; panelEl.appendChild(endB); }
+    // تبديل الحساب
+    var swB = mk("button", BTN, "🔁 تبديل الحساب"); swB.type = "button";
+    var swBox = mk("div", "display:none;margin-top:4px");
+    swB.onclick = function () { swBox.style.display = swBox.style.display === "none" ? "block" : "none"; };
+    var cur = u && u.email ? u.email.toLowerCase() : "", others = knownAccounts().filter(function (x) { return x.email.toLowerCase() !== cur; });
+    others.forEach(function (x) {
+      var b = mk("button", BTN + ";font-weight:500", (x.name ? x.name + " — " : "") + (x.role ? x.role + " — " : "") + x.email); b.type = "button";
+      b.onclick = function () { signOutTo("login.html", x.email); }; swBox.appendChild(b);
+    });
+    var other = mk("button", BTN + ";font-weight:500", "➕ حساب آخر…"); other.type = "button"; other.onclick = function () { signOutTo("login.html", ""); }; swBox.appendChild(other);
+    swBox.appendChild(mk("div", "opacity:.7;font-size:12px;margin-top:6px", "الإيميل بيتكتب لوحده، وكلمة المرور بتدخلها (أو يملاها مدير كلمات المرور في المتصفح)."));
+    panelEl.appendChild(swB); panelEl.appendChild(swBox);
+    var cust = mk("button", BTN, "🌐 دخول كعميل (بوابة العملاء)"); cust.type = "button"; cust.onclick = function () { signOutTo("portal.html", ""); }; panelEl.appendChild(cust);
+    // معاينة دور (للمالك الفعلي)
+    if (realOwner() && state.profile && !pv) {
+      var roles = state.config && state.config.roles ? Object.keys(state.config.roles).filter(function (id) { return !R.isOwner(state.config, { role: id, acl: 1 }); }) : [];
+      if (roles.length) {
+        panelEl.appendChild(mk("div", "margin-top:12px;font-size:13px;opacity:.85", "👁 معاينة النظام كدور:"));
+        var sel = mk("select", "width:100%;box-sizing:border-box;margin-top:4px;padding:9px;border-radius:10px;font:15px system-ui");
+        roles.forEach(function (id) { var o = mk("option", "", state.config.roles[id].name || id); o.value = id; sel.appendChild(o); });
+        panelEl.appendChild(sel);
+        var go = mk("button", BTN, "ابدأ المعاينة"); go.type = "button";
+        go.onclick = function () { try { w.sessionStorage.setItem(K_PREVIEW, sel.value); } catch (e) {} closePanel(); recompute(); applyAll(); notify(); renderChip(); if (FILE === "users.html") w.location.href = "index.html"; };
+        panelEl.appendChild(go);
+      }
+    }
+    var out = mk("button", BTN + ";background:#b91c1c;border-color:#b91c1c", "🚪 تسجيل الخروج"); out.type = "button"; out.onclick = function () { signOutTo("login.html", ""); }; panelEl.appendChild(out);
+    var cl = mk("button", BTN + ";text-align:center;background:transparent", "إغلاق"); cl.type = "button"; cl.onclick = closePanel; panelEl.appendChild(cl);
+    w.document.body.appendChild(panelEl);
+  }
+  function renderChip() {
+    if (!w.document || !w.document.body) return;
+    var pv = previewRole();
+    if (!chipEl) {
+      chipEl = mk("button", "", "");
+      chipEl.type = "button"; chipEl.id = "wfAccountChip"; chipEl.className = "no-print";
+      chipEl.onclick = function () { if (panelOpen) closePanel(); else openPanel(); };
+      w.document.body.appendChild(chipEl);
+    }
+    chipEl.style.cssText = "position:fixed;left:12px;bottom:12px;z-index:2147483600;min-width:44px;height:44px;padding:0 12px;border-radius:22px;border:1px solid rgba(255,255,255,.4);background:" + (pv ? "#b45309" : "#0b2a66") + ";color:#fff;font:700 14px system-ui;box-shadow:0 4px 14px rgba(0,0,0,.4);cursor:pointer;opacity:.92";
+    chipEl.textContent = pv ? "👁 معاينة: " + roleLabel() : "👤";
+    chipEl.setAttribute("aria-label", "حسابي: تبديل الحساب وتسجيل الخروج");
+    chipEl.title = "حسابي";
+  }
+  function ensureChip() {
+    if (chipEl && w.document.body && typeof w.document.body.contains === "function" && !w.document.body.contains(chipEl)) chipEl = null;
+    if (curUser() || state.profile) { renderChip(); rememberAccount(); }
   }
 
   /* ---------- التحميل من السحابة ---------- */
@@ -234,7 +332,7 @@
     w.addEventListener("load", function () { wrapActions(); applyAll(); });
     setTimeout(function () { wrapActions(); applyAll(); }, 1200);
     try { new w.MutationObserver(function (list) { for (var i = 0; i < list.length; i++) if (list[i].addedNodes && list[i].addedNodes.length) return schedule(); }).observe(w.document.body, { childList: true, subtree: true }); } catch (e) {}
-    try { w.firebase.auth().onAuthStateChanged(function (u) { if (u) refresh(); }); } catch (e) {}
+    try { w.firebase.auth().onAuthStateChanged(function (u) { if (u) { ensureChip(); refresh(); } }); } catch (e) {}
   }
   function boot() {
     Promise.resolve(w.WFStorageReady).then(start, start);
@@ -246,6 +344,6 @@
     profile: function () { return state.profile; }, config: function () { return state.config || R.defaultConfig(); },
     perms: function () { return state.set ? Object.keys(state.set) : R.KEYS.slice(); },
     onChange: function (fn) { state.listeners.push(fn); },
-    _applyAll: applyAll, _wrapActions: wrapActions, _state: state
+    preview: previewRole, _applyAll: applyAll, _wrapActions: wrapActions, _state: state
   };
 })(window);

@@ -954,7 +954,7 @@
     }, function () {});
   }
 
-  window.wfCloudSignOut = function () { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = "login.html"; }); };
+  window.wfCloudSignOut = function (to) { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = typeof to === "string" && /^[a-z-]+\.html$/.test(to) ? to : "login.html"; }); };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
   window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if ((ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) && !retryTimers[k]) scheduleRetry(k); }); });
   window.addEventListener("offline", badge);

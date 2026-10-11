@@ -22,6 +22,7 @@
 <footer class="wf-foot"><div class="wf-links"><a href="privacy.html">سياسة الخصوصية</a><a href="terms.html">شروط الاستخدام</a></div><div>الورشة الفنية</div></footer>
 <script>
 (function(){
+try{var pf=sessionStorage.getItem("wf_login_prefill");if(pf){sessionStorage.removeItem("wf_login_prefill");document.getElementById("em").value=pf;document.getElementById("pw").focus()}}catch(e){}
 var form=document.getElementById("loginForm"),go=document.getElementById("go"),m=document.getElementById("msg");
 function say(t,ok){m.innerHTML=t?'<p class="'+(ok?"ok":"err")+'"></p>':"";if(t)m.firstChild.textContent=t}
 form.addEventListener("submit",function(ev){
