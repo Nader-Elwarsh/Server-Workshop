@@ -47,11 +47,14 @@ assert(n.order.includes('owner') && n.order.indexOf('tech') < n.order.indexOf('o
 assert.strictEqual(core.effectivePerms(cfg, { name: 'قديم' }).length, core.KEYS.length, 'legacy staff doc = owner');
 assert.strictEqual(core.effectivePerms(cfg, { role: 'owner', disabled: true }).length, 0, 'disabled has nothing');
 assert.strictEqual(core.effectivePerms(cfg, null).length, 0);
-assert.strictEqual(core.effectivePerms(cfg, { role: 'deleted_role' }).length, 0, 'unknown role has nothing');
-const tp = core.effectivePerms(cfg, { role: 'tech', allow: ['wallets.view', 'junk'], deny: ['requests.close'] });
+assert.strictEqual(core.effectivePerms(cfg, { role: 'deleted_role', acl: 1 }).length, 0, 'managed doc with unknown role has nothing');
+assert.strictEqual(core.effectivePerms(cfg, { role: 'admin' }).length, core.KEYS.length, 'hand-written doc with a stray role field (e.g. admin) = legacy owner, never locked out');
+assert.strictEqual(core.effectivePerms(cfg, { role: 'tech' }).length, core.KEYS.length, 'unmanaged doc ignores role even if it names a real role');
+assert(core.managed({ acl: 1 }) && core.managed({ createdBy: 'u1' }) && !core.managed({ role: 'tech' }) && !core.managed(null));
+const tp = core.effectivePerms(cfg, { role: 'tech', acl: 1, allow: ['wallets.view', 'junk'], deny: ['requests.close'] });
 assert(tp.includes('wallets.view') && !tp.includes('requests.close') && tp.includes('requests.view'));
 assert.strictEqual(core.effectivePerms(cfg, { role: 'owner', deny: ['data.wipe'] }).includes('data.wipe'), true, 'owner cannot be reduced by overrides');
-assert(core.isOwner(cfg, {}) && core.isOwner(cfg, { role: 'owner' }) && !core.isOwner(cfg, { role: 'tech' }) && !core.isOwner(cfg, { role: 'owner', disabled: true }));
+assert(core.isOwner(cfg, {}) && core.isOwner(cfg, { role: 'owner' }) && core.isOwner(cfg, { role: 'admin' }) && !core.isOwner(cfg, { role: 'tech', acl: 1 }) && !core.isOwner(cfg, { role: 'owner', disabled: true }));
 
 // mask round-trip
 [[], core.KEYS, tp, ['customers.view'], ['data.wipe']].forEach((l) => assert.deepStrictEqual(core.fromMask(core.toMask(l)), core.KEYS.filter((k) => l.includes(k))));

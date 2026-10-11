@@ -136,11 +136,16 @@
     return { version: isFinite(v) && v > 0 ? Math.floor(v) : 1, order: order, roles: roles };
   }
 
-  /* الصلاحيات الفعلية للمستخدم. مستند موظف قديم من غير role = مالك (عشان الموظفين الحاليين يفضلوا زي ما هم). */
+  /* مستند «مُدار» = اتكتب من نظام الأدوار (علامة acl=1 أو createdBy). أي مستند تاني (اتكتب يدويًا من الـConsole
+     حتى لو فيه حقل role بقيمة غريبة زي "admin") = موظف قديم = مالك، عشان محدش يتقفل عليه النظام. */
+  function managed(staff) { return !!staff && typeof staff === "object" && (staff.acl === 1 || (typeof staff.createdBy === "string" && staff.createdBy !== "")); }
+  function roleIdOf(staff) { return !managed(staff) || staff.role == null || staff.role === "" ? "owner" : String(staff.role); }
+
+  /* الصلاحيات الفعلية للمستخدم. */
   function effectivePerms(config, staff) {
     if (!staff || typeof staff !== "object" || staff.disabled === true) return [];
     var cfg = normalizeConfig(config);
-    var roleId = staff.role == null || staff.role === "" ? "owner" : String(staff.role);
+    var roleId = roleIdOf(staff);
     var role = cfg.roles[roleId];
     if (!role) return [];
     if (roleId === "owner") return KEYS.slice();
@@ -150,7 +155,6 @@
     cleanKeys(staff.deny).forEach(function (k) { delete set[k]; });
     return KEYS.filter(function (k) { return set[k]; });
   }
-  function roleIdOf(staff) { return !staff || staff.role == null || staff.role === "" ? "owner" : String(staff.role); }
   function isOwner(config, staff) { return !!staff && staff.disabled !== true && roleIdOf(staff) === "owner" && !!normalizeConfig(config).roles.owner; }
 
   /* mask سداسي عشري: بت لكل صلاحية بترتيب الكتالوج (للتوكن وقواعد المرحلة 2). */
@@ -182,7 +186,7 @@
 
   return {
     GROUPS: GROUPS, KEYS: KEYS, LABELS: LABELS, GROUP_OF: GROUP_OF, PAGES: PAGES, FORMS: FORMS, ACTIONS: ACTIONS, SAVE_EDIT: SAVE_EDIT,
-    defaultConfig: defaultConfig, normalizeConfig: normalizeConfig, effectivePerms: effectivePerms, roleIdOf: roleIdOf, isOwner: isOwner,
+    defaultConfig: defaultConfig, normalizeConfig: normalizeConfig, effectivePerms: effectivePerms, roleIdOf: roleIdOf, managed: managed, isOwner: isOwner,
     cleanKeys: cleanKeys, validRoleId: validRoleId, toMask: toMask, fromMask: fromMask, satisfies: satisfies
   };
 });

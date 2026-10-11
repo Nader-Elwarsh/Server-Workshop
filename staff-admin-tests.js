@@ -125,6 +125,22 @@ async function rejects(promise, code, msg) {
   assert.strictEqual(ls.users.length, 3); assert(ls.users.every((u) => u.email), 'emails resolved from auth'); assert(ls.users.some((u) => u.isSelf && u.uid === 'boss'));
   await rejects(t.admin.list(mk.uid), 'permission-denied');
 
+  // ---- حساب قديم مكتوب يدويًا وفيه role غريب (admin): مالك، مش بيتقفل عليه النظام ----
+  const L = makeEnv({ old: { name: 'قديم', role: 'admin' } });
+  L.users.set('old', { uid: 'old', email: 'old@x.com' });
+  const lp = await L.admin.sync('old');
+  assert.strictEqual(lp.role, 'owner'); assert.strictEqual(lp.isOwner, true); assert.strictEqual(lp.acl, 1);
+  assert.deepStrictEqual([L.docs.get('staff/old').role, L.docs.get('staff/old').acl], ['owner', 1], 'stray role overwritten by migration');
+  // مالك قديم تاني لسه من غير ترحيل: update عليه ما يتعاملش معاه كمدير
+  const L2 = makeEnv({ a: { role: 'admin' }, b: { role: 'staff' } });
+  L2.users.set('a', { uid: 'a', email: 'a@x.com' }); L2.users.set('b', { uid: 'b', email: 'b@x.com' });
+  const lst = await L2.admin.list('a'); assert(lst.users.every((u) => u.legacy && u.role === 'owner'), 'unmanaged docs listed as legacy owners');
+  await L2.admin.update('a', { uid: 'b', name: 'ب' });
+  assert.deepStrictEqual([L2.docs.get('staff/b').role, L2.docs.get('staff/b').acl], ['owner', 1], 'name-only update keeps legacy doc an owner');
+  await L2.admin.update('a', { uid: 'b', role: 'tech' }); // a لسه مالك فينفع
+  assert.strictEqual(L2.docs.get('staff/b').role, 'tech');
+  await rejects(L2.admin.update('a', { uid: 'a', role: 'tech' }), 'failed-precondition', 'last_owner'); // a آخر مالك (وهو قديم)
+
   // ---- سجل المراجعة بيسجّل كل عملية ----
   const actions = t.audit.map((a) => a.action);
   ['create_user', 'update_user', 'reset_password', 'save_roles'].forEach((a) => assert(actions.includes(a), 'audit has ' + a));

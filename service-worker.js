@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v35-roles-phase1";
+const CACHE_NAME = "workshop-v36-roles-legacy-fix";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
