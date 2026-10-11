@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v31-firebase-config";
+const CACHE_NAME = "workshop-v32-list-fix";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
