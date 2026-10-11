@@ -965,6 +965,8 @@
 
   firebase.initializeApp(CFG);
   try { if (window.WFAppCheck) WFAppCheck.attach(firebase.app()); } catch (e) {}
+  /* الأدوار والصلاحيات (حراسة الواجهة): بتتحمّل تلقائيًا في كل صفحات الموظفين من غير تعديل كل صفحة؛ فشل تحميلها ما بيوقفش النظام. */
+  if (!isLogin && !window.WFPerm) loadScript("roles-core.js").then(function () { return window.WFRoles ? loadScript("app-permissions.js") : null; });
   try { firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function () {}); } catch (e) {}
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {}); } catch (e) {} // اطلب تخزين دائم عشان المتصفح مايمسحش الجلسة
   if (!isLogin && !fastHint()) cover("جارٍ التحقق من صلاحيات حساب الموظف…");

@@ -4,8 +4,11 @@ service cloud.firestore {
     function signedIn() { return request.auth != null; }
 
     // وجود مستند العضوية هو مصدر التفويض الوحيد؛ لا تمنح القواعد أي عميل حق إنشاء هذا المستند.
+    // مستند الموظف الموقوف (disabled == true) لا يمنح أي صلاحية؛ والإيقاف نفسه بتكتبه دالة المالك فقط.
     function isStaff() {
-      return signedIn() && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
+      return signedIn()
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
+        && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.get('disabled', false) != true;
     }
 
     function linkRef() {
@@ -47,6 +50,14 @@ service cloud.firestore {
     // العضوية تُدار من بيئة موثوقة (Firebase Console/Admin SDK)، لا من عميل ولا من موظف عادي.
     match /staff/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
+    }
+
+    // إعداد الأدوار وسجل المراجعة: القراءة للموظفين (السجل للمالك فقط)، والكتابة من دوال السيرفر فقط.
+    match /accessConfig/{doc} {
+      allow read: if isStaff();
+    }
+    match /staffAudit/{doc} {
+      allow read: if isStaff() && request.auth.token.get('role', 'owner') == 'owner';
     }
 
     match /portal/{doc} {
@@ -178,7 +189,7 @@ service cloud.firestore {
     // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من
     // تصعيد صلاحياته أو إضافة موظف آخر عبر القاعدة العامة.
     match /{collection}/{document=**} {
-      allow read, write: if isStaff() && collection != 'staff';
+      allow read, write: if isStaff() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit';
     }
   }
 }

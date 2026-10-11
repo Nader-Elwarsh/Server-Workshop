@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v34-invite-temp-pw";
+const CACHE_NAME = "workshop-v35-roles-phase1";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -108,6 +108,10 @@ const CORE_FILES = [
   "./wl-content-page.js",
   "./wl-public-init.js",
   "./white-label.html",
+  "./users.html",
+  "./users-page.js",
+  "./roles-core.js",
+  "./app-permissions.js",
   "./workshop-logo.svg",
   "./wf-shell.css",
   "./notif-shared.js",

@@ -5,7 +5,7 @@
 <div id="backupReminder" class="home-backup-reminder-host"></div>
 <main>
 <section class="dashboard"><div class="dash-head"><h2>📊 ملخص الورشة</h2><span class="hint">اضغط أي رقم للدخول مباشرة لتفاصيله</span></div><div id="dashboard"></div></section>
-<section class="panel" id="quickOrderPanel"><button type="button" id="quickOrderToggleBtn" class="quick-order-toggle" data-wf-click="toggleQuickOrderPanel">⚡ أمر شغل سريع (دوس للفتح)</button>
+<section class="panel" id="quickOrderPanel" data-perm="requests.add"><button type="button" id="quickOrderToggleBtn" class="quick-order-toggle" data-wf-click="toggleQuickOrderPanel">⚡ أمر شغل سريع (دوس للفتح)</button>
 <div id="quickOrderBody" class="hidden">
 <p class="hint">اختر العميل والجهاز واكتب العطل، والباقي (الأولوية، الموعد، الحساب، قطع الغيار) تظبطه بعدين من صفحة الأمر نفسها. العميل أو الجهاز جديد؟ سجّله من هنا على طول من غير ما تسيب الصفحة.</p>
 <div class="form-grid">
@@ -18,7 +18,7 @@
 <div class="actions"><button type="button" class="primary" data-wf-click="quickCreateRequest">⚡ إنشاء أمر الشغل وفتحه</button><a class="secondary" href="requests.html?add=1">🛠️ فورم كامل</a></div>
 </div>
 </section>
-<section class="panel" id="quickWalletPanel"><button type="button" id="quickWalletToggleBtn" class="quick-order-toggle" data-wf-click="toggleQuickWalletPanel">💳 حركة محفظة سريعة (دوس للفتح)</button>
+<section class="panel" id="quickWalletPanel" data-perm="wallets.add"><button type="button" id="quickWalletToggleBtn" class="quick-order-toggle" data-wf-click="toggleQuickWalletPanel">💳 حركة محفظة سريعة (دوس للفتح)</button>
 <div id="quickWalletBody" class="hidden">
 <p class="hint">لتسجيل مصروف شخصي أو تشغيل أو أي حركة على محفظة بسرعة من غير ما تفتح صفحة الحسابات كاملة.</p>
 <div class="form-grid">
@@ -60,6 +60,7 @@
 <a class="card card-accent-gold" href="white-label.html" id="whiteLabelHomeCard"><i>🎨</i><div class="card-text"><b>هوية النظام</b><span>اسم النظام والشعار والألوان والشكل — تحكم كامل من غير كود، جاهز للبيع أو التأجير</span></div></a>
 <div class="nav-section-title">⚙️ الإدارة</div>
 <a class="card card-accent-purple" href="reports.html"><i>📊</i><div class="card-text"><b>التقارير والتحليلات</b><span>تشغيل ومالية وعملاء وأجهزة ومخزن وورشة وخزنة ومهام</span></div></a>
+<a class="card card-accent-gold" href="users.html" data-owner-only><i>👥</i><div class="card-text"><b>المستخدمون والصلاحيات</b><span>إضافة موظفين وتحديد دور وصلاحيات كل واحد (للمالك فقط)</span></div></a>
 <a class="card card-accent-purple" href="settings.html"><i>⚙️</i><div class="card-text"><b>إعدادات النظام</b><span>المراكز والقرى وأنواع الأجهزة والماركات وتصنيفات المخزن</span></div></a>
 </div>
 </main><script src="notif-shared.js" defer></script>
