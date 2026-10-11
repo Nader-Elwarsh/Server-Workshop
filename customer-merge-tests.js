@@ -10,7 +10,7 @@ function mk(opts={}){
   const snap=(arr)=>({docs:arr.map(x=>({ref:{update:u=>{ops.push(['upd',x.col,x.id,u]);if(x.col==='portalLinks')links[x.id]={...links[x.id],...u};return Promise.resolve()}},id:x.id}))});
   const db={collection:(c)=>({
     doc:(id)=>({
-      get:()=>Promise.resolve({exists:c==='phoneIndex'?!!idx[id]:c==='portalLinks'?!!links[id]:false,data:()=>c==='phoneIndex'?idx[id]:links[id]}),
+      get:()=>c==='customers'&&opts.customersError?Promise.reject({code:'permission-denied'}):Promise.resolve({exists:c==='phoneIndex'?!!idx[id]:c==='portalLinks'?!!links[id]:c==='customers'?!!(opts.customers||{})[id]:false,data:()=>c==='phoneIndex'?idx[id]:links[id]}),
       set:(v,o)=>{ops.push(['set',c,id,v]);if(c==='portalLinks')links[id]={...links[id],...v};if(c==='phoneIndex')idx[id]=v;return Promise.resolve()}}),
     where:(f,o,v)=>({get:()=>Promise.resolve(snap(c==='portalLinks'?Object.keys(links).filter(k=>links[k].customerId===v).map(k=>({col:c,id:k})):[]))})})};
   const K={c:'wf_c',d:'wf_d',r:'wf_r',tasks:'wf_tasks',inv:'wf_inv',pc:'wf_pc',wtx:'wf_wtx',tr:'wf_tr',followupLog:'wf_fl'};
@@ -56,7 +56,18 @@ function mk(opts={}){
  // invite: account exists, no link -> link it
  t=mk({phoneIndex:{'01005781925':{uid:'U3'}}});r=await t.api.resolveInvite({id:'c1'},'01005781925');assert.strictEqual(t.links.U3.customerId,'c1');
  // invite: linked to other customer -> error
- t=mk({phoneIndex:{'01005781925':{uid:'U4'}},links:{U4:{customerId:'zzz'}}});
+ t=mk({phoneIndex:{'01005781925':{uid:'U4'}},links:{U4:{customerId:'zzz'}},customers:{zzz:true}});
  await assert.rejects(()=>t.api.resolveInvite({id:'c1'},'01005781925'),e=>e.code==='linked-other');
- console.log('merge+invite PASS (9 scenarios)');
+ // invite: old account linked to a customer that was DELETED -> adopt it for the current customer
+ t=mk({phoneIndex:{'01005781925':{uid:'U5'}},links:{U5:{customerId:'deleted-1',mustChange:false,pwKind:'random'}},customers:{}});
+ r=await t.api.resolveInvite({id:'c1'},'01005781925');
+ assert.strictEqual(t.links.U5.customerId,'c1');assert.strictEqual(t.links.U5.adoptedFrom,'deleted-1');
+ assert.ok(r.uid==='U5'&&r.created===false&&r.mustChange===false&&t.created.length===0,'adopt must not create a new auth user');
+ // invite: disabled/reset link or unreadable customers collection must NOT be adopted
+ t=mk({phoneIndex:{'01005781925':{uid:'U6'}},links:{U6:{customerId:'_reset',disabled:true}},customers:{}});
+ await assert.rejects(()=>t.api.resolveInvite({id:'c1'},'01005781925'),e=>e.code==='linked-other');
+ t=mk({phoneIndex:{'01005781925':{uid:'U7'}},links:{U7:{customerId:'deleted-2'}},customers:{},customersError:true});
+ await assert.rejects(()=>t.api.resolveInvite({id:'c1'},'01005781925'),e=>e.code==='linked-other');
+ assert.strictEqual(t.links.U7.customerId,'deleted-2');
+ console.log('merge+invite PASS (13 scenarios)');
 })().catch(e=>{console.error(e);process.exit(1)});
