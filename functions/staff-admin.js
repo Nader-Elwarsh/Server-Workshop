@@ -62,11 +62,23 @@ function createStaffAdmin(deps) {
     if (p.length < 8 || p.length > 64) throw new AdminError("invalid-argument", "bad_password");
     return p;
   }
+  function cleanWallet(v) {
+    const w = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+    if (w.length > 40) throw new AdminError("invalid-argument", "bad_wallet");
+    return w;
+  }
+  async function assertWalletFree(wallet, exceptUid) {
+    if (!wallet) return;
+    const snap = await db.collection("staff").get();
+    let clash = false;
+    snap.forEach((d) => { if (d.id !== exceptUid && String((d.data() || {}).wallet || "").trim() === wallet) clash = true; });
+    if (clash) throw new AdminError("already-exists", "wallet_taken");
+  }
   async function pushClaims(uid, staff, cfg) {
     const perms = core.effectivePerms(cfg, staff);
     let existing = {};
     try { const u = await auth.getUser(uid); existing = (u && u.customClaims) || {}; } catch (_) {}
-    await auth.setCustomUserClaims(uid, Object.assign({}, existing, { role: core.roleIdOf(staff), pm: core.toMask(perms) }));
+    await auth.setCustomUserClaims(uid, Object.assign({}, existing, { role: core.roleIdOf(staff), pm: core.toMask(perms), sc: core.scopeOf(cfg, staff) === "assigned" ? "a" : "w" }));
     return perms;
   }
   async function activeOwners(cfg) {
@@ -78,7 +90,7 @@ function createStaffAdmin(deps) {
   function profileOf(uid, staff, cfg) {
     const roleId = core.roleIdOf(staff);
     const role = cfg.roles[roleId];
-    return { uid, name: staff.name || "", role: roleId, roleName: role ? role.name : roleId, allow: core.cleanKeys(staff.allow), deny: core.cleanKeys(staff.deny), disabled: staff.disabled === true, acl: core.managed(staff) ? 1 : 0, createdBy: staff.createdBy || "" };
+    return { uid, name: staff.name || "", role: roleId, roleName: role ? role.name : roleId, allow: core.cleanKeys(staff.allow), deny: core.cleanKeys(staff.deny), disabled: staff.disabled === true, acl: core.managed(staff) ? 1 : 0, createdBy: staff.createdBy || "", scope: core.cleanScope(staff.scope), effectiveScope: core.scopeOf(cfg, staff), wallet: String(staff.wallet || "") };
   }
 
   /* أي موظف: يرجّع ملفه وصلاحياته، ويحدّث claims، ويرقّي مستند قديم لدور «مالك». */
@@ -117,6 +129,24 @@ function createStaffAdmin(deps) {
     };
   }
 
+  /* قائمة الفنيين لتعيينهم على الأوامر: لأي موظف عنده صلاحية تعيين فني (أو المالك). من غير إيميلات. */
+  async function directory(uid) {
+    const staff = await requireStaff(uid);
+    const cfg = await loadConfig();
+    const perms = core.effectivePerms(cfg, staff);
+    if (!core.isOwner(cfg, staff) && perms.indexOf("requests.assign") < 0) throw new AdminError("permission-denied", "cannot_assign");
+    const snap = await db.collection("staff").get();
+    const users = [];
+    snap.forEach((d) => {
+      const x = d.data() || {};
+      if (x.disabled === true) return;
+      const roleId = core.roleIdOf(x), role = cfg.roles[roleId];
+      users.push({ uid: d.id, name: x.name || "", role: roleId, roleName: role ? role.name : roleId, wallet: String(x.wallet || ""), scope: core.scopeOf(cfg, x) });
+    });
+    users.sort((a, b) => String(a.name).localeCompare(String(b.name), "ar"));
+    return { users };
+  }
+
   async function create(uid, data) {
     const { cfg } = await requireOwner(uid);
     const email = String(data.email || "").trim().toLowerCase();
@@ -125,11 +155,15 @@ function createStaffAdmin(deps) {
     const password = cleanPassword(data.password);
     const roleId = String(data.role || "");
     if (!cfg.roles[roleId]) throw new AdminError("invalid-argument", "bad_role");
+    const wallet = cleanWallet(data.wallet);
+    await assertWalletFree(wallet, null);
     let existing = null;
     try { existing = await auth.getUserByEmail(email); } catch (e) { if (!e || e.code !== "auth/user-not-found") throw e; }
     if (existing) throw new AdminError("already-exists", "email_exists");
     const created = await auth.createUser({ email, password, displayName: name, emailVerified: false, disabled: false });
     const staff = { name, role: roleId, acl: 1, allow: core.cleanKeys(data.allow), deny: core.cleanKeys(data.deny), disabled: false, createdAt: now().toISOString(), createdBy: uid };
+    const sc = core.cleanScope(data.scope); if (sc) staff.scope = sc;
+    if (wallet) staff.wallet = wallet;
     try {
       await db.doc(`staff/${created.uid}`).set(staff);
       await pushClaims(created.uid, staff, cfg);
@@ -158,6 +192,8 @@ function createStaffAdmin(deps) {
     if (data.allow !== undefined) patch.allow = core.cleanKeys(data.allow);
     if (data.deny !== undefined) patch.deny = core.cleanKeys(data.deny);
     if (data.disabled !== undefined) patch.disabled = data.disabled === true;
+    if (data.scope !== undefined) patch.scope = core.cleanScope(data.scope); // "" = يرجع لنطاق الدور
+    if (data.wallet !== undefined) { patch.wallet = cleanWallet(data.wallet); await assertWalletFree(patch.wallet, target); }
     if (!Object.keys(patch).length) throw new AdminError("invalid-argument", "nothing_to_update");
     patch.acl = 1; // أي مستند بيتعدّل من النظام يبقى «مُدار»
     if (patch.role === undefined && !core.managed(stored)) patch.role = "owner";
@@ -171,7 +207,7 @@ function createStaffAdmin(deps) {
     patch.updatedAt = now().toISOString();
     patch.updatedBy = uid;
     await db.doc(`staff/${target}`).set(patch, { merge: true });
-    const changedAccess = patch.role !== undefined || patch.allow !== undefined || patch.deny !== undefined || patch.disabled !== undefined;
+    const changedAccess = patch.role !== undefined || patch.allow !== undefined || patch.deny !== undefined || patch.disabled !== undefined || patch.scope !== undefined;
     if (changedAccess) await pushClaims(target, next, cfg);
     if (patch.disabled !== undefined) {
       await auth.updateUser(target, { disabled: patch.disabled === true });
@@ -212,7 +248,7 @@ function createStaffAdmin(deps) {
     return { config: next, claimFailures: failures };
   }
 
-  return { sync, list, create, update, resetPassword, saveRoles, loadConfig, genPassword, AdminError };
+  return { sync, list, directory, create, update, resetPassword, saveRoles, loadConfig, genPassword, AdminError };
 }
 
 module.exports = { createStaffAdmin, AdminError, CONFIG_PATH };

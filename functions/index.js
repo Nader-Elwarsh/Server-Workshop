@@ -145,6 +145,7 @@ function adminCallable(name, handler) {
 }
 exports.staffSync = adminCallable("staffSync", (uid) => staffAdmin.sync(uid));
 exports.staffList = adminCallable("staffList", (uid) => staffAdmin.list(uid));
+exports.staffDirectory = adminCallable("staffDirectory", (uid) => staffAdmin.directory(uid));
 exports.staffCreate = adminCallable("staffCreate", (uid, d) => staffAdmin.create(uid, d));
 exports.staffUpdate = adminCallable("staffUpdate", (uid, d) => staffAdmin.update(uid, d));
 exports.staffResetPassword = adminCallable("staffResetPassword", (uid, d) => staffAdmin.resetPassword(uid, d));
