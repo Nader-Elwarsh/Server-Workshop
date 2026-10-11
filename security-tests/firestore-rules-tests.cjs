@@ -35,6 +35,9 @@ async function main() {
   const directOwner = env.authenticatedContext('legacy-user').firestore();
   const stranger = env.authenticatedContext('not-a-staff-or-customer').firestore();
   const staff = env.authenticatedContext('staff-1').firestore();
+  const ownerClaim = env.authenticatedContext('staff-1', { role: 'owner' }).firestore();
+  const techClaim = env.authenticatedContext('staff-tech', { role: 'tech' }).firestore();
+  const suspended = env.authenticatedContext('staff-disabled').firestore();
   const anonymous = env.unauthenticatedContext().firestore();
 
   try {
@@ -42,6 +45,10 @@ async function main() {
       const db = context.firestore();
       const seed = [
         ['staff/staff-1', { name: 'Authorized staff' }],
+        ['staff/staff-disabled', { name: 'Suspended staff', role: 'tech', disabled: true }],
+        ['staff/staff-tech', { name: 'Technician', role: 'tech' }],
+        ['accessConfig/roles', { version: 1, order: ['owner', 'tech'], roles: { owner: { name: 'المالك' }, tech: { name: 'فني', perms: [] } } }],
+        ['staffAudit/a1', { at: '2026-10-11T00:00:00Z', by: 'staff-1', action: 'save_roles' }],
         ['customers/customer-alice', { name: 'Alice', phone: '0100', portal: true }],
         ['customers/customer-bob', { name: 'Bob', phone: '0101', portal: true }],
         ['customers/old-alice', { name: 'Old Alice profile', phone: '0100', portal: true }],
@@ -132,6 +139,22 @@ async function main() {
     await assertFails(getDoc(doc(stranger, 'requests/secret-order')));
     await assertFails(getDoc(doc(anonymous, 'requests/secret-order')));
 
+    // الأدوار (المرحلة 1): الموظف الموقوف مالوش صلاحيات، وإعداد الأدوار وسجل المراجعة للقراءة فقط من العميل.
+    await assertFails(getDoc(doc(suspended, 'requests/secret-order')));
+    await assertFails(setDoc(doc(suspended, 'requests/new-one'), { total: 1 }));
+    await assertSucceeds(getDoc(doc(suspended, 'staff/staff-disabled')));
+    await assertSucceeds(getDoc(doc(staff, 'accessConfig/roles')));
+    await assertSucceeds(getDoc(doc(techClaim, 'accessConfig/roles')));
+    await assertFails(getDoc(doc(stranger, 'accessConfig/roles')));
+    await assertFails(setDoc(doc(staff, 'accessConfig/roles'), { version: 99, roles: {} }));
+    await assertFails(updateDoc(doc(staff, 'accessConfig/roles'), { version: 99 }));
+    await assertFails(deleteDoc(doc(staff, 'accessConfig/roles')));
+    await assertSucceeds(getDoc(doc(ownerClaim, 'staffAudit/a1')));
+    await assertSucceeds(getDoc(doc(staff, 'staffAudit/a1'))); // توكن قديم من غير role = مالك (موظفين ما قبل الأدوار)
+    await assertFails(getDoc(doc(techClaim, 'staffAudit/a1')));
+    await assertFails(setDoc(doc(staff, 'staffAudit/forged'), { at: 'x', by: 'staff-1', action: 'create_user' }));
+    await assertFails(deleteDoc(doc(staff, 'staffAudit/a1')));
+
     // Only deliberately published portal posts are readable without staff membership.
     await assertSucceeds(getDoc(doc(anonymous, 'portalPosts/public-article')));
     await assertFails(getDoc(doc(anonymous, 'portalPosts/draft-article')));
@@ -186,6 +209,9 @@ async function main() {
       await env2.withSecurityRulesDisabled(async context => {
         const db2 = context.firestore();
         await setDoc(doc(db2, 'staff/staff-1'), { name: 'Authorized staff' });
+        await setDoc(doc(db2, 'staff/staff-disabled'), { name: 'Suspended', role: 'tech', disabled: true });
+        await setDoc(doc(db2, 'accessConfig/roles'), { version: 1 });
+        await setDoc(doc(db2, 'requests/r1'), { total: 1 });
         await setDoc(doc(db2, 'phoneIndex/01012345678'), { email: 'owner@example.com', uid: 'phone-owner' });
       });
       const p2Owner = env2.authenticatedContext('phone-owner', { email: 'owner@example.com' }).firestore();
@@ -200,11 +226,17 @@ async function main() {
       await assertSucceeds(getDoc(doc(p2Staff, 'phoneIndex/01012345678')));
       await assertSucceeds(setDoc(doc(p2Other, 'phoneIndex/01112345678'), { email: 'other@example.com', uid: 'phone-other' })); // التسجيل الجديد لسه شغال
       await assertFails(setDoc(doc(p2Other, 'phoneIndex/01012345678'), { email: 'other@example.com', uid: 'phone-other' }));
+      // نفس حماية الأدوار في ملف المرحلة 2
+      const p2Suspended = env2.authenticatedContext('staff-disabled').firestore();
+      await assertFails(getDoc(doc(p2Suspended, 'requests/r1')));
+      await assertSucceeds(getDoc(doc(p2Staff, 'requests/r1')));
+      await assertFails(setDoc(doc(p2Staff, 'accessConfig/roles'), { version: 2 }));
+      await assertSucceeds(getDoc(doc(p2Staff, 'accessConfig/roles')));
     } finally {
       await env2.cleanup();
     }
 
-    console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock)');
+    console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock + suspended staff + accessConfig/staffAudit lock)');
   } finally {
     await env.cleanup();
   }
