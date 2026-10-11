@@ -78,16 +78,16 @@ function createStaffAdmin(deps) {
   function profileOf(uid, staff, cfg) {
     const roleId = core.roleIdOf(staff);
     const role = cfg.roles[roleId];
-    return { uid, name: staff.name || "", role: roleId, roleName: role ? role.name : roleId, allow: core.cleanKeys(staff.allow), deny: core.cleanKeys(staff.deny), disabled: staff.disabled === true };
+    return { uid, name: staff.name || "", role: roleId, roleName: role ? role.name : roleId, allow: core.cleanKeys(staff.allow), deny: core.cleanKeys(staff.deny), disabled: staff.disabled === true, acl: core.managed(staff) ? 1 : 0, createdBy: staff.createdBy || "" };
   }
 
   /* أي موظف: يرجّع ملفه وصلاحياته، ويحدّث claims، ويرقّي مستند قديم لدور «مالك». */
   async function sync(uid) {
     let staff = await requireStaff(uid);
     const cfg = await ensureConfig();
-    if (staff.role == null || staff.role === "") {
-      staff = Object.assign({}, staff, { role: "owner" });
-      await db.doc(`staff/${uid}`).set({ role: "owner", migratedAt: now().toISOString() }, { merge: true });
+    if (!core.managed(staff)) { // مستند قديم (مكتوب يدويًا): يترقّى لمالك مهما كان في حقل role
+      staff = Object.assign({}, staff, { role: "owner", acl: 1 });
+      await db.doc(`staff/${uid}`).set({ role: "owner", acl: 1, migratedAt: now().toISOString() }, { merge: true });
       await audit(uid, "migrate_legacy_owner", uid, null);
     }
     const perms = await pushClaims(uid, staff, cfg);
@@ -111,7 +111,7 @@ function createStaffAdmin(deps) {
         return Object.assign(profileOf(r.uid, r.data, cfg), {
           email: u.email || "", authDisabled: u.disabled === true,
           lastSignIn: (u.metadata && u.metadata.lastSignInTime) || null, createdAt: r.data.createdAt || (u.metadata && u.metadata.creationTime) || null,
-          legacy: r.data.role == null || r.data.role === "", isSelf: r.uid === uid
+          legacy: !core.managed(r.data), isSelf: r.uid === uid
         });
       }).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email), "ar"))
     };
@@ -129,7 +129,7 @@ function createStaffAdmin(deps) {
     try { existing = await auth.getUserByEmail(email); } catch (e) { if (!e || e.code !== "auth/user-not-found") throw e; }
     if (existing) throw new AdminError("already-exists", "email_exists");
     const created = await auth.createUser({ email, password, displayName: name, emailVerified: false, disabled: false });
-    const staff = { name, role: roleId, allow: core.cleanKeys(data.allow), deny: core.cleanKeys(data.deny), disabled: false, createdAt: now().toISOString(), createdBy: uid };
+    const staff = { name, role: roleId, acl: 1, allow: core.cleanKeys(data.allow), deny: core.cleanKeys(data.deny), disabled: false, createdAt: now().toISOString(), createdBy: uid };
     try {
       await db.doc(`staff/${created.uid}`).set(staff);
       await pushClaims(created.uid, staff, cfg);
@@ -146,8 +146,9 @@ function createStaffAdmin(deps) {
     const { cfg } = await requireOwner(uid);
     const target = String(data.uid || "");
     if (!target) throw new AdminError("invalid-argument", "bad_uid");
-    const cur = await getStaff(target);
-    if (!cur) throw new AdminError("not-found", "no_such_user");
+    const stored = await getStaff(target);
+    if (!stored) throw new AdminError("not-found", "no_such_user");
+    const cur = core.managed(stored) ? stored : Object.assign({}, stored, { role: "owner" }); // مستند قديم = مالك
     const patch = {};
     if (data.name !== undefined) patch.name = cleanName(data.name);
     if (data.role !== undefined) {
@@ -158,6 +159,8 @@ function createStaffAdmin(deps) {
     if (data.deny !== undefined) patch.deny = core.cleanKeys(data.deny);
     if (data.disabled !== undefined) patch.disabled = data.disabled === true;
     if (!Object.keys(patch).length) throw new AdminError("invalid-argument", "nothing_to_update");
+    patch.acl = 1; // أي مستند بيتعدّل من النظام يبقى «مُدار»
+    if (patch.role === undefined && !core.managed(stored)) patch.role = "owner";
     const next = Object.assign({}, cur, patch);
     const wasOwner = core.isOwner(cfg, cur), willBeOwner = core.isOwner(cfg, next);
     if (target === uid && patch.disabled === true) throw new AdminError("failed-precondition", "cannot_disable_self");
@@ -174,7 +177,7 @@ function createStaffAdmin(deps) {
       await auth.updateUser(target, { disabled: patch.disabled === true });
       if (patch.disabled === true) await auth.revokeRefreshTokens(target);
     }
-    await audit(uid, "update_user", target, { before: { role: core.roleIdOf(cur), disabled: cur.disabled === true }, after: { role: core.roleIdOf(next), disabled: next.disabled === true }, fields: Object.keys(patch).filter((k) => k !== "updatedAt" && k !== "updatedBy") });
+    await audit(uid, "update_user", target, { before: { role: core.roleIdOf(cur), disabled: cur.disabled === true }, after: { role: core.roleIdOf(next), disabled: next.disabled === true }, fields: Object.keys(patch).filter((k) => k !== "updatedAt" && k !== "updatedBy" && k !== "acl") });
     return profileOf(target, next, cfg);
   }
 
@@ -196,7 +199,7 @@ function createStaffAdmin(deps) {
     const next = core.normalizeConfig(data.config);
     const snap = await db.collection("staff").get();
     const orphans = [];
-    snap.forEach((d) => { const r = d.data().role; if (r && !next.roles[r]) orphans.push(r); });
+    snap.forEach((d) => { const x = d.data(); if (core.managed(x) && x.role && !next.roles[x.role]) orphans.push(x.role); });
     if (orphans.length) throw new AdminError("failed-precondition", "role_in_use:" + Array.from(new Set(orphans)).join(","));
     next.version = (oldCfg.version || 1) + 1;
     await db.doc(CONFIG_PATH).set(Object.assign({}, next, { updatedAt: now().toISOString(), updatedBy: uid }));
