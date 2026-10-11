@@ -301,7 +301,7 @@
     });
   }
   function acceptProfile(p, cfg) {
-    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "" };
+    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "", scope: R.cleanScope ? R.cleanScope(p.scope) : "", wallet: p.wallet || "" };
     if (cfg) state.config = R.normalizeConfig(cfg);
     writeJSON(K_PROFILE, state.profile); writeJSON(K_CONFIG, state.config);
     recompute(); applyAll(); notify();
@@ -326,11 +326,12 @@
     if (!force && Date.now() - last < SYNC_EVERY) return Promise.resolve(false);
     return authedCall("staffSync", {}).then(function (res) {
       try { store().setItem(K_SYNC, String(Date.now())); } catch (e) {}
-      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled, acl: res.acl, createdBy: res.createdBy }, res.config);
+      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled, acl: res.acl, createdBy: res.createdBy, scope: res.scope, wallet: res.wallet }, res.config);
       return true;
     }).catch(function () { return false; });
   }
 
+  function loadHelper(src) { try { var t = w.document.createElement("script"); t.src = src; t.defer = true; w.document.head.appendChild(t); } catch (e) {} }
   var started = false;
   function start() {
     if (started) return; started = true;
@@ -338,6 +339,7 @@
     if (cp) { state.profile = cp; state.config = cc ? R.normalizeConfig(cc) : R.defaultConfig(); recompute(); }
     applyAll();
     w.document.addEventListener("submit", onSubmit, true);
+    if (FILE === "request.html" || FILE === "requests.html") loadHelper("app-tech-assign.js");
     wrapActions();
     w.addEventListener("load", function () { wrapActions(); applyAll(); });
     setTimeout(function () { wrapActions(); applyAll(); }, 1200);
@@ -354,6 +356,6 @@
     profile: function () { return state.profile; }, config: function () { return state.config || R.defaultConfig(); },
     perms: function () { return state.set ? Object.keys(state.set) : R.KEYS.slice(); },
     onChange: function (fn) { state.listeners.push(fn); },
-    preview: previewRole, _applyAll: applyAll, _wrapActions: wrapActions, _state: state
+    scope: function () { return state.profile && !previewRole() ? R.scopeOf(state.config, state.profile) : "all"; }, wallet: function () { return (state.profile && state.profile.wallet) || ""; }, preview: previewRole, _applyAll: applyAll, _wrapActions: wrapActions, _state: state
   };
 })(window);

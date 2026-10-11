@@ -26,7 +26,8 @@
     { id: "reports", label: "التقارير", perms: [["reports.view", "عرض التقارير"], ["reports.export", "تصدير التقارير"]] },
     { id: "portal", label: "بوابة العملاء", perms: [["portal.manage", "إدارة بوابة العملاء (طلبات، شكاوى، مقالات)"]] },
     { id: "settings", label: "الإعدادات", perms: [["settings.view", "عرض الإعدادات"], ["settings.edit", "تعديل الإعدادات والقوائم"], ["branding.manage", "هوية النظام (الاسم والشعار والألوان)"]] },
-    { id: "data", label: "بيانات حساسة", perms: [["data.backup", "أخذ نسخة احتياطية"], ["data.restore", "استرجاع نسخة احتياطية"], ["trash.restore", "الاسترجاع من سلة المحذوفات"], ["data.wipe", "الحذف الشامل (كل العملاء / الأجهزة / الأوامر / التهيئة)"]] }
+    { id: "data", label: "بيانات حساسة", perms: [["data.backup", "أخذ نسخة احتياطية"], ["data.restore", "استرجاع نسخة احتياطية"], ["trash.restore", "الاسترجاع من سلة المحذوفات"], ["data.wipe", "الحذف الشامل (كل العملاء / الأجهزة / الأوامر / التهيئة)"]] },
+    { id: "techs", label: "الفنيين والعهدة", perms: [["requests.assign", "تعيين فني على أمر الشغل"], ["custody.approve", "اعتماد مصروفات عهدة الفني"], ["custody.settle", "تسوية عهدة الفني (استلام الرصيد)"]] }
   ];
 
   var KEYS = [], LABELS = {}, GROUP_OF = {};
@@ -39,7 +40,7 @@
     "customers.html": "customers.view", "customer.html": "customers.view",
     "merge-customers.html": "customers.merge",
     "devices.html": "devices.view", "device.html": "devices.view",
-    "requests.html": "requests.view", "request.html": "requests.view", "pending-calls.html": "requests.view",
+    "requests.html": "requests.view", "request.html": "requests.view", "pending-calls.html": "requests.view", "dispatch.html": "requests.assign",
     "inventory.html": "inventory.view", "part.html": "inventory.view", "part-moves.html": "inventory.view",
     "tasks.html": "tasks.view",
     "faultcodes.html": "faultcodes.view", "faultcode.html": "faultcodes.view", "compcodes.html": "faultcodes.view",
@@ -94,7 +95,7 @@
   /* ---------- الأدوار الافتراضية (قابلة للتعديل بالكامل ما عدا المالك) ---------- */
   function without(list, drop) { return list.filter(function (k) { return drop.indexOf(k) < 0; }); }
   var OPERATIONAL = without(KEYS, ["wallets.view", "wallets.add", "wallets.edit", "wallets.delete", "treasury.view", "treasury.add", "treasury.edit", "treasury.delete",
-    "settings.view", "settings.edit", "branding.manage", "data.backup", "data.restore", "trash.restore", "data.wipe", "reports.view", "reports.export", "portal.manage", "customers.merge"]);
+    "settings.view", "settings.edit", "branding.manage", "data.backup", "data.restore", "trash.restore", "data.wipe", "reports.view", "reports.export", "portal.manage", "customers.merge", "custody.approve", "custody.settle"]);
   var DEFAULT_ROLES = {
     owner: { name: "المالك", perms: KEYS.slice(), locked: true },
     manager: { name: "مدير فرع", perms: OPERATIONAL.concat(["wallets.view", "treasury.view", "reports.view", "portal.manage", "settings.view", "data.backup"]) },
@@ -104,7 +105,7 @@
 
   function defaultConfig() {
     var roles = {};
-    DEFAULT_ORDER.forEach(function (id) { var r = DEFAULT_ROLES[id]; roles[id] = { name: r.name, perms: r.perms.slice() }; if (r.locked) roles[id].locked = true; });
+    DEFAULT_ORDER.forEach(function (id) { var r = DEFAULT_ROLES[id]; roles[id] = { name: r.name, perms: r.perms.slice(), scope: "all" }; if (r.locked) roles[id].locked = true; });
     return { version: 1, order: DEFAULT_ORDER.slice(), roles: roles };
   }
 
@@ -114,6 +115,8 @@
     out.sort(function (a, b) { return KEY_INDEX[a] - KEY_INDEX[b]; });
     return out;
   }
+  /* نطاق البيانات: all = كل بيانات الورشة، assigned = الأوامر المعيّنة له فقط (وعملاؤها وأجهزتها). */
+  function cleanScope(v) { return v === "all" || v === "assigned" ? v : ""; }
   function validRoleId(id) { return typeof id === "string" && /^[a-z][a-z0-9_]{1,23}$/.test(id); }
 
   /* تنظيف أي إعداد جاي من المستخدم/السحابة: المالك ثابت وبكل الصلاحيات، وأسماء الأدوار محدودة الطول. */
@@ -127,10 +130,10 @@
       if (!validRoleId(id) || roles[id] || !cfg.roles[id] || typeof cfg.roles[id] !== "object") return;
       var name = String(cfg.roles[id].name == null ? "" : cfg.roles[id].name).replace(/\s+/g, " ").trim().slice(0, 40);
       if (!name) name = id;
-      roles[id] = { name: name, perms: cleanKeys(cfg.roles[id].perms) };
+      roles[id] = { name: name, perms: cleanKeys(cfg.roles[id].perms), scope: cleanScope(cfg.roles[id].scope) || "all" };
       order.push(id);
     });
-    roles.owner = { name: roles.owner && roles.owner.name ? roles.owner.name : base.roles.owner.name, perms: KEYS.slice(), locked: true };
+    roles.owner = { name: roles.owner && roles.owner.name ? roles.owner.name : base.roles.owner.name, perms: KEYS.slice(), scope: "all", locked: true };
     if (order.indexOf("owner") < 0) order.unshift("owner");
     var v = Number(cfg.version);
     return { version: isFinite(v) && v > 0 ? Math.floor(v) : 1, order: order, roles: roles };
@@ -154,6 +157,16 @@
     cleanKeys(staff.allow).forEach(function (k) { set[k] = 1; });
     cleanKeys(staff.deny).forEach(function (k) { delete set[k]; });
     return KEYS.filter(function (k) { return set[k]; });
+  }
+  /* نطاق المستخدم الفعلي: المالك دايمًا all. استثناء فردي (staff.scope) يتغلّب على نطاق الدور. */
+  function scopeOf(config, staff) {
+    if (!staff || typeof staff !== "object" || staff.disabled === true) return "all";
+    var roleId = roleIdOf(staff);
+    if (roleId === "owner") return "all";
+    var own = cleanScope(staff.scope);
+    if (own) return own;
+    var role = normalizeConfig(config).roles[roleId];
+    return (role && role.scope) || "all";
   }
   function isOwner(config, staff) { return !!staff && staff.disabled !== true && roleIdOf(staff) === "owner" && !!normalizeConfig(config).roles.owner; }
 
@@ -187,6 +200,6 @@
   return {
     GROUPS: GROUPS, KEYS: KEYS, LABELS: LABELS, GROUP_OF: GROUP_OF, PAGES: PAGES, FORMS: FORMS, ACTIONS: ACTIONS, SAVE_EDIT: SAVE_EDIT,
     defaultConfig: defaultConfig, normalizeConfig: normalizeConfig, effectivePerms: effectivePerms, roleIdOf: roleIdOf, managed: managed, isOwner: isOwner,
-    cleanKeys: cleanKeys, validRoleId: validRoleId, toMask: toMask, fromMask: fromMask, satisfies: satisfies
+    cleanKeys: cleanKeys, cleanScope: cleanScope, scopeOf: scopeOf, validRoleId: validRoleId, toMask: toMask, fromMask: fromMask, satisfies: satisfies
   };
 });

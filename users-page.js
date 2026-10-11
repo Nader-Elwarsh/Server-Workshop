@@ -77,11 +77,26 @@
   }
   function setOf(list) { var s = {}; (list || []).forEach(function (k) { s[k] = 1; }); return s; }
 
+  /* محافظ الورشة (من الإعدادات) + إضافة محفظة عهدة جديدة للقائمة لو مش موجودة. */
+  function settingsObj() { try { var raw = window.WFStorage && window.WFStorage.getItem("wf_s"); return raw ? (JSON.parse(raw) || {}) : {}; } catch (e) { return {}; } }
+  function walletNames() { var w = settingsObj().wallets; return Array.isArray(w) ? w.map(function (x) { return String(x || "").trim(); }).filter(Boolean) : []; }
+  function ensureWallet(name) {
+    name = String(name || "").replace(/\s+/g, " ").trim(); if (!name) return;
+    try {
+      var o = settingsObj(), list = Array.isArray(o.wallets) ? o.wallets.slice() : [];
+      if (list.map(function (x) { return String(x || "").trim(); }).indexOf(name) >= 0) return;
+      list.push(name); o.wallets = list; window.WFStorage.setItem("wf_s", JSON.stringify(o));
+    } catch (e) {}
+  }
+  var SCOPE_LABEL = { all: "كل بيانات الورشة", assigned: "الأوامر المعيّنة له فقط (وعملاؤها وأجهزتها)" };
+
   /* ---------- قائمة المستخدمين ---------- */
   function userCard(u) {
     var badges = [h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: roleName(u.role) })];
     if (u.disabled) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;background:#b3261e;color:#fff", text: "موقوف" }));
     if (u.legacy) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "حساب قديم = مالك" }));
+    if (u.effectiveScope === "assigned") badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#1d4ed8;color:#fff", text: "👷 أوامره المعيّنة فقط" }));
+    if (u.wallet) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "💼 " + u.wallet }));
     if (u.isSelf) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "أنت" }));
     var info = h("div", {}, [
       h("div", { style: "font-weight:700;font-size:16px", text: u.name || "(بدون اسم)" }),
@@ -119,15 +134,22 @@
     }
     roleSel.addEventListener("change", function () { loadFor(roleSel.value, false); drawMatrix(); });
     drawMatrix();
+    var scopeSel = h("select", { "aria-label": "نطاق البيانات" }, [["", "يتبع نطاق الدور"], ["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { var o = h("option", { value: p[0], text: p[1] }); if ((u.scope || "") === p[0]) o.selected = true; return o; }));
+    var dl = h("datalist", { id: "walletList_" + u.uid }, walletNames().map(function (n) { return h("option", { value: n }); }));
+    var walletIn = h("input", { type: "text", value: u.wallet || "", maxlength: "40", list: "walletList_" + u.uid, placeholder: "مثال: عهدة أحمد", "aria-label": "محفظة العهدة" });
     var save = h("button", { type: "button", class: "primary", text: "💾 حفظ التعديل", on: { click: function () {
       var rid = roleSel.value, base = setOf(state.config.roles[rid] ? state.config.roles[rid].perms : []);
       var allow = [], deny = [];
       if (rid !== "owner") R.KEYS.forEach(function (k) { if (current[k] && !base[k]) allow.push(k); if (!current[k] && base[k]) deny.push(k); });
       busy(save, true);
-      P.call("staffUpdate", { uid: u.uid, name: nameIn.value, role: rid, allow: allow, deny: deny }).then(function () { say("تم حفظ بيانات " + (nameIn.value || "المستخدم") + ".", false); state.editUid = null; return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(save, false); });
+      ensureWallet(walletIn.value);
+      P.call("staffUpdate", { uid: u.uid, name: nameIn.value, role: rid, allow: allow, deny: deny, scope: scopeSel.value, wallet: walletIn.value }).then(function () { say("تم حفظ بيانات " + (nameIn.value || "المستخدم") + ".", false); state.editUid = null; return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(save, false); });
     } } });
     return h("div", { style: "margin-top:10px;border-top:1px solid var(--border,#ddd);padding-top:10px" }, [
       h("label", {}, ["الاسم", nameIn]), h("label", {}, ["الدور", roleSel]),
+      h("label", {}, ["نطاق البيانات لهذا الشخص", scopeSel]),
+      h("label", {}, ["محفظة العهدة (اختياري)", walletIn]), dl,
+      h("p", { class: "hint", text: "المحفظة دي بتتسجّل فيها تحصيلات وعربونات ومصروفات الفني. لو مش موجودة بتتضاف لمحافظ الورشة تلقائيًا." }),
       h("p", { class: "hint", text: "غيّر أي صلاحية هنا لو عايز استثناء للشخص ده بس (من غير ما تغيّر الدور كله)." }),
       holder, h("div", { class: "actions" }, [save])
     ]);
@@ -179,12 +201,14 @@
     sel.addEventListener("change", function () { state.roleId = sel.value; render(); });
     var nameIn = h("input", { type: "text", value: role.name, maxlength: "40", disabled: locked, "aria-label": "اسم الدور" });
     nameIn.addEventListener("input", function () { role.name = nameIn.value; });
+    var scopeSel = h("select", { "aria-label": "نطاق بيانات الدور", disabled: locked }, [["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { var o = h("option", { value: p[0], text: p[1] }); if ((role.scope || "all") === p[0]) o.selected = true; return o; }));
+    scopeSel.addEventListener("change", function () { role.scope = scopeSel.value; });
     var cur = setOf(role.perms);
     var mx = matrix(locked ? setOf(R.KEYS) : cur, locked, function (k, on) { if (on) cur[k] = 1; else delete cur[k]; role.perms = R.KEYS.filter(function (x) { return cur[x]; }); });
     var newName = h("input", { type: "text", maxlength: "40", placeholder: "اسم دور جديد (مثال: فني أول)" });
     var addRole = h("button", { type: "button", class: "secondary mini-action", text: "➕ دور جديد", on: { click: function () {
       var nm = newName.value.replace(/\s+/g, " ").trim(); if (!nm) return say("اكتب اسم الدور الأول.", true);
-      var id = "r_" + Date.now().toString(36); d.roles[id] = { name: nm, perms: role.perms.slice() }; d.order.push(id); state.roleId = id; render();
+      var id = "r_" + Date.now().toString(36); d.roles[id] = { name: nm, perms: role.perms.slice(), scope: role.scope || "all" }; d.order.push(id); state.roleId = id; render();
     } } });
     var del = h("button", { type: "button", class: "secondary mini-action danger-btn", text: "🗑️ حذف الدور", disabled: locked, on: { click: function () {
       if (!window.confirm("حذف دور «" + role.name + "»؟")) return;
@@ -196,7 +220,8 @@
     } } });
     return h("section", { class: "panel" }, [h("h2", { text: "🛡️ الأدوار والصلاحيات" }),
       h("p", { class: "hint", text: "اختار دور وعدّل صلاحياته. التعديل بيسري على كل اللي على الدور ده بعد الحفظ." }),
-      h("div", { class: "form-grid" }, [h("label", {}, ["الدور", sel]), h("label", {}, ["اسم الدور", nameIn])]), mx,
+      h("div", { class: "form-grid" }, [h("label", {}, ["الدور", sel]), h("label", {}, ["اسم الدور", nameIn]), h("label", {}, ["نطاق البيانات", scopeSel])]),
+      h("p", { class: "hint", text: "«الأوامر المعيّنة له فقط»: الشخص ده هيشوف الأوامر اللي بتعيّنها له من «توزيع الأوامر» وعملاءها وأجهزتها، ومن غير باقي الورشة." }), mx,
       h("div", { class: "form-grid", style: "margin-top:8px" }, [h("label", {}, ["دور جديد (بينسخ صلاحيات الدور الحالي)", newName])]),
       h("div", { class: "actions", style: "gap:6px;flex-wrap:wrap" }, [addRole, del, save])]);
   }

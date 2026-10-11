@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v37-account-switch";
+const CACHE_NAME = "workshop-v38-tech-assign";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -110,6 +110,9 @@ const CORE_FILES = [
   "./white-label.html",
   "./users.html",
   "./users-page.js",
+  "./dispatch.html",
+  "./dispatch-page.js",
+  "./app-tech-assign.js",
   "./roles-core.js",
   "./app-permissions.js",
   "./workshop-logo.svg",

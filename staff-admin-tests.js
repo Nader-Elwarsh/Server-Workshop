@@ -141,6 +141,43 @@ async function rejects(promise, code, msg) {
   assert.strictEqual(L2.docs.get('staff/b').role, 'tech');
   await rejects(L2.admin.update('a', { uid: 'a', role: 'tech' }), 'failed-precondition', 'last_owner'); // a آخر مالك (وهو قديم)
 
+
+  // ---- المرحلة أ: نطاق البيانات + محفظة العهدة + قائمة الفنيين ----
+  let T = makeEnv({ boss: { name: 'المالك' } }); T.users.set('boss', { uid: 'boss', email: 'boss@x.com' });
+  await T.admin.sync('boss');
+  const t1 = await T.admin.create('boss', { email: 't1@x.com', name: 'أحمد', password: 'secret123', role: 'tech', wallet: '  عهدة   أحمد ' });
+  assert.strictEqual(T.docs.get('staff/' + t1.uid).wallet, 'عهدة أحمد', 'wallet normalized');
+  assert.strictEqual(T.claims[t1.uid].sc, 'w', 'default scope = whole workshop');
+  await rejects(T.admin.create('boss', { email: 't2@x.com', name: 'محمد', password: 'secret123', role: 'tech', wallet: 'عهدة أحمد' }), 'already-exists', 'wallet_taken');
+  const t2 = await T.admin.create('boss', { email: 't2@x.com', name: 'محمد', password: 'secret123', role: 'tech', scope: 'assigned' });
+  assert.strictEqual(T.claims[t2.uid].sc, 'a', 'user-level override -> assigned');
+  // scope على الدور
+  const cfg0 = await T.admin.loadConfig(); const cfg1 = JSON.parse(JSON.stringify(cfg0)); cfg1.roles.tech.scope = 'assigned';
+  const svr = await T.admin.saveRoles('boss', { config: cfg1 });
+  assert.strictEqual(svr.config.roles.tech.scope, 'assigned');
+  assert.strictEqual(T.claims[t1.uid].sc, 'a', 'role scope pushed to claims on save');
+  await T.admin.update('boss', { uid: t1.uid, scope: 'all' });
+  assert.strictEqual(T.claims[t1.uid].sc, 'w', 'per-user override beats role'); 
+  await T.admin.update('boss', { uid: t1.uid, scope: '' });
+  assert.strictEqual(T.claims[t1.uid].sc, 'a', 'empty override -> follow role');
+  assert.strictEqual(T.claims.boss && (await T.admin.sync('boss')).effectiveScope, 'all'); // المالك دايمًا all
+  // update wallet: يمنع التكرار ويسمح بالمسح
+  await rejects(T.admin.update('boss', { uid: t2.uid, wallet: 'عهدة أحمد' }), 'already-exists', 'wallet_taken');
+  await T.admin.update('boss', { uid: t1.uid, wallet: '' }); assert.strictEqual(T.docs.get('staff/' + t1.uid).wallet, '');
+  await rejects(T.admin.update('boss', { uid: t1.uid, wallet: 'x'.repeat(41) }), 'invalid-argument', 'bad_wallet');
+  // directory: المالك + اللي عنده requests.assign فقط، والموقوفين مش بيظهروا، من غير إيميلات
+  let dir = await T.admin.directory('boss');
+  assert(dir.users.some((u) => u.uid === t1.uid && u.scope === 'assigned') && dir.users.every((u) => !('email' in u)));
+  await rejects(T.admin.directory(t1.uid), 'permission-denied', 'cannot_assign');
+  await T.admin.update('boss', { uid: t1.uid, allow: ['requests.assign'] });
+  dir = await T.admin.directory(t1.uid); assert(dir.users.length >= 3, 'tech with requests.assign can list staff');
+  await T.admin.update('boss', { uid: t2.uid, disabled: true });
+  dir = await T.admin.directory('boss'); assert(!dir.users.some((u) => u.uid === t2.uid), 'disabled staff hidden from directory');
+  // المدير الافتراضي: يعيّن فنيين لكن مش بيعتمد/يسوّي عهدة
+  const mg = await T.admin.create('boss', { email: 'm@x.com', name: 'مدير', password: 'secret123', role: 'manager' });
+  const mp = core.fromMask(T.claims[mg.uid].pm);
+  assert(mp.includes('requests.assign') && !mp.includes('custody.approve') && !mp.includes('custody.settle'), 'manager defaults: assign yes, custody approve/settle no');
+
   // ---- سجل المراجعة بيسجّل كل عملية ----
   const actions = t.audit.map((a) => a.action);
   ['create_user', 'update_user', 'reset_password', 'save_roles'].forEach((a) => assert(actions.includes(a), 'audit has ' + a));
