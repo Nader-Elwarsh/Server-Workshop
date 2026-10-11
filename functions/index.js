@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineString, defineSecret, defineBoolean } = require("firebase-functions/params");
 const { createPhoneHandlers, PhoneError } = require("./phone-lookup");
+const { createStaffAdmin, AdminError } = require("./staff-admin");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -120,3 +121,31 @@ function callable(name, handler) {
 }
 exports.portalLoginLookup = callable("portalLoginLookup", phoneHandlers.lookup);
 exports.portalPhoneAvailable = callable("portalPhoneAvailable", phoneHandlers.available);
+
+/* ---------------------------------------------------------------------
+   إدارة المستخدمين والأدوار (للمالك فقط، ما عدا staffSync اللي أي موظف بيناديه لنفسه).
+   كل الدوال بتتحقق من مستند staff/{uid} على السيرفر؛ مفيش ثقة في أي بيانات جاية من المتصفح.
+   --------------------------------------------------------------------- */
+const staffAdmin = createStaffAdmin({
+  auth: getAuth(),
+  db: { doc: (p) => getFirestore().doc(p), collection: (p) => getFirestore().collection(p) },
+  randomInt: (n) => crypto.randomInt(n),
+  log: (...a) => console.warn("[staff-admin]", ...a)
+});
+function adminCallable(name, handler) {
+  return onCall({ region: "us-central1", cors: true, maxInstances: 5, timeoutSeconds: 30, memory: "256MiB" }, async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "sign_in_required");
+    try { return await handler(request.auth.uid, request.data || {}); }
+    catch (e) {
+      if (e instanceof AdminError) throw new HttpsError(e.code, e.message);
+      console.error(`[${name}]`, e && e.message);
+      throw new HttpsError("internal", "internal");
+    }
+  });
+}
+exports.staffSync = adminCallable("staffSync", (uid) => staffAdmin.sync(uid));
+exports.staffList = adminCallable("staffList", (uid) => staffAdmin.list(uid));
+exports.staffCreate = adminCallable("staffCreate", (uid, d) => staffAdmin.create(uid, d));
+exports.staffUpdate = adminCallable("staffUpdate", (uid, d) => staffAdmin.update(uid, d));
+exports.staffResetPassword = adminCallable("staffResetPassword", (uid, d) => staffAdmin.resetPassword(uid, d));
+exports.rolesSave = adminCallable("rolesSave", (uid, d) => staffAdmin.saveRoles(uid, d));
