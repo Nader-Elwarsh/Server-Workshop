@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v31-firebase-config";
+const CACHE_NAME = "workshop-v30-errorlog-money";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -37,7 +37,6 @@ const CORE_FILES = [
   "./workshop-idb.js",
   "./shared-data.js",
   "./brand-unify.js",
-  "./firebase-config.js",
   "./app-check.js",
   "./error-log.js",
   "./firebase-sync.js",
