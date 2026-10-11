@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v32-list-fix";
+const CACHE_NAME = "workshop-v33-invite-orphan";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

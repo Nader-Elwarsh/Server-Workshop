@@ -710,6 +710,14 @@
         .then(function () { return sa.signOut(); }).then(function () { return { uid: uid, temp: temp }; });
     }).catch(function (e) { try { sa.signOut(); } catch (x) {} throw e; });
   }
+  /* حساب بوابة قديم بقى مربوط بعميل اتمسح من النظام (مثلاً اتمسح العميل واتضاف تاني بنفس الرقم):
+     ده مش «عميل تاني» فعلاً، فمينفعش يمنع الموظف يفعّل الحساب. بنتأكد من السيرفر نفسه إن سجل العميل
+     القديم مش موجود (قراءة ناجحة بنتيجة «مش موجود») — لو فيه أي خطأ أو الرابط معطّل بنعتبره عميل تاني ونرفض زي الأول. */
+  function linkedCustomerGone(link) {
+    var id = link && link.customerId;
+    if (!id || id === "_reset" || link.disabled) return Promise.resolve(false);
+    return withTimeout(db.collection("customers").doc(String(id)).get()).then(function (s) { return !s.exists; }).catch(function () { return false; });
+  }
   function resolveInvite(c, p) {
     return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
       if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp }; });
@@ -722,7 +730,14 @@
           .then(function () { return withTimeout(db.collection("portalLinks").doc(uid).get()); })
           .then(function (l2) {
             var r2 = linkOk(l2); if (r2) return r2;
-            if (l2.exists) throw { code: "linked-other" };
+            if (l2.exists) {
+              var od = l2.data() || {};
+              return linkedCustomerGone(od).then(function (gone) {
+                if (!gone) throw { code: "linked-other" };
+                return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, adoptedFrom: String(od.customerId), adoptedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }))
+                  .then(function () { return { uid: uid, mustChange: od.mustChange !== false, created: false, legacy: !od.pwKind }; });
+              });
+            }
             return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() })).then(function () { return { uid: uid, mustChange: false, created: false }; });
           });
       });
@@ -777,9 +792,12 @@
       return withTimeout(db.collection("portalLinks").doc(oldUid).get());
     }).then(function (l) {
       var owner = l.exists ? l.data().customerId : oldUid;
-      if (owner !== c.id) throw { code: "linked-other" };
+      var ownerOk = owner === c.id ? Promise.resolve(true) : linkedCustomerGone(l.exists ? l.data() : null);
+      return ownerOk.then(function (okOwner) {
+      if (!okOwner) throw { code: "linked-other" };
       if (String(idx.email || "").slice(-SYNMAIL.length) !== SYNMAIL && !confirm("العميل ده مسجّل بإيميل (" + idx.email + ").\nالأفضل يستخدم «نسيت كلمة المرور» ويوصله رابط على إيميله.\nلو كمّلت هيدخل بعد كده برقم التليفون والكلمة المؤقتة. تكمّل؟")) throw { code: "cancel" };
       return withTimeout(sa.createUserWithEmailAndPassword(em, temp));
+      });
     }).then(function (cr) {
       newUid = cr.user.uid;
       return withTimeout(pi.set({ email: em, uid: newUid })).catch(function (e) { // لو القواعد بتسمح بالإنشاء بس: امسح وأنشئ من الحساب الجديد
