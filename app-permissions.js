@@ -211,7 +211,7 @@
   function openPanel() {
     closePanel(); panelOpen = true;
     var u = curUser(), pv = previewRole();
-    panelEl = mk("div", "position:fixed;left:12px;bottom:126px;z-index:2147483600;width:min(300px,calc(100vw - 24px));box-sizing:border-box;background:#0b2a66;color:#fff;border-radius:14px;padding:14px;box-shadow:0 8px 28px rgba(0,0,0,.45);font:15px system-ui;direction:rtl;text-align:start;max-height:80vh;overflow:auto");
+    panelEl = mk("div", "position:fixed;left:12px;top:70px;z-index:2147483600;width:min(300px,calc(100vw - 24px));box-sizing:border-box;background:#0b2a66;color:#fff;border-radius:14px;padding:14px;box-shadow:0 8px 28px rgba(0,0,0,.45);font:15px system-ui;direction:rtl;text-align:start;max-height:80vh;overflow:auto");
     panelEl.id = "wfAccountPanel";
     panelEl.appendChild(mk("div", "font-weight:700;font-size:16px", (state.profile && state.profile.name) || (u && u.email) || "حسابي"));
     var sub = roleLabel(); if (u && u.email) sub = (sub ? sub + " • " : "") + u.email;
@@ -255,10 +255,19 @@
       chipEl = mk("button", "", "");
       chipEl.type = "button"; chipEl.id = "wfAccountChip"; chipEl.className = "no-print";
       chipEl.onclick = function () { if (panelOpen) closePanel(); else openPanel(); };
-      w.document.body.appendChild(chipEl);
+      /* جنب زر المظهر 🌙 بالظبط: بنحط الاتنين في مجموعة واحدة (wrapper) مكان الزر، فمهما كان تخطيط الترويسة في الصفحة
+         يفضلوا ملزوقين في بعض وفي نفس الركن (القمر على الحافة والحساب جنبه). الصفحات من غير زر المظهر: تبويب ثابت على الحافة. */
+      var tg = null;
+      try { tg = w.document.querySelector(".theme-toggle-btn"); } catch (e) {}
+      if (tg && tg.parentNode && typeof tg.parentNode.insertBefore === "function") {
+        var grp = mk("span", "display:inline-flex;align-items:center;gap:8px;flex:none"); grp.id = "wfAcctGroup";
+        tg.parentNode.insertBefore(grp, tg);
+        chipEl.__inline = true; chipEl.className = "icon-nav-btn no-print";
+        grp.appendChild(chipEl); grp.appendChild(tg);
+      } else w.document.body.appendChild(chipEl);
     }
-    /* مكان ثابت في كل الصفحات: تبويب صغير على الحافة اليسرى فوق الشريط السفلي مباشرة، مش جوه الترويسة (تختلف من صفحة لصفحة). */
-    chipEl.style.cssText = "position:fixed;left:0;bottom:76px;z-index:2147483600;width:38px;height:42px;border-radius:0 21px 21px 0;border:1px solid rgba(255,255,255,.35);border-left:0;background:" + (pv ? "#b45309" : "#0b2a66") + ";color:#fff;font:700 17px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:.88;padding:0";
+    if (chipEl.__inline) chipEl.style.cssText = "flex:none;" + (pv ? "background:#b45309;color:#fff" : "");
+    else chipEl.style.cssText = "position:fixed;left:0;bottom:76px;z-index:2147483600;width:38px;height:42px;border-radius:0 21px 21px 0;border:1px solid rgba(255,255,255,.35);border-left:0;background:" + (pv ? "#b45309" : "#0b2a66") + ";color:#fff;font:700 17px system-ui;box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;opacity:.88;padding:0";
     chipEl.textContent = pv ? "👁" : "👤";
     chipEl.setAttribute("aria-label", "حسابي: تبديل الحساب وتسجيل الخروج");
     chipEl.title = pv ? "معاينة: " + roleLabel() : "حسابي";
