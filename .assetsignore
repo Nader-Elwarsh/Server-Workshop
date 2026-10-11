@@ -1,5 +1,6 @@
 wrangler.jsonc
 .assetsignore
+.github
 *.md
 security-tests
 package.json
@@ -20,3 +21,4 @@ browser-smoke.sh
 browser-interactive.html
 debug-check.html
 official-compressor-import-summary.json
+staging-setup-tests.js
