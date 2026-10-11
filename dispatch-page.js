@@ -79,7 +79,7 @@
     }
     function refreshBar() { var g = document.getElementById("dispatchGo"); if (g) g.textContent = "👷 عيّن المحدد (" + selCount() + ")"; }
     root.textContent = "جارٍ التحميل…";
-    window.WFTech.directory().then(function (u) { state.users = u || []; if (!state.users.length) say("مفيش قائمة موظفين متحمّلة. افتح الصفحة مع النت مرة واحدة.", true); draw(); });
+    window.WFTech.directory().then(function (u) { state.users = u || []; if (!state.users.length) say("مفيش قائمة فنيين متحمّلة — " + (window.WFTech.lastError() || "افتح الصفحة مع النت مرة واحدة") + ".", true); draw(); });
     try { window.WFPerm.onChange(function () { if (!window.WFPerm.can("requests.assign")) root.textContent = "🔒 مفيش صلاحية تعيين الفنيين."; }); } catch (e) {}
   }
   wait();

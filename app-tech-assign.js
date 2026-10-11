@@ -12,18 +12,42 @@
   function writeDir(list) { try { var s = store(); if (s) s.setItem(K_DIR, JSON.stringify(list)); } catch (e) {} }
   function canAssign() { return !!(w.WFPerm && w.WFPerm.can("requests.assign")); }
 
-  var dirPromise = null;
+  var dirPromise = null, lastError = "";
+  /* سبب فشل تحميل القائمة بالعربي (للتشخيص): الدالة مش منشورة، مفيش صلاحية، مفيش نت... */
+  function explainDir(e) {
+    var c = String((e && e.code) || ""), m = String((e && e.message) || "");
+    if (c === "not-found" || (e && e.status === 404)) return "دالة «staffDirectory» مش منشورة على السيرفر (انشر الـ functions للمشروع ده)";
+    if (c === "permission-denied" || /cannot_assign/.test(m)) return "حسابك مالوش صلاحية «تعيين فني على أمر الشغل»";
+    if (c === "unauthenticated") return "سجّل الدخول تاني";
+    if (c === "failed-precondition" || /not_staff/.test(m)) return "حسابك مش موظف مفعّل";
+    return "تعذّر الاتصال بالسيرفر" + (c ? " (" + c + ")" : "");
+  }
+  /* Firebase بيرجّع جلسة الدخول بعد تحميل الصفحة بشوية: نستنى المستخدم (حد أقصى 10 ثواني) قبل أي نداء للسيرفر. */
+  function waitAuth() {
+    return new Promise(function (resolve) {
+      try {
+        var au = w.firebase.auth();
+        if (au.currentUser) return resolve();
+        var done = false, off = au.onAuthStateChanged(function (u) { if (u && !done) { done = true; try { off(); } catch (e) {} resolve(); } });
+        setTimeout(function () { if (!done) { done = true; try { off(); } catch (e) {} resolve(); } }, 10000);
+      } catch (e) { resolve(); }
+    });
+  }
   function directory(force) {
     if (dirPromise && !force) return dirPromise;
-    dirPromise = new Promise(function (resolve) {
+    var p = new Promise(function (resolve) {
       var cached = readDir() || [];
-      if (!w.WFPerm || (w.navigator && w.navigator.onLine === false)) return resolve(cached);
-      w.WFPerm.call("staffDirectory", {}).then(function (r) {
+      lastError = "";
+      if (!w.WFPerm || (w.navigator && w.navigator.onLine === false)) { if (!cached.length) lastError = "مفيش نت ومفيش قائمة محفوظة"; return resolve(cached); }
+      waitAuth().then(function () { return w.WFPerm.call("staffDirectory", {}); }).then(function (r) {
         var users = (r && Array.isArray(r.users)) ? r.users : cached;
-        writeDir(users); resolve(users);
-      }, function () { resolve(cached); });
+        if (r && Array.isArray(r.users)) writeDir(users);
+        resolve(users);
+      }, function (e) { lastError = explainDir(e); resolve(cached); });
     });
-    return dirPromise;
+    dirPromise = p;
+    p.then(function (u) { if (!u || !u.length) dirPromise = null; }); // القائمة الفاضية ماتتكاشّش: المحاولة الجاية تعيد الطلب
+    return p;
   }
   function techFor(users, uid) { for (var i = 0; i < users.length; i++) if (users[i].uid === uid) return users[i]; return null; }
   function myUid() { try { return w.firebase.auth().currentUser.uid; } catch (e) { return ""; } }
@@ -46,7 +70,7 @@
     }
     return { done: done, skipped: skipped };
   }
-  w.WFTech = { directory: directory, assign: assign, canAssign: canAssign };
+  w.WFTech = { directory: directory, assign: assign, canAssign: canAssign, lastError: function () { return lastError; } };
 
   /* ---------- لوحة request.html ---------- */
   var path = (w.location && w.location.pathname) || "";

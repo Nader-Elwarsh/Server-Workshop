@@ -81,5 +81,21 @@ const USERS = [{ uid: 't1', name: 'أحمد', role: 'tech', roleName: 'فني', 
   const n2 = all(d2.root); const b2 = n2.find((n) => n.type === 'checkbox'); b2.checked = true; b2.onchange();
   n2.find((n) => n.id === 'dispatchWho').value = '__none__'; // أول خيار في الـselect الحقيقي
   await n2.find((n) => n.id === 'dispatchGo').onclick(); assert(d2.msg.textContent.includes('اختار الفني'), 'must choose a technician first');
+  // الجلسة بتتأخر عن تحميل الصفحة: لازم نستناها بدل ما نطلب القائمة وإحنا مش مسجّلين
+  const la = makeWin({ requests: [{ id: 'r1', no: 1, customerId: 'c1' }], dirUsers: USERS });
+  let cur = null, listener = null, sawUser = null;
+  la.win.firebase = { auth: () => ({ get currentUser() { return cur; }, onAuthStateChanged(fn) { listener = fn; return () => {}; } }) };
+  la.win.WFPerm.call = async () => { sawUser = cur; return { users: USERS }; };
+  vm.runInNewContext(fs.readFileSync('app-tech-assign.js', 'utf8'), la.win);
+  const pend = la.win.WFTech.directory(); await flush();
+  cur = { uid: 'boss' }; listener(cur);
+  assert.strictEqual((await pend).length, 2); assert(sawUser, 'directory requested only after sign-in restored');
+  // فشل تحميل قائمة الفنيين: رسالة واضحة، ومش بتتكاشّى
+  const f = makeWin({ requests: [{ id: 'r1', no: 1, customerId: 'c1' }], dirUsers: USERS });
+  let failing = true; f.win.WFPerm.call = async () => { if (failing) throw { code: 'not-found', status: 404 }; return { users: USERS }; };
+  vm.runInNewContext(fs.readFileSync('app-tech-assign.js', 'utf8'), f.win); vm.runInNewContext(fs.readFileSync('dispatch-page.js', 'utf8'), f.win);
+  await flush(); await flush();
+  assert(f.msg.textContent.includes('staffDirectory') && f.msg.textContent.includes('مش منشورة'), 'explains undeployed function');
+  failing = false; assert.strictEqual((await f.win.WFTech.directory()).length, 2, 'empty result not cached -> retry works');
   console.log('tech-assign-tests: PASS (تعيين/إلغاء/تخطي المقفول، كاش الفنيين أوفلاين، صفحة التوزيع، بدون صلاحية)');
 })().catch((e) => { console.error(e); process.exit(1); });
