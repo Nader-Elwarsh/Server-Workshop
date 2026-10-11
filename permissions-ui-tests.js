@@ -36,7 +36,7 @@ function run(url, { profile, config, nodes } = {}) {
   return { ctx, alerts, body, docListeners, winListeners, store };
 }
 const flush = () => new Promise((r) => setImmediate(r));
-const TECH = { name: 'ف', role: 'tech', allow: [], deny: [] };
+const TECH = { name: 'ف', role: 'tech', acl: 1, allow: [], deny: [] };
 const denied = (t) => !!t.body.children.find((c) => c.id === 'wfPermDenied');
 
 (async () => {
@@ -105,7 +105,7 @@ const denied = (t) => !!t.body.children.find((c) => c.id === 'wfPermDenied');
   t = run('/index.html', { profile: { role: 'owner' } }); await flush();
   t.ctx.deleteAllCustomers = () => 'wiped'; t.ctx.WFPerm._wrapActions(); assert.strictEqual(t.ctx.deleteAllCustomers(), 'wiped');
   // مدير: الحذف الشامل ممنوع افتراضيًا
-  t = run('/index.html', { profile: { role: 'manager' } }); await flush();
+  t = run('/index.html', { profile: { role: 'manager', acl: 1 } }); await flush();
   t.ctx.deleteAllCustomers = () => 'wiped'; t.ctx.WFPerm._wrapActions();
   assert.strictEqual(t.ctx.deleteAllCustomers(), undefined, 'manager has no data.wipe by default');
 

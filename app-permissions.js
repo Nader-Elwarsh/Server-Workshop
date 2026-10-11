@@ -193,7 +193,7 @@
     });
   }
   function acceptProfile(p, cfg) {
-    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true };
+    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "" };
     if (cfg) state.config = R.normalizeConfig(cfg);
     writeJSON(K_PROFILE, state.profile); writeJSON(K_CONFIG, state.config);
     recompute(); applyAll(); notify();
@@ -218,7 +218,7 @@
     if (!force && Date.now() - last < SYNC_EVERY) return Promise.resolve(false);
     return authedCall("staffSync", {}).then(function (res) {
       try { store().setItem(K_SYNC, String(Date.now())); } catch (e) {}
-      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled }, res.config);
+      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled, acl: res.acl, createdBy: res.createdBy }, res.config);
       return true;
     }).catch(function () { return false; });
   }
