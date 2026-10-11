@@ -58,11 +58,14 @@ function mk(opts={}){
  // invite: linked to other customer -> error
  t=mk({phoneIndex:{'01005781925':{uid:'U4'}},links:{U4:{customerId:'zzz'}},customers:{zzz:true}});
  await assert.rejects(()=>t.api.resolveInvite({id:'c1'},'01005781925'),e=>e.code==='linked-other');
- // invite: old account linked to a customer that was DELETED -> adopt it for the current customer
+ // invite: old account linked to a customer that was DELETED -> replace with a NEW account + random temp password (sent in the invite)
  t=mk({phoneIndex:{'01005781925':{uid:'U5'}},links:{U5:{customerId:'deleted-1',mustChange:false,pwKind:'random'}},customers:{}});
  r=await t.api.resolveInvite({id:'c1'},'01005781925');
- assert.strictEqual(t.links.U5.customerId,'c1');assert.strictEqual(t.links.U5.adoptedFrom,'deleted-1');
- assert.ok(r.uid==='U5'&&r.created===false&&r.mustChange===false&&t.created.length===0,'adopt must not create a new auth user');
+ assert.ok(r.created===true&&r.mustChange===true&&r.uid==='NEWUID'&&/^\d{8}$/.test(r.temp),'orphan -> fresh account with a random temp password');
+ assert.strictEqual(t.created.length,1);assert.strictEqual(t.pwds[0],r.temp);
+ assert.strictEqual(t.idx['01005781925'].uid,'NEWUID');
+ assert.strictEqual(t.links.NEWUID.customerId,'c1');assert.strictEqual(t.links.NEWUID.mustChange,true);assert.strictEqual(t.links.NEWUID.replacedOrphan,'deleted-1');
+ assert.strictEqual(t.links.U5.disabled,true);assert.strictEqual(t.links.U5.customerId,'_reset');assert.strictEqual(t.links.U5.replacedBy,'NEWUID');
  // invite: disabled/reset link or unreadable customers collection must NOT be adopted
  t=mk({phoneIndex:{'01005781925':{uid:'U6'}},links:{U6:{customerId:'_reset',disabled:true}},customers:{}});
  await assert.rejects(()=>t.api.resolveInvite({id:'c1'},'01005781925'),e=>e.code==='linked-other');

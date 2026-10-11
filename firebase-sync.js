@@ -718,6 +718,29 @@
     if (!id || id === "_reset" || link.disabled) return Promise.resolve(false);
     return withTimeout(db.collection("customers").doc(String(id)).get()).then(function (s) { return !s.exists; }).catch(function () { return false; });
   }
+  function replaceOrphanPortalAccount(c, p, oldUid, oldLink) {
+    var sa = secApp().auth(), temp = tempPassword(), em = p + "." + Date.now().toString(36) + "@phone.elwarsha.app", newUid = null, swapped = false, SV = firebase.firestore.FieldValue.serverTimestamp();
+    var pi = db.collection("phoneIndex").doc(p);
+    return withTimeout(sa.createUserWithEmailAndPassword(em, temp)).then(function (cr) {
+      newUid = cr.user.uid;
+      return withTimeout(pi.set({ email: em, uid: newUid })).catch(function () { // لو القواعد بتسمح بالإنشاء بس: امسح وأنشئ من الحساب الجديد
+        return withTimeout(pi.delete()).then(function () { return withTimeout(secApp().firestore().collection("phoneIndex").doc(p).set({ email: em, uid: newUid })); });
+      });
+    }).then(function () {
+      swapped = true;
+      return withTimeout(db.collection("portalLinks").doc(newUid).set({ customerId: c.id, phone: p, mustChange: true, pwKind: "random", replacedOrphan: String((oldLink && oldLink.customerId) || ""), createdAt: SV }));
+    }).then(function () {
+      return withTimeout(db.collection("portalLinks").doc(oldUid).set({ customerId: "_reset", phone: p, disabled: true, replacedBy: newUid, resetAt: SV })).catch(function () {});
+    }).then(function () {
+      try { sa.signOut(); } catch (e) {}
+      return { uid: newUid, mustChange: true, created: true, temp: temp };
+    }).catch(function (e) {
+      try { sa.signOut(); } catch (x) {}
+      // فشل قبل تحويل الفهرس: امسح الحساب الجديد اللي اتفتح عشان مايفضلش حساب يتيم
+      if (newUid && !swapped) { try { var u = sa.currentUser; if (u) u.delete().catch(function () {}); } catch (x) {} }
+      throw e;
+    });
+  }
   function resolveInvite(c, p) {
     return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
       if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp }; });
@@ -734,8 +757,8 @@
               var od = l2.data() || {};
               return linkedCustomerGone(od).then(function (gone) {
                 if (!gone) throw { code: "linked-other" };
-                return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, adoptedFrom: String(od.customerId), adoptedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }))
-                  .then(function () { return { uid: uid, mustChange: od.mustChange !== false, created: false, legacy: !od.pwKind }; });
+                // الحساب القديم كلمة سره مجهولة للموظف: بنفتح حساب جديد بكلمة مؤقتة عشوائية تتبعت في الدعوة، ونعطّل القديم
+                return replaceOrphanPortalAccount(c, p, uid, od);
               });
             }
             return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() })).then(function () { return { uid: uid, mustChange: false, created: false }; });
