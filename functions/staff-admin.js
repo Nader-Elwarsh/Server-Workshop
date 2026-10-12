@@ -46,8 +46,7 @@ function createStaffAdmin(deps) {
     return s;
   }
   async function requireOwner(uid) {
-    const s = await requireStaff(uid);
-    const cfg = await loadConfig();
+    const [s, cfg] = await Promise.all([requireStaff(uid), loadConfig()]); // بالتوازي: أسرع في فتح صفحة المستخدمين
     if (!core.isOwner(cfg, s)) throw new AdminError("permission-denied", "owner_only");
     return { staff: s, cfg };
   }
