@@ -82,8 +82,9 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   assert(!/طباعة|واتساب|حذف/.test(text), 'مفيش طباعة/رسائل/حذف');
   assert(all(e.root).some((n) => n.tagName === 'A' && n.href === 'tel:01011111111'), 'زر الاتصال');
   const nav = all(e.root).find((n) => n.tagName === 'NAV');
-  assert(nav && ['الرئيسية', 'أوامري', 'المقفولة', 'عهدتي'].every((t) => nav.textContent.includes(t)), 'الشريط السفلي');
-  assert(nav.textContent.includes('الرئيسية2'), 'عدّاد الرئيسية = النهارده + المتأخر');
+  assert(nav && ['الرئيسية', 'النهارده', 'أوامري', 'المقفولة', 'عهدتي'].every((t) => nav.textContent.includes(t)), 'الشريط السفلي');
+  assert(nav.textContent.includes('النهارده2'), 'عدّاد النهارده = النهارده + المتأخر');
+  btnOf(nav, 'الرئيسية').onclick(); assert.strictEqual(e.win.location.href, 'index.html', 'الرئيسية للفني = رئيسية النظام');
   // موظف كامل فاتح بوابة الفني: زرار «الرئيسية» بيرجّعه لرئيسية النظام
   const eF = makeEnv({ rootId: 'techRoot', data: mkData(), callImpl: accImpl }); eF.win.wfSyncMode = 'full'; run(eF); await flush();
   const navF = all(eF.root).find((n) => n.tagName === 'NAV');

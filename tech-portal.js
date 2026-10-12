@@ -145,8 +145,8 @@
       var nav = el("nav", "tp-nav"), open = openOrders(), today = dayOf(new Date());
       var todayCount = open.filter(function (r) { return r.visit && dayOf(r.visit) <= today; }).length;
       // حساب الفني: «الرئيسية» = النهارده في بوابته. موظف كامل فاتح البوابة: «الرئيسية» = رئيسية النظام.
-      var scoped = window.wfSyncMode === "scoped";
-      var items = scoped ? [["today", "🏠", "الرئيسية", todayCount]] : [["__home", "🏠", "الرئيسية", 0], ["today", "📅", "النهارده", todayCount]];
+      // «الرئيسية» = رئيسية النظام لكل الناس (الفني بيشوف فيها أوامره بس).
+      var items = [["__home", "🏠", "الرئيسية", 0], ["today", "📅", "النهارده", todayCount]];
       items.concat([["orders", "🛠️", "أوامري", open.length], ["done", "✅", "المقفولة", 0], ["account", "💼", "عهدتي", 0]]).forEach(function (t) {
         var on = state.tab === t[0] && !state.id;
         var b = btn("", "tp-nav-btn" + (on ? " tp-on" : ""), function () { if (t[0] === "__home") { location.href = "index.html"; return; } go({ tab: t[0] }); });

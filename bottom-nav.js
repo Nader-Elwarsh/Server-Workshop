@@ -84,15 +84,25 @@
       var gsBtn = document.getElementById("gsBtn");
       if (gsBtn) gsBtn.click(); else location.href = "index.html";
     });
+    applyCached();
     applyPerms();
     waitPerms(0);
   }
 
+  /* آخر شكل للشريط بيتحفظ على الجهاز، فالصفحة الجاية بتفتح بيه على طول من غير ما الأزرار تتنطط لحد ما الصلاحيات تحمّل. */
+  var NAV_KEY = "wf_nav_hidden";
+  function applyCached() {
+    var nav = document.getElementById("bottomNav"), hidden = null;
+    try { hidden = JSON.parse((window.WFStorage && window.WFStorage.getItem(NAV_KEY)) || "null"); } catch (e) {}
+    if (!nav || !Array.isArray(hidden)) return;
+    Array.prototype.forEach.call(nav.querySelectorAll("a[data-key]"), function (a) { a.style.display = hidden.indexOf(a.getAttribute("data-key")) > -1 ? "none" : ""; });
+  }
   /* الأقسام اللي المستخدم مالوش صلاحية يفتحها بتستخبى من الشريط (الصلاحيات بتتحمّل بعد الصفحة بشوية). */
   function applyPerms() {
     var nav = document.getElementById("bottomNav"), P = window.WFPerm, R = window.WFRoles;
     if (!nav || !P || !R || !R.PAGES || typeof P.can !== "function") return false;
-    var wallet = ""; try { wallet = (P.wallet && P.wallet()) || ""; } catch (e) {}
+    try { if (typeof P.profile === "function" && !P.profile()) return false; } catch (e) {} // لسه الصلاحيات ماحمّلتش: سيب الشكل المحفوظ
+    var wallet = "", hidden = []; try { wallet = (P.wallet && P.wallet()) || ""; } catch (e) {}
     Array.prototype.forEach.call(nav.querySelectorAll("a[href]"), function (a) {
       var key = a.getAttribute("data-key"), need = R.PAGES[String(a.getAttribute("href") || "").split("?")[0]];
       var ok = true; try { ok = !need || P.can(need) !== false; } catch (e) {}
@@ -100,7 +110,9 @@
       if (key === "devices" && wallet) ok = false;
       if (key === "home") ok = true; // الرئيسية دايمًا
       a.style.display = ok ? "" : "none";
+      if (!ok) hidden.push(key);
     });
+    try { if (window.WFStorage) window.WFStorage.setItem(NAV_KEY, JSON.stringify(hidden)); } catch (e) {}
     return true;
   }
   var hooked = false;

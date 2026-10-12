@@ -293,8 +293,29 @@ function requestAgeMs(r){
   return Math.max(0,raw-frozenMs);
 }
 
+// حساب الفني (أوامره المعيّنة فقط): القفل بيتم على السيرفر (techCloseOrder) — الأمر وحركة التحصيل في محفظته مع بعض.
+function techCloseOnServer(r){
+  if(navigator.onLine===false){alert("قفل الأمر محتاج نت عشان التحصيل يتسجل في عهدتك.");return}
+  let wallet=document.getElementById("rCloseWallet")?.value||(window.WFPerm?.wallet?.()||"");
+  let remain=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+  if(remain>0&&!wallet){alert("اختار المحفظة اللي هيتسجل فيها المبلغ.");return}
+  if(!confirm(`تأكيد استلام ${remain.toFixed(2)} ج وقفل الأمر ${r.no||""}${remain>0?`\nالمبلغ هيتسجل في: ${wallet}`:""}؟`))return;
+  let d=new Date(),p=n=>String(n).padStart(2,"0");
+  Promise.resolve(window.wfCloudSyncNow?window.wfCloudSyncNow():null).catch(()=>{}).then(()=>{
+    let cur=arr(K.r).find(x=>String(x.id)===String(r.id))||r;
+    return window.WFPerm.call("techCloseOrder",{orderId:r.id,wallet,expectTotal:+cur.total||0,expectDeposit:+cur.deposit||0,date:localDateKey(d),time:p(d.getHours())+":"+p(d.getMinutes())});
+  }).then(res=>{
+    put(K.r,arr(K.r).filter(x=>String(x.id)!==String(r.id)));
+    alert(res&&res.collected>0?`✅ اتقفل الأمر واتسجل ${(+res.collected).toFixed(2)} ج في «${res.wallet}».`:"✅ اتقفل الأمر.");
+    location.href="tech.html?tab=done";
+  },e=>{
+    let m=String(e&&e.message||""),M={stale_total:"التعديلات لسه بتترفع. استنى ثواني وجرّب تاني.",not_completed:"خلي الحالة «مكتمل» الأول.",already_closed:"الأمر اتقفل بالفعل.",not_your_order:"الأمر اتنقل لفني تاني.",bad_wallet:"المحفظة دي مش من محافظ الورشة.",no_close_permission:"حسابك مالوش صلاحية قفل الأوامر."};
+    alert(M[m]||("تعذّر قفل الأمر ("+(m||e&&e.code||"خطأ")+")."));
+  });
+}
 function markPaidAndClose(i){
   let a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
+  if(r&&!r.closed&&r.status==="مكتمل"&&window.wfSyncMode==="scoped"&&window.WFPerm&&typeof window.WFPerm.call==="function")return techCloseOnServer(r);
   if(!r){alert("الأمر غير موجود (ممكن يكون اتحذف أو اتغير). حدّث الصفحة وجرّب تاني.");return}
   if(r.closed&&r.paid){alert("الأمر ده متقفل ومدفوع بالفعل.");return}
   // حالة نص-مقفولة (paid من غير closed أو العكس) كانت بتعمل return صامت والأمر يفضل عالق؛

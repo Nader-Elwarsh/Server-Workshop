@@ -43,8 +43,13 @@
     var pv = previewRole();
     var perms = R.effectivePerms(state.config, pv ? { role: pv, acl: 1 } : state.profile), set = {};
     perms.forEach(function (k) { set[k] = 1; });
+    // حساب «أوامره المعيّنة فقط»: الجهاز عنده أوامره وعملاؤها وأجهزتها بس، والسيرفر بيقبل منه تعديل شغل أوامره بس.
+    // فأي صلاحية تانية (إضافة عميل، مخزن، محافظ…) بتتقفل في الواجهة بدل ما الشغل يضيع لما السيرفر يرفضه.
+    if (scopedDevice()) Object.keys(set).forEach(function (k) { if (!SCOPED_OK[k]) delete set[k]; });
     state.set = set;
   }
+  var SCOPED_OK = { "requests.view": 1, "requests.edit": 1, "requests.close": 1, "customers.view": 1, "devices.view": 1, "route.view": 1 };
+  function scopedDevice() { try { return w.wfSyncMode === "scoped" || (w.WFStorage && w.WFStorage.getItem("wf_sync_mode") === "scoped"); } catch (e) { return false; } }
   function can(key) { return state.set === null ? true : R.satisfies(state.set, key); }
   function isOwner() { return previewRole() ? false : realOwner(); }
   function denyLabel(rule) {
