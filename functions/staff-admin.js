@@ -78,7 +78,10 @@ function createStaffAdmin(deps) {
     const perms = core.effectivePerms(cfg, staff);
     let existing = {};
     try { const u = await auth.getUser(uid); existing = (u && u.customClaims) || {}; } catch (_) {}
-    await auth.setCustomUserClaims(uid, Object.assign({}, existing, { role: core.roleIdOf(staff), pm: core.toMask(perms), sc: core.scopeOf(cfg, staff) === "assigned" ? "a" : "w" }));
+    const sc = core.scopeOf(cfg, staff) === "assigned" ? "a" : "w";
+    await auth.setCustomUserClaims(uid, Object.assign({}, existing, { role: core.roleIdOf(staff), pm: core.toMask(perms), sc }));
+    // نسخة من النطاق في مستند الموظف: قواعد Firestore بتقرأه من هنا (بيسري فورًا، مش بعد تجديد الـ token).
+    await db.doc(`staff/${uid}`).set({ sc }, { merge: true });
     return perms;
   }
   async function activeOwners(cfg) {
