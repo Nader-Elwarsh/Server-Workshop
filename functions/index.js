@@ -5,9 +5,10 @@ const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https")
 const { defineString, defineSecret, defineBoolean } = require("firebase-functions/params");
 const { createPhoneHandlers, PhoneError } = require("./phone-lookup");
 const { createStaffAdmin, AdminError } = require("./staff-admin");
+const { createTechLedger } = require("./tech-ledger");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 
 initializeApp();
 const cloudName = defineString("CLOUDINARY_CLOUD_NAME");
@@ -150,3 +151,14 @@ exports.staffCreate = adminCallable("staffCreate", (uid, d) => staffAdmin.create
 exports.staffUpdate = adminCallable("staffUpdate", (uid, d) => staffAdmin.update(uid, d));
 exports.staffResetPassword = adminCallable("staffResetPassword", (uid, d) => staffAdmin.resetPassword(uid, d));
 exports.rolesSave = adminCallable("rolesSave", (uid, d) => staffAdmin.saveRoles(uid, d));
+
+/* ---------------------------------------------------------------------
+   حساب الفني على السيرفر: قفل أمره (الأمر + حركة التحصيل في معاملة واحدة) وقراءة عهدته وسجل أوامره.
+   --------------------------------------------------------------------- */
+const techLedger = createTechLedger({
+  db: getFirestore(),
+  ts: (d) => Timestamp.fromDate(d),
+  log: (...a) => console.log("[tech-ledger]", ...a)
+});
+exports.techCloseOrder = adminCallable("techCloseOrder", (uid, d) => techLedger.closeOrder(uid, d));
+exports.techAccount = adminCallable("techAccount", (uid, d) => techLedger.account(uid, d));
