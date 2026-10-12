@@ -62,6 +62,7 @@
     for (var i = 0; i < ids.length; i++) {
       var ok = await w.updateRequestRecordAsync(ids[i], function (_, r) {
         if (r.closed || r.paid) return false;
+        if (r.closed === undefined) r.closed = false; // قواعد السيرفر بتفلتر أوامر الفني بـ closed == false
         if (uid) { r.techId = uid; r.techName = tech.name || ""; r.techWallet = tech.wallet || ""; r.assignedAt = when; r.assignedBy = by; }
         else { r.techId = ""; r.techName = ""; r.techWallet = ""; r.assignedAt = ""; r.assignedBy = by; }
         return true;

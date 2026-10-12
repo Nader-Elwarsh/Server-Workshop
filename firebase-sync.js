@@ -56,9 +56,12 @@
   var EXTRA = ["wf_e", "wf_trash", "wf_followup_log", "wf_pending_calls", "wf_comp_custom", "wf_comp_fav"];
   var SETTINGS = "wf_s", CHUNK = 250000, TIMEOUT = 25000;
   var ALL = Object.keys(COLS).concat(EXTRA, [SETTINGS]);
-  var REMOTE_RETRY_KEYS = ["remote:portalOrders", "remote:portalConfig", "remote:portalTicker"];
+  var REMOTE_RETRY_KEYS = ["remote:portalOrders", "remote:portalConfig", "remote:portalTicker", "remote:techOrders"];
   var HYD = "wf_cloud_hydrated_uid", BASEKEY = "wf_syncbase", FULL = "wf_last_full_sync", SEEN = "wf_meta_seen";
   var isLogin = /login\.html$/.test(location.pathname);
+  /* الوضع المحدود (فني «أوامره المعيّنة فقط»): السيرفر نفسه (قواعد Firestore) بيمنعه من قراءة أي حاجة غير أوامره المفتوحة المعيّنة له
+     + عميل/جهاز كل أمر منهم (من techOrders). فالمزامنة بتنزّل دول بس، وبترفع تعديلات أوامره بس، ومفيش أي عملية إدارية. */
+  var SCOPED = false, MODE_KEY = "wf_sync_mode", wipedForMode = false;
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
   var RETRY_KEY = "wf_sync_retry_state", CONFLICT_KEY = "wf_sync_conflicts", retryState = {}, retryTimers = {}, conflicts = {}, lastSyncAt = +(ls.getItem("wf_last_sync_at") || 0), lastSyncError = ls.getItem("wf_sync_last_error") || "";
@@ -91,7 +94,7 @@
       delete retryTimers[k]; if (!ready || !online()) { badge(); return; }
       if (REMOTE_RETRY_KEYS.indexOf(k) > -1) {
         var currentSettings = typeof window.settings === "function" ? window.settings() : {};
-        var job = k === "remote:portalOrders" ? projectOrders() : (k === "remote:portalConfig" ? publishPortalConfig() : publishTicker(currentSettings.portalTicker || null));
+        var job = k === "remote:portalOrders" ? projectPortalOrders() : (k === "remote:techOrders" ? projectTech() : (k === "remote:portalConfig" ? publishPortalConfig() : publishTicker(currentSettings.portalTicker || null)));
         Promise.resolve(job).then(function (ok) { if (ok === false && !retryTimers[k]) retryLater(k); }).catch(function () { if (!retryTimers[k]) retryLater(k); });
       } else push(k, false);
       badge();
@@ -233,6 +236,7 @@
   function touchMeta() { var ts = Date.now(); origSet.call(ls, SEEN, String(ts)); return meta.set({ ts: ts, dev: DEV }).catch(function () {}); }
 
   function push(k, interactive) {
+    if (SCOPED && k !== "wf_r") { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // المحدود النطاق: مفيش رفع غير أوامره
     if (!online() || pushing[k]) return Promise.resolve(false);
     pushing[k] = true;
     var done = function (ok, err) { pushing[k] = false; if (ok) { delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; lastSyncAt = Date.now(); lastSyncError = ""; origRemove.call(ls, "wf_sync_last_error"); origSet.call(ls, "wf_last_sync_at", String(lastSyncAt)); saveRetryState(); } else { if (err) { lastSyncError = String(err.message || err); origSet.call(ls, "wf_sync_last_error", lastSyncError); } retryLater(k); } badge(); return ok; };
@@ -247,14 +251,14 @@
         if (B[r.id] !== localHash) { if (conflicts[k] && conflicts[k][r.id]) next[r.id] = B[r.id]; else jobs.push({ id: r.id, ref: col.doc(r.id), record: r, localHash: localHash, baseHash: B[r.id], kind: "set" }); }
       });
       Object.keys(B).forEach(function (id) {
-        if (!seen[id]) { dels++; if (!(conflicts[k] && conflicts[k][id])) jobs.push({ id: id, ref: col.doc(id), localHash: null, baseHash: B[id], kind: "delete" }); }
+        if (!seen[id]) { if (SCOPED) { delete next[id]; return; } dels++; if (!(conflicts[k] && conflicts[k][id])) jobs.push({ id: id, ref: col.doc(id), localHash: null, baseHash: B[id], kind: "delete" }); }
       });
       var total = Object.keys(B).length;
       if (dels > 20 && dels > total / 2) {
         if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); }
         if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
-      var wrote = false, hasConflict = false, chain = Promise.resolve();
+      var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [];
       jobs.forEach(function (job) {
         chain = chain.then(function () {
           return withTimeout(db.runTransaction(async function (tx) {
@@ -263,9 +267,23 @@
             if (job.kind === "delete" && !snap.exists) return { state: "same", remote: null, remoteHash: null };
             var baselineMatches = job.baseHash === undefined ? !snap.exists : remoteHash === job.baseHash;
             if (!baselineMatches) return { state: "conflict", remote: remote, remoteHash: remoteHash };
+            if (SCOPED) { // الفني: تحديث الحقول اللي اتغيّرت بس (القواعد بتسمح بحقول شغل الأمر فقط)
+              if (!snap.exists) return { state: "gone", remote: null, remoteHash: null };
+              var lrec = toDoc(job.record), rdata = snap.data(), patch = {}, any = false;
+              Object.keys(lrec).forEach(function (f) { if (stable(clean(rdata[f])) !== stable(clean(lrec[f]))) { patch[f] = lrec[f]; any = true; } });
+              if (any) tx.update(job.ref, patch);
+              return { state: "written", remote: remote, remoteHash: remoteHash };
+            }
             if (job.kind === "delete") tx.delete(job.ref); else tx.set(job.ref, toDoc(job.record));
             return { state: "written", remote: remote, remoteHash: remoteHash };
-          })).then(function (result) {
+          })).catch(function (e) {
+            if (SCOPED && e && e.code === "permission-denied") { // الأمر اتقفل/اتنقل لفني تاني؟ لو لسه مقروء يبقى السيرفر رفض التعديل نفسه
+              return withTimeout(job.ref.get()).then(function () { throw new Error("السيرفر رفض التعديل ده على الأمر (غير مسموح لحساب الفني)"); }, function () { return { state: "gone", remote: null, remoteHash: null }; });
+            }
+            throw e;
+          }).then(function (result) {
+            if (result.state === "gone") { goneIds.push(job.id); delete next[job.id]; return; }
+            if (SCOPED && job.record && job.record.closed === true && result.state === "written") closedIds.push(job.id);
             if (result.state === "conflict") {
               hasConflict = true; conflicts[k] = conflicts[k] || {};
               conflicts[k][job.id] = { local: job.kind === "delete" ? null : job.record, remote: result.remote, remoteHash: result.remoteHash, localHash: job.localHash, createdAt: Date.now() };
@@ -278,6 +296,13 @@
         });
       });
       return chain.then(function () {
+        if (SCOPED && (goneIds.length || closedIds.length)) { // أوامر اتقفلت/اتسحبت: نشيلها من الجهاز ونمسح نسخة العرض بتاعتها
+          var gone = {}; goneIds.concat(closedIds).forEach(function (id) { gone[id] = 1; });
+          var cur = local("wf_r") || []; raw("wf_r", JSON.stringify(cur.filter(function (r) { return !(r && gone[r.id]); })));
+          goneIds.concat(closedIds).forEach(function (id) { delete next[id]; try { db.collection("techOrders").doc(id).delete().catch(function () {}); } catch (e) {} });
+          snapshotRaw = ls.getItem("wf_r");
+          if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("requests.html"); else banner(); }).catch(function () {}); }, 50);
+        }
         SB.c[k] = next; saveBase();
         if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
         if (!hasConflict) lastRaw[k] = snapshotRaw;
@@ -377,7 +402,9 @@
   function sanitize(o) { if (typeof o === "string") return o.replace(/[<>]/g, ""); if (Array.isArray(o)) return o.map(sanitize); if (o && typeof o === "object") { var r = {}; Object.keys(o).forEach(function (k) { r[k] = sanitize(o[k]); }); return r; } return o; }
   function cleanPortal(r) { return r && r.portal === true ? sanitize(r) : r; }
   var poBusy = false;
-  function projectOrders() { // نسخة آمنة من أوامر عملاء البوابة (من غير تكلفة القطع) عشان العميل يتابع حالته
+  function projectOrders() { projectTech(); return projectPortalOrders(); }
+  function projectPortalOrders() { // نسخة آمنة من أوامر عملاء البوابة (من غير تكلفة القطع) عشان العميل يتابع حالته
+    if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:portalOrders"); return Promise.resolve(false); }
     if (poBusy) return Promise.resolve(false);
     var cs = local("wf_c") || [], ds = local("wf_d") || [], rs = local("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
@@ -407,7 +434,37 @@
     poBusy = true;
     return commitOps(ops).then(function () { SB.po = next; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
   }
+  /* نسخة العرض للفنيين: لكل أمر مفتوح ومعيّن لفني → techOrders/{id} فيها بيانات العميل والجهاز كاملة.
+     بتتكتب من أجهزة الإدارة بس، والفني بيقراها هي وأمره المعيّن له فقط (قواعد Firestore). بتتمسح لما الأمر يتقفل أو يتسحب من الفني. */
+  var tpBusy = false;
+  function techPick(o, drop) { var r = {}; Object.keys(o || {}).forEach(function (f) { if (drop.indexOf(f) < 0) r[f] = o[f]; }); return r; }
+  function projectTech() {
+    if (SCOPED) return Promise.resolve(true);
+    if (!online()) { retryLater("remote:techOrders"); return Promise.resolve(false); }
+    if (tpBusy) return Promise.resolve(false);
+    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, ops = [], seen = {}, next = Object.assign({}, tp);
+    var fixClosed = false; rs.forEach(function (r) { if (r && r.techId && r.closed === undefined) { r.closed = false; fixClosed = true; } }); // السيرفر بيفلتر أوامر الفني بـ closed == false
+    if (fixClosed) ls.setItem("wf_r", JSON.stringify(rs));
+    (local("wf_c") || []).forEach(function (c) { if (c && c.id) cs[c.id] = c; });
+    (local("wf_d") || []).forEach(function (d) { if (d && d.id) ds[d.id] = d; });
+    rs.forEach(function (r) {
+      if (!r || !r.id || !r.techId || r.closed === true) return;
+      var c = cs[r.customerId]; if (!c) return;
+      var d = ds[r.deviceId] || null;
+      seen[r.id] = 1;
+      var p = { techId: String(r.techId), orderId: r.id, no: r.no || "", customerId: r.customerId, deviceId: r.deviceId || "",
+        customer: Object.assign(techPick(c, ["portal", "portalUid", "email"]), { id: c.id }),
+        device: d ? Object.assign(techPick(d, ["portal"]), { id: d.id }) : null };
+      var x = h(stable(p));
+      if (tp[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("techOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
+    });
+    Object.keys(tp).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("techOrders").doc(id)); }); } });
+    if (!ops.length) { clearRetry("remote:techOrders"); return Promise.resolve(true); }
+    tpBusy = true;
+    return commitOps(ops).then(function () { SB.tp = next; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
+  }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
+    if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:portalConfig"); return Promise.resolve(false); }
     if (typeof window.settings !== "function") return Promise.resolve(true);
     var s = window.settings(), c = { centers: s.centers || [], villages: s.villages || {}, types: s.types || {}, brands: s.brands || [], executionPlaces: s.executionPlaces || [] };
@@ -423,6 +480,7 @@
   // الشريط الإعلاني لازم يظهر للزوار قبل تسجيل الدخول كمان: portal/config ممكن يكون مقفول على المسجّلين،
   // فبننشره كمان في portalPosts (نفس المكان اللي الزوار بيقروا منه المقالات أصلًا) بمعرّف ثابت وبيتفلتر بره قايمة المقالات.
   function publishTicker(t) {
+    if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:portalTicker"); return Promise.resolve(false); }
     if (!t) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
     try { if (window.PortalTicker && window.PortalTicker.prune) t = window.PortalTicker.prune(t).ticker || t; } catch (e) {} // العروض المنتهية ما بتتنشرش
@@ -441,7 +499,7 @@
   }
   var inboxOn = false;
   function watchInbox() {
-    if (inboxOn) return; inboxOn = true;
+    if (inboxOn || SCOPED) return; inboxOn = true;
     try {
       db.collection("portalRequests").where("handled", "==", false).onSnapshot(function (s) { inboxN.a = s.size; pill(); convertPortal(); }, function () {});
       db.collection("portalComplaints").where("status", "==", "جديد").onSnapshot(function (s) { inboxN.b = s.size; pill(); }, function () {});
@@ -477,7 +535,7 @@
   var converting = false;
   function convertPortal() { // حوّل طلبات البوابة الجديدة لأوامر شغل حقيقية
     var fns = ["orderNo", "recordStatusHistory", "applyStatusTimestamp", "saveJSONSafe", "arr", "settings"];
-    if (!online() || converting || !ready || fns.some(function (f) { return typeof window[f] !== "function"; }) || !window.K) return Promise.resolve();
+    if (SCOPED || !online() || converting || !ready || fns.some(function (f) { return typeof window[f] !== "function"; }) || !window.K) return Promise.resolve();
     converting = true;
     return db.collection("portalRequests").where("handled", "==", false).get().then(function (snap) {
       var n = 0, marks = [], seenPortal = {};
@@ -516,6 +574,7 @@
   }
   // رفع نسخة الجهاز للسحابة واعتبارها الأصل (بيستبدل اللي في السحابة): بيتنادى تلقائيًا بعد استرجاع نسخة احتياطية
   window.wfCloudForceUpload = function (skipConfirm) {
+    if (SCOPED) return Promise.reject(new Error("scoped"));
     if (!online()) return Promise.reject(new Error("offline"));
     if (!skipConfirm && !window.confirm("هيتم استبدال بيانات السحابة ببيانات الجهاز ده بالكامل (اللي مش موجود هنا هيتمسح من السحابة). متأكد؟")) return Promise.resolve(false);
     var keys = Object.keys(COLS);
@@ -534,6 +593,7 @@
     }).then(function () { origSet.call(ls, HYD, CURRENT_UID || ls.getItem(HYD) || ""); origSet.call(ls, FULL, String(Date.now())); return touchMeta(); }).then(function () { projectOrders(); badge(); return true; });
   };
   function hydrateFull(force) {
+    if (SCOPED) return hydrateScoped(force);
     if (hydrating) return Promise.resolve(false); hydrating = true;
     var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
     return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }).concat([db.collection("settings").get()]))).then(function (res) {
@@ -560,6 +620,62 @@
     }).then(function (r) {
       var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
         ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [], wf_p: local("wf_p") || [], wf_m: local("wf_m") || [], wf_wallet_tx: local("wf_wallet_tx") || [] }).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
+        : Promise.resolve();
+      return mirror.then(function () { hydrating = false; return r; });
+    }, function (e) { hydrating = false; throw e; });
+  }
+  /* ---------- الوضع المحدود (فني): سحب أوامره + عملائها وأجهزتها بس ---------- */
+  function wipeLocal() { // تبديل حساب/وضع على نفس الجهاز: امسح أي بيانات محلية من الحساب القديم قبل ما نسحب أي حاجة
+    Object.keys(COLS).concat(EXTRA, [SETTINGS]).forEach(function (k) { origRemove.call(ls, k); });
+    [BASEKEY, SBASE, CONFLICT_KEY, RETRY_KEY, SEEN, FULL, HYD, "wf_last_sync_at", "wf_sync_last_error"].forEach(function (k) { try { origRemove.call(ls, k); } catch (e) {} });
+    Object.keys(retryTimers).forEach(function (k) { clearTimeout(retryTimers[k]); delete retryTimers[k]; });
+    SB = { c: {}, x: {} }; conflicts = {}; retryState = {}; lastRaw = {}; lastSyncAt = 0; lastSyncError = "";
+    wipedForMode = true;
+    try { if (window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function") window.WorkshopDB.replaceMany({ wf_c: [], wf_d: [], wf_r: [], wf_p: [], wf_m: [], wf_wallet_tx: [] }).catch(function () {}); } catch (e) {}
+  }
+  function detectScoped(user, staffData) { // مستند الموظف (اللي القواعد بتقراه) بيتقدّم على claim الـ token
+    var sc = staffData && staffData.sc;
+    if (sc === "a" || sc === "w") return Promise.resolve(sc === "a");
+    return Promise.resolve(user.getIdTokenResult ? user.getIdTokenResult() : null).then(function (r) { return !!(r && r.claims && r.claims.sc === "a"); }).catch(function () { return false; });
+  }
+  function hydrateScoped() {
+    if (hydrating) return Promise.resolve(false); hydrating = true;
+    var uid = CURRENT_UID;
+    return withTimeout(Promise.all([
+      db.collection("requests").where("techId", "==", uid).where("closed", "==", false).get(),
+      db.collection("techOrders").where("techId", "==", uid).get(),
+      db.collection("settings").doc("global").get()
+    ])).then(function (res) {
+      var changedAny = wipedForMode; wipedForMode = false;
+      var merged = mergeColWithBase("wf_r", res[0].docs.map(fromDoc), false, SB.c.wf_r);
+      if (stable(local("wf_r") || []) !== stable(merged.arr)) { raw("wf_r", JSON.stringify(merged.arr)); changedAny = true; }
+      SB.c.wf_r = merged.base;
+      var live = {}; merged.arr.forEach(function (r) { live[r.id] = 1; });
+      var cs = {}, ds = {};
+      res[1].docs.forEach(function (d) {
+        if (!live[d.id]) return; var t = clean(d.data());
+        if (t.customer && t.customer.id) cs[t.customer.id] = t.customer;
+        if (t.device && t.device.id) ds[t.device.id] = t.device;
+      });
+      [["wf_c", cs], ["wf_d", ds]].forEach(function (pair) {
+        var arr = Object.keys(pair[1]).map(function (id) { return pair[1][id]; }).sort(byCreated), nb = {};
+        arr.forEach(function (r) { nb[r.id] = hr(r); });
+        if (stable(local(pair[0]) || []) !== stable(arr)) { raw(pair[0], JSON.stringify(arr)); changedAny = true; }
+        SB.c[pair[0]] = nb;
+      });
+      Object.keys(COLS).forEach(function (k) { if (k !== "wf_r" && k !== "wf_c" && k !== "wf_d") { SB.c[k] = {}; if (ls.getItem(k) === null) raw(k, "[]"); } });
+      if (res[2].exists) {
+        var g = clean(res[2].data()), lo = local(SETTINGS) || {}, m = Object.assign({}, lo, g);
+        if (stable(lo) !== stable(m)) { raw(SETTINGS, JSON.stringify(m)); changedAny = true; }
+        SB.x[SETTINGS] = h(ls.getItem(SETTINGS));
+      }
+      raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
+      lastRaw = {}; ALL.forEach(function (k) { if (k !== "wf_r" || !isDirty(k)) lastRaw[k] = ls.getItem(k); });
+      setSettingsBase(lastRaw[SETTINGS]);
+      return { changed: changedAny, cloudEmpty: false };
+    }).then(function (r) {
+      var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
+        ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [], wf_p: local("wf_p") || [], wf_m: local("wf_m") || [], wf_wallet_tx: local("wf_wallet_tx") || [] }).catch(function (e) { console.warn("IndexedDB mirror after scoped hydration failed", e); })
         : Promise.resolve();
       return mirror.then(function () { hydrating = false; return r; });
     }, function (e) { hydrating = false; throw e; });
@@ -658,7 +774,7 @@
   function doMerge(j) { return mergeCustomers(j.keep.id, j.dup.id); }
   function mergePortalDuplicates() {
     var W = window;
-    if (!online() || !ready || merging || !W.K || typeof W.arr !== "function") return Promise.resolve(0);
+    if (SCOPED || !online() || !ready || merging || !W.K || typeof W.arr !== "function") return Promise.resolve(0);
     var by = {}, jobs = [];
     W.arr(W.K.c).forEach(function (c) { var p = c && nph(c.phone); if (p) (by[p] = by[p] || []).push(c); });
     Object.keys(by).forEach(function (p) {
@@ -858,7 +974,7 @@
   //  أول ما عميل بوابة جديد يظهر في السحابة ومش موجود محليًا، اسحب وادمج فورًا (بدون انتظار فتح التطبيق)
   var kickAt = 0, custWatch = false;
   function watchPortalCustomers() {
-    if (custWatch) return; custWatch = true;
+    if (custWatch || SCOPED) return; custWatch = true;
     try {
       db.collection("customers").where("portal", "==", true).onSnapshot(function (sn) {
         if (!window.K || typeof window.arr !== "function" || hydrating || Date.now() - kickAt < 60000) return;
@@ -892,22 +1008,30 @@
   function boot(user) {
     CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
     var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
+    SCOPED = ls.getItem(MODE_KEY) === "scoped"; window.wfSyncMode = SCOPED ? "scoped" : "full";
     function goReady(reload) {
       ready = true; uncover(); resumeRetries(); badge();
       if (reload) { location.reload(); return; }
-      pushAll(false); watchMeta(); publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);
+      pushAll(false); watchMeta();
+      if (SCOPED) return;
+      publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);
       watchInbox();
     }
     if (!online()) { // أوفلاين: لا تكشف نسخة الموظفين المحفوظة إلا لمعرّف سبق التحقق منه كموظف.
-      if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid) { ready = true; uncover(); resumeRetries(); badge(); return; }
+      if (hydrated && ls.getItem("wf_is_staff_uid") === user.uid && ls.getItem(MODE_KEY) !== null) { ready = true; uncover(); resumeRetries(); badge(); return; }
       cover("اتصل بالإنترنت للتحقق من حساب الموظف قبل فتح بيانات النظام."); return;
     }
     // مسار سريع: عضوية موظف متحقق منها حديثًا لنفس الحساب + بيانات متزامنة → افتح فورًا بدون أي انتظار للشبكة
-    if (hydrated && staffFresh(user.uid)) {
+    if (hydrated && staffFresh(user.uid) && ls.getItem(MODE_KEY) !== null) {
       goReady(false); // بيشيل الغطاء، ويشغّل الرفع ومراقبة تحديثات الأجهزة التانية (watchMeta) في الخلفية
       if (Date.now() - (+ls.getItem(STAFF_AT) || 0) > STAFF_RECHECK) {
         withTimeout(db.collection("staff").doc(user.uid).get({ source: "server" })).then(function (d) {
-          if (d.exists) { origSet.call(ls, STAFF_AT, String(Date.now())); return; }
+          if (d.exists) {
+            origSet.call(ls, STAFF_AT, String(Date.now()));
+            return detectScoped(user, d.data()).then(function (sc) { // النطاق اتغيّر (فني ↔ كامل): ابدأ تحميل جديد بالوضع الصح
+              if (sc !== SCOPED) { origRemove.call(ls, HYD); origRemove.call(ls, STAFF_AT); location.reload(); }
+            });
+          }
           origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT); lockDenied(false); // العضوية اتسحبت فعلًا
         }).catch(function () { /* مفيش نت/تأخير: نكمل بالتحقق السابق لحد انتهاء مهلته */ });
       }
@@ -917,17 +1041,21 @@
     cover("جارٍ التحقق من صلاحيات حساب الموظف…");
     // لا نثق بعلامة STAFF المحلية وحدها؛ لازم تأكيد المستند من الخادم (بعد أول دخول أو انتهاء مهلة التحقق).
     var staffCheck = withTimeout(db.collection("staff").doc(user.uid).get({ source: "server" })).then(function (d) {
-      if (d.exists) { origSet.call(ls, STAFF, user.uid); origSet.call(ls, STAFF_AT, String(Date.now())); return { staff: true }; }
+      if (d.exists) { origSet.call(ls, STAFF, user.uid); origSet.call(ls, STAFF_AT, String(Date.now())); return detectScoped(user, d.data()).then(function (sc) { return { staff: true, scoped: sc }; }); }
       origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT); return { staff: false };
     }).catch(function (e) {
       origRemove.call(ls, STAFF); origRemove.call(ls, STAFF_AT);
       return { staff: false, unavailable: true, error: e };
     });
     staffCheck.then(function (result) {
-      if (result.staff) return continueBoot();
+      if (result.staff) return continueBoot(result.scoped);
       lockDenied(result.unavailable); /* لا تُفتح البيانات عند تعذر إثبات العضوية */
     });
-    function continueBoot() {
+    function continueBoot(scoped) {
+    SCOPED = !!scoped; window.wfSyncMode = SCOPED ? "scoped" : "full";
+    var prevMode = ls.getItem(MODE_KEY);
+    if ((SCOPED && (prevMode !== "scoped" || !hydrated)) || (!SCOPED && prevMode === "scoped")) { wipeLocal(); hydrated = false; recent = false; }
+    origSet.call(ls, MODE_KEY, SCOPED ? "scoped" : "full");
     var quick = hydrated && recent;
     (quick ? withTimeout(meta.get()).then(function (d) { return d.exists && String(d.data().ts) !== ls.getItem(SEEN); }).catch(function () { return false; }) : Promise.resolve(true)).then(function (needFull) {
       if (!needFull && !Object.keys(timers).length) return goReady(false);
@@ -950,11 +1078,15 @@
     meta.onSnapshot(function (d) {
       if (!d.exists || d.metadata.hasPendingWrites) return;
       var x = d.data(); if (x.dev === DEV || String(x.ts) === ls.getItem(SEEN)) return;
-      hydrateFull().then(function (r) { origSet.call(ls, SEEN, String(x.ts)); if (r && r.changed) { banner(); } pushAll(false); mergePortalDuplicates(); }).catch(function () {});
+      hydrateFull().then(function (r) { origSet.call(ls, SEEN, String(x.ts)); if (r && r.changed) { banner(); } pushAll(false); mergePortalDuplicates(); projectOrders(); }).catch(function () {});
     }, function () {});
   }
 
-  window.wfCloudSignOut = function (to) { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = typeof to === "string" && /^[a-z-]+\.html$/.test(to) ? to : "login.html"; }); };
+  window.wfCloudSignOut = function (to) {
+    var flush = (ready && online()) ? Promise.race([pushAll(false), new Promise(function (r) { setTimeout(r, 5000); })]).catch(function () {}) : Promise.resolve(); // ارفع أي تعديل معلّق قبل الخروج (كل حساب بيمسح بياناته المحلية عند التبديل)
+    return flush.then(function () { return doSignOut(to); });
+  };
+  function doSignOut(to) { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = typeof to === "string" && /^[a-z-]+\.html$/.test(to) ? to : "login.html"; }); }
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
   window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if ((ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) && !retryTimers[k]) scheduleRetry(k); }); });
   window.addEventListener("offline", badge);

@@ -160,6 +160,11 @@ async function rejects(promise, code, msg) {
   assert.strictEqual(T.claims[t1.uid].sc, 'w', 'per-user override beats role'); 
   await T.admin.update('boss', { uid: t1.uid, scope: '' });
   assert.strictEqual(T.claims[t1.uid].sc, 'a', 'empty override -> follow role');
+  assert.strictEqual(T.docs.get('staff/' + t1.uid).sc, 'a', 'scope mirrored into the staff doc (Firestore rules read it)');
+  assert.strictEqual(T.docs.get('staff/' + t2.uid).sc, 'a');
+  await T.admin.update('boss', { uid: t1.uid, scope: 'all' });
+  assert.strictEqual(T.docs.get('staff/' + t1.uid).sc, 'w', 'mirror follows override');
+  await T.admin.update('boss', { uid: t1.uid, scope: '' });
   assert.strictEqual(T.claims.boss && (await T.admin.sync('boss')).effectiveScope, 'all'); // المالك دايمًا all
   // update wallet: يمنع التكرار ويسمح بالمسح
   await rejects(T.admin.update('boss', { uid: t2.uid, wallet: 'عهدة أحمد' }), 'already-exists', 'wallet_taken');

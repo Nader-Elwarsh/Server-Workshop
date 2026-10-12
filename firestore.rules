@@ -5,10 +5,33 @@ service cloud.firestore {
 
     // وجود مستند العضوية هو مصدر التفويض الوحيد؛ لا تمنح القواعد أي عميل حق إنشاء هذا المستند.
     // مستند الموظف الموقوف (disabled == true) لا يمنح أي صلاحية؛ والإيقاف نفسه بتكتبه دالة المالك فقط.
-    function isStaff() {
+    function anyStaff() {
       return signedIn()
         && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
         && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.get('disabled', false) != true;
+    }
+
+    // نطاق الموظف: 'a' = «أوامره المعيّنة فقط» (فني). القيمة بتتكتب في مستند الموظف من دالة السيرفر (staff-admin)
+    // وبتتقدّم على claim الـ token (عشان التغيير يسري فورًا مش بعد ساعة). مستند قديم من غير الحقل = نطاق كامل.
+    function scopeOfStaff() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data
+        .get('sc', request.auth.token.get('sc', 'w'));
+    }
+    function scopedStaff() { return anyStaff() && scopeOfStaff() == 'a'; }
+
+    // isStaff = موظف بنطاق كامل. كل القواعد القديمة تحت بتستخدمه، فالموظف المحدود النطاق ما بياخدش منها حاجة.
+    function isStaff() { return anyStaff() && scopeOfStaff() != 'a'; }
+
+    // الحقول اللي الفني يقدر يغيّرها في أمر معيّن له (مفيش هوية/عميل/جهاز/تعيين/عربون).
+    function techOrderPatch() {
+      return resource.data.techId == request.auth.uid
+        && resource.data.get('closed', false) != true
+        && request.resource.data.techId == resource.data.techId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'workshopStatus', 'partsWaiting', 'tag', 'work', 'labor', 'parts', 'partsTotal', 'partsCost',
+          'total', 'remain', 'statusHistory', 'startedAt', 'workshopStartedAt', 'completedAt',
+          'closed', 'closedAt', 'paid', 'paidAt', 'closeWallet', 'warrantyUntil', 'techNote'
+        ]);
     }
 
     function linkRef() {
@@ -54,7 +77,7 @@ service cloud.firestore {
 
     // إعداد الأدوار وسجل المراجعة: القراءة للموظفين (السجل للمالك فقط)، والكتابة من دوال السيرفر فقط.
     match /accessConfig/{doc} {
-      allow read: if isStaff();
+      allow read: if anyStaff();
     }
     match /staffAudit/{doc} {
       allow read: if isStaff() && request.auth.token.get('role', 'owner') == 'owner';
@@ -184,6 +207,26 @@ service cloud.firestore {
     match /portalPosts/{id} {
       allow read: if resource.data.published == true;
       allow read, write: if isStaff();
+    }
+
+    // ---- الموظف المحدود النطاق (فني): يشوف ويعدّل أوامره المعيّنة له وهي مفتوحة بس ----
+    // الاستعلام لازم يكون: where techId == uid و where closed == false (القواعد مش فلتر).
+    match /requests/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.closed == false;
+      allow update: if scopedStaff() && techOrderPatch();
+    }
+
+    // نسخة عرض (من أجهزة الإدارة) فيها العميل والجهاز بتوع كل أمر معيّن: الفني يقرأ بتاعته بس ويمسحها لما يقفل الأمر.
+    match /techOrders/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
+      allow delete: if scopedStaff() && resource.data.techId == request.auth.uid;
+    }
+
+    // الإعدادات: المحدود يقرأ الإعدادات العامة وعلامة التحديث بس (مفيش أي wfkv_* = مصروفات/سلة/…)، ويكتب علامة التحديث.
+    match /settings/{doc} {
+      allow get: if scopedStaff() && (doc == 'global' || doc == 'wf_meta');
+      allow create, update: if scopedStaff() && doc == 'wf_meta'
+        && request.resource.data.keys().hasOnly(['ts', 'dev']);
     }
 
     // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من
