@@ -29,6 +29,23 @@ function cairoParts(d) {
     return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour === "24" ? "00" : p.hour}:${p.minute}` };
   } catch (e) { const s = d.toISOString(); return { date: s.slice(0, 10), time: s.slice(11, 16) }; }
 }
+const WORK_FIELDS = ["status", "work", "labor", "parts", "partsTotal", "partsCost", "total", "statusHistory", "startedAt", "completedAt", "visit"];
+const STATUSES = ["جديد", "جاري التنفيذ", "مكتمل", "مجمد"];
+function cleanWork(f) {
+  const out = {};
+  if (!f || typeof f !== "object") return out;
+  WORK_FIELDS.forEach((k) => {
+    if (!Object.prototype.hasOwnProperty.call(f, k)) return;
+    let v = f[k];
+    if (k === "status" && STATUSES.indexOf(v) < 0) return;
+    if (["labor", "partsTotal", "partsCost", "total"].indexOf(k) > -1) { v = +v; if (!isFinite(v) || v < 0 || v > 10000000) return; }
+    if ((k === "parts" || k === "statusHistory") && !Array.isArray(v)) return;
+    if (["work", "startedAt", "completedAt", "visit"].indexOf(k) > -1) { if (v == null) v = ""; if (typeof v !== "string" || v.length > 4000) return; }
+    try { const j = JSON.stringify(v); if (j.length > 60000) return; v = JSON.parse(j); } catch (e) { return; }
+    out[k] = v;
+  });
+  return out;
+}
 function collectedOf(r) { return Math.max(0, r2(num(r.total) - num(r.deposit))); }
 
 function createTechLedger(deps) {
@@ -88,6 +105,9 @@ function createTechLedger(deps) {
       const r = Object.assign({ id: orderId }, snap.data());
       if (r.techId !== uid) throw new AdminError("permission-denied", "not_your_order");
       if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
+      // شغل الفني على الأمر (الحالة/الشغل/الأجرة/القطع) بيتسجل مع القفل نفسه، حتى لو المزامنة لسه مارفعتهوش
+      const work = cleanWork(data && data.fields);
+      Object.assign(r, work);
       if (r.status !== "مكتمل") throw new AdminError("failed-precondition", "not_completed");
       const total = num(r.total), deposit = num(r.deposit);
       if (!isFinite(total) || total < 0 || !isFinite(deposit) || deposit < 0) throw new AdminError("failed-precondition", "bad_amounts");
@@ -101,7 +121,7 @@ function createTechLedger(deps) {
       const txSnap = collected > 0 ? await tx.get(txRef) : null;
 
       const at = now().toISOString();
-      const patch = { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid };
+      const patch = Object.assign({}, work, { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid });
       if (wc.enabled !== false && !r.warrantyManual) {
         const days = isFinite(+wc.days) && +wc.days > 0 ? +wc.days : 90;
         patch.warrantyDays = days;
