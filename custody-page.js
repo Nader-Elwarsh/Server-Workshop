@@ -15,7 +15,7 @@
 
   function start() {
     var root = document.getElementById("custodyRoot"), msgBox = document.getElementById("custodyMsg");
-    var state = { users: [], pending: [], open: {}, err: "" };
+    var state = { users: [], pending: [], own: [], open: {}, err: "" };
     var CARD = "padding:12px;margin:0 0 12px;border-radius:14px;border:1px solid var(--border,#d5dbe8);background:var(--bg-elevated,#fff)";
     var BTN = "padding:8px 13px;border-radius:10px;border:0;background:#0b57d0;color:#fff;font-weight:700;font-size:14px";
     var BTN2 = "padding:8px 13px;border-radius:10px;border:1px solid #9aa7c2;background:transparent;color:inherit;font-size:14px";
@@ -46,21 +46,51 @@
       try { window.auditLog && window.auditLog("عهدة", "محفظة", cid, fromWallet + " ← " + toWallet + " " + amount + " ج"); } catch (e) {}
       return true;
     }
-    function approveExpense(e, noteText) {
+    var PAY_LBL = { custody: "💼 من عهدته", own: "👛 من جيبه — الورشة تردّهاله", workshop: "🏢 الإدارة دفعتها / اديته تمنها" };
+    function payKind(e) { return PAY_LBL[e.pay] ? e.pay : "custody"; }
+    /* الاعتماد حسب الفلوس اتدفعت منين:
+       custody → بتتخصم من محفظة عهدته • own → مفيش حركة دلوقتي، بتتضاف لمستحقاته وبتتصرف له مع الأجور
+       workshop → بتتخصم من محفظة الورشة اللي تختارها (أو من غير حركة لو اتسجلت قبل كده) */
+    function approveExpense(e, noteText, workshopWallet) {
+      var kind = payKind(e);
+      if (kind === "own" || (kind === "workshop" && !workshopWallet)) return markDecision(e, "approved", noteText);
       var u = state.users.filter(function (x) { return x.uid === e.techId; })[0];
-      var wallet = String(e.wallet || (u && u.wallet) || "").trim();
+      var wallet = kind === "workshop" ? String(workshopWallet).trim() : String(e.wallet || (u && u.wallet) || "").trim();
       if (!wallet) return Promise.reject("الفني ده ملوش محفظة عهدة — حدّدها من «المستخدمون والصلاحيات».");
       if ((window.settings().wallets || []).map(String).indexOf(wallet) < 0) return Promise.reject("المحفظة «" + wallet + "» مش موجودة في قايمة المحافظ.");
       var ref = "custody-exp-" + e.id;
       if (!A(window.K.wtx).some(function (x) { return x && x.refKey === ref && !x.deleted; })) { // بنسجّل الحركة الأول (مفتاح ثابت = ما تتكررش لو الاعتماد اتعاد)
         var t = nowParts();
-        var tx = { id: ref, refKey: ref, manualOverride: true, deleted: false, type: "out", amount: +e.amount, wallet: wallet, category: "مصروف تشغيل", reason: "🧾 " + e.note + (e.orderNo ? " (أمر " + e.orderNo + ")" : "") + " — " + (e.techName || ""), note: "", date: t.date, time: t.time, source: "custody-expense", createdAt: t.iso };
+        var tx = { id: ref, refKey: ref, manualOverride: true, deleted: false, type: "out", amount: +e.amount, wallet: wallet, category: "مصروف تشغيل", reason: "🧾 " + e.note + (e.orderNo ? " (أمر " + e.orderNo + ")" : "") + " — " + (e.techName || "") + (kind === "workshop" ? " (دفعتها الإدارة)" : ""), note: "", date: t.date, time: t.time, source: "custody-expense", createdAt: t.iso };
         if (!window.put(window.K.wtx, A(window.K.wtx).concat(tx))) return Promise.reject("تعذّر حفظ حركة المحفظة.");
       }
-      return fsdb().collection("techExpenses").doc(e.id).update({ status: "approved", decidedBy: myUid(), decidedAt: new Date().toISOString(), decisionNote: noteText || "" }).then(function () { try { window.auditLog && window.auditLog("اعتماد مصروف عهدة", "فني", e.id, (e.techName || "") + " " + e.amount + " ج"); } catch (x) {} }, function (err) { throw "الحركة اتسجلت لكن تحديث حالة المصروف فشل (" + ((err && err.code) || "شبكة") + ") — اضغط اعتماد تاني (مش هيتكرر)."; });
+      return markDecision(e, "approved", noteText, wallet).catch(function (err) { throw "الحركة اتسجلت لكن تحديث حالة المصروف فشل (" + String(err) + ") — اضغط اعتماد تاني (مش هيتكرر)."; });
+    }
+    function markDecision(e, status, noteText, wallet) {
+      var upd = { status: status, decidedBy: myUid(), decidedAt: new Date().toISOString(), decisionNote: noteText || "" };
+      if (wallet) upd.paidFrom = wallet;
+      return fsdb().collection("techExpenses").doc(e.id).update(upd).then(function () {
+        if (status === "approved") { try { window.auditLog && window.auditLog("اعتماد مصروف فني", "فني", e.id, (e.techName || "") + " " + e.amount + " ج — " + PAY_LBL[payKind(e)]); } catch (x) {} }
+      }, function (err) { throw (err && err.code) || "شبكة"; });
+    }
+    function chooseWorkshopWallet(e, done) {
+      var modal = mk("div", "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px");
+      var box = mk("div", "background:var(--bg-elevated,#fff);color:inherit;max-width:420px;width:100%;border-radius:14px;padding:16px");
+      box.appendChild(mk("b", "font-size:17px", "🏢 الإدارة دفعت " + money(e.amount) + " منين؟"));
+      box.appendChild(mk("p", "font-size:13px;opacity:.8", "الفني قال إن الإدارة هي اللي دفعت تمن «" + (e.note || "") + "». اختار المحفظة اللي الفلوس طلعت منها عشان تتسجل، أو «اتسجلت قبل كده» لو الحركة موجودة."));
+      var ws = mk("select", INP), ww = workshopWallets();
+      ww.forEach(function (w) { var o = mk("option", "", w); o.value = w; ws.appendChild(o); });
+      var o0 = mk("option", "", "اتسجلت قبل كده — من غير حركة جديدة"); o0.value = ""; ws.appendChild(o0);
+      var def = typeof window.resolveDefaultWallet === "function" ? window.resolveDefaultWallet() : ""; if (def && ww.indexOf(def) > -1) ws.value = def;
+      var row = mk("div", "display:flex;gap:8px;margin-top:10px");
+      row.appendChild(btn("اعتماد", BTN + ";flex:1;background:#15803d", function () { modal.remove(); done(ws.value); }));
+      row.appendChild(btn("إلغاء", BTN2, function () { modal.remove(); }));
+      box.appendChild(ws); box.appendChild(row); modal.appendChild(box);
+      modal.onclick = function (ev) { if (ev.target === modal) modal.remove(); };
+      document.body.appendChild(modal);
     }
     function rejectExpense(e, noteText) {
-      return fsdb().collection("techExpenses").doc(e.id).update({ status: "rejected", decidedBy: myUid(), decidedAt: new Date().toISOString(), decisionNote: noteText || "" }).catch(function (err) { throw "فشل الرفض (" + ((err && err.code) || "شبكة") + ")"; });
+      return markDecision(e, "rejected", noteText).catch(function (err) { throw "فشل الرفض (" + err + ")"; });
     }
 
     /* ---------- أجور الفنيين ---------- */
@@ -75,7 +105,8 @@
       var since = P().config().since;
       var pays = A(window.K.wtx).filter(function (x) { return x && !x.deleted && x.source === "techpay" && x.techPayFor === uid; });
       var paid = pays.reduce(function (s, x) { return s + (x.type === "out" ? +x.amount || 0 : -(+x.amount || 0)); }, 0);
-      return { earned: r2(earned), earnedMonth: r2(earnedMonth), paid: r2(paid), due: r2(earned - paid), unpriced: closed.filter(function (r) { return !(+r.techPay > 0) && !r.jobType && since && String(r.closedAt || r.paidAt || "") >= since; }), priced: priced, pays: pays };
+      var reimb = state.own.filter(function (x) { return x.techId === uid && x.status === "approved"; }).reduce(function (s2, x) { return s2 + (+x.amount || 0); }, 0);
+      return { earned: r2(earned), reimb: r2(reimb), earnedMonth: r2(earnedMonth), paid: r2(paid), due: r2(earned + reimb - paid), unpriced: closed.filter(function (r) { return !(+r.techPay > 0) && !r.jobType && since && String(r.closedAt || r.paidAt || "") >= since; }), priced: priced, pays: pays };
     }
     function addPayout(u, wallet, amount, note) {
       var t = nowParts(), fromCustody = wallet === u.wallet;
@@ -87,9 +118,9 @@
     }
     function payBox(u) {
       var ps = payState(u.uid), box = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-sunken,#f1f5ff)");
-      box.appendChild(mk("div", "font-size:13px;opacity:.8", "💰 مستحقات الفني (أجور الأوامر)"));
+      box.appendChild(mk("div", "font-size:13px;opacity:.8", "💰 مستحقات الفني (أجور + مصاريف دفعها من جيبه)"));
       box.appendChild(mk("div", "font-size:24px;font-weight:800;color:" + (ps.due < 0 ? "#b91c1c" : "#0b57d0"), money(ps.due)));
-      box.appendChild(mk("div", "font-size:13px", "اتكسب: " + money(ps.earned) + " • اتصرف: " + money(ps.paid) + " • الشهر ده: " + money(ps.earnedMonth)));
+      box.appendChild(mk("div", "font-size:13px", "أجور: " + money(ps.earned) + (ps.reimb ? " • من جيبه: " + money(ps.reimb) : "") + " • اتصرف: " + money(ps.paid) + " • أجور الشهر: " + money(ps.earnedMonth)));
       if (ps.unpriced.length) box.appendChild(mk("div", "font-size:13px;color:#b45309;margin-top:4px", "⚠️ " + ps.unpriced.length + " أمر مقفول لسه من غير أجرة"));
       var row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px");
       if (canSettle()) row.appendChild(btn("💸 صرف مستحقات", BTN, function () { payoutForm(u, ps); }));
@@ -307,12 +338,17 @@
       var main = mk("div", "flex:1;min-width:180px");
       main.appendChild(mk("b", "", "👷 " + (e.techName || e.techId) + " — " + money(e.amount)));
       main.appendChild(mk("div", "", e.note || ""));
+      main.appendChild(mk("div", "font-size:13px;font-weight:700;color:" + ({ custody: "#0b57d0", own: "#b45309", workshop: "#15803d" })[payKind(e)], PAY_LBL[payKind(e)]));
       main.appendChild(mk("div", "font-size:12px;opacity:.75", (e.orderNo ? "أمر " + e.orderNo + " • " : "") + (e.at ? new Date(e.at).toLocaleString("ar-EG") : "") + (e.wallet ? " • " + e.wallet : "")));
       row.appendChild(main);
       if (canApprove()) {
+        var OK_MSG = { custody: "✅ اتعتمد واتخصم من عهدة الفني.", own: "✅ اتعتمد واتضاف لمستحقات الفني (هيتصرف له مع الأجور).", workshop: "✅ اتعتمد." };
         var go = btn("✅ اعتماد", BTN + ";background:#15803d", function () {
-          go.disabled = true;
-          approveExpense(e, "").then(function () { say("✅ اتعتمد وسُجّل في محفظة الفني."); }, function (m) { say(String(m), true); go.disabled = false; });
+          var run = function (w) {
+            go.disabled = true;
+            approveExpense(e, "", w).then(function () { say(OK_MSG[payKind(e)] + (w ? " اتسجل في «" + w + "»." : "")); draw(); }, function (m) { say(String(m), true); go.disabled = false; });
+          };
+          if (payKind(e) === "workshop") chooseWorkshopWallet(e, run); else run("");
         });
         row.appendChild(go);
         row.appendChild(btn("❌ رفض", BTN2, function () {
@@ -347,6 +383,9 @@
           state.pending = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }).sort(function (a, b) { return String(a.at || "").localeCompare(String(b.at || "")); });
           draw();
         }, function (e) { state.err = "تعذّر قراءة مصروفات الفنيين (" + ((e && e.code) || "شبكة") + ")"; draw(); });
+        fsdb().collection("techExpenses").where("pay", "==", "own").onSnapshot(function (s) {
+          state.own = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); draw();
+        }, function () {});
       } catch (e) { state.err = "تعذّر قراءة مصروفات الفنيين"; }
     }
     // الجلسة بترجع بعد تحميل الصفحة بشوية

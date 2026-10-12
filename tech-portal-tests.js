@@ -142,6 +142,26 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   const ex = e.fsWrites[0][2];
   assert.deepStrictEqual([e.fsWrites[0][0], ex.techId, ex.status, ex.amount, ex.orderNo, ex.wallet], ['techExpenses', 'tech-a', 'pending', 440, 'A1', 'عهدة أحمد']);
   assert(/سخان/.test(ex.note));
+  assert.deepStrictEqual([ex.pay, r1.parts[0].paidBy, r1.parts[0].expenseId], ['custody', 'custody', e.fsWrites[0][1]], 'القطعة مربوطة بمصروفها');
+  // من جيبه: المصروف بنوع own؛ ومن غير مصروف: مفيش كتابة
+  for (const [how, writes] of [['own', 1], ['none', 0]]) {
+    e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
+    const g = all(e.root).filter((n) => n.tagName === 'INPUT');
+    g.find((n) => n.placeholder === 'اسم القطعة').value = 'ترموستات ' + how;
+    g.find((n) => n.placeholder === 'سعر البيع').value = '100'; g.find((n) => n.placeholder === 'سعر الشراء').value = '60';
+    all(e.root).find((n) => n.id === 'tpPartPay').value = how;
+    await btnOf(e.root, 'إضافة القطعة').onclick(); await flush(); await flush();
+    const last = data.wf_r[0].parts[data.wf_r[0].parts.length - 1];
+    assert.strictEqual(e.fsWrites.length, writes, how);
+    assert.strictEqual(last.paidBy, how);
+    if (writes) assert.deepStrictEqual([e.fsWrites[0][2].pay, e.fsWrites[0][2].amount, last.expenseId], ['own', 60, e.fsWrites[0][1]]);
+  }
+  // شيل القطعة → مصروفها المعلّق يتلغي
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
+  const expId = data.wf_r[0].parts[1].expenseId;
+  await all(e.root).filter((n) => n.tagName === 'BUTTON' && n.textContent === '✖')[1].onclick(); await flush(); await flush();
+  assert.deepStrictEqual([data.wf_r[0].parts.length, e.fsDeletes[0]], [2, ['techExpenses', expId]], 'القطعة ومصروفها اتشالوا');
+  data.wf_r[0].parts = data.wf_r[0].parts.slice(0, 1); data.wf_r[0].partsTotal = 600; data.wf_r[0].partsCost = 440; data.wf_r[0].total = 800; data.wf_r[0].remain = 750;
   // من غير صلاحية تعديل: عرض بس
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl, perms: (k) => k !== 'requests.edit' }); run(e); await flush();
   assert(!btnOf(e.root, 'حفظ الموعد') && !btnOf(e.root, 'إضافة القطعة') && !all(e.root).some((n) => n.tagName === 'TEXTAREA'), 'بدون requests.edit مفيش تعديل');
@@ -262,6 +282,24 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   vm.runInNewContext(fs.readFileSync('custody-page.js', 'utf8'), c2.win); await flush(); await flush();
   await btnOf(c2.root, 'رفض').onclick(); await flush();
   assert.deepStrictEqual([c2.fsUpdates[0][2].status, c2.fsUpdates[0][2].decisionNote], ['rejected', 'سبب']);
+  // مصروف من جيب الفني: اعتماد من غير حركة، وبيتضاف لمستحقاته • ودفعته الإدارة: بيتسجل من محفظة الورشة اللي اتختارت
+  {
+    const d4 = mkData(); d4.wf_wallet_tx = [];
+    const FS4 = { techExpenses: { o1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 60, note: 'قطعة: ترموستات', status: 'pending', pay: 'own', at: '2026-10-12T08:00:00Z' }, w1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 80, note: 'قطعة: موتور', status: 'pending', pay: 'workshop', at: '2026-10-12T09:00:00Z' } } };
+    const c4 = makeEnv({ rootId: 'custodyRoot', data: d4, fs: FS4, uid: 'boss' });
+    c4.win.WFTech = { directory: async () => [{ uid: 'tech-a', name: 'أحمد', wallet: 'عهدة أحمد', scope: 'assigned' }], lastError: '' };
+    vm.runInNewContext(fs.readFileSync('custody-page.js', 'utf8'), c4.win); await flush(); await flush();
+    assert(c4.root.textContent.includes('من جيبه') && c4.root.textContent.includes('الإدارة دفعتها'), 'نوع الدفع ظاهر');
+    const goBtns = all(c4.root).filter((n) => n.tagName === 'BUTTON' && n.textContent.includes('اعتماد'));
+    await goBtns[0].onclick(); await flush(); await flush();
+    assert.deepStrictEqual([d4.wf_wallet_tx.length, c4.fsUpdates[0][1], c4.fsUpdates[0][2].status], [0, 'o1', 'approved'], 'من جيبه: مفيش حركة محفظة');
+    await goBtns[1].onclick();
+    const m4 = c4.win.document.body.children[c4.win.document.body.children.length - 1];
+    all(m4).find((n) => n.tagName === 'SELECT').value = 'كاش الورشة';
+    await btnOf(m4, 'اعتماد').onclick(); await flush(); await flush();
+    const wtx = d4.wf_wallet_tx.find((x) => x.refKey === 'custody-exp-w1');
+    assert.deepStrictEqual([wtx.wallet, wtx.amount, wtx.type, c4.fsUpdates[1][2].paidFrom], ['كاش الورشة', 80, 'out', 'كاش الورشة'], 'دفعتها الإدارة: من محفظة الورشة');
+  }
   // من غير صلاحية الاعتماد/التسوية: مفيش أزرار
   const c3 = makeEnv({ rootId: 'custodyRoot', data: mkData(), fs: FS3, uid: 'boss', perms: () => false });
   c3.win.WFTech = { directory: async () => [{ uid: 'tech-a', name: 'أحمد', wallet: 'عهدة أحمد', scope: 'assigned' }], lastError: '' };
@@ -274,6 +312,6 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   const th = fs.readFileSync('tech.html', 'utf8');
   assert(th.includes('tech-portal.js') && !th.includes('bottom-nav.js') && !th.includes('print-share.js') && !th.includes('global-search.js'), 'بوابة الفني من غير تنقل/طباعة/بحث عام');
   assert(fs.readFileSync('custody.html', 'utf8').includes('custody-page.js'));
-  console.log('tech-portal-tests: PASS (اليوم/المتأخر/القادم، الموعد، الشغل، القطع+مصروف العهدة، القفل بمحفظة الفني، عهدتي والمصروفات، اعتماد/رفض/إيداع، صلاحيات)');
+  console.log('tech-portal-tests: PASS (اليوم/المتأخر/القادم، الموعد، الشغل، القطع+مصدر فلوسها (عهدة/جيبه/الإدارة)، القفل بمحفظة الفني، عهدتي والمصروفات، اعتماد/رفض/إيداع، صلاحيات)');
   process.exit(0);
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -238,7 +238,8 @@ service cloud.firestore {
       allow create: if scopedStaff()
         && request.resource.data.techId == request.auth.uid
         && request.resource.data.status == 'pending'
-        && request.resource.data.keys().hasOnly(['techId', 'techName', 'wallet', 'amount', 'note', 'category', 'orderId', 'orderNo', 'status', 'at'])
+        && request.resource.data.keys().hasOnly(['techId', 'techName', 'wallet', 'amount', 'note', 'category', 'orderId', 'orderNo', 'status', 'at', 'pay'])
+        && (!('pay' in request.resource.data) || request.resource.data.pay in ['custody', 'own', 'workshop'])
         && request.resource.data.keys().hasAll(['techId', 'amount', 'note', 'status', 'at'])
         && request.resource.data.amount is number && request.resource.data.amount > 0 && request.resource.data.amount <= 1000000
         && request.resource.data.note is string && request.resource.data.note.size() >= 2 && request.resource.data.note.size() <= 300;

@@ -386,11 +386,16 @@
       var pc = block("🔩 القطع المستخدمة");
       (r.parts || []).forEach(function (p, i) {
         var row = el("div", "tp-part");
-        row.appendChild(el("span", "", (p.external ? "🧳 " : "🔧 ") + (p.name || "قطعة مخزن") + " × " + (p.qty || 1)));
+        var nm = el("span", "", (p.external ? "🧳 " : "🔧 ") + (p.name || "قطعة مخزن") + " × " + (p.qty || 1));
+        if (p.external && p.paidBy) nm.appendChild(el("small", "tp-muted", " • " + (PAY_SHORT[p.paidBy] || "")));
+        row.appendChild(nm);
         row.appendChild(el("b", "", money((+p.qty || 0) * (+p.sell || 0))));
         if (edit && p.external) row.appendChild(btn("✖", "tp-btn2 tp-small", function () {
           if (!window.confirm("شيل القطعة دي من الأمر؟")) return;
-          mutate(r.id, function (x) { x.parts = (x.parts || []).filter(function (_, j) { return j !== i; }); recompute(x); }).then(function (ok) { if (ok) draw(); });
+          mutate(r.id, function (x) { x.parts = (x.parts || []).filter(function (_, j) { return j !== i; }); recompute(x); }).then(function (ok) {
+            if (!ok) return; draw();
+            if (p.expenseId) fsdb().collection("techExpenses").doc(p.expenseId).delete().then(function () { say("اتشالت القطعة واتلغى مصروفها."); loadAccount(); }, function () { say("اتشالت القطعة، بس مصروفها اتعتمد خلاص — كلّم الإدارة تعدّله.", true); });
+          });
         }));
         pc.appendChild(row);
       });
@@ -404,18 +409,22 @@
         var ps = el("input", "tp-input"); ps.type = "number"; ps.min = "0"; ps.step = "any"; ps.inputMode = "decimal"; ps.placeholder = "سعر البيع";
         var pb = el("input", "tp-input"); pb.type = "number"; pb.min = "0"; pb.step = "any"; pb.inputMode = "decimal"; pb.placeholder = "سعر الشراء";
         g.appendChild(pq); g.appendChild(ps); g.appendChild(pb);
-        var own = el("input"); own.type = "checkbox"; own.checked = true;
-        var lb = el("label", "tp-check"); lb.appendChild(own); lb.appendChild(el("span", "", "اشتريتها من عهدتي (يتسجل مصروف بسعر الشراء ويستنى اعتماد الإدارة)"));
-        f.appendChild(pn); f.appendChild(g); f.appendChild(lb);
+        var src = paySelect(true); src.id = "tpPartPay";
+        f.appendChild(pn); f.appendChild(g); f.appendChild(el("div", "tp-small-t tp-muted tp-mt", "تمن القطعة (سعر الشراء) اتدفع منين؟")); f.appendChild(src);
         f.appendChild(btn("إضافة القطعة", "tp-btn tp-mt", function () {
           var name = pn.value.trim(), q = +pq.value, sell = +ps.value, cost = pb.value === "" ? 0 : +pb.value;
           if (!name) return say("اكتب اسم القطعة.", true);
           if (!Number.isInteger(q) || q < 1) return say("الكمية لازم تكون رقم صحيح.", true);
           if (!isFinite(sell) || sell < 0 || !isFinite(cost) || cost < 0) return say("اكتب أسعار صحيحة.", true);
-          mutate(r.id, function (x) { x.parts = (x.parts || []).concat({ external: true, name: name, qty: q, sell: sell, cost: cost }); recompute(x); }).then(function (ok) {
+          var how = src.value, withExp = how !== "none" && cost * q > 0;
+          if (withExp && !online()) return say("تسجيل مصروف القطعة محتاج نت. اختار «مفيش مصروف» أو استنى النت.", true);
+          var ref = withExp ? fsdb().collection("techExpenses").doc() : null;
+          var part = { external: true, name: name, qty: q, sell: sell, cost: cost, paidBy: how, addedBy: "tech" };
+          if (ref) part.expenseId = ref.id;
+          mutate(r.id, function (x) { x.parts = (x.parts || []).concat(part); recompute(x); }).then(function (ok) {
             if (!ok) return;
-            if (own.checked && cost * q > 0) {
-              submitExpense({ amount: cost * q, note: "قطعة: " + name + " × " + q, orderId: r.id, orderNo: r.no || "" }).then(function () { say("✅ اتضافت القطعة وسُجّل مصروفها (معلّق لحد اعتماد الإدارة)."); draw(); }, function (e) { say("القطعة اتضافت لكن المصروف ما اتسجلش (" + e + "). سجّله من «عهدتي».", true); draw(); });
+            if (withExp) {
+              submitExpense({ ref: ref, pay: how, amount: cost * q, note: "قطعة: " + name + " × " + q, orderId: r.id, orderNo: r.no || "" }).then(function () { say("✅ اتضافت القطعة وتمنها اتبعت للإدارة (" + PAY_SHORT[how] + ") — مستني الاعتماد."); draw(); }, function (e) { say("القطعة اتضافت لكن المصروف ما اتسجلش (" + e + "). سجّله من «عهدتي».", true); draw(); });
             } else { say("✅ اتضافت القطعة."); draw(); }
           });
         }));
@@ -465,15 +474,25 @@
     function submitExpense(x) {
       var u = uid(); if (!u) return Promise.reject("سجّل الدخول");
       if (!online()) return Promise.reject("مفيش نت");
-      var data = { techId: u, techName: me(), wallet: myWallet(), amount: Math.round(+x.amount * 100) / 100, note: String(x.note || "").trim(), status: "pending", at: new Date().toISOString() };
+      var data = { techId: u, techName: me(), wallet: myWallet(), amount: Math.round(+x.amount * 100) / 100, note: String(x.note || "").trim(), status: "pending", at: new Date().toISOString(), pay: x.pay || "custody" };
       if (x.orderId) { data.orderId = String(x.orderId); data.orderNo = String(x.orderNo || ""); }
-      var ref = fsdb().collection("techExpenses").doc();
+      var ref = x.ref || fsdb().collection("techExpenses").doc();
       return ref.set(data).then(function () {
-        if (state.acct) { state.acct.expenses = [{ id: ref.id, amount: data.amount, note: data.note, status: "pending", orderNo: data.orderNo || "", at: data.at, decisionNote: "" }].concat(state.acct.expenses || []); }
+        if (state.acct) { state.acct.expenses = [{ id: ref.id, amount: data.amount, note: data.note, status: "pending", orderNo: data.orderNo || "", at: data.at, decisionNote: "", pay: data.pay }].concat(state.acct.expenses || []); }
         loadAccount();
       }, function (e) { throw (e && e.code) || "خطأ"; });
     }
     var STAT = { pending: ["⏳ معلّق", "tp-amber"], approved: ["✅ معتمد", "tp-green-t"], rejected: ["❌ مرفوض", "tp-red"] };
+    /* الفلوس اتدفعت منين؟ (قطعة من بره أو أي مصروف)
+       custody = من العهدة اللي معاه • own = من جيبه والورشة تردّهاله (بتتضاف لمستحقاته) • workshop = الإدارة دفعتها أو اديته تمنها • none = مفيش مصروف */
+    var PAY_SRC = { custody: "💼 من عهدتي", own: "👛 من جيبي — الورشة تردّهالي", workshop: "🏢 الإدارة دفعت تمنها / اديتني فلوسها", none: "🚫 مفيش مصروف (العميل جابها / اتسجلت قبل كده)" };
+    var PAY_SHORT = { custody: "من العهدة", own: "من جيبك (هتترد لك)", workshop: "دفعتها الإدارة", none: "بدون مصروف" };
+    function paySelect(withNone) {
+      var s = el("select", "tp-input"), keys = ["custody", "own", "workshop"].concat(withNone ? ["none"] : []);
+      keys.forEach(function (k) { var o = el("option", "", PAY_SRC[k]); o.value = k; s.appendChild(o); });
+      s.value = myWallet() ? "custody" : "own";
+      return s;
+    }
     function drawAccount() {
       var box = el("div"), w = myWallet(), a = state.acct;
       accountNotice(box);
@@ -482,13 +501,16 @@
       var bal = a ? +a.balance || 0 : 0;
       hero.appendChild(el("div", "tp-hero-num" + (bal < 0 ? " tp-neg" : ""), a ? money(bal) : "—"));
       hero.appendChild(el("div", "tp-hero-note", "= الإيداعات + تحصيلاتك − مصروفاتك المعتمدة − اللي سلّمته للورشة"));
-      if (a && a.stats && a.stats.pendingExpenses) hero.appendChild(el("div", "tp-hero-note", "⏳ مصروفات مستنية اعتماد: " + money(a.stats.pendingExpenses)));
+      if (a && a.stats && a.stats.pendingExpenses) hero.appendChild(el("div", "tp-hero-note", "⏳ مصروفات عهدة مستنية اعتماد: " + money(a.stats.pendingExpenses)));
       if (!w) hero.appendChild(el("div", "tp-hero-warn", "مفيش محفظة عهدة متحددة لحسابك — اطلب من المسؤول يحددها."));
       box.appendChild(hero);
       if (a && a.pay) { // مستحقاتي: أجور الأوامر اللي اتقفلت − اللي اتصرف لي
         var pv = a.pay, pc2 = block("💰 مستحقاتي");
         var dk = kv("المستحق ليك دلوقتي", money(pv.due)); dk.className = "tp-kv tp-kv-total"; pc2.appendChild(dk);
-        pc2.appendChild(kv("أجرتك الشهر ده", money(pv.earnedMonth))); pc2.appendChild(kv("إجمالي اللي اتكسب", money(pv.earned))); pc2.appendChild(kv("اتصرف لك", money(pv.paid)));
+        pc2.appendChild(kv("أجرتك الشهر ده", money(pv.earnedMonth))); pc2.appendChild(kv("إجمالي أجورك", money(pv.earned)));
+        if (pv.reimb) pc2.appendChild(kv("مصاريف دفعتها من جيبك (معتمدة)", money(pv.reimb)));
+        pc2.appendChild(kv("اتصرف لك", money(pv.paid)));
+        if (pv.pendingReimb) pc2.appendChild(kv("من جيبك مستني اعتماد", money(pv.pendingReimb)));
         if (pv.openPay) pc2.appendChild(kv("أوامر مفتوحة متسعّرة (لما تتقفل)", money(pv.openPay)));
         if (pv.unpriced) pc2.appendChild(el("div", "tp-small-t tp-muted", "⏳ " + pv.unpriced + " أمر مقفول الشهر ده لسه أجرته ما اتحددتش."));
         if (pv.payouts && pv.payouts.length) {
@@ -504,13 +526,14 @@
       var note = el("input", "tp-input"); note.placeholder = "المصروف على إيه؟ (بنزين، قطعة، مواصلات…)"; note.maxLength = 300;
       var os = el("select", "tp-input"); var o0 = el("option", "", "مش مرتبط بأمر"); o0.value = ""; os.appendChild(o0);
       openOrders().forEach(function (r) { var o = el("option", "", "أمر " + (r.no || "") + " — " + (custOf(r).name || "")); o.value = r.id; os.appendChild(o); });
-      fc.appendChild(amt); fc.appendChild(note); fc.appendChild(os);
+      var ps2 = paySelect(false); ps2.id = "tpExpPay";
+      fc.appendChild(amt); fc.appendChild(note); fc.appendChild(os); fc.appendChild(el("div", "tp-small-t tp-muted tp-mt", "الفلوس اتدفعت منين؟")); fc.appendChild(ps2);
       fc.appendChild(btn("إرسال للاعتماد", "tp-btn tp-mt", function () {
         var v = +amt.value, n = note.value.trim();
         if (!isFinite(v) || v <= 0) return say("اكتب مبلغ صحيح.", true);
         if (n.length < 2) return say("اكتب بيان المصروف.", true);
         var ord = os.value ? A(window.K.r).filter(function (r) { return r.id === os.value; })[0] : null;
-        submitExpense({ amount: v, note: n, orderId: ord ? ord.id : "", orderNo: ord ? ord.no : "" }).then(function () { say("✅ اتسجّل المصروف وبانتظار اعتماد الإدارة."); draw(); }, function (e) { say("ما اتسجلش (" + e + "). المصروفات محتاجة اتصال بالنت.", true); });
+        submitExpense({ pay: ps2.value, amount: v, note: n, orderId: ord ? ord.id : "", orderNo: ord ? ord.no : "" }).then(function () { say("✅ اتسجّل المصروف وبانتظار اعتماد الإدارة."); draw(); }, function (e) { say("ما اتسجلش (" + e + "). المصروفات محتاجة اتصال بالنت.", true); });
       }));
       box.appendChild(fc);
 
@@ -520,7 +543,7 @@
         var st = STAT[e.status] || [e.status, ""];
         var row = el("div", "tp-card tp-row tp-gap");
         var main = el("div", "tp-grow");
-        main.appendChild(el("b", "", e.note || "")); main.appendChild(el("div", "tp-small-t tp-muted", (e.orderNo ? "أمر " + e.orderNo + " • " : "") + (e.at ? new Date(e.at).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "")));
+        main.appendChild(el("b", "", e.note || "")); main.appendChild(el("div", "tp-small-t tp-muted", (PAY_SHORT[e.pay || "custody"] || "") + " • " + (e.orderNo ? "أمر " + e.orderNo + " • " : "") + (e.at ? new Date(e.at).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "")));
         if (e.decisionNote) main.appendChild(el("div", "tp-small-t", "ملاحظة الإدارة: " + e.decisionNote));
         row.appendChild(main);
         var side = el("div", "tp-side"); side.appendChild(el("b", "", money(e.amount))); side.appendChild(el("div", "tp-small-t " + st[1], st[0]));

@@ -125,6 +125,13 @@ function makeDb(seed) {
   db.data.walletTx.p3 = { wallet: "كاش الورشة", type: "out", amount: 40, source: "techpay", techPayFor: "t2", date: "2026-10-12", deleted: false };
   const pa = (await L.account("t1", {})).pay;
   assert.deepStrictEqual([pa.earned, pa.paid, pa.due, pa.earnedMonth, pa.unpriced, pa.openPay, pa.payouts.length], [350, 100, 250, 350, 1, 70, 1]);
+  // مصاريف من جيبه: المعتمدة بتتضاف للمستحق، والمعلّقة بتظهر لوحدها، ومش بتتحسب على العهدة
+  db.data.techExpenses.o1 = { techId: "t1", amount: 25, note: "قطعة", status: "approved", pay: "own", at: "2026-10-12T09:00:00.000Z" };
+  db.data.techExpenses.o2 = { techId: "t1", amount: 15, note: "قطعة", status: "pending", pay: "own", at: "2026-10-12T09:10:00.000Z" };
+  db.data.techExpenses.w1 = { techId: "t1", amount: 99, note: "قطعة", status: "pending", pay: "workshop", at: "2026-10-12T09:20:00.000Z" };
+  const acR = await L.account("t1", {});
+  assert.deepStrictEqual([acR.pay.reimb, acR.pay.pendingReimb, acR.pay.due, acR.stats.pendingExpenses, acR.expenses.filter((x) => x.id === "o1")[0].pay], [25, 15, 275, 40, "own"]);
+  delete db.data.techExpenses.o1; delete db.data.techExpenses.o2; delete db.data.techExpenses.w1;
   const ph = (await L.account("t1", {})).history.filter((h) => h.no === "A1")[0];
   assert.deepStrictEqual([ph.pay, ph.priced], [200, true]);
   delete db.data.requests.r6;
