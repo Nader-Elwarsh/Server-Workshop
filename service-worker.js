@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v39-scoped-sync";
+const CACHE_NAME = "workshop-v40-tech-portal";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -113,6 +113,10 @@ const CORE_FILES = [
   "./dispatch.html",
   "./dispatch-page.js",
   "./app-tech-assign.js",
+  "./tech.html",
+  "./tech-portal.js",
+  "./custody.html",
+  "./custody-page.js",
   "./roles-core.js",
   "./app-permissions.js",
   "./workshop-logo.svg",

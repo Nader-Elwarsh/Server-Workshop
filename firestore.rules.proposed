@@ -22,15 +22,16 @@ service cloud.firestore {
     // isStaff = موظف بنطاق كامل. كل القواعد القديمة تحت بتستخدمه، فالموظف المحدود النطاق ما بياخدش منها حاجة.
     function isStaff() { return anyStaff() && scopeOfStaff() != 'a'; }
 
-    // الحقول اللي الفني يقدر يغيّرها في أمر معيّن له (مفيش هوية/عميل/جهاز/تعيين/عربون).
+    // الفني يقدر يعدّل أي حاجة في أمره المعيّن له ما عدا: الهوية (رقم الأمر/العميل/الجهاز/تاريخ الإنشاء/المصدر)،
+    // التعيين (الفني/محفظته/من عيّنه)، والعربون وبيانات البوابة. (قايمة منع مش قايمة سماح: عشان أي حقل جديد يضيفه التطبيق لشغل الأمر ما يتوقفش.)
     function techOrderPatch() {
       return resource.data.techId == request.auth.uid
         && resource.data.get('closed', false) != true
         && request.resource.data.techId == resource.data.techId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'workshopStatus', 'partsWaiting', 'tag', 'work', 'labor', 'parts', 'partsTotal', 'partsCost',
-          'total', 'remain', 'statusHistory', 'startedAt', 'workshopStartedAt', 'completedAt',
-          'closed', 'closedAt', 'paid', 'paidAt', 'closeWallet', 'warrantyUntil', 'techNote'
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'techId', 'techName', 'techWallet', 'assignedAt', 'assignedBy',
+          'customerId', 'deviceId', 'addressKey', 'no', 'createdAt', 'source', 'portalRequestId', 'portalVis', 'portal',
+          'deposit', 'depositWallet', 'depositExtra'
         ]);
     }
 
@@ -220,6 +221,24 @@ service cloud.firestore {
     match /techOrders/{id} {
       allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
       allow delete: if scopedStaff() && resource.data.techId == request.auth.uid;
+    }
+
+    // حساب عهدة الفني (رصيده وحركاته): نسخة بتكتبها أجهزة الإدارة، والفني يقرا بتاعه بس.
+    match /techWallets/{uid} {
+      allow get: if scopedStaff() && uid == request.auth.uid;
+    }
+
+    // مصروفات الفني: بينشئها «معلّقة» وبيشوف بتاعته بس وبيلغي المعلّقة منها. الاعتماد/الرفض من أجهزة الإدارة (قاعدة الموظف الكامل).
+    match /techExpenses/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
+      allow create: if scopedStaff()
+        && request.resource.data.techId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['techId', 'techName', 'wallet', 'amount', 'note', 'category', 'orderId', 'orderNo', 'status', 'at'])
+        && request.resource.data.keys().hasAll(['techId', 'amount', 'note', 'status', 'at'])
+        && request.resource.data.amount is number && request.resource.data.amount > 0 && request.resource.data.amount <= 1000000
+        && request.resource.data.note is string && request.resource.data.note.size() >= 2 && request.resource.data.note.size() <= 300;
+      allow delete: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.status == 'pending';
     }
 
     // الإعدادات: المحدود يقرأ الإعدادات العامة وعلامة التحديث بس (مفيش أي wfkv_* = مصروفات/سلة/…)، ويكتب علامة التحديث.

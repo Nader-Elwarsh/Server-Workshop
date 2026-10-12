@@ -13,7 +13,7 @@ const copy = (o) => (o === undefined ? undefined : JSON.parse(JSON.stringify(o, 
 const plain = (v) => JSON.stringify(v, (k, x) => (x instanceof TS ? x.d.toISOString() : x));
 const ISO = (d) => d.d.toISOString();
 
-const TECH_FIELDS = ["status", "workshopStatus", "partsWaiting", "tag", "work", "labor", "parts", "partsTotal", "partsCost", "total", "remain", "statusHistory", "startedAt", "workshopStartedAt", "completedAt", "closed", "closedAt", "paid", "paidAt", "closeWallet", "warrantyUntil", "techNote"];
+const TECH_FORBIDDEN = ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal", "deposit", "depositWallet", "depositExtra"];
 const sameVal = (a, b) => plain(a) === plain(b);
 
 function makeCloud(seed) {
@@ -31,7 +31,7 @@ function makeCloud(seed) {
         if (op === "get") return !!existing && existing.techId === uid && existing.closed === false;
         if (op === "update") {
           if (!existing || existing.techId !== uid || existing.closed === true || next.techId !== existing.techId) return false;
-          return Object.keys(next).concat(Object.keys(existing)).every((f) => sameVal(next[f], existing[f]) || TECH_FIELDS.indexOf(f) > -1);
+          return Object.keys(next).concat(Object.keys(existing)).every((f) => sameVal(next[f], existing[f]) || TECH_FORBIDDEN.indexOf(f) < 0);
         }
         return false;
       }
@@ -124,7 +124,8 @@ async function bootSession(opts) {
   const timers = [];
   const el = () => ({ style: {}, appendChild() {}, remove() {}, setAttribute() {}, addEventListener() {}, querySelector: () => null, insertBefore() {}, parentNode: null, set textContent(v) { this._t = v; }, get textContent() { return this._t; } });
   const doc = { readyState: "complete", createElement: () => { const e = el(); setTimeout(() => e.onload && e.onload(), 0); return e; }, getElementById: () => null, querySelector: () => null, body: el(), head: { appendChild(t) { if (t.onload) setTimeout(t.onload, 0); } }, documentElement: el(), addEventListener() {}, visibilityState: "visible" };
-  const loc = { pathname: "/index.html", search: "", href: "http://x/index.html", reload() { loc.reloaded = (loc.reloaded || 0) + 1; }, replace(u) { loc.replacedTo = u; } };
+  const alerts = [];
+  const loc = { pathname: opts.scoped ? "/tech.html" : "/index.html", search: "", href: "http://x/index.html", reload() { loc.reloaded = (loc.reloaded || 0) + 1; }, replace(u) { loc.replacedTo = u; } };
   const fakeUser = { uid: opts.uid, email: opts.uid + "@x", getIdTokenResult: () => Promise.resolve({ claims: opts.claims || {} }) };
   const fb = {
     apps: [], initializeApp() { return {}; }, app: () => ({ options: {} }),
@@ -135,14 +136,14 @@ async function bootSession(opts) {
     console: { log() {}, warn() {}, error() {} }, Date, JSON, Math, Object, Array, Promise, Error, String, Number, parseInt, isNaN, RegExp, Set,
     setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout, setInterval: () => 0, clearInterval: () => {}, URL,
     firebase: fb, WFStorage: ls, document: doc, location: loc, navigator: { onLine: true }, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-    alert() {}, confirm: () => true, addEventListener() {}, WF_FIREBASE_CONFIG: { projectId: "t" }, Uint32Array
+    alert(m) { alerts.push(String(m)); }, confirm: () => true, addEventListener() {}, WF_FIREBASE_CONFIG: { projectId: "t" }, Uint32Array
   };
   sb.window = sb; sb.self = sb;
   vm.createContext(sb);
   vm.runInContext(SRC, sb);
   for (let i = 0; i < 60 && !(sb.wfSyncMode && sbReady(sb)); i++) await sleep(10);
   await sleep(30);
-  return { sb, loc, cloud };
+  return { sb, loc, cloud, alerts };
 }
 function sbReady(sb) { return typeof sb.wfCloudSyncNow === "function"; }
 
@@ -154,14 +155,14 @@ function seedCloud() {
   const reqs = {}, cust = {}, dev = {}, techOrders = {};
   const rows = [["o1", "tech-a"], ["o2", "tech-a"], ["o3", "tech-b"], ["o4", null], ["o5", "tech-a", true]];
   rows.forEach(([id, tech, closed]) => {
-    reqs[id] = O(id, { techId: tech || undefined, closed: !!closed }); if (!tech) delete reqs[id].techId;
+    reqs[id] = O(id, { techId: tech || undefined, closed: !!closed, techWallet: tech === "tech-a" ? "عهدة أ" : undefined }); if (!tech) delete reqs[id].techId;
     cust["c-" + id] = C("c-" + id); dev["d-" + id] = D("d-" + id);
     if (tech) techOrders[id] = { techId: tech, orderId: id, customer: C("c-" + id), device: D("d-" + id) };
   });
   return makeCloud({
     staff: { "tech-a": { name: "Tech", role: "tech", sc: "a" }, "tech-b": { name: "B", sc: "a" }, "boss": { name: "Boss", role: "owner" } },
     requests: reqs, customers: cust, devices: dev, techOrders,
-    parts: { p1: { id: "p1", name: "ضاغط", cost: 900 } }, treasury: { t1: { id: "t1", amount: 5 } }, walletTx: {},
+    parts: { p1: { id: "p1", name: "ضاغط", cost: 900 } }, treasury: { t1: { id: "t1", amount: 5 } }, walletTx: { w1: { id: "w1", wallet: "عهدة أ", type: "in", amount: 100, date: "2026-10-11", time: "10:00", reason: "تحصيل", note: "سري" }, w2: { id: "w2", wallet: "عهدة أ", type: "out", amount: 30, date: "2026-10-12", time: "09:00", reason: "بنزين" }, w3: { id: "w3", wallet: "الخزنة الرئيسية", type: "in", amount: 999, date: "2026-10-12", time: "09:00", reason: "x" } },
     settings: { global: { wallets: ["كاش"], statuses: ["جديد"] }, wf_meta: { ts: 1, dev: "x" }, "wfkv_wf_e": { n: 1 }, "wfkv_wf_e~0": { v: "[{\"secret\":1}]" } }
   });
 }
@@ -261,6 +262,41 @@ function seedCloud() {
   await s.sb.wfCloudSyncNow(); await sleep(300);
   assert.strictEqual(cloud.data.techOrders.o2, undefined, "اتمسحت بعد إلغاء التعيين");
   assert.ok(cloud.data.techOrders.o1 && cloud.data.techOrders.o3);
+
+
+  /* ---- 8ب) محفظة عهدة الفني بتتنشر من جهاز الإدارة (رصيد + حركات من غير الملاحظات) ---- */
+  const tw = cloud.data.techWallets && cloud.data.techWallets["tech-a"];
+  assert.ok(tw, "حساب عهدة الفني اتكتب");
+  assert.strictEqual(tw.balance, 70, "رصيد = 100 - 30 ومحفظة تانية ما دخلتش");
+  assert.strictEqual(tw.entries.length, 2);
+  assert.ok(!JSON.stringify(tw).includes("سري") && !JSON.stringify(tw).includes("999"), "مفيش ملاحظات ولا محافظ تانية");
+
+  /* ---- 9) الفني يخرج ويدخل تاني: تعديلاته اللي لسه ماترفعتش ما تضيعش، والموعد يترفع ---- */
+  cloud = seedCloud();
+  ls = makeDevice({});
+  s = await bootSession({ cloud, ls, uid: "tech-a", scoped: true });
+  let t9 = JSON.parse(ls.getItem("wf_r"));
+  t9.find((r) => r.id === "o1").visit = "2026-10-12T10:30"; ls.setItem("wf_r", JSON.stringify(t9));
+  await s.sb.wfCloudSyncNow();
+  assert.deepStrictEqual(cloud.denied, [], "تعديل الموعد مسموح: " + cloud.denied);
+  assert.strictEqual(cloud.data.requests.o1.visit, "2026-10-12T10:30", "الموعد وصل السيرفر (وبالتالي الإدارة)");
+  t9 = JSON.parse(ls.getItem("wf_r")); t9.find((r) => r.id === "o2").work = "شغل لسه ماترفعش"; ls.setItem("wf_r", JSON.stringify(t9));
+  ["wf_cloud_hydrated_uid", "wf_last_full_sync", "wf_is_staff_uid", "wf_staff_ok_at"].forEach((k) => ls.removeItem(k)); // زي الخروج
+  s = await bootSession({ cloud, ls, uid: "tech-a", scoped: true });
+  assert.strictEqual(JSON.parse(ls.getItem("wf_r")).find((r) => r.id === "o2").work, "شغل لسه ماترفعش", "التعديل المحلي فضل");
+  await s.sb.wfCloudSyncNow();
+  assert.strictEqual(cloud.data.requests.o2.work, "شغل لسه ماترفعش", "واترفع بعد الدخول");
+
+  /* ---- 10) أمر جديد من حساب الفني: بيتشال برسالة واضحة ---- */
+  t9 = JSON.parse(ls.getItem("wf_r")); t9.push(O("mine-new", { techId: "tech-a" })); ls.setItem("wf_r", JSON.stringify(t9));
+  await s.sb.wfCloudSyncNow();
+  assert.ok(!JSON.parse(ls.getItem("wf_r")).some((r) => r.id === "mine-new"), "الأمر الجديد اتشال");
+  assert.ok(s.alerts.some((m) => /ينشئ أوامر جديدة/.test(m)), "رسالة للفني");
+  assert.strictEqual(cloud.data.requests["mine-new"], undefined);
+
+  /* ---- 11) تحويل لحساب تاني على نفس الجهاز بيمسح بيانات الفني ---- */
+  s = await bootSession({ cloud, ls, uid: "tech-b", scoped: true });
+  assert.deepStrictEqual(JSON.parse(ls.getItem("wf_r")).map((r) => r.id), ["o3"], "فني تاني: أوامره هو بس");
 
   console.log("scoped-sync-tests: PASS (مسح بيانات الجهاز عند التبديل، سحب أوامره فقط، رفع الحقول المسموحة، رفض العربون، قفل الأمر، سحب أمر منقول، التحويل لحساب إدارة، نسخة العرض)");
   process.exit(0);

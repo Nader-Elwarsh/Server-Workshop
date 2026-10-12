@@ -906,7 +906,7 @@
             <a href="request.html?id=${r.id}"><b>${esc2(r.no || "أمر شغل")}</b></a>
             <span>${r.customerId ? `<a href="customer.html?id=${r.customerId}" data-wf-event="click" data-wf-code="event.stopPropagation()">👤 ${esc2(customerName(r.customerId))}</a>` : "عميل غير محدد"} • ${r.deviceId ? `<a href="device.html?id=${r.deviceId}" data-wf-event="click" data-wf-code="event.stopPropagation()">🔧 ${esc2(deviceName(r.deviceId))}</a>` : "جهاز غير محدد"}</span>
             ${cust.phone ? `<small><a class="tel-link" href="tel:${esc2(cust.phone)}" target="_blank" rel="noopener" data-wf-event="click" data-wf-code="event.stopPropagation()">📞 ${esc2(cust.phone)}</a></small>` : ""}
-            <small>📍 ${esc2(loc.center)}${loc.village ? " • " + esc2(loc.village) : ""} • ${r.visit ? new Date(r.visit).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "بدون موعد"}${r.tag ? " • 🏷️ " + esc2(r.tag) : ""}</small>
+            <small>📍 ${esc2(loc.center)}${loc.village ? " • " + esc2(loc.village) : ""} • ${r.visit ? new Date(r.visit).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "بدون موعد"}${r.tag ? " • 🏷️ " + esc2(r.tag) : ""}${r.techName ? " • 👷 " + esc2(r.techName) : ""}</small>
             ${r.fault ? `<small>📝 ${esc2(r.fault)}</small>` : ""}
             <div class="request-timing">
               ${ageInfo ? `<span class="request-age age-badge ${ageInfo.cls}" title="⏱️ عمر الأمر: ${esc2(ageInfo.range)}">${ageInfo.dot} عمر الأمر: ${esc2(age)}</span>` : ""}

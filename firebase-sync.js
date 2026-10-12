@@ -61,7 +61,7 @@
   var isLogin = /login\.html$/.test(location.pathname);
   /* الوضع المحدود (فني «أوامره المعيّنة فقط»): السيرفر نفسه (قواعد Firestore) بيمنعه من قراءة أي حاجة غير أوامره المفتوحة المعيّنة له
      + عميل/جهاز كل أمر منهم (من techOrders). فالمزامنة بتنزّل دول بس، وبترفع تعديلات أوامره بس، ومفيش أي عملية إدارية. */
-  var SCOPED = false, MODE_KEY = "wf_sync_mode", wipedForMode = false;
+  var SCOPED = false, MODE_KEY = "wf_sync_mode", UID_KEY = "wf_sync_uid", wipedForMode = false, TECH_PAGES = /\/(tech|login|privacy|terms)\.html$/;
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
   var RETRY_KEY = "wf_sync_retry_state", CONFLICT_KEY = "wf_sync_conflicts", retryState = {}, retryTimers = {}, conflicts = {}, lastSyncAt = +(ls.getItem("wf_last_sync_at") || 0), lastSyncError = ls.getItem("wf_sync_last_error") || "";
@@ -258,7 +258,7 @@
         if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); }
         if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
-      var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [];
+      var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [], rejectedNew = [];
       jobs.forEach(function (job) {
         chain = chain.then(function () {
           return withTimeout(db.runTransaction(async function (tx) {
@@ -277,6 +277,7 @@
             if (job.kind === "delete") tx.delete(job.ref); else tx.set(job.ref, toDoc(job.record));
             return { state: "written", remote: remote, remoteHash: remoteHash };
           })).catch(function (e) {
+            if (SCOPED && e && e.code === "permission-denied" && job.baseHash === undefined) { rejectedNew.push(job.id); return { state: "gone", remote: null, remoteHash: null }; } // سجل جديد عمله الفني: الفني مايقدرش ينشئ
             if (SCOPED && e && e.code === "permission-denied") { // الأمر اتقفل/اتنقل لفني تاني؟ لو لسه مقروء يبقى السيرفر رفض التعديل نفسه
               return withTimeout(job.ref.get()).then(function () { throw new Error("السيرفر رفض التعديل ده على الأمر (غير مسموح لحساب الفني)"); }, function () { return { state: "gone", remote: null, remoteHash: null }; });
             }
@@ -301,13 +302,14 @@
           var cur = local("wf_r") || []; raw("wf_r", JSON.stringify(cur.filter(function (r) { return !(r && gone[r.id]); })));
           goneIds.concat(closedIds).forEach(function (id) { delete next[id]; try { db.collection("techOrders").doc(id).delete().catch(function () {}); } catch (e) {} });
           snapshotRaw = ls.getItem("wf_r");
+          if (rejectedNew.length) { try { window.alert("حساب الفني مايقدرش ينشئ أوامر جديدة، فاتشال " + rejectedNew.length + " أمر اتعمل من الجهاز ده. اطلب من المسؤول ينشئه ويعيّنه ليك."); } catch (e) {} }
           if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("requests.html"); else banner(); }).catch(function () {}); }, 50);
         }
         SB.c[k] = next; saveBase();
         if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
         if (!hasConflict) lastRaw[k] = snapshotRaw;
         var touch = wrote ? touchMeta() : Promise.resolve();
-        return touch.then(function () { if (wrote && (k === "wf_r" || k === "wf_c" || k === "wf_d")) projectOrders(); return done(!hasConflict, hasConflict ? new Error("تعارض إصدار: لم تتم الكتابة فوق السجل الأحدث") : null); });
+        return touch.then(function () { if (wrote && (k === "wf_r" || k === "wf_c" || k === "wf_d" || k === "wf_wallet_tx")) projectOrders(); return done(!hasConflict, hasConflict ? new Error("تعارض إصدار: لم تتم الكتابة فوق السجل الأحدث") : null); });
       }).catch(function (e) { console.warn("sync pending", k, e && e.message); return done(false, e); });
     }
     if (k === SETTINGS) {
@@ -438,11 +440,23 @@
      بتتكتب من أجهزة الإدارة بس، والفني بيقراها هي وأمره المعيّن له فقط (قواعد Firestore). بتتمسح لما الأمر يتقفل أو يتسحب من الفني. */
   var tpBusy = false;
   function techPick(o, drop) { var r = {}; Object.keys(o || {}).forEach(function (f) { if (drop.indexOf(f) < 0) r[f] = o[f]; }); return r; }
+  function techWalletMap() { // فني → اسم محفظة العهدة: من قايمة الفنيين المتخزنة على الجهاز، ومن «محفظة الفني» المتسجلة على أوامره
+    var m = {};
+    try { (JSON.parse(ls.getItem("wf_tech_dir") || "[]") || []).forEach(function (u) { if (u && u.uid && u.wallet) m[u.uid] = String(u.wallet).trim(); }); } catch (e) {}
+    (local("wf_r") || []).forEach(function (r) { if (r && r.techId && r.techWallet && !m[r.techId]) m[r.techId] = String(r.techWallet).trim(); });
+    return m;
+  }
+  function techWalletDoc(uid, wallet, txs) { // رصيد وحركات محفظة الفني (من غير الملاحظات الخاصة)
+    var mine = txs.filter(function (x) { return x && !x.deleted && String(x.wallet || "").trim() === wallet; });
+    var bal = Math.round(mine.reduce(function (a, x) { return a + (x.type === "in" ? (+x.amount || 0) : -(+x.amount || 0)); }, 0) * 100) / 100;
+    mine.sort(function (p, q) { return String((q.date || "") + " " + (q.time || "") + (q.createdAt || "")).localeCompare(String((p.date || "") + " " + (p.time || "") + (p.createdAt || ""))); });
+    return { uid: uid, wallet: wallet, balance: bal, entries: mine.slice(0, 150).map(function (x) { return { id: String(x.id || ""), ref: String(x.refKey || ""), type: x.type === "in" ? "in" : "out", amount: +x.amount || 0, category: String(x.category || ""), reason: String(x.reason || "").slice(0, 160), date: x.date || "", time: x.time || "" }; }) };
+  }
   function projectTech() {
     if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:techOrders"); return Promise.resolve(false); }
     if (tpBusy) return Promise.resolve(false);
-    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, ops = [], seen = {}, next = Object.assign({}, tp);
+    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, tw = SB.tw = SB.tw || {}, ops = [], seen = {}, next = Object.assign({}, tp), nextW = Object.assign({}, tw);
     var fixClosed = false; rs.forEach(function (r) { if (r && r.techId && r.closed === undefined) { r.closed = false; fixClosed = true; } }); // السيرفر بيفلتر أوامر الفني بـ closed == false
     if (fixClosed) ls.setItem("wf_r", JSON.stringify(rs));
     (local("wf_c") || []).forEach(function (c) { if (c && c.id) cs[c.id] = c; });
@@ -459,9 +473,15 @@
       if (tp[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("techOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
     Object.keys(tp).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("techOrders").doc(id)); }); } });
+    // حسابات عهدة الفنيين (رصيد + آخر الحركات) — الفني يقراها هي بس
+    var wm = techWalletMap(), txs = local("wf_wallet_tx") || [];
+    Object.keys(wm).forEach(function (uid) {
+      var doc = techWalletDoc(uid, wm[uid], txs), x = h(stable(doc));
+      if (tw[uid] !== x) { nextW[uid] = x; ops.push(function (bt) { bt.set(db.collection("techWallets").doc(uid), Object.assign({}, doc, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
+    });
     if (!ops.length) { clearRetry("remote:techOrders"); return Promise.resolve(true); }
     tpBusy = true;
-    return commitOps(ops).then(function () { SB.tp = next; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
+    return commitOps(ops).then(function () { SB.tp = next; SB.tw = nextW; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
   }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
     if (SCOPED) return Promise.resolve(true);
@@ -1009,6 +1029,7 @@
     CURRENT_UID = user.uid; db = firebase.firestore(); meta = db.collection("settings").doc("wf_meta");
     var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
     SCOPED = ls.getItem(MODE_KEY) === "scoped"; window.wfSyncMode = SCOPED ? "scoped" : "full";
+    if (SCOPED && ls.getItem(UID_KEY) === user.uid && !TECH_PAGES.test(location.pathname)) { location.replace("tech.html"); return; }
     function goReady(reload) {
       ready = true; uncover(); resumeRetries(); badge();
       if (reload) { location.reload(); return; }
@@ -1053,9 +1074,11 @@
     });
     function continueBoot(scoped) {
     SCOPED = !!scoped; window.wfSyncMode = SCOPED ? "scoped" : "full";
-    var prevMode = ls.getItem(MODE_KEY);
-    if ((SCOPED && (prevMode !== "scoped" || !hydrated)) || (!SCOPED && prevMode === "scoped")) { wipeLocal(); hydrated = false; recent = false; }
-    origSet.call(ls, MODE_KEY, SCOPED ? "scoped" : "full");
+    var prevMode = ls.getItem(MODE_KEY), prevUid = ls.getItem(UID_KEY);
+    // مسح بيانات الجهاز بس لو الوضع اتغيّر أو الحساب اتغيّر (نفس الفني بيخرج ويدخل تاني: تعديلاته اللي لسه مارفعتش تفضل)
+    if ((SCOPED && (prevMode !== "scoped" || prevUid !== user.uid)) || (!SCOPED && prevMode === "scoped")) { wipeLocal(); hydrated = false; recent = false; }
+    origSet.call(ls, MODE_KEY, SCOPED ? "scoped" : "full"); origSet.call(ls, UID_KEY, user.uid);
+    if (SCOPED && !TECH_PAGES.test(location.pathname)) { location.replace("tech.html"); return; } // بوابة الفني المستقلة
     var quick = hydrated && recent;
     (quick ? withTimeout(meta.get()).then(function (d) { return d.exists && String(d.data().ts) !== ls.getItem(SEEN); }).catch(function () { return false; }) : Promise.resolve(true)).then(function (needFull) {
       if (!needFull && !Object.keys(timers).length) return goReady(false);
@@ -1084,9 +1107,16 @@
 
   window.wfCloudSignOut = function (to) {
     var flush = (ready && online()) ? Promise.race([pushAll(false), new Promise(function (r) { setTimeout(r, 5000); })]).catch(function () {}) : Promise.resolve(); // ارفع أي تعديل معلّق قبل الخروج (كل حساب بيمسح بياناته المحلية عند التبديل)
-    return flush.then(function () { return doSignOut(to); });
+    return flush.then(function () {
+      if (ready && countPendingOperations() > 0 && !window.confirm("فيه تعديلات لسه ما اترفعتش للسيرفر وهتضيع لو خرجت دلوقتي. تخرج برضه؟\n(إلغاء = ابقى وحاول المزامنة)")) return false;
+      return doSignOut(to);
+    });
   };
   function doSignOut(to) { origRemove.call(ls, HYD); origRemove.call(ls, FULL); origRemove.call(ls, "wf_is_staff_uid"); origRemove.call(ls, "wf_staff_ok_at"); sessionStorage.removeItem("wf_hyd_reload"); forgetLogin(); return firebase.auth().signOut().then(function () { location.href = typeof to === "string" && /^[a-z-]+\.html$/.test(to) ? to : "login.html"; }); }
+  window.wfSyncInfo = function () { // حالة المزامنة للواجهات الخارجية (بوابة الفني)
+    var cf = Object.keys(conflicts).reduce(function (n, k) { return n + Object.keys(conflicts[k] || {}).length; }, 0);
+    return { pending: countPendingOperations(), error: lastSyncError, last: lastSyncAt, online: online(), ready: ready, mode: SCOPED ? "scoped" : "full", conflicts: cf };
+  };
   window.wfCloudSyncNow = function () { return hydrateFull().then(function () { return pushAll(true); }); };
   window.addEventListener("online", function () { badge(); pushAll(false); Object.keys(retryState).forEach(function (k) { if ((ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) && !retryTimers[k]) scheduleRetry(k); }); });
   window.addEventListener("offline", badge);
