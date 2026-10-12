@@ -336,6 +336,8 @@ async function main() {
     // القفل والتحصيل والإلغاء مش من الجهاز: القفل بدالة السيرفر techCloseOrder (الأمر + حركة المحفظة مع بعض)
     await assertFails(updateDoc(doc(techA, 'requests/o5'), { closed: true, paid: true, status: 'مكتمل' }));
     await assertFails(updateDoc(doc(techA, 'requests/o5'), { closeWallet: 'عهدة أ' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { techPay: 9999 }));
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { jobType: 'big' }));
     await assertFails(updateDoc(doc(techA, 'requests/o5'), { status: 'ملغي' }));
     await assertSucceeds(updateDoc(doc(techA, 'requests/o5'), { status: 'مكتمل' }));
     // بعد ما السيرفر يقفل الأمر الفني يفقد القراءة والتعديل فورًا
