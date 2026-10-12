@@ -94,6 +94,15 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   assert.deepStrictEqual(e.calls.map((c) => c[0]), ['techAccount'], 'الحساب بيتحمّل من السيرفر');
   assert(text.includes('متزامن'), 'حالة المزامنة');
 
+  // التخزين لسه بيتقرا: الصفحة تستنى بدل ما تترسم فاضية، وبعدها مزامنة تلقائية أول ما الاتصال يجهز
+  let openStore; const eW = makeEnv({ rootId: 'techRoot', data: mkData(), callImpl: accImpl });
+  eW.win.WFStorageReady = new Promise((r) => { openStore = r; }); eW.win.wfSyncInfo = () => ({ ready: true, pending: 0 });
+  run(eW); await flush(); await flush();
+  assert(!eW.root.textContent.includes('#A1'), 'مستني التخزين');
+  openStore(true); await new Promise((r) => setTimeout(r, 120)); await flush();
+  assert(eW.root.textContent.includes('#A1 — سعاد'), 'اترسمت بعد ما التخزين جهز');
+  assert(eW.syncs.n >= 1, 'مزامنة تلقائية من غير ضغط 🔄');
+
   // من غير أوامر مفتوحة: رسالة + رابط للمقفولة (مش «مفيش أوامر» وبس)
   const d0 = mkData(); d0.wf_r = d0.wf_r.filter((r) => r.closed); e = makeEnv({ rootId: 'techRoot', data: d0, callImpl: accImpl });
   run(e); await flush(); await flush();

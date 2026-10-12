@@ -11,8 +11,11 @@
   "use strict";
   var waited = 0;
   function ready() { return window.WFPerm && window.firebase && typeof window.arr === "function" && window.K && typeof window.updateRequestRecordAsync === "function" && typeof window.settings === "function"; }
+  var storageOk = false;
+  try { Promise.resolve(window.WFStorageReady).then(function () { storageOk = true; }, function () { storageOk = true; }); } catch (e) { storageOk = true; }
   function wait() {
-    if (ready()) return start();
+    // لازم تخزين الجهاز (IndexedDB) يكون اتقرا الأول، وإلا الصفحة بتترسم فاضية لحد ما تضغط مزامنة
+    if (ready() && (storageOk || !window.WFStorageReady)) return start();
     if ((waited += 80) > 20000) { var m = document.getElementById("techRoot"); if (m) m.textContent = "تعذّر تحميل الصفحة. حدّث وجرّب تاني."; return; }
     setTimeout(wait, 80);
   }
@@ -541,6 +544,24 @@
       var b = document.getElementById("wfCloudBanner"); if (b) b.remove();
       if (cur !== lastRaw || b) draw();
     }, 6000);
+    // أي تغيير في أوامره/عملائه/أجهزته (مزامنة نزلت بيانات) = إعادة رسم فورية
+    var redrawT = null;
+    try {
+      if (window.WFStorage.subscribe) window.WFStorage.subscribe(function (k) {
+        if (k !== window.K.r && k !== window.K.c && k !== window.K.d) return;
+        clearTimeout(redrawT);
+        redrawT = setTimeout(function () {
+          var ae = document.activeElement, typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+          if (!typing && !state.busy) draw();
+        }, 300);
+      });
+    } catch (e) {}
+    // أول ما الاتصال بالسيرفر يجهز: مزامنة واحدة تلقائية (بدل ما تضغط 🔄 بإيدك)
+    (function autoSync(n) {
+      var info = (window.wfSyncInfo && window.wfSyncInfo()) || {};
+      if (info.ready && online() && window.wfCloudSyncNow) { Promise.resolve(window.wfCloudSyncNow()).catch(function () {}).then(function () { paintStatus(); draw(); }); return; }
+      if (n < 60) setTimeout(function () { autoSync(n + 1); }, 500);
+    })(0);
     window.addEventListener("online", function () { paintStatus(); loadAccount(); });
     window.addEventListener("offline", paintStatus);
   }
