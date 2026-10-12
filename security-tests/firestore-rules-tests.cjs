@@ -333,8 +333,13 @@ async function main() {
     await assertSucceeds(getDocs(collection(staff, 'techOrders')));
     await assertSucceeds(setDoc(doc(staff, 'techOrders/o9'), { techId: 'tech-a' }));
     await assertSucceeds(getDocs(collection(staff, 'settings')));
-    // بعد قفل الأمر الفني يفقد القراءة والتعديل فورًا
-    await assertSucceeds(updateDoc(doc(techA, 'requests/o5'), { closed: true, paid: true, status: 'مكتمل' }));
+    // القفل والتحصيل والإلغاء مش من الجهاز: القفل بدالة السيرفر techCloseOrder (الأمر + حركة المحفظة مع بعض)
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { closed: true, paid: true, status: 'مكتمل' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { closeWallet: 'عهدة أ' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { status: 'ملغي' }));
+    await assertSucceeds(updateDoc(doc(techA, 'requests/o5'), { status: 'مكتمل' }));
+    // بعد ما السيرفر يقفل الأمر الفني يفقد القراءة والتعديل فورًا
+    await env.withSecurityRulesDisabled(async context => { await updateDoc(doc(context.firestore(), 'requests/o5'), { closed: true, paid: true, closedByTech: 'tech-a' }); });
     await assertFails(getDoc(doc(techA, 'requests/o5')));
     await assertFails(updateDoc(doc(techA, 'requests/o5'), { work: 'بعد القفل' }));
     await assertSucceeds(deleteDoc(doc(techA, 'techOrders/o5')));
