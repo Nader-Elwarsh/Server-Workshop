@@ -48,6 +48,7 @@ function cleanWork(f) {
 }
 function collectedOf(r) { return Math.max(0, r2(num(r.total) - num(r.deposit))); }
 
+const PAY_KINDS = ["custody", "own", "workshop"];
 function createTechLedger(deps) {
   const { db, now = () => new Date(), ts = (d) => d, log = () => {} } = deps;
 
@@ -211,8 +212,9 @@ function createTechLedger(deps) {
     });
 
     const eSnap = await db.collection("techExpenses").where("techId", "==", target).get();
-    const expenses = eSnap.docs.map((d) => { const x = d.data() || {}; return { id: d.id, amount: r2(x.amount), note: String(x.note || ""), status: String(x.status || ""), orderNo: String(x.orderNo || ""), at: iso(x.at), decisionNote: String(x.decisionNote || "") }; })
-      .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 80);
+    const allExp = eSnap.docs.map((d) => { const x = d.data() || {}; return { id: d.id, amount: r2(x.amount), note: String(x.note || ""), status: String(x.status || ""), orderNo: String(x.orderNo || ""), at: iso(x.at), decisionNote: String(x.decisionNote || ""), pay: PAY_KINDS.includes(x.pay) ? x.pay : "custody" }; })
+      .sort((a, b) => b.at.localeCompare(a.at));
+    const expenses = allExp.slice(0, 80);
 
     const month = cairoParts(now()).date.slice(0, 7);
     const inMonth = (v) => { const s = iso(v); if (!s) return false; return cairoParts(new Date(s)).date.slice(0, 7) === month; };
@@ -221,7 +223,7 @@ function createTechLedger(deps) {
       open: open.length, closedTotal: closed.length, closedMonth: monthClosed.length,
       collectedMonth: r2(monthClosed.reduce((a, r) => a + (r.paid ? collectedOf(r) : 0), 0)),
       laborMonth: r2(monthClosed.reduce((a, r) => a + num(r.labor), 0)),
-      pendingExpenses: r2(expenses.filter((e) => e.status === "pending").reduce((a, e) => a + e.amount, 0))
+      pendingExpenses: r2(allExp.filter((e) => e.status === "pending" && e.pay === "custody").reduce((a, e) => a + e.amount, 0))
     };
     // أجور الفني: المكسوب من الأوامر المقفولة (الأجرة اللي المالك/المدير حددها) − اللي اتصرف له (حركات source=techpay)
     const priced = closed.filter((r) => r.status !== "ملغي" && (num(r.techPay) > 0 || r.jobType));
@@ -229,7 +231,10 @@ function createTechLedger(deps) {
     const pSnap = await db.collection("walletTx").where("techPayFor", "==", target).get();
     const paidRows = pSnap.docs.map((d) => d.data() || {}).filter((x) => x.deleted !== true && x.source === "techpay");
     const paid = r2(paidRows.reduce((a, x) => a + (x.type === "in" ? -num(x.amount) : num(x.amount)), 0));
-    const pay = { earned, paid, due: r2(earned - paid), earnedMonth: r2(priced.filter((r) => inMonth(r.closedAt || r.paidAt)).reduce((a, r) => a + num(r.techPay), 0)),
+    // مصاريف دفعها من جيبه واتعتمدت: الورشة مديونة له بيها (بتتضاف للمستحق)
+    const reimb = r2(allExp.filter((e) => e.pay === "own" && e.status === "approved").reduce((a, e) => a + e.amount, 0));
+    const pendingReimb = r2(allExp.filter((e) => e.pay === "own" && e.status === "pending").reduce((a, e) => a + e.amount, 0));
+    const pay = { earned, reimb, pendingReimb, paid, due: r2(earned + reimb - paid), earnedMonth: r2(priced.filter((r) => inMonth(r.closedAt || r.paidAt)).reduce((a, r) => a + num(r.techPay), 0)),
       unpriced: closed.filter((r) => r.status !== "ملغي" && !(num(r.techPay) > 0) && !r.jobType && inMonth(r.closedAt || r.paidAt)).length,
       openPay: r2(open.reduce((a, r) => a + num(r.techPay), 0)),
       payouts: paidRows.map((x) => ({ amount: r2(x.amount), date: x.date || "", note: String(x.note || "").slice(0, 120) })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20) };
