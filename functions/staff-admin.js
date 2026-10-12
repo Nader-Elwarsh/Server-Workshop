@@ -137,7 +137,7 @@ function createStaffAdmin(deps) {
     const staff = await requireStaff(uid);
     const cfg = await loadConfig();
     const perms = core.effectivePerms(cfg, staff);
-    if (!core.isOwner(cfg, staff) && perms.indexOf("requests.assign") < 0) throw new AdminError("permission-denied", "cannot_assign");
+    if (!core.isOwner(cfg, staff) && perms.indexOf("requests.assign") < 0 && perms.indexOf("custody.approve") < 0 && perms.indexOf("custody.settle") < 0) throw new AdminError("permission-denied", "cannot_assign");
     const snap = await db.collection("staff").get();
     const users = [];
     snap.forEach((d) => {

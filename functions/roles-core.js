@@ -40,7 +40,7 @@
     "customers.html": "customers.view", "customer.html": "customers.view",
     "merge-customers.html": "customers.merge",
     "devices.html": "devices.view", "device.html": "devices.view",
-    "requests.html": "requests.view", "request.html": "requests.view", "pending-calls.html": "requests.view", "dispatch.html": "requests.assign",
+    "requests.html": "requests.view", "request.html": "requests.view", "pending-calls.html": "requests.view", "dispatch.html": "requests.assign", "custody.html": "custody.approve",
     "inventory.html": "inventory.view", "part.html": "inventory.view", "part-moves.html": "inventory.view",
     "tasks.html": "tasks.view",
     "faultcodes.html": "faultcodes.view", "faultcode.html": "faultcodes.view", "compcodes.html": "faultcodes.view",
