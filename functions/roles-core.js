@@ -27,7 +27,7 @@
     { id: "portal", label: "بوابة العملاء", perms: [["portal.manage", "إدارة بوابة العملاء (طلبات، شكاوى، مقالات)"]] },
     { id: "settings", label: "الإعدادات", perms: [["settings.view", "عرض الإعدادات"], ["settings.edit", "تعديل الإعدادات والقوائم"], ["branding.manage", "هوية النظام (الاسم والشعار والألوان)"]] },
     { id: "data", label: "بيانات حساسة", perms: [["data.backup", "أخذ نسخة احتياطية"], ["data.restore", "استرجاع نسخة احتياطية"], ["trash.restore", "الاسترجاع من سلة المحذوفات"], ["data.wipe", "الحذف الشامل (كل العملاء / الأجهزة / الأوامر / التهيئة)"]] },
-    { id: "techs", label: "الفنيين والعهدة", perms: [["requests.assign", "تعيين فني على أمر الشغل"], ["custody.approve", "اعتماد مصروفات عهدة الفني"], ["custody.settle", "تسوية عهدة الفني (استلام الرصيد)"]] }
+    { id: "techs", label: "الفنيين والعهدة", perms: [["requests.assign", "تعيين فني على أمر الشغل"], ["custody.approve", "اعتماد مصروفات عهدة الفني"], ["custody.settle", "تسوية عهدة الفني (استلام الرصيد)"], ["techpay.manage", "أجور الفنيين: نوع الشغل والأجرة وصرف المستحقات"]] }
   ];
 
   var KEYS = [], LABELS = {}, GROUP_OF = {};
@@ -95,7 +95,7 @@
   /* ---------- الأدوار الافتراضية (قابلة للتعديل بالكامل ما عدا المالك) ---------- */
   function without(list, drop) { return list.filter(function (k) { return drop.indexOf(k) < 0; }); }
   var OPERATIONAL = without(KEYS, ["wallets.view", "wallets.add", "wallets.edit", "wallets.delete", "treasury.view", "treasury.add", "treasury.edit", "treasury.delete",
-    "settings.view", "settings.edit", "branding.manage", "data.backup", "data.restore", "trash.restore", "data.wipe", "reports.view", "reports.export", "portal.manage", "customers.merge", "custody.approve", "custody.settle"]);
+    "settings.view", "settings.edit", "branding.manage", "data.backup", "data.restore", "trash.restore", "data.wipe", "reports.view", "reports.export", "portal.manage", "customers.merge", "custody.approve", "custody.settle", "techpay.manage"]);
   var DEFAULT_ROLES = {
     owner: { name: "المالك", perms: KEYS.slice(), locked: true },
     manager: { name: "مدير فرع", perms: OPERATIONAL.concat(["wallets.view", "treasury.view", "reports.view", "portal.manage", "settings.view", "data.backup"]) },
