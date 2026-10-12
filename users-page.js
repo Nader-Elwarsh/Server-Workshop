@@ -17,7 +17,7 @@
     owner_only: "العملية دي للمالك فقط.", bad_email: "الإيميل غير صحيح.", bad_name: "الاسم مطلوب (حتى 60 حرف).",
     bad_password: "كلمة السر لازم تكون من 8 إلى 64 حرف.", bad_role: "الدور غير موجود.", email_exists: "الإيميل ده مستخدم بالفعل.",
     last_owner: "مينفعش تشيل آخر مالك في النظام.", cannot_disable_self: "مينفعش توقف حسابك أنت.", no_such_user: "المستخدم مش موجود.",
-    nothing_to_update: "مفيش تغيير للحفظ.", bad_config: "إعداد الأدوار غير صالح.", not_staff: "حسابك مش موظف مفعّل.", sign_in_required: "سجّل الدخول الأول."
+    nothing_to_update: "مفيش تغيير للحفظ.", bad_wallet: "اسم المحفظة طويل (حتى 40 حرف).", wallet_taken: "المحفظة دي متحددة لموظف تاني. كل فني ليه محفظة عهدة لوحده.", bad_config: "إعداد الأدوار غير صالح.", not_staff: "حسابك مش موظف مفعّل.", sign_in_required: "سجّل الدخول الأول."
   };
   var state = { users: [], config: null, draft: null, roleId: "owner", editUid: null, audit: [] };
 
@@ -108,6 +108,12 @@
       list.push(name); o.wallets = list; window.WFStorage.setItem("wf_s", JSON.stringify(o));
     } catch (e) {}
   }
+  /* حساب «أوامره المعيّنة فقط» بيشتغل ببياناته هو بس، فالسيرفر مش بيقبل منه غير شغل أوامره: دي الصلاحيات اللي بتشتغل فعلًا. */
+  var SCOPED_OK = ["requests.view", "requests.edit", "requests.close", "customers.view", "devices.view", "route.view"];
+  function scopedNote(perms) {
+    var on = SCOPED_OK.filter(function (k) { return perms[k]; }).map(function (k) { return R.LABELS[k] || k; });
+    return h("p", { class: "hint", style: "border-inline-start:4px solid #1d4ed8;padding:6px 10px;background:var(--bg-sunken,#eef2f8);border-radius:8px", text: "👷 بنطاق «الأوامر المعيّنة له فقط» الصلاحيات اللي بتشتغل فعلًا: " + (on.join("، ") || "ولا حاجة") + ". أي صلاحية تانية (إضافة/حذف، مخزن، محافظ، إعدادات) مالهاش أثر لأنه مش شايف بيانات الورشة. حساباته بتبقى في «عهدتي» ببوابة الفني." });
+  }
   var SCOPE_LABEL = { all: "كل بيانات الورشة", assigned: "الأوامر المعيّنة له فقط (وعملاؤها وأجهزتها)" };
 
   /* ---------- قائمة المستخدمين ---------- */
@@ -116,6 +122,7 @@
     if (u.disabled) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;background:#b3261e;color:#fff", text: "موقوف" }));
     if (u.legacy) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "حساب قديم = مالك" }));
     if (u.effectiveScope === "assigned") badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#1d4ed8;color:#fff", text: "👷 أوامره المعيّنة فقط" }));
+    if (u.effectiveScope === "assigned" && !u.wallet) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:#b45309;color:#fff", text: "⚠️ مالوش محفظة عهدة" }));
     if (u.wallet) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "💼 " + u.wallet }));
     if (u.isSelf) badges.push(h("span", { style: "padding:2px 10px;border-radius:999px;background:var(--bg-soft,#e8edf3);font-size:12px;font-weight:700;", text: "أنت" }));
     var info = h("div", {}, [
@@ -149,12 +156,17 @@
       holder.textContent = "";
       var locked = roleSel.value === "owner";
       var eff = locked ? setOf(R.KEYS) : current;
+      var sc = scopeSel ? scopeSel.value : (u.scope || "");
+      var effScope = sc || ((state.config.roles[roleSel.value] || {}).scope || "all");
+      if (!locked && effScope === "assigned") holder.appendChild(scopedNote(current));
       holder.appendChild(matrix(eff, locked, function (k, on) { if (on) current[k] = 1; else delete current[k]; }));
       if (locked) holder.appendChild(h("p", { class: "hint", text: "المالك بكل الصلاحيات دايمًا." }));
     }
+    var scopeSel = null;
     roleSel.addEventListener("change", function () { loadFor(roleSel.value, false); drawMatrix(); });
     drawMatrix();
-    var scopeSel = h("select", { "aria-label": "نطاق البيانات" }, [["", "يتبع نطاق الدور"], ["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { var o = h("option", { value: p[0], text: p[1] }); if ((u.scope || "") === p[0]) o.selected = true; return o; }));
+    scopeSel = h("select", { "aria-label": "نطاق البيانات" }, [["", "يتبع نطاق الدور"], ["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { var o = h("option", { value: p[0], text: p[1] }); if ((u.scope || "") === p[0]) o.selected = true; return o; }));
+    scopeSel.addEventListener("change", drawMatrix); drawMatrix();
     var dl = h("datalist", { id: "walletList_" + u.uid }, walletNames().map(function (n) { return h("option", { value: n }); }));
     var walletIn = h("input", { type: "text", value: u.wallet || "", maxlength: "40", list: "walletList_" + u.uid, placeholder: "مثال: عهدة أحمد", "aria-label": "محفظة العهدة" });
     var save = h("button", { type: "button", class: "primary", text: "💾 حفظ التعديل", on: { click: function () {
@@ -200,15 +212,19 @@
     var pw = h("input", { type: "text", dir: "ltr", placeholder: "8 حروف على الأقل", autocomplete: "off" });
     var role = h("select", {}, state.config.order.filter(function (id) { return id !== "owner"; }).concat(["owner"]).map(function (id) { return h("option", { value: id, text: roleName(id) }); }));
     var gen = h("button", { type: "button", class: "secondary mini-action", text: "🎲 توليد", on: { click: function () { var a = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", s = "", b = new Uint32Array(12); (window.crypto || window.msCrypto).getRandomValues(b); for (var i = 0; i < 12; i++) s += a[b[i] % a.length]; pw.value = s; } } });
+    var scope = h("select", {}, [["", "يتبع نطاق الدور"], ["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { return h("option", { value: p[0], text: p[1] }); }));
+    var wallet = h("input", { type: "text", maxlength: "40", list: "walletList_new", placeholder: "مثال: عهدة أحمد (للفني)" });
+    var wdl = h("datalist", { id: "walletList_new" }, walletNames().map(function (n) { return h("option", { value: n }); }));
     var add = h("button", { type: "button", class: "primary", text: "➕ إضافة المستخدم", on: { click: function () {
       var secret = pw.value;
       busy(add, true);
-      P.call("staffCreate", { email: email.value, name: name.value, password: secret, role: role.value }).then(function (r) {
+      if (wallet.value.trim()) ensureWallet(wallet.value);
+      P.call("staffCreate", { email: email.value, name: name.value, password: secret, role: role.value, scope: scope.value, wallet: wallet.value }).then(function (r) {
         showSecret("تم إنشاء حساب " + r.name + " — الإيميل: " + r.email, secret);
-        email.value = ""; name.value = ""; pw.value = ""; return load();
+        email.value = ""; name.value = ""; pw.value = ""; wallet.value = ""; scope.value = ""; return load();
       }, function (e) { say(explain(e), true); }).then(function () { busy(add, false); });
     } } });
-    return h("section", { class: "panel" }, [h("h2", { text: "➕ إضافة مستخدم" }), h("div", { class: "form-grid" }, [h("label", {}, ["الإيميل (للدخول)", email]), h("label", {}, ["الاسم", name]), h("label", {}, ["كلمة السر", h("div", { class: "select-add" }, [pw, gen])]), h("label", {}, ["الدور", role])]), h("div", { class: "actions" }, [add]),
+    return h("section", { class: "panel" }, [h("h2", { text: "➕ إضافة مستخدم" }), h("div", { class: "form-grid" }, [h("label", {}, ["الإيميل (للدخول)", email]), h("label", {}, ["الاسم", name]), h("label", {}, ["كلمة السر", h("div", { class: "select-add" }, [pw, gen])]), h("label", {}, ["الدور", role]), h("label", {}, ["نطاق البيانات", scope]), h("label", {}, ["محفظة العهدة (اختياري)", wallet]), wdl]), h("div", { class: "actions" }, [add]),
       h("p", { class: "hint", text: "الموظف بيدخل من صفحة الدخول العادية بالإيميل وكلمة السر دي." })]);
   }
 
@@ -222,7 +238,7 @@
     var nameIn = h("input", { type: "text", value: role.name, maxlength: "40", disabled: locked, "aria-label": "اسم الدور" });
     nameIn.addEventListener("input", function () { role.name = nameIn.value; });
     var scopeSel = h("select", { "aria-label": "نطاق بيانات الدور", disabled: locked }, [["all", SCOPE_LABEL.all], ["assigned", SCOPE_LABEL.assigned]].map(function (p) { var o = h("option", { value: p[0], text: p[1] }); if ((role.scope || "all") === p[0]) o.selected = true; return o; }));
-    scopeSel.addEventListener("change", function () { role.scope = scopeSel.value; });
+    scopeSel.addEventListener("change", function () { role.scope = scopeSel.value; render(); });
     var cur = setOf(role.perms);
     var mx = matrix(locked ? setOf(R.KEYS) : cur, locked, function (k, on) { if (on) cur[k] = 1; else delete cur[k]; role.perms = R.KEYS.filter(function (x) { return cur[x]; }); });
     var newName = h("input", { type: "text", maxlength: "40", placeholder: "اسم دور جديد (مثال: فني أول)" });
@@ -241,7 +257,7 @@
     return h("section", { class: "panel" }, [h("h2", { text: "🛡️ الأدوار والصلاحيات" }),
       h("p", { class: "hint", text: "اختار دور وعدّل صلاحياته. التعديل بيسري على كل اللي على الدور ده بعد الحفظ." }),
       h("div", { class: "form-grid" }, [h("label", {}, ["الدور", sel]), h("label", {}, ["اسم الدور", nameIn]), h("label", {}, ["نطاق البيانات", scopeSel])]),
-      h("p", { class: "hint", text: "«الأوامر المعيّنة له فقط»: الشخص ده هيشوف الأوامر اللي بتعيّنها له من «توزيع الأوامر» وعملاءها وأجهزتها، ومن غير باقي الورشة." }), mx,
+      h("p", { class: "hint", text: "«الأوامر المعيّنة له فقط»: الشخص ده هيشوف الأوامر اللي بتعيّنها له من «توزيع الأوامر» وعملاءها وأجهزتها، ومن غير باقي الورشة." }), (role.scope === "assigned" && !locked) ? scopedNote(cur) : null, mx,
       h("div", { class: "form-grid", style: "margin-top:8px" }, [h("label", {}, ["دور جديد (بينسخ صلاحيات الدور الحالي)", newName])]),
       h("div", { class: "actions", style: "gap:6px;flex-wrap:wrap" }, [addRole, del, save])]);
   }

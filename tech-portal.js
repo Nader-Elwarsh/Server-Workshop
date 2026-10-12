@@ -103,7 +103,8 @@
     /* ---------- الحساب من السيرفر (مع نسخة محفوظة للأوفلاين) ---------- */
     var ACCT_CACHE = "wf_tech_account";
     function readAcctCache() { try { var v = window.WFStorage.getItem(ACCT_CACHE); var o = v ? JSON.parse(v) : null; return o && o.uid === uid() ? o : null; } catch (e) { return null; } }
-    (function () { var c = readAcctCache(); if (c) { state.acct = c.data; state.acctAt = c.at; } })();
+    function useCache() { if (state.acct) return; var c = readAcctCache(); if (c) { state.acct = c.data; state.acctAt = c.at; } }
+    useCache();
     function loadAccount() {
       if (!uid()) return Promise.resolve();
       if (!online()) { state.acctErr = "📴 أوفلاين — دي آخر بيانات اتحمّلت"; redrawIf(); return Promise.resolve(); }
@@ -535,7 +536,13 @@
     }
     try { var flash = window.WFStorage.getItem("wf_tech_flash"); if (flash) { window.WFStorage.setItem("wf_tech_flash", ""); say(flash); } } catch (e) {}
     draw();
-    loadAccount();
+    // الحساب محتاج تسجيل الدخول يرجع الأول (بياخد ثانية بعد فتح الصفحة). من غير كده كان بيفضل فاضي لحد ما تضغط 🔄.
+    (function whenAuth() {
+      function go() { useCache(); draw(); loadAccount(); }
+      if (uid()) return go();
+      var done = false;
+      try { window.firebase.auth().onAuthStateChanged(function (u) { if (u && !done) { done = true; go(); } }); } catch (e) {}
+    })();
     // حالة المزامنة بتتحدّث لوحدها، والقايمة بتترسم تاني لما المزامنة تنزّل أوامر جديدة (من غير ما نقاطع حد بيكتب)
     setInterval(paintStatus, 3000);
     setInterval(function () {

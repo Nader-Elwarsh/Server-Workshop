@@ -103,6 +103,17 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   assert(eW.root.textContent.includes('#A1 — سعاد'), 'اترسمت بعد ما التخزين جهز');
   assert(eW.syncs.n >= 1, 'مزامنة تلقائية من غير ضغط 🔄');
 
+  // تسجيل الدخول بيرجع بعد فتح الصفحة: الحساب بيتحمّل لوحده (من غير 🔄) والنسخة المحفوظة بتظهر على طول
+  const eA = makeEnv({ rootId: 'techRoot', search: '?tab=account', data: mkData(), callImpl: accImpl });
+  eA.store.set('wf_tech_account', JSON.stringify({ uid: 'tech-a', data: ACC, at: '2026-10-12T10:00:00Z' }));
+  let authCb = null; const cu = { currentUser: null, onAuthStateChanged: (f) => { authCb = f; } };
+  eA.win.firebase.auth = () => cu;
+  run(eA); await flush();
+  assert(!eA.calls.length, 'مستني تسجيل الدخول');
+  cu.currentUser = { uid: 'tech-a' }; authCb(cu.currentUser); await flush(); await flush();
+  assert(eA.calls.some((c) => c[0] === 'techAccount'), 'الحساب اتحمّل بعد الدخول');
+  assert(eA.root.textContent.includes('١٬١٢٠') || eA.root.textContent.includes('1,120'), 'الرصيد ظاهر');
+
   // من غير أوامر مفتوحة: رسالة + رابط للمقفولة (مش «مفيش أوامر» وبس)
   const d0 = mkData(); d0.wf_r = d0.wf_r.filter((r) => r.closed); e = makeEnv({ rootId: 'techRoot', data: d0, callImpl: accImpl });
   run(e); await flush(); await flush();
