@@ -293,6 +293,8 @@ async function main() {
     await assertFails(setDoc(doc(techA, 'techExpenses/new2'), Object.assign({}, EXP, { status: 'approved' })));   // مايعتمدش لنفسه
     await assertFails(setDoc(doc(techA, 'techExpenses/new3'), Object.assign({}, EXP, { techId: 'tech-b' })));    // باسم فني تاني
     await assertFails(setDoc(doc(techA, 'techExpenses/new4'), Object.assign({}, EXP, { amount: -5 })));
+    await assertSucceeds(setDoc(doc(techA, 'techExpenses/new5'), Object.assign({}, EXP, { pay: 'own' })));
+    await assertFails(setDoc(doc(techA, 'techExpenses/new6'), Object.assign({}, EXP, { pay: 'boss' })));
     await assertFails(setDoc(doc(techA, 'techExpenses/new5'), Object.assign({}, EXP, { amount: 0 })));
     await assertFails(setDoc(doc(techA, 'techExpenses/new6'), Object.assign({}, EXP, { extra: 1 })));
     await assertFails(updateDoc(doc(techA, 'techExpenses/e-a'), { amount: 1 }));                                   // مايعدّلش
