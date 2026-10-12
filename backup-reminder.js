@@ -58,6 +58,8 @@
     var host = document.getElementById("backupReminder");
     if (!host) return;
     if (typeof daysSinceLastBackup !== "function") return;
+    // التذكير للي يقدر ياخد نسخة احتياطية بس (الفني مثلًا مالوش دعوة بيها)
+    try { if (window.WFPerm && window.WFPerm.can && !window.WFPerm.can("data.backup")) { removeManualReminder(); host.textContent = ""; return; } } catch (e) {}
     if (isSnoozed()) {
       removeManualReminder();
       return;

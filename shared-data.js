@@ -307,7 +307,26 @@ var WFStorage = window.WFStorage;
     }
   }
 
+  /* الإعدادات بتتقرا آلاف المرات في القوايم (لون عمر كل أمر مثلًا). كانت كل قراءة بتعمل تحليل + تطبيع + تحويل لنص.
+     دلوقتي لو النص المحفوظ ماتغيّرش بنرجّع نسخة جديدة من النتيجة المحفوظة (نسخة عشان أي تعديل عليها مايبوّظش الكاش). */
+  let settingsMemo = null;
   function settings() {
+    let stored0 = null;
+    try { stored0 = WFStorage.getItem(K.s); } catch (_) {}
+    if (settingsMemo && settingsMemo.raw === stored0) return JSON.parse(settingsMemo.norm);
+    const out = settingsCompute();
+    try { const now = WFStorage.getItem(K.s); settingsMemo = { raw: now, norm: JSON.stringify(out), ro: null }; } catch (_) { settingsMemo = null; }
+    return out;
+  }
+  // للقراءة بس (من غير نسخ): للحسابات اللي بتتكرر لكل سجل. ممنوع التعديل على الناتج.
+  function settingsRO() {
+    let raw = null; try { raw = WFStorage.getItem(K.s); } catch (_) {}
+    if (!settingsMemo || settingsMemo.raw !== raw) settings();
+    if (!settingsMemo) return settings();
+    if (!settingsMemo.ro) settingsMemo.ro = JSON.parse(settingsMemo.norm);
+    return settingsMemo.ro;
+  }
+  function settingsCompute() {
     let stored = null;
     try { stored = WFStorage.getItem(K.s); } catch (_) {}
     let s = get(K.s, null); if (!s) s = {};
@@ -557,6 +576,7 @@ var WFStorage = window.WFStorage;
     }
   } catch (_) {}
   window.settings = settings;
+  window.settingsRO = settingsRO;
   window.duplicateCustomerByPhone = duplicateCustomerByPhone;
   window.customerName = customerName;
   window.deviceName = deviceName;

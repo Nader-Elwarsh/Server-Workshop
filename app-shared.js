@@ -195,7 +195,7 @@ function requestAgeInfo(r){
   let days=requestAgeDays(r);
   if(days===null)return null;
   if(r.status==="مجمد")return{days,cls:"age-frozen",dot:"❄️",range:"مجمّد (العداد متوقف)",label:days===0?"مجمّد اليوم":(days===1?"مجمّد من يوم":`مجمّد من ${days} يوم`)};
-  let threshold=Number.isFinite(+settings().overdueAlertDays)&&+settings().overdueAlertDays>0?+settings().overdueAlertDays:7;
+  let threshold=Number.isFinite(+(window.settingsRO||settings)().overdueAlertDays)&&+(window.settingsRO||settings)().overdueAlertDays>0?+(window.settingsRO||settings)().overdueAlertDays:7;
   let mid=Math.max(1,Math.floor(threshold/2));
   let cls,dot,range;
   if(days<mid){cls="age-b0";dot="🟢";range=`أقل من ${mid} يوم`}
@@ -204,7 +204,7 @@ function requestAgeInfo(r){
   return{days,cls,dot,range,label:days===0?"جديد اليوم":(days===1?"من يوم":`من ${days} يوم`)}
 }
 function requestAgeLegendHtml(){
-  let threshold=Number.isFinite(+settings().overdueAlertDays)&&+settings().overdueAlertDays>0?+settings().overdueAlertDays:7;
+  let threshold=Number.isFinite(+(window.settingsRO||settings)().overdueAlertDays)&&+(window.settingsRO||settings)().overdueAlertDays>0?+(window.settingsRO||settings)().overdueAlertDays:7;
   let mid=Math.max(1,Math.floor(threshold/2));
   let items=[
     {cls:"age-b0",dot:"🟢",range:`أقل من ${mid} يوم`},
@@ -217,7 +217,7 @@ function requestIsStale(r){
   if(!r||r.status==="مكتمل"||r.status==="ملغي"||r.status==="مجمد"||r.closed)return false;
   let days=requestAgeDays(r);
   if(days===null)return false;
-  let threshold=Number.isFinite(+settings().overdueAlertDays)&&+settings().overdueAlertDays>0?+settings().overdueAlertDays:7;
+  let threshold=Number.isFinite(+(window.settingsRO||settings)().overdueAlertDays)&&+(window.settingsRO||settings)().overdueAlertDays>0?+(window.settingsRO||settings)().overdueAlertDays:7;
   return days>=threshold
 }
 /* V11.56: نفس ترميز عمر الأمر، لكن معمَّم على أي قايمة أوامر (عميل/جهاز/خط

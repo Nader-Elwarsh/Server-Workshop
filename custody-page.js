@@ -75,7 +75,8 @@
       var todays = orders.filter(function (r) { return r.visit && dayOf(r.visit) === today; }).sort(function (a, b) { return String(a.visit).localeCompare(String(b.visit)); });
       var late = orders.filter(function (r) { return r.visit && dayOf(r.visit) < today; }).length, soon = orders.filter(function (r) { return r.visit && dayOf(r.visit) > today; }).length, none = orders.filter(function (r) { return !r.visit; }).length;
       card.appendChild(mk("div", "font-size:14px;margin:6px 0", "🛠️ " + orders.length + " أمر مفتوح • 📅 اليوم " + todays.length + " • ⚠️ متأخر " + late + " • ⏭️ قادم " + soon + " • 🕓 بدون موعد " + none));
-      todays.forEach(function (r) { card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px", "• " + timeOf(r.visit) + " — #" + (r.no || "") + " " + custName(r.customerId))); });
+      todays.slice(0, 5).forEach(function (r) { card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px", "• " + timeOf(r.visit) + " — #" + (r.no || "") + " " + custName(r.customerId))); });
+      if (todays.length > 5) card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px;opacity:.75", "… و" + (todays.length - 5) + " زيارة كمان النهارده"));
       // شغل الشهر: الأوامر اللي اتقفلت (منه أو من الإدارة) والمبلغ اللي اتحصّل فيها
       var ym = monthOf(new Date()), done = A(window.K.r).filter(function (r) { return r && r.techId === u.uid && r.closed; }).sort(function (a, b) { return String(b.closedAt || "").localeCompare(String(a.closedAt || "")); });
       var doneM = done.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; });

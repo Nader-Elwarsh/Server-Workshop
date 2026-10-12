@@ -11,7 +11,7 @@
   }
   function start() {
     var root = document.getElementById("dispatchRoot"), msgBox = document.getElementById("dispatchMsg");
-    var state = { users: [], filter: "unassigned", q: "", sel: {} };
+    var state = { users: [], filter: "unassigned", q: "", sel: {}, limit: 60 }, qT = null;
     function mk(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
     function say(t, bad) { msgBox.textContent = ""; if (!t) return; var p = mk("p", "padding:8px 10px;border-radius:10px;margin:8px 0;background:" + (bad ? "#fde2e2;color:#8a1c1c" : "#dff5e3;color:#14532d"), t); msgBox.appendChild(p); }
     function A(k) { try { return window.arr(k) || []; } catch (e) { return []; } }
@@ -36,17 +36,18 @@
       var bar = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin:8px 0");
       var f = mk("select", "flex:1;min-width:140px;padding:9px;border-radius:10px");
       [["unassigned", "غير معيّنة"], ["all", "كل المفتوحة"]].concat(state.users.map(function (u) { return [u.uid, "أوامر: " + (u.name || u.uid)]; })).forEach(function (p) { var o = mk("option", "", p[1]); o.value = p[0]; if (p[0] === state.filter) o.selected = true; f.appendChild(o); });
-      f.onchange = function () { state.filter = f.value; draw(); };
+      f.onchange = function () { state.filter = f.value; state.limit = 60; draw(); };
       var q = mk("input", "flex:2;min-width:140px;padding:9px;border-radius:10px"); q.type = "search"; q.placeholder = "🔍 بحث (عميل، موبايل، جهاز، رقم أمر)"; q.value = state.q;
-      q.oninput = function () { state.q = q.value; var pos = q.selectionStart; draw(); var n = root.querySelector("input[type=search]"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } };
+      q.oninput = function () { state.q = q.value; clearTimeout(qT); qT = setTimeout(function () { state.limit = 60; var pos = q.selectionStart; draw(); var n = root.querySelector("input[type=search]"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }, 220); };
       bar.appendChild(f); bar.appendChild(q); root.appendChild(bar);
       var list = rows();
       root.appendChild(mk("div", "font-size:13px;opacity:.75;margin-bottom:6px", list.length + " أمر"));
       var all = mk("button", "margin-bottom:8px", "تحديد الكل / إلغاء الكل"); all.type = "button"; all.className = "secondary mini-action";
       all.onclick = function () { var every = list.length && list.every(function (x) { return state.sel[x.r.id]; }); list.forEach(function (x) { state.sel[x.r.id] = !every; }); draw(); };
       root.appendChild(all);
-      list.forEach(function (x) {
-        var card = mk("label", "display:flex;gap:10px;align-items:flex-start;padding:10px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border,#d5dbe8);background:var(--bg-card,#fff);cursor:pointer");
+      // آلاف الأوامر المفتوحة كانت بتترسم مرة واحدة (والصفحة بتتقل). بنعرض أول 60 و«عرض المزيد».
+      list.slice(0, state.limit).forEach(function (x) {
+        var card = mk("label", "display:flex;gap:10px;align-items:flex-start;padding:10px;margin-bottom:8px;border-radius:12px;border:1px solid var(--border,#d5dbe8);background:var(--bg-elevated,#fff);cursor:pointer");
         var cb = mk("input", "margin-top:4px;width:20px;height:20px;flex:none"); cb.type = "checkbox"; cb.checked = !!state.sel[x.r.id]; cb.onchange = function () { state.sel[x.r.id] = cb.checked; refreshBar(); };
         var body = mk("div", "flex:1;min-width:0");
         body.appendChild(mk("b", "", "#" + (x.r.no || "") + " — " + x.cname + (x.phone ? " (" + x.phone + ")" : "")));
@@ -55,6 +56,7 @@
         body.appendChild(mk("div", "font-size:13px;margin-top:2px;" + (x.r.techId ? "color:#1d4ed8" : "color:#b45309"), x.r.techId ? "👷 " + (x.r.techName || "فني") : "بدون فني"));
         card.appendChild(cb); card.appendChild(body); root.appendChild(card);
       });
+      if (list.length > state.limit) { var more = mk("button", "width:100%;margin:4px 0 8px", "عرض المزيد (" + (list.length - state.limit) + " أمر كمان)"); more.type = "button"; more.className = "secondary"; more.onclick = function () { state.limit += 100; draw(); }; root.appendChild(more); }
       if (!list.length) root.appendChild(mk("p", "opacity:.7", "مفيش أوامر بالفلتر ده."));
       // شريط التعيين (لاصق أسفل الشاشة)
       var foot = mk("div", "position:sticky;bottom:70px;z-index:5;display:flex;gap:8px;flex-wrap:wrap;padding:10px;border-radius:12px;background:#0b2a66;color:#fff;margin-top:10px");

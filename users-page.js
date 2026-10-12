@@ -131,7 +131,7 @@
       h("div", { class: "hint", text: "آخر دخول: " + fmtDate(u.lastSignIn) }),
       h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:4px" }, badges)
     ]);
-    var btns = h("div", { class: "actions", style: "gap:6px;flex-wrap:wrap;margin-top:8px" });
+    var btns = h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:10px" });
     var edit = h("button", { type: "button", class: "secondary mini-action", text: state.editUid === u.uid ? "إغلاق" : "✏️ تعديل", on: { click: function () { state.editUid = state.editUid === u.uid ? null : u.uid; render(); } } });
     var reset = h("button", { type: "button", class: "secondary mini-action", text: "🔑 كلمة سر جديدة", on: { click: function (ev) { resetPassword(u, ev.currentTarget); } } });
     btns.appendChild(edit); btns.appendChild(reset);
@@ -267,27 +267,41 @@
   function auditPanel() {
     var names = {}; state.users.forEach(function (u) { names[u.uid] = u.name || u.email || u.uid; });
     var rows = state.audit.map(function (a) { return h("li", { text: fmtDate(a.at) + " — " + (names[a.by] || a.by) + ": " + (ACTION_AR[a.action] || a.action) + (a.target ? " ← " + (names[a.target] || a.target) : "") }); });
-    return h("section", { class: "panel" }, [h("details", {}, [h("summary", { text: "📜 آخر العمليات (سجل المراجعة)" }), rows.length ? h("ul", { style: "padding-inline-start:18px" }, rows) : h("p", { class: "hint", text: "لسه مفيش عمليات مسجّلة." })])]);
+    var det = h("details", {}, [h("summary", { text: "📜 آخر العمليات (سجل المراجعة)" }), state.auditLoaded ? (rows.length ? h("ul", { style: "padding-inline-start:18px" }, rows) : h("p", { class: "hint", text: "لسه مفيش عمليات مسجّلة." })) : h("p", { class: "hint", text: "⏳ جارٍ التحميل…" })]);
+    // السجل بيتحمّل لما تفتحه بس (كان بيأخر فتح الصفحة كلها)
+    det.addEventListener("toggle", function () { if (det.open && !state.auditLoaded) loadAudit().then(function () { var sec = $("usersAudit"); if (sec) { var n = auditPanel(); sec.parentNode.replaceChild(n, sec); n.querySelector("details").open = true; } }); });
+    return h("section", { class: "panel", id: "usersAudit" }, [det]);
   }
 
   function render() {
     var root = $("usersRoot"); root.textContent = "";
     if (!state.config) return;
+    if (state.stale) root.appendChild(h("p", { class: "hint", style: "margin:0 0 6px", text: "⏳ دي آخر نسخة محفوظة — بتتحدّث من السيرفر…" }));
     root.appendChild(h("h2", { text: "👤 المستخدمون (" + state.users.length + ")" }));
     state.users.forEach(function (u) { root.appendChild(userCard(u)); });
     root.appendChild(addPanel()); root.appendChild(rolesPanel()); root.appendChild(auditPanel());
   }
   function loadAudit() {
     try {
-      return window.firebase.firestore().collection("staffAudit").orderBy("at", "desc").limit(40).get().then(function (s) { state.audit = s.docs.map(function (d) { return d.data(); }); }, function () { state.audit = []; });
-    } catch (e) { state.audit = []; return Promise.resolve(); }
+      return window.firebase.firestore().collection("staffAudit").orderBy("at", "desc").limit(40).get().then(function (s) { state.audit = s.docs.map(function (d) { return d.data(); }); state.auditLoaded = true; }, function () { state.audit = []; state.auditLoaded = true; });
+    } catch (e) { state.audit = []; state.auditLoaded = true; return Promise.resolve(); }
+  }
+  /* آخر قايمة اتحمّلت بتتحفظ على جهاز المالك: الصفحة بتفتح بيها فورًا، والتحديث من السيرفر بيكمّل في الخلفية
+     (دالة السيرفر ممكن تاخد ثواني لو كانت نايمة). */
+  var CACHE = "wf_users_cache";
+  function myUid() { try { return window.firebase.auth().currentUser.uid; } catch (e) { return ""; } }
+  function fromCache() {
+    try { var c = JSON.parse(window.WFStorage.getItem(CACHE) || "null"); if (!c || !c.config || c.uid !== myUid()) return false; state.users = c.users || []; state.config = R.normalizeConfig(c.config); state.draft = JSON.parse(JSON.stringify(state.config)); state.stale = true; render(); return true; } catch (e) { return false; }
   }
   function load() {
+    var wasStale = state.stale;
     return P.call("staffList", {}).then(function (r) {
-      state.users = r.users || []; state.config = R.normalizeConfig(r.config);
-      state.draft = JSON.parse(JSON.stringify(state.config));
-      return loadAudit();
-    }).then(render, function (e) { $("usersRoot").textContent = ""; say(explain(e), true); });
+      state.users = r.users || []; state.config = R.normalizeConfig(r.config); state.stale = false;
+      state.draft = JSON.parse(JSON.stringify(state.config)); state.auditLoaded = false;
+      try { window.WFStorage.setItem(CACHE, JSON.stringify({ uid: myUid(), users: state.users, config: r.config, at: Date.now() })); } catch (e) {}
+      if (state.editUid && wasStale) { var n = document.querySelector("#usersRoot > p.hint"); if (n) n.textContent = "✅ اتحدّثت من السيرفر"; return; } // ماتمسحش تعديل بتكتبه
+      render();
+    }, function (e) { if (!state.config) $("usersRoot").textContent = ""; state.stale = false; say(explain(e), true); });
   }
 
   function whenSignedIn(fn) {
@@ -297,7 +311,8 @@
     }
     if (window.firebase && window.firebase.auth) go(); else window.addEventListener("load", function () { if (window.firebase && window.firebase.auth) go(); });
   }
-  Promise.resolve(window.WFStorageReady).then(function () { whenSignedIn(load); }, function () { whenSignedIn(load); });
+  function boot() { fromCache(); load(); }
+  Promise.resolve(window.WFStorageReady).then(function () { whenSignedIn(boot); }, function () { whenSignedIn(boot); });
   }
   waitForPerm();
 })();

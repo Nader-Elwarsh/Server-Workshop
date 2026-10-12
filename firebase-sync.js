@@ -72,7 +72,7 @@
   try { conflicts = JSON.parse(ls.getItem(CONFLICT_KEY) || "{}") || {}; } catch (e) { conflicts = {}; }
   var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
   var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
-  function saveBase() { origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
+  function saveBase() { baseVer = (typeof baseVer === "number" ? baseVer : 0) + 1; origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
 
   /* ---------- واجهة ---------- */
   function cover(msg) { var ex = document.getElementById("wfCloudCover"); if (ex) { ex.textContent = msg; return; } var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
@@ -110,13 +110,22 @@
   }
   function clearRetry(k) { delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; saveRetryState(); }
   function resumeRetries() { Object.keys(retryState).forEach(function (k) { if (ALL.indexOf(k) > -1 || REMOTE_RETRY_KEYS.indexOf(k) > -1) scheduleRetry(k); }); }
+  // عدّ التعديلات المعلّقة كان بيحسب بصمة كل سجل في كل مجموعة مع كل تحديث للشارة (كل 15 ثانية وبعد كل رفع)
+  // — مع آلاف الأوامر ده كان بيعلّق الصفحة ثواني. دلوقتي: المجموعة اللي اترفعت وماتغيّرتش = صفر من غير حساب،
+  // والباقي بيتحسب مرة واحدة لكل نسخة من البيانات.
+  var pcCache = {}, baseVer = 0;
   function countPendingOperations() {
     var count = 0;
     ALL.forEach(function (k) {
       if (COLS[k]) {
-        var localRows = local(k), rows = Array.isArray(localRows) ? localRows : [], base = SB.c[k] || {}, seen = {};
-        rows.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (base[r.id] !== hr(r)) count++; });
-        Object.keys(base).forEach(function (id) { if (!seen[id]) count++; });
+        var rawNow = ls.getItem(k);
+        if (lastRaw[k] !== undefined && rawNow === lastRaw[k]) return;
+        var c = pcCache[k];
+        if (c && c.raw === rawNow && c.ver === baseVer) { count += c.n; return; }
+        var localRows = local(k), rows = Array.isArray(localRows) ? localRows : [], base = SB.c[k] || {}, seen = {}, n = 0;
+        rows.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (base[r.id] !== hr(r)) n++; });
+        Object.keys(base).forEach(function (id) { if (!seen[id]) n++; });
+        pcCache[k] = { raw: rawNow, ver: baseVer, n: n }; count += n;
       } else if (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) count++;
     });
     return count + REMOTE_RETRY_KEYS.filter(function (k) { return !!retryState[k]; }).length;
@@ -230,6 +239,13 @@
   function setSettingsBase(v) { lastRaw[SETTINGS] = v; if (typeof v === "string") { try { origSet.call(ls, SBASE, v); } catch (e) {} } }
   function withTimeout(p) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, TIMEOUT); })]); }
   function online() { return navigator.onLine !== false && !!db; }
+  /* علامة «متزامن» محفوظة لكل مجموعة (بصمة نصها كله). فتح أي صفحة كان بيحسب بصمة كل سجل في كل المجموعات عشان يعرف
+     فيه حاجة اترفعتش ولا لأ (ثانية أو أكتر مع آلاف الأوامر). دلوقتي لو نص المجموعة زي آخر مرة اتزامنت، بنعتبرها نضيفة على طول. */
+  function markClean() { SB.rh = SB.rh || {}; Object.keys(COLS).forEach(function (k) { if (lastRaw[k] !== undefined) SB.rh[k] = h(lastRaw[k] || ""); }); saveBase(); }
+  function primeClean() {
+    if (!SB.rh) return;
+    Object.keys(COLS).forEach(function (k) { if (lastRaw[k] !== undefined || SB.rh[k] === undefined) return; var r = ls.getItem(k); if (h(r || "") === SB.rh[k]) lastRaw[k] = r; });
+  }
 
   ls.subscribe(function (k) { if (ready && !applying && ALL.indexOf(k) > -1) queue(k); });
 
@@ -262,8 +278,10 @@
         if (!window.confirm("⚠️ هيتم حذف " + dels + " سجل من السحابة نهائيًا. متأكد؟\n(إلغاء = استرجاعهم من السحابة)")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
       var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [], rejectedNew = [];
-      jobs.forEach(function (job) {
-        chain = chain.then(function () {
+      // الرفع كان سجل ورا سجل (معاملة لكل سجل بالتتابع): 3000 عميل اتعدّلوا مرة واحدة كانوا بياخدوا دقايق.
+      // دلوقتي 8 معاملات في نفس الوقت (كل واحدة على سجل مختلف)، ولو واحدة فشلت الباقي بيقف ونعيد المحاولة بعدين.
+      function runJob(job) {
+        return Promise.resolve().then(function () {
           return withTimeout(db.runTransaction(async function (tx) {
             var snap = await tx.get(job.ref), remote = snap.exists ? fromDoc(snap) : null, remoteHash = remote ? hr(remote) : null;
             if (job.kind === "set" && remoteHash === job.localHash) return { state: "same", remote: remote, remoteHash: remoteHash };
@@ -310,7 +328,11 @@
             }
           });
         });
-      });
+      }
+      var jobQ = jobs.slice(), firstErr = null, workers = [];
+      function nextJob() { var j = jobQ.shift(); if (!j || firstErr) return Promise.resolve(); return runJob(j).then(nextJob, function (e) { if (!firstErr) firstErr = e; }); }
+      for (var wi = 0; wi < Math.min(8, jobQ.length); wi++) workers.push(nextJob());
+      chain = Promise.all(workers).then(function () { if (firstErr) throw firstErr; });
       return chain.then(function () {
         if (SCOPED && (goneIds.length || closedIds.length)) { // أوامر اتقفلت/اتسحبت: نشيلها من الجهاز ونمسح نسخة العرض بتاعتها
           var gone = {}; goneIds.concat(closedIds).forEach(function (id) { gone[id] = 1; });
@@ -320,7 +342,7 @@
           if (rejectedNew.length) { try { window.alert("حساب الفني مايقدرش ينشئ أوامر جديدة، فاتشال " + rejectedNew.length + " أمر اتعمل من الجهاز ده. اطلب من المسؤول ينشئه ويعيّنه ليك."); } catch (e) {} }
           if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("tech.html"); else banner(); }).catch(function () {}); }, 50);
         }
-        SB.c[k] = next; saveBase();
+        SB.c[k] = next; if (!hasConflict) { SB.rh = SB.rh || {}; SB.rh[k] = h(snapshotRaw || ""); } saveBase();
         if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
         if (!hasConflict) lastRaw[k] = snapshotRaw;
         var touch = wrote ? touchMeta() : Promise.resolve();
@@ -615,12 +637,12 @@
     if (hydrating) return Promise.resolve(false); hydrating = true;
     var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
     return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }).concat([db.collection("settings").get()]))).then(function (res) {
-      var changedAny = false;
+      var changedAny = false; changedKeys = {};
       var sSnap = res[keys.length], ex = extrasFrom(sSnap), g = null; sSnap.forEach(function (d) { if (d.id === "global") g = clean(d.data()); });
       var cloudEmpty = !g && !Object.keys(ex).length && keys.every(function (k, i) { return !res[i].docs.length; });
       keys.forEach(function (k, i) {
         var merged = mergeColWithBase(k, res[i].docs.map(fromDoc).map(cleanPortal), first, SB.c[k]);
-        if (stable(local(k) || []) !== stable(merged.arr)) { raw(k, JSON.stringify(merged.arr)); changedAny = true; }
+        if (stable(local(k) || []) !== stable(merged.arr)) { raw(k, JSON.stringify(merged.arr)); changedAny = true; changedKeys[k] = 1; }
         SB.c[k] = merged.base;
       });
       EXTRA.forEach(function (k) {
@@ -632,16 +654,21 @@
       if (g) { var lo = local(SETTINGS) || {}; var m = lchanged ? Object.assign({}, g, lo) : Object.assign({}, lo, g); if (stable(lo) !== stable(m)) { raw(SETTINGS, JSON.stringify(m)); changedAny = true; } if (!lchanged) SB.x[SETTINGS] = h(ls.getItem(SETTINGS)); }
       raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
       lastRaw = {}; ALL.forEach(function (k) { if (!isDirty(k)) lastRaw[k] = ls.getItem(k); }); // ارفع بس اللي اتغيّر فعلًا
+      markClean();
       // الإعدادات: لو متغيّرة محليًا، أصلها هو نسخة السحابة اللي لسه نازلين بيها (عشان الرفع يبقى دمج حقول مش تعارض).
       if (lastRaw[SETTINGS] !== undefined) setSettingsBase(lastRaw[SETTINGS]); else if (g) setSettingsBase(JSON.stringify(g));
       return { changed: changedAny, cloudEmpty: cloudEmpty };
     }).then(function (r) {
-      var mirror = window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
-        ? window.WorkshopDB.replaceMany({ wf_c: local("wf_c") || [], wf_d: local("wf_d") || [], wf_r: local("wf_r") || [], wf_p: local("wf_p") || [], wf_m: local("wf_m") || [], wf_wallet_tx: local("wf_wallet_tx") || [] }).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
+      // نسخة السجلات في IndexedDB: بنعيد كتابة المجموعات اللي اتغيّرت بس (قبل كده كل مزامنة — حتى من غير أي تغيير —
+      // كانت بتمسح وتكتب كل العملاء والأوامر والحركات من الأول، وده كان بيتقل الجهاز مع كل تعديل من جهاز تاني).
+      var mv = {}; ["wf_c", "wf_d", "wf_r", "wf_p", "wf_m", "wf_wallet_tx"].forEach(function (k) { if (changedKeys[k] || first) mv[k] = local(k) || []; });
+      var mirror = Object.keys(mv).length && window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
+        ? window.WorkshopDB.replaceMany(mv).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
         : Promise.resolve();
       return mirror.then(function () { hydrating = false; return r; });
     }, function (e) { hydrating = false; throw e; });
   }
+  var changedKeys = {};
   /* ---------- الوضع المحدود (فني): سحب أوامره + عملائها وأجهزتها بس ---------- */
   function wipeLocal() { // تبديل حساب/وضع على نفس الجهاز: امسح أي بيانات محلية من الحساب القديم قبل ما نسحب أي حاجة
     Object.keys(COLS).concat(EXTRA, [SETTINGS]).forEach(function (k) { origRemove.call(ls, k); });
@@ -694,6 +721,7 @@
       }
       raw(HYD, CURRENT_UID); origSet.call(ls, FULL, String(Date.now())); saveBase();
       lastRaw = {}; ALL.forEach(function (k) { if (k !== "wf_r" || !isDirty(k)) lastRaw[k] = ls.getItem(k); });
+      markClean();
       setSettingsBase(lastRaw[SETTINGS]);
       return { changed: changedAny, cloudEmpty: false };
     }).then(function (r) {
@@ -1034,6 +1062,7 @@
     SCOPED = ls.getItem(MODE_KEY) === "scoped"; window.wfSyncMode = SCOPED ? "scoped" : "full";
     if (SCOPED && ls.getItem(UID_KEY) === user.uid && !TECH_PAGES.test(location.pathname)) { location.replace("tech.html"); return; }
     function goReady(reload) {
+      primeClean();
       ready = true; uncover(); resumeRetries(); badge();
       if (reload) { location.reload(); return; }
       pushAll(false); watchMeta();
