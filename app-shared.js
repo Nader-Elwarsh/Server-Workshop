@@ -303,7 +303,8 @@ function techCloseOnServer(r){
   let d=new Date(),p=n=>String(n).padStart(2,"0");
   Promise.resolve(window.wfCloudSyncNow?window.wfCloudSyncNow():null).catch(()=>{}).then(()=>{
     let cur=arr(K.r).find(x=>String(x.id)===String(r.id))||r;
-    return window.WFPerm.call("techCloseOrder",{orderId:r.id,wallet,expectTotal:+cur.total||0,expectDeposit:+cur.deposit||0,date:localDateKey(d),time:p(d.getHours())+":"+p(d.getMinutes())});
+    let fields={};["status","work","labor","parts","partsTotal","partsCost","total","statusHistory","startedAt","completedAt","visit"].forEach(k=>{if(cur[k]!==undefined)fields[k]=cur[k]});
+    return window.WFPerm.call("techCloseOrder",{orderId:r.id,wallet,expectTotal:+cur.total||0,expectDeposit:+cur.deposit||0,date:localDateKey(d),time:p(d.getHours())+":"+p(d.getMinutes()),fields});
   }).then(res=>{
     put(K.r,arr(K.r).filter(x=>String(x.id)!==String(r.id)));
     alert(res&&res.collected>0?`✅ اتقفل الأمر واتسجل ${(+res.collected).toFixed(2)} ج في «${res.wallet}».`:"✅ اتقفل الأمر.");

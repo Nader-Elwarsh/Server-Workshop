@@ -251,7 +251,7 @@
       arr.forEach(function (r) {
         if (!r || !r.id) return;
         seen[r.id] = 1; var localHash = hr(r); next[r.id] = localHash;
-        if (B[r.id] !== localHash) { if (conflicts[k] && conflicts[k][r.id]) next[r.id] = B[r.id]; else jobs.push({ id: r.id, ref: col.doc(r.id), record: r, localHash: localHash, baseHash: B[r.id], kind: "set" }); }
+        if (B[r.id] !== localHash) { if (!SCOPED && conflicts[k] && conflicts[k][r.id]) next[r.id] = B[r.id]; else jobs.push({ id: r.id, ref: col.doc(r.id), record: r, localHash: localHash, baseHash: B[r.id], kind: "set" }); }
       });
       Object.keys(B).forEach(function (id) {
         if (!seen[id]) { if (SCOPED) { delete next[id]; return; } dels++; if (!(conflicts[k] && conflicts[k][id])) jobs.push({ id: id, ref: col.doc(id), localHash: null, baseHash: B[id], kind: "delete" }); }
@@ -268,19 +268,26 @@
             var snap = await tx.get(job.ref), remote = snap.exists ? fromDoc(snap) : null, remoteHash = remote ? hr(remote) : null;
             if (job.kind === "set" && remoteHash === job.localHash) return { state: "same", remote: remote, remoteHash: remoteHash };
             if (job.kind === "delete" && !snap.exists) return { state: "same", remote: null, remoteHash: null };
-            var baselineMatches = job.baseHash === undefined ? !snap.exists : remoteHash === job.baseHash;
-            if (!baselineMatches) return { state: "conflict", remote: remote, remoteHash: remoteHash };
-            if (SCOPED) { // الفني: تحديث الحقول اللي اتغيّرت بس (القواعد بتسمح بحقول شغل الأمر فقط)
+            if (SCOPED) { // الفني: تحديث الحقول اللي هو غيّرها بس (القواعد بتسمح بحقول شغل الأمر فقط)
+              // مفيش «تعارض» هنا: لو الإدارة عدّلت الأمر في نفس الوقت، بنرفع بس الحقول اللي الفني غيّرها فعلًا (مقارنة بآخر نسخة نزلت له)،
+              // فتعديلات الإدارة على باقي الحقول بتفضل زي ما هي، وتعديلات الفني بتوصل بدل ما تتعلّق.
               if (!snap.exists) return { state: "gone", remote: null, remoteHash: null };
-              var lrec = toDoc(job.record), rdata = snap.data(), patch = {}, any = false;
+              var lrec = toDoc(job.record), rdata = snap.data(), patch = {}, any = false, base = SB.sr && SB.sr[job.id];
               // الحقول اللي القواعد مش بتسمح للفني يغيّرها مابتترفعش أصلًا (لو اختلفت على الجهاز لأي سبب، زي شكل تاريخ أو رقم،
               // كانت بتخلّي السيرفر يرفض التعديل كله — الحالة والشغل والأجرة — والأمر يفضل مايتقفلش). نسخة السحابة هي اللي بتفضل ليها.
-              Object.keys(lrec).forEach(function (f) { if (TECH_LOCKED[f]) return; if (stable(clean(rdata[f])) !== stable(clean(lrec[f]))) { patch[f] = lrec[f]; any = true; } });
+              Object.keys(lrec).forEach(function (f) {
+                if (TECH_LOCKED[f]) return;
+                var mine = stable(clean(lrec[f]));
+                if (base && stable(clean(toDoc(base)[f])) === mine) return; // الفني ما غيّرهوش
+                if (stable(clean(rdata[f])) !== mine) { patch[f] = lrec[f]; any = true; }
+              });
               if (patch.status === "ملغي") { delete patch.status; any = Object.keys(patch).length > 0; }
               job.patchKeys = Object.keys(patch);
               if (any) tx.update(job.ref, patch);
               return { state: "written", remote: remote, remoteHash: remoteHash };
             }
+            var baselineMatches = job.baseHash === undefined ? !snap.exists : remoteHash === job.baseHash;
+            if (!baselineMatches) return { state: "conflict", remote: remote, remoteHash: remoteHash };
             if (job.kind === "delete") tx.delete(job.ref); else tx.set(job.ref, toDoc(job.record));
             return { state: "written", remote: remote, remoteHash: remoteHash };
           })).catch(function (e) {
@@ -298,6 +305,7 @@
               next[job.id] = job.baseHash;
             } else {
               if (job.kind === "delete") delete next[job.id]; else next[job.id] = job.localHash;
+              if (SCOPED && job.record) { SB.sr = SB.sr || {}; SB.sr[job.id] = JSON.parse(JSON.stringify(job.record)); }
               if (result.state === "written") wrote = true;
             }
           });
@@ -657,8 +665,13 @@
       db.collection("settings").doc("global").get()
     ])).then(function (res) {
       var changedAny = wipedForMode; wipedForMode = false;
-      var merged = mergeColWithBase("wf_r", res[0].docs.map(fromDoc), false, SB.c.wf_r);
+      var cloudR = res[0].docs.map(fromDoc), merged = mergeColWithBase("wf_r", cloudR, false, SB.c.wf_r);
       if (stable(local("wf_r") || []) !== stable(merged.arr)) { raw("wf_r", JSON.stringify(merged.arr)); changedAny = true; }
+      // آخر نسخة نزلت للفني من كل أمر (عشان الرفع يعرف هو غيّر إيه بالظبط). الأمر اللي عليه تعديل لسه مارفعش بيفضل بأساسه القديم.
+      var srNext = {}, cm = {}; cloudR.forEach(function (r) { cm[r.id] = r; });
+      merged.arr.forEach(function (r) { if (!cm[r.id]) return; srNext[r.id] = stable(r) === stable(cm[r.id]) ? cm[r.id] : ((SB.sr && SB.sr[r.id]) || null); if (!srNext[r.id]) delete srNext[r.id]; });
+      SB.sr = srNext;
+      if (conflicts.wf_r) { delete conflicts.wf_r; origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); } // حساب الفني مالوش تعارضات (الرفع بالحقول)
       SB.c.wf_r = merged.base;
       var live = {}; merged.arr.forEach(function (r) { live[r.id] = 1; });
       var cs = {}, ds = {};

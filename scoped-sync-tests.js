@@ -212,6 +212,17 @@ function seedCloud() {
   await s.sb.wfCloudSyncNow();
   assert.strictEqual(JSON.parse(ls.getItem("wf_r")).find((r) => r.id === "o2").deposit, 10, "الجهاز رجع لعربون السحابة");
 
+  /* ---- 4ب) الإدارة عدّلت الأمر (العطل) والفني عدّل الحالة في نفس الوقت: مفيش تعارض يعلّق الرفع، وكل واحد تعديله بيفضل ---- */
+  cloud.data.requests.o1.fault = "العطل من الإدارة"; cloud.data.requests.o1.updatedBy = "boss";
+  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { status: "جاري التنفيذ", work: "فكيت الجهاز" }); ls.setItem("wf_r", JSON.stringify(rows));
+  cloud.denied.length = 0;
+  await s.sb.wfCloudSyncNow();
+  assert.deepStrictEqual(cloud.denied, []);
+  assert.deepStrictEqual([cloud.data.requests.o1.status, cloud.data.requests.o1.work, cloud.data.requests.o1.fault], ["جاري التنفيذ", "فكيت الجهاز", "العطل من الإدارة"], "الاتنين اتحفظوا");
+  assert.ok(!s.sb.wfSyncInfo().conflicts, "مفيش تعارض");
+  await s.sb.wfCloudSyncNow();
+  assert.strictEqual(JSON.parse(ls.getItem("wf_r")).find((r) => r.id === "o1").fault, "العطل من الإدارة", "تعديل الإدارة نزل للفني");
+
   /* ---- 5) القفل مش من الجهاز: لو الجهاز علّم الأمر مقفول بنفسه مابيترفعش. القفل بيتعمل من دالة السيرفر،
            وبعدها المزامنة بتشيل الأمر وعميله وجهازه من جهاز الفني ---- */
   cloud.denied.length = 0;

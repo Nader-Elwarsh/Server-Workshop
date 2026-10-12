@@ -88,6 +88,16 @@ function makeDb(seed) {
   // موظف موقوف
   db.data.staff.t2.disabled = true; await fail(L.closeOrder("t2", { orderId: "r3" }), "not_staff"); delete db.data.staff.t2.disabled;
 
+  // المزامنة لسه مارفعتش شغل الفني: القفل بيسجّل الحالة والأجرة مع القفل نفسه
+  db.data.requests.r4 = { techId: "t1", no: "A4", customerId: "c1", status: "جاري التنفيذ", total: 0, deposit: 0, closed: false, fault: "من الإدارة" };
+  const o4 = await L.closeOrder("t1", { orderId: "r4", expectTotal: 150, fields: { status: "مكتمل", work: "غيرت الكارتة", labor: 150, total: 150, fault: "تلاعب", deposit: 0, closed: false } });
+  assert.strictEqual(o4.collected, 150);
+  assert.deepStrictEqual([db.data.requests.r4.status, db.data.requests.r4.work, db.data.requests.r4.labor, db.data.requests.r4.closed, db.data.requests.r4.fault], ["مكتمل", "غيرت الكارتة", 150, true, "من الإدارة"], "حقول الشغل بس اتقبلت");
+  await fail(L.closeOrder("t1", { orderId: "r9x" }), "no_order");
+  db.data.requests.r5 = { techId: "t1", no: "A5", status: "جديد", total: 10, closed: false };
+  await fail(L.closeOrder("t1", { orderId: "r5", fields: { status: "ملغي" } }), "not_completed");
+  delete db.data.requests.r4; delete db.data.requests.r5; delete db.data.walletTx["order-final-r4"];
+
   // الحساب: إصلاح التحصيل القديم الناقص (مرة واحدة)، الرصيد، السجل، المصروفات
   const acc = await L.account("t1", {});
   assert.strictEqual(acc.healed, 1, "التحصيل القديم اتسجل");

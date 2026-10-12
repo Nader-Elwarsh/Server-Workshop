@@ -289,6 +289,7 @@
     function kv(label, value) { var d = el("div", "tp-kv"); d.appendChild(el("b", "", label)); d.appendChild(el("span", "", value)); return d; }
     function block(title) { var c = el("div", "tp-card"); c.appendChild(el("h3", "tp-card-title", title)); return c; }
 
+    function workFields(r) { var o = {}; ["status", "work", "labor", "parts", "partsTotal", "partsCost", "total", "statusHistory", "startedAt", "completedAt", "visit"].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }
     function closeOrder(r, wallet, button) {
       if (state.busy) return;
       if (!online()) return say("قفل الأمر محتاج نت عشان التحصيل يتسجل في عهدتك. شغّل النت وجرّب تاني (شغلك على الأمر محفوظ).", true);
@@ -298,7 +299,7 @@
       var t = nowKey();
       Promise.resolve(window.wfCloudSyncNow ? window.wfCloudSyncNow() : null).catch(function () {}).then(function () {
         var cur = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
-        return window.WFPerm.call("techCloseOrder", { orderId: r.id, wallet: wallet, expectTotal: +cur.total || 0, expectDeposit: +cur.deposit || 0, date: t.date, time: t.time });
+        return window.WFPerm.call("techCloseOrder", { orderId: r.id, wallet: wallet, expectTotal: +cur.total || 0, expectDeposit: +cur.deposit || 0, date: t.date, time: t.time, fields: workFields(cur) });
       }).then(function (res) {
         try { window.WFStorage.setItem(window.K.r, JSON.stringify(A(window.K.r).filter(function (x) { return x.id !== r.id; }))); } catch (e) {}
         try { window.WFStorage.setItem("wf_tech_flash", (res && res.collected > 0) ? "✅ اتقفل الأمر #" + (res.no || r.no || "") + " واتسجل " + money(res.collected) + " في «" + res.wallet + "»." : "✅ اتقفل الأمر #" + (r.no || "") + "."); } catch (e) {}
