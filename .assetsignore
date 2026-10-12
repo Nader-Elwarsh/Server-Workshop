@@ -22,3 +22,5 @@ browser-interactive.html
 debug-check.html
 official-compressor-import-summary.json
 staging-setup-tests.js
+.git
+.wrangler
