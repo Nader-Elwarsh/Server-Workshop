@@ -258,7 +258,8 @@ function autoHealOrderWalletTx(force){
       const dw=String(r.depositWallet||"").trim(),dAmt=orderMainDeposit(r);
       if(dAmt>0&&dw&&wallets.has(dw)&&!active.has(dRef)&&!userDel.has(dRef))todo.push({ref:dRef,date:_orderTxDate(r.createdAt),amount:dAmt,wallet:dw,reason:`💵 عربون أمر الشغل ${r.no}`});
       const cw=String(r.closeWallet||"").trim(),coll=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
-      if(r.closed&&r.paid&&coll>0&&cw&&wallets.has(cw)&&!active.has(fRef)&&!userDel.has(fRef))todo.push({ref:fRef,date:_orderTxDate(r.closedAt||r.paidAt),amount:coll,wallet:cw,reason:`💳 تحصيل نهائي أمر الشغل ${r.no}`});
+      // أمر قفله الفني: السيرفر بيسجل حركته مع القفل نفسه (techCloseOrder) — الجهاز ما يعملهاش عشان ماتتعارضش معاها
+      if(r.closed&&r.paid&&!r.closedByTech&&coll>0&&cw&&wallets.has(cw)&&!active.has(fRef)&&!userDel.has(fRef))todo.push({ref:fRef,date:_orderTxDate(r.closedAt||r.paidAt),amount:coll,wallet:cw,reason:`💳 تحصيل نهائي أمر الشغل ${r.no}`});
     });
     if(!todo.length)return 0;
     // كتابة واحدة لكل الحركات الناقصة (بدل كتابة كاملة لكل حركة) — مهم لما عدد الأوامر يكبر.

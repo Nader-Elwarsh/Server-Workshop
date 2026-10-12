@@ -13,7 +13,7 @@ const copy = (o) => (o === undefined ? undefined : JSON.parse(JSON.stringify(o, 
 const plain = (v) => JSON.stringify(v, (k, x) => (x instanceof TS ? x.d.toISOString() : x));
 const ISO = (d) => d.d.toISOString();
 
-const TECH_FORBIDDEN = ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal", "deposit", "depositWallet", "depositExtra"];
+const TECH_FORBIDDEN = ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal", "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech"];
 const sameVal = (a, b) => plain(a) === plain(b);
 
 function makeCloud(seed) {
@@ -31,6 +31,7 @@ function makeCloud(seed) {
         if (op === "get") return !!existing && existing.techId === uid && existing.closed === false;
         if (op === "update") {
           if (!existing || existing.techId !== uid || existing.closed === true || next.techId !== existing.techId) return false;
+          if (next.status === "ملغي" && existing.status !== "ملغي") return false;
           return Object.keys(next).concat(Object.keys(existing)).every((f) => sameVal(next[f], existing[f]) || TECH_FORBIDDEN.indexOf(f) < 0);
         }
         return false;
@@ -210,13 +211,20 @@ function seedCloud() {
   assert.ok(JSON.parse(ls.getItem("wf_r")).some((r) => r.id === "o2"), "الأمر لسه عند الفني (مش اتشال)");
   rows = JSON.parse(ls.getItem("wf_r")); rows.find((r) => r.id === "o2").deposit = 10; ls.setItem("wf_r", JSON.stringify(rows));
 
-  /* ---- 5) قفل الأمر: يترفع، نسخة العرض تتمسح، والأمر يختفي من جهازه ---- */
+  /* ---- 5) القفل مش من الجهاز: لو الجهاز حاول يقفل بنفسه السيرفر بيرفض. القفل بيتعمل من دالة السيرفر،
+           وبعدها المزامنة بتشيل الأمر وعميله وجهازه من جهاز الفني ---- */
   cloud.denied.length = 0;
-  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: true, paid: true, status: "مكتمل", closedAt: "2026-10-12T10:00:00.000Z" }); ls.setItem("wf_r", JSON.stringify(rows));
+  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: true, paid: true }); ls.setItem("wf_r", JSON.stringify(rows));
+  await s.sb.wfCloudSyncNow();
+  assert.ok(cloud.denied.some((x) => /update requests\/o1/.test(x)), "القفل المباشر من الجهاز مرفوض");
+  assert.notStrictEqual(cloud.data.requests.o1.closed, true);
+  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: false }); delete rows.find((r) => r.id === "o1").paid; ls.setItem("wf_r", JSON.stringify(rows));
+  await s.sb.wfCloudSyncNow();
+  Object.assign(cloud.data.requests.o1, { closed: true, paid: true, status: "مكتمل", closedByTech: "tech-a" }); delete cloud.data.techOrders.o1; // = techCloseOrder
+  cloud.denied.length = 0;
   await s.sb.wfCloudSyncNow();
   await sleep(200);
-  assert.strictEqual(cloud.data.requests.o1.closed, true);
-  assert.strictEqual(cloud.data.techOrders.o1, undefined, "نسخة العرض اتمسحت");
+  assert.deepStrictEqual(cloud.denied, [], "مفيش محاولات مرفوضة بعد القفل: " + cloud.denied);
   assert.deepStrictEqual(JSON.parse(ls.getItem("wf_r")).map((r) => r.id), ["o2"], "الأمر المقفول اختفى من جهازه");
   assert.deepStrictEqual(JSON.parse(ls.getItem("wf_c")).map((r) => r.id), ["c-o2"], "وعميله وجهازه كمان");
   assert.deepStrictEqual(JSON.parse(ls.getItem("wf_d")).map((r) => r.id), ["d-o2"]);
@@ -264,12 +272,8 @@ function seedCloud() {
   assert.ok(cloud.data.techOrders.o1 && cloud.data.techOrders.o3);
 
 
-  /* ---- 8ب) محفظة عهدة الفني بتتنشر من جهاز الإدارة (رصيد + حركات من غير الملاحظات) ---- */
-  const tw = cloud.data.techWallets && cloud.data.techWallets["tech-a"];
-  assert.ok(tw, "حساب عهدة الفني اتكتب");
-  assert.strictEqual(tw.balance, 70, "رصيد = 100 - 30 ومحفظة تانية ما دخلتش");
-  assert.strictEqual(tw.entries.length, 2);
-  assert.ok(!JSON.stringify(tw).includes("سري") && !JSON.stringify(tw).includes("999"), "مفيش ملاحظات ولا محافظ تانية");
+  /* ---- 8ب) حساب عهدة الفني بقى من السيرفر (دالة techAccount): جهاز الإدارة ما بيكتبش نسخة منه ---- */
+  assert.ok(!cloud.data.techWallets || !cloud.data.techWallets["tech-a"], "مفيش كتابة لحساب العهدة من الأجهزة");
 
   /* ---- 9) الفني يخرج ويدخل تاني: تعديلاته اللي لسه ماترفعتش ما تضيعش، والموعد يترفع ---- */
   cloud = seedCloud();

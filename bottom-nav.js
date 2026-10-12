@@ -77,8 +77,27 @@
     var searchBtn = document.getElementById("bottomNavSearch");
     searchBtn.addEventListener("click", function () {
       var gsBtn = document.getElementById("gsBtn");
-      if (gsBtn) gsBtn.click();
+      if (gsBtn) gsBtn.click(); else location.href = "index.html";
     });
+    applyPerms();
+    waitPerms(0);
+  }
+
+  /* الأقسام اللي المستخدم مالوش صلاحية يفتحها بتستخبى من الشريط (الصلاحيات بتتحمّل بعد الصفحة بشوية). */
+  function applyPerms() {
+    var nav = document.getElementById("bottomNav"), P = window.WFPerm, R = window.WFRoles;
+    if (!nav || !P || !R || !R.PAGES || typeof P.can !== "function") return false;
+    Array.prototype.forEach.call(nav.querySelectorAll("a[href]"), function (a) {
+      var need = R.PAGES[String(a.getAttribute("href") || "").split("?")[0]];
+      var ok = true; try { ok = !need || P.can(need) !== false; } catch (e) {}
+      a.style.display = ok ? "" : "none";
+    });
+    return true;
+  }
+  var hooked = false;
+  function waitPerms(n) {
+    if (applyPerms() && !hooked && window.WFPerm && typeof window.WFPerm.onChange === "function") { hooked = true; window.WFPerm.onChange(applyPerms); return; }
+    if (n < 60) setTimeout(function () { waitPerms(n + 1); }, 250);
   }
 
   ready(injectUI);

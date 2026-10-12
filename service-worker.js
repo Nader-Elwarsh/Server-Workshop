@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v40-tech-portal";
+const CACHE_NAME = "workshop-v41-tech-ledger";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

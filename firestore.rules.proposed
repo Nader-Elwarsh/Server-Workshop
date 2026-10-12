@@ -31,8 +31,11 @@ service cloud.firestore {
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
           'techId', 'techName', 'techWallet', 'assignedAt', 'assignedBy',
           'customerId', 'deviceId', 'addressKey', 'no', 'createdAt', 'source', 'portalRequestId', 'portalVis', 'portal',
-          'deposit', 'depositWallet', 'depositExtra'
-        ]);
+          'deposit', 'depositWallet', 'depositExtra',
+          'closed', 'paid', 'paidAt', 'closedAt', 'closeWallet', 'closedByTech'
+        ])
+        // الإلغاء للإدارة بس. القفل والتحصيل بيتعملوا من السيرفر (دالة techCloseOrder) عشان الأمر وحركة المحفظة يتسجلوا مع بعض.
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) || request.resource.data.status != 'ملغي');
     }
 
     function linkRef() {
@@ -223,7 +226,7 @@ service cloud.firestore {
       allow delete: if scopedStaff() && resource.data.techId == request.auth.uid;
     }
 
-    // حساب عهدة الفني (رصيده وحركاته): نسخة بتكتبها أجهزة الإدارة، والفني يقرا بتاعه بس.
+    // نسخة قديمة من حساب عهدة الفني (قبل دالة techAccount على السيرفر). القراءة بس، ومحدش بيكتبها من الأجهزة دلوقتي.
     match /techWallets/{uid} {
       allow get: if scopedStaff() && uid == request.auth.uid;
     }

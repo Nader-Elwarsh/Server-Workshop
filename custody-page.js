@@ -16,7 +16,7 @@
   function start() {
     var root = document.getElementById("custodyRoot"), msgBox = document.getElementById("custodyMsg");
     var state = { users: [], pending: [], open: {}, err: "" };
-    var CARD = "padding:12px;margin:0 0 12px;border-radius:14px;border:1px solid var(--border,#d5dbe8);background:var(--bg-card,#fff)";
+    var CARD = "padding:12px;margin:0 0 12px;border-radius:14px;border:1px solid var(--border,#d5dbe8);background:var(--bg-elevated,#fff)";
     var BTN = "padding:8px 13px;border-radius:10px;border:0;background:#0b57d0;color:#fff;font-weight:700;font-size:14px";
     var BTN2 = "padding:8px 13px;border-radius:10px;border:1px solid #9aa7c2;background:transparent;color:inherit;font-size:14px";
     var INP = "width:100%;box-sizing:border-box;padding:8px;border-radius:10px;border:1px solid #9aa7c2;font-size:15px";
@@ -31,6 +31,7 @@
     function canSettle() { return window.WFPerm.can("custody.settle"); }
     function dayOf(v) { try { return window.dayKeyLocal(v); } catch (e) { return ""; } }
     function timeOf(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
+    function monthOf(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.getFullYear() + "-" + (d.getMonth() + 1); }
     function custName(id) { var c = A(window.K.c).filter(function (x) { return x.id === id; })[0]; return (c && c.name) || "عميل"; }
     function techWallets() { var s = {}; state.users.forEach(function (u) { if (u.wallet) s[u.wallet] = 1; }); return s; }
     function workshopWallets() { var tw = techWallets(); return (window.settings().wallets || []).filter(function (w) { return !tw[String(w).trim()]; }); }
@@ -75,8 +76,18 @@
       var late = orders.filter(function (r) { return r.visit && dayOf(r.visit) < today; }).length, soon = orders.filter(function (r) { return r.visit && dayOf(r.visit) > today; }).length, none = orders.filter(function (r) { return !r.visit; }).length;
       card.appendChild(mk("div", "font-size:14px;margin:6px 0", "🛠️ " + orders.length + " أمر مفتوح • 📅 اليوم " + todays.length + " • ⚠️ متأخر " + late + " • ⏭️ قادم " + soon + " • 🕓 بدون موعد " + none));
       todays.forEach(function (r) { card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px", "• " + timeOf(r.visit) + " — #" + (r.no || "") + " " + custName(r.customerId))); });
+      // شغل الشهر: الأوامر اللي اتقفلت (منه أو من الإدارة) والمبلغ اللي اتحصّل فيها
+      var ym = monthOf(new Date()), done = A(window.K.r).filter(function (r) { return r && r.techId === u.uid && r.closed; }).sort(function (a, b) { return String(b.closedAt || "").localeCompare(String(a.closedAt || "")); });
+      var doneM = done.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; });
+      var coll = doneM.reduce(function (s, r) { return s + (r.paid ? Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100) : 0); }, 0);
+      card.appendChild(mk("div", "font-size:14px;margin:6px 0", "✅ اتقفل الشهر ده: " + doneM.length + " أمر • حصّل " + money(coll)));
+      if (done.length) {
+        var hist = mk("details", "margin:4px 0"); hist.appendChild(mk("summary", "cursor:pointer;font-size:13px;font-weight:700", "📜 آخر الأوامر المقفولة"));
+        done.slice(0, 10).forEach(function (r) { hist.appendChild(mk("div", "font-size:13px;margin-inline-start:12px", "• " + (r.closedAt ? new Date(r.closedAt).toLocaleDateString("ar-EG", { day: "numeric", month: "short" }) : "") + " — #" + (r.no || "") + " " + custName(r.customerId) + " — " + money(r.total) + (r.closeWallet ? " (" + r.closeWallet + ")" : "") + (r.closedByTech ? "" : " • من الإدارة"))); });
+        card.appendChild(hist);
+      }
 
-      var money1 = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-elevated,#f1f5ff)");
+      var money1 = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-sunken,#f1f5ff)");
       if (!wal) { money1.appendChild(mk("div", "color:#b91c1c;font-size:14px", "مفيش محفظة عهدة لفني ده — حدّدها من «المستخدمون والصلاحيات».")); }
       else {
         var bal = window.walletBalance(wal);
@@ -104,7 +115,7 @@
     }
     function moveForm(u, kind) {
       var modal = mk("div", "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px");
-      var box = mk("div", "background:var(--bg-card,#fff);color:inherit;max-width:420px;width:100%;border-radius:14px;padding:16px;max-height:90vh;overflow:auto");
+      var box = mk("div", "background:var(--bg-elevated,#fff);color:inherit;max-width:420px;width:100%;border-radius:14px;padding:16px;max-height:90vh;overflow:auto");
       box.appendChild(mk("b", "font-size:17px", kind === "deposit" ? "💵 إيداع عهدة لـ " + u.name : "🤝 تسوية مع " + u.name));
       box.appendChild(mk("p", "font-size:13px;opacity:.8", kind === "deposit" ? "الفلوس بتتسحب من محفظة الورشة اللي تختارها وتتضاف لمحفظة عهدة الفني." : "الفلوس بتتسحب من محفظة عهدة الفني وتتضاف لمحفظة الورشة اللي تختارها (استلمت منه كاش مثلًا)."));
       var ws = mk("select", INP), ww = workshopWallets();

@@ -54,26 +54,46 @@
 
   /* ---------- مصفوفة الصلاحيات (checkboxes مجمّعة) ---------- */
   function matrix(checked, locked, onToggle) {
+    injectMatrixStyle();
     var wrap = h("div", { class: "perm-matrix" });
     R.GROUPS.forEach(function (g) {
-      var det = h("details", { open: false }, [h("summary", { text: g.label, style: "cursor:pointer;font-weight:700;padding:6px 0" })]);
-      var inputs = [];
-      var grid = h("div", { style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 12px;padding:4px 0 10px" });
+      var inputs = [], count = h("span", { class: "pm-count" });
+      function recount() { var n = inputs.filter(function (c) { return c.checked; }).length; count.textContent = n + " من " + inputs.length; count.className = "pm-count" + (n === inputs.length ? " pm-all" : n ? " pm-some" : ""); }
+      var det = h("details", { class: "pm-group" }, [h("summary", {}, [h("span", { text: g.label }), count])]);
+      var grid = h("div", { class: "pm-grid" });
       g.perms.forEach(function (p) {
         var cb = h("input", { type: "checkbox", "data-key": p[0], disabled: locked });
         cb.checked = !!checked[p[0]];
-        cb.addEventListener("change", function () { onToggle(p[0], cb.checked); });
+        cb.addEventListener("change", function () { onToggle(p[0], cb.checked); recount(); });
         inputs.push(cb);
-        grid.appendChild(h("label", { style: "display:flex;gap:6px;align-items:center" }, [cb, h("span", { text: p[1] })]));
+        grid.appendChild(h("label", { class: "pm-item" }, [cb, h("span", { text: p[1] })]));
       });
       if (!locked) {
-        var all = h("button", { type: "button", class: "secondary mini-action", text: "تحديد الكل", on: { click: function () { inputs.forEach(function (c) { if (!c.checked) { c.checked = true; onToggle(c.getAttribute("data-key"), true); } }); } } });
-        var none = h("button", { type: "button", class: "secondary mini-action", text: "إلغاء الكل", on: { click: function () { inputs.forEach(function (c) { if (c.checked) { c.checked = false; onToggle(c.getAttribute("data-key"), false); } }); } } });
-        det.appendChild(h("div", { class: "actions", style: "gap:6px;margin-bottom:4px" }, [all, none]));
+        var all = h("button", { type: "button", class: "pm-mini", text: "✔ تحديد الكل", on: { click: function () { inputs.forEach(function (c) { if (!c.checked) { c.checked = true; onToggle(c.getAttribute("data-key"), true); } }); recount(); } } });
+        var none = h("button", { type: "button", class: "pm-mini", text: "✖ إلغاء الكل", on: { click: function () { inputs.forEach(function (c) { if (c.checked) { c.checked = false; onToggle(c.getAttribute("data-key"), false); } }); recount(); } } });
+        det.appendChild(h("div", { class: "pm-tools" }, [all, none]));
       }
+      recount();
       det.appendChild(grid); wrap.appendChild(det);
     });
     return wrap;
+  }
+  function injectMatrixStyle() {
+    if (document.getElementById("pmStyle")) return;
+    var st = document.createElement("style"); st.id = "pmStyle";
+    st.textContent = ".perm-matrix{display:grid;gap:8px;margin:8px 0}" +
+      ".pm-group{border:1px solid var(--border,#dde3ec);border-radius:12px;background:var(--bg-elevated,#fff);overflow:hidden}" +
+      ".pm-group>summary{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;font-weight:800;list-style-position:inside}" +
+      ".pm-group[open]>summary{border-bottom:1px solid var(--border,#dde3ec);background:var(--bg-sunken,#f3f5f9)}" +
+      ".pm-count{font-size:12px;font-weight:800;padding:2px 9px;border-radius:99px;background:var(--bg-sunken,#eef1f6);color:var(--text-muted,#667085)}" +
+      ".pm-count.pm-all{background:#dcfce7;color:#166534}.pm-count.pm-some{background:#e0ecff;color:#1d4ed8}" +
+      "[data-theme=dark] .pm-count.pm-all{background:#14532d;color:#dcfce7}[data-theme=dark] .pm-count.pm-some{background:#1e3a8a;color:#dbeafe}" +
+      ".pm-tools{display:flex;gap:6px;padding:10px 14px 0;flex-wrap:wrap}" +
+      ".pm-mini{width:auto;min-height:32px;padding:5px 12px;border-radius:99px;border:1px solid var(--border,#dde3ec);background:var(--bg-sunken,#f3f5f9);color:inherit;font:inherit;font-size:13px;cursor:pointer}" +
+      ".pm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 14px;padding:8px 14px 12px}" +
+      ".pm-item{display:flex!important;align-items:center;gap:10px;padding:9px 2px;font-weight:400!important;font-size:15px;border-bottom:1px dashed var(--border,#e5e9f0);cursor:pointer}" +
+      ".pm-item span{flex:1;line-height:1.4}";
+    document.head.appendChild(st);
   }
   function setOf(list) { var s = {}; (list || []).forEach(function (k) { s[k] = 1; }); return s; }
 

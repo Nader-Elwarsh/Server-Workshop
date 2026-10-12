@@ -303,7 +303,7 @@
           goneIds.concat(closedIds).forEach(function (id) { delete next[id]; try { db.collection("techOrders").doc(id).delete().catch(function () {}); } catch (e) {} });
           snapshotRaw = ls.getItem("wf_r");
           if (rejectedNew.length) { try { window.alert("حساب الفني مايقدرش ينشئ أوامر جديدة، فاتشال " + rejectedNew.length + " أمر اتعمل من الجهاز ده. اطلب من المسؤول ينشئه ويعيّنه ليك."); } catch (e) {} }
-          if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("requests.html"); else banner(); }).catch(function () {}); }, 50);
+          if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("tech.html"); else banner(); }).catch(function () {}); }, 50);
         }
         SB.c[k] = next; saveBase();
         if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
@@ -440,23 +440,11 @@
      بتتكتب من أجهزة الإدارة بس، والفني بيقراها هي وأمره المعيّن له فقط (قواعد Firestore). بتتمسح لما الأمر يتقفل أو يتسحب من الفني. */
   var tpBusy = false;
   function techPick(o, drop) { var r = {}; Object.keys(o || {}).forEach(function (f) { if (drop.indexOf(f) < 0) r[f] = o[f]; }); return r; }
-  function techWalletMap() { // فني → اسم محفظة العهدة: من قايمة الفنيين المتخزنة على الجهاز، ومن «محفظة الفني» المتسجلة على أوامره
-    var m = {};
-    try { (JSON.parse(ls.getItem("wf_tech_dir") || "[]") || []).forEach(function (u) { if (u && u.uid && u.wallet) m[u.uid] = String(u.wallet).trim(); }); } catch (e) {}
-    (local("wf_r") || []).forEach(function (r) { if (r && r.techId && r.techWallet && !m[r.techId]) m[r.techId] = String(r.techWallet).trim(); });
-    return m;
-  }
-  function techWalletDoc(uid, wallet, txs) { // رصيد وحركات محفظة الفني (من غير الملاحظات الخاصة)
-    var mine = txs.filter(function (x) { return x && !x.deleted && String(x.wallet || "").trim() === wallet; });
-    var bal = Math.round(mine.reduce(function (a, x) { return a + (x.type === "in" ? (+x.amount || 0) : -(+x.amount || 0)); }, 0) * 100) / 100;
-    mine.sort(function (p, q) { return String((q.date || "") + " " + (q.time || "") + (q.createdAt || "")).localeCompare(String((p.date || "") + " " + (p.time || "") + (p.createdAt || ""))); });
-    return { uid: uid, wallet: wallet, balance: bal, entries: mine.slice(0, 150).map(function (x) { return { id: String(x.id || ""), ref: String(x.refKey || ""), type: x.type === "in" ? "in" : "out", amount: +x.amount || 0, category: String(x.category || ""), reason: String(x.reason || "").slice(0, 160), date: x.date || "", time: x.time || "" }; }) };
-  }
   function projectTech() {
     if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:techOrders"); return Promise.resolve(false); }
     if (tpBusy) return Promise.resolve(false);
-    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, tw = SB.tw = SB.tw || {}, ops = [], seen = {}, next = Object.assign({}, tp), nextW = Object.assign({}, tw);
+    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, ops = [], seen = {}, next = Object.assign({}, tp);
     var fixClosed = false; rs.forEach(function (r) { if (r && r.techId && r.closed === undefined) { r.closed = false; fixClosed = true; } }); // السيرفر بيفلتر أوامر الفني بـ closed == false
     if (fixClosed) ls.setItem("wf_r", JSON.stringify(rs));
     (local("wf_c") || []).forEach(function (c) { if (c && c.id) cs[c.id] = c; });
@@ -473,15 +461,10 @@
       if (tp[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("techOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
     Object.keys(tp).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("techOrders").doc(id)); }); } });
-    // حسابات عهدة الفنيين (رصيد + آخر الحركات) — الفني يقراها هي بس
-    var wm = techWalletMap(), txs = local("wf_wallet_tx") || [];
-    Object.keys(wm).forEach(function (uid) {
-      var doc = techWalletDoc(uid, wm[uid], txs), x = h(stable(doc));
-      if (tw[uid] !== x) { nextW[uid] = x; ops.push(function (bt) { bt.set(db.collection("techWallets").doc(uid), Object.assign({}, doc, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
-    });
+    // حساب عهدة الفني (الرصيد والحركات وسجل أوامره المقفولة) بقى بيتحسب على السيرفر (دالة techAccount) مش من الأجهزة.
     if (!ops.length) { clearRetry("remote:techOrders"); return Promise.resolve(true); }
     tpBusy = true;
-    return commitOps(ops).then(function () { SB.tp = next; SB.tw = nextW; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
+    return commitOps(ops).then(function () { SB.tp = next; delete SB.tw; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
   }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
     if (SCOPED) return Promise.resolve(true);

@@ -21,15 +21,17 @@ const flush = () => new Promise((r) => setTimeout(r, 25));
 const dk = (v) => { const d = new Date(v); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const at = (days, h) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, 0, 0, 0); const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 
-function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {}, online = true, uid = 'tech-a' }) {
-  const store = new Map(), root = node('div'), msg = node('div'), els = { [rootId]: root, [rootId.replace('Root', 'Msg')]: msg };
+function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {}, online = true, uid = 'tech-a', callImpl = {}, store: keep }) {
+  const calls = [], syncs = { n: 0 };
+  const store = keep || new Map(), root = node('div'), msg = node('div'), els = { [rootId]: root, [rootId.replace('Root', 'Msg')]: msg };
   const fsWrites = [], fsDeletes = [], fsUpdates = [];
   const docRef = (col, id) => ({ id, get: async () => (fsData[col] && fsData[col][id] ? { exists: true, data: () => fsData[col][id] } : { exists: false }), set: async (v) => { fsWrites.push([col, id, v]); }, delete: async () => { fsDeletes.push([col, id]); }, update: async (v) => { fsUpdates.push([col, id, v]); } });
   const win = {
     document: { readyState: 'complete', createElement: node, getElementById: (id) => els[id] || all(root).find((n) => n.id === id) || null, body: node('body'), addEventListener() {}, activeElement: null },
     location: { pathname: '/x.html', search, href: 'http://x/x.html' + search }, navigator: { onLine: online },
     WFStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
-    WFPerm: { can: (k) => perms(k), profile: () => ({ name: 'أحمد' }), wallet: () => 'عهدة أحمد', onChange() {} },
+    WFPerm: { can: (k) => perms(k), profile: () => ({ name: 'أحمد' }), wallet: () => 'عهدة أحمد', onChange() {}, call: async (name, d) => { calls.push([name, d]); const f = callImpl[name]; if (!f) { const er = new Error(''); er.code = 'not_found'; throw er; } return f(d); } },
+    wfCloudSyncNow: async () => { syncs.n++; },
     wfSyncMode: 'scoped', wfSyncInfo: () => ({ pending: 0, error: '', online }),
     firebase: { auth: () => ({ currentUser: { uid } }), firestore: () => ({ collection: (c) => Object.assign({ doc: (id) => docRef(c, id || 'auto' + (fsWrites.length + 1)), where: () => ({ get: async () => ({ docs: Object.keys(fsData[c] || {}).map((id) => ({ id, data: () => fsData[c][id] })) }), onSnapshot: (ok) => { ok({ docs: Object.keys(fsData[c] || {}).filter((id) => fsData[c][id].status === 'pending').map((id) => ({ id, data: () => fsData[c][id] })) }); return () => {}; } }) }) }) },
     K: { c: 'wf_c', d: 'wf_d', r: 'wf_r', wtx: 'wf_wallet_tx' },
@@ -44,7 +46,7 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
     setTimeout, clearTimeout, setInterval: () => 0, console, Promise, Date, JSON, Object, Array, String, Number, Math, URL, URLSearchParams, RegExp, isFinite, Error
   };
   win.addEventListener = () => {}; win.removeEventListener = () => {}; win.window = win;
-  return { win, root, msg, store, fsWrites, fsDeletes, fsUpdates };
+  return { win, root, msg, store, fsWrites, fsDeletes, fsUpdates, calls, syncs };
 }
 
 (async () => {
@@ -61,31 +63,48 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
     wf_wallet_tx: [{ id: 'lx1', refKey: 'order-final-r9', type: 'in', amount: 120, wallet: 'عهدة أحمد', reason: 'تحصيل نهائي أمر 9', date: '2026-10-12', time: '10:00' }]
   });
 
-  // 1) اليوم
-  let data = mkData(), e = makeEnv({ rootId: 'techRoot', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  const ACC = { uid: 'tech-a', name: 'أحمد', wallet: 'عهدة أحمد', balance: 1120,
+    entries: [{ ref: 'order-final-r8', type: 'in', amount: 400, reason: 'تحصيل أمر 8', date: '2026-10-11', time: '09:00', category: 'تحصيل عميل' }, { ref: 'custody-exp-1', type: 'out', amount: 50, reason: 'بنزين', date: '2026-10-12', time: '08:00', category: 'مصروف تشغيل' }],
+    history: [{ id: 'r8', no: 'A8', customer: 'سامي', device: 'تلاجة توشيبا', work: 'غيّرت الثرموستات', total: 450, deposit: 50, collected: 400, wallet: 'عهدة أحمد', closedAt: '2026-10-11T09:00:00.000Z', byTech: true },
+      { id: 'r7', no: 'A7', customer: 'منى', device: '', work: '', total: 100, deposit: 0, collected: 100, wallet: 'كاش الورشة', closedAt: '2026-10-10T09:00:00.000Z', byTech: false }],
+    expenses: [{ id: 'e1', amount: 30, note: 'مواصلات', status: 'pending', at: '2026-10-12T08:00:00Z' }, { id: 'e2', amount: 70, note: 'قطعة', status: 'rejected', decisionNote: 'مفيش فاتورة', at: '2026-10-11T08:00:00Z' }],
+    stats: { open: 4, closedTotal: 2, closedMonth: 2, collectedMonth: 500, laborMonth: 300, pendingExpenses: 30 } };
+  const accImpl = { techAccount: async () => JSON.parse(JSON.stringify(ACC)) };
+  const run = (env) => vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), env.win);
+
+  // 1) النهارده: الأقسام، المربعات، الشريط السفلي، ومفيش طباعة/رسائل/حذف
+  let data = mkData(), e = makeEnv({ rootId: 'techRoot', data, callImpl: accImpl });
+  run(e); await flush();
   let text = e.root.textContent;
   assert(text.includes('📅 النهارده (1)') && text.includes('متأخرة عن موعدها (1)') && text.includes('قادمة (1)') && text.includes('بدون موعد — حدّد موعدها (1)'), 'أقسام اليوم: ' + text.slice(0, 300));
-  assert(text.includes('#A1 — سعاد') && !text.includes('A5'), 'المقفول مش ظاهر');
+  assert(text.includes('#A1 — سعاد') && !text.includes('#A5'), 'المقفول مش ظاهر في المفتوح');
   assert(text.includes('المنصورة'), 'العنوان ظاهر');
   assert(!/طباعة|واتساب|حذف/.test(text), 'مفيش طباعة/رسائل/حذف');
   assert(all(e.root).some((n) => n.tagName === 'A' && n.href === 'tel:01011111111'), 'زر الاتصال');
+  const nav = all(e.root).find((n) => n.tagName === 'NAV');
+  assert(nav && ['النهارده', 'أوامري', 'المقفولة', 'عهدتي'].every((t) => nav.textContent.includes(t)), 'الشريط السفلي');
+  assert(nav.textContent.includes('النهارده2'), 'عدّاد النهارده = النهارده + المتأخر');
+  assert.deepStrictEqual(e.calls.map((c) => c[0]), ['techAccount'], 'الحساب بيتحمّل من السيرفر');
+  assert(text.includes('متزامن'), 'حالة المزامنة');
+
+  // من غير أوامر مفتوحة: رسالة + رابط للمقفولة (مش «مفيش أوامر» وبس)
+  const d0 = mkData(); d0.wf_r = d0.wf_r.filter((r) => r.closed); e = makeEnv({ rootId: 'techRoot', data: d0, callImpl: accImpl });
+  run(e); await flush(); await flush();
+  assert(e.root.textContent.includes('مفيش أوامر مفتوحة') && e.root.textContent.includes('قفلت 2 أمر الشهر ده') && btnOf(e.root, 'شوف أوامرك المقفولة'), 'توجيه للسجل');
 
   // 2) تفاصيل أمر: الموعد، الشغل، القطع (مع مصروف عهدة)، الإجمالي
-  data = mkData(); e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  data = mkData(); e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl });
+  run(e); await flush();
   const dtInput = all(e.root).find((n) => n.type === 'datetime-local');
   dtInput.value = at(1, 9);
   await btnOf(e.root, 'حفظ الموعد').onclick(); await flush();
   assert.strictEqual(data.wf_r[0].visit, at(1, 9), 'الموعد اتحفظ على الأمر');
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
   const ta = all(e.root).find((n) => n.tagName === 'TEXTAREA'); ta.value = 'غيّرت السخان';
   const labor = all(e.root).find((n) => n.type === 'number' && n.placeholder.includes('أجرة')); labor.value = '200';
   await btnOf(e.root, 'حفظ الشغل والأجرة').onclick(); await flush();
   assert.deepStrictEqual([data.wf_r[0].work, data.wf_r[0].labor, data.wf_r[0].total, data.wf_r[0].remain], ['غيّرت السخان', 200, 200, 150], 'الشغل والأجرة والإجمالي والمتبقي بعد العربون');
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
   const f = all(e.root).filter((n) => n.tagName === 'INPUT');
   f.find((n) => n.placeholder === 'اسم القطعة').value = 'سخان';
   f.find((n) => n.placeholder === 'سعر البيع').value = '300'; f.find((n) => n.placeholder === 'سعر الشراء').value = '220'; f.find((n) => n.placeholder === 'الكمية').value = '2';
@@ -96,51 +115,95 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   const ex = e.fsWrites[0][2];
   assert.deepStrictEqual([e.fsWrites[0][0], ex.techId, ex.status, ex.amount, ex.orderNo, ex.wallet], ['techExpenses', 'tech-a', 'pending', 440, 'A1', 'عهدة أحمد']);
   assert(/سخان/.test(ex.note));
+  // من غير صلاحية تعديل: عرض بس
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl, perms: (k) => k !== 'requests.edit' }); run(e); await flush();
+  assert(!btnOf(e.root, 'حفظ الموعد') && !btnOf(e.root, 'إضافة القطعة') && !all(e.root).some((n) => n.tagName === 'TEXTAREA'), 'بدون requests.edit مفيش تعديل');
 
-  // 3) قفل الأمر: لازم مكتمل أولًا، والمحفظة الافتراضية = محفظة الفني
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  // 3) القفل: لازم مكتمل، المحفظة الافتراضية = عهدته، والقفل بيروح للسيرفر
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
   assert(e.root.textContent.includes('غيّر الحالة لـ «مكتمل» الأول') && !btnOf(e.root, 'قفل الأمر'), 'مش بيقفل قبل مكتمل');
   data.wf_r[0].status = 'مكتمل';
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
-  const wsel = all(e.root).find((n) => n.id === 'rCloseWallet'); assert.strictEqual(wsel.children.filter((o) => o.selected).map((o) => o.value)[0], 'عهدة أحمد', 'المحفظة الافتراضية = عهدة الفني');
-  wsel.value = 'عهدة أحمد'; btnOf(e.root, 'قفل الأمر').onclick(); assert.strictEqual(e.win._closed, 'r1'); assert.strictEqual(e.win._closeWallet, 'عهدة أحمد');
-  // أمر مقفول: مفيش أدوات تعديل
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r5', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
-  assert(e.root.textContent.includes('الأمر مش موجود عندك') || !btnOf(e.root, 'حفظ'), 'المقفول محجوب');
+  const closeImpl = Object.assign({}, accImpl, { techCloseOrder: async (d) => ({ ok: true, orderId: d.orderId, no: 'A1', collected: 750, wallet: d.wallet }) });
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: closeImpl }); run(e); await flush();
+  let wsel = all(e.root).find((n) => n.id === 'rCloseWallet');
+  assert.strictEqual(wsel.value, 'عهدة أحمد', 'المحفظة الافتراضية = عهدة الفني');
+  assert.deepStrictEqual(wsel.children.map((o) => o.value), ['عهدة أحمد', 'كاش الورشة'], 'عهدته الأول وبعدها محافظ الورشة');
+  await btnOf(e.root, 'قفل الأمر').onclick(); await flush(); await flush();
+  const cc = e.calls.find((c) => c[0] === 'techCloseOrder');
+  assert(cc, 'القفل اتبعت للسيرفر');
+  assert.deepStrictEqual([cc[1].orderId, cc[1].wallet, cc[1].expectTotal, cc[1].expectDeposit], ['r1', 'عهدة أحمد', 800, 50]);
+  assert(/^\d{4}-\d\d-\d\d$/.test(cc[1].date) && /^\d\d:\d\d$/.test(cc[1].time), 'تاريخ ووقت الجهاز');
+  assert(e.syncs.n >= 1, 'رفع التعديلات قبل القفل');
+  assert(!JSON.parse(e.store.get('wf_r')).some((r) => r.id === 'r1'), 'الأمر اتشال من الجهاز');
+  assert(/tab=done/.test(e.win.location.href), 'راح للمقفولة');
+  assert(/750|٧٥٠/.test(e.store.get('wf_tech_flash')) && /عهدة أحمد/.test(e.store.get('wf_tech_flash')), 'رسالة النجاح فيها المبلغ والمحفظة');
+  // اختيار محفظة تانية
+  data = mkData(); data.wf_r[0].status = 'مكتمل'; data.wf_r[0].total = 100;
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: closeImpl }); run(e); await flush();
+  wsel = all(e.root).find((n) => n.id === 'rCloseWallet'); wsel.value = 'كاش الورشة';
+  await btnOf(e.root, 'قفل الأمر').onclick(); await flush(); await flush();
+  assert.strictEqual(e.calls.find((c) => c[0] === 'techCloseOrder')[1].wallet, 'كاش الورشة');
+  // السيرفر رفض: رسالة واضحة والأمر يفضل
+  data = mkData(); data.wf_r[0].status = 'مكتمل';
+  const staleImpl = Object.assign({}, accImpl, { techCloseOrder: async () => { const er = new Error('stale_total'); er.code = 'aborted'; throw er; } });
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: staleImpl }); run(e); await flush();
+  await btnOf(e.root, 'قفل الأمر').onclick(); await flush(); await flush();
+  assert(e.msg.textContent.includes('لسه بتترفع'), 'رسالة التعديلات اللي بتترفع: ' + e.msg.textContent);
+  assert(data.wf_r.some((r) => r.id === 'r1') && !/tab=done/.test(e.win.location.href), 'الأمر فضل');
+  // الدالة مش متنشرة
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
+  await btnOf(e.root, 'قفل الأمر').onclick(); await flush(); await flush();
+  assert(e.msg.textContent.includes('techCloseOrder'), 'رسالة إن الدالة مش متنشرة');
+  // أوفلاين: مايبعتش
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: closeImpl, online: false }); run(e); await flush();
+  await btnOf(e.root, 'قفل الأمر').onclick(); await flush();
+  assert(e.msg.textContent.includes('محتاج نت') && !e.calls.some((c) => c[0] === 'techCloseOrder'), 'القفل محتاج نت');
+  // من غير صلاحية القفل
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: closeImpl, perms: (k) => k !== 'requests.close' }); run(e); await flush();
+  assert(!btnOf(e.root, 'قفل الأمر'), 'بدون requests.close مفيش قفل');
+  // أمر مقفول: مش ظاهر
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r5', data, callImpl: accImpl }); run(e); await flush();
+  assert(!btnOf(e.root, 'حفظ'), 'المقفول محجوب');
   // الحالة: مفيش خيار إلغاء
-  e = makeEnv({ rootId: 'techRoot', search: '?id=r2', data });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  e = makeEnv({ rootId: 'techRoot', search: '?id=r2', data, callImpl: accImpl }); run(e); await flush();
   const sel = all(e.root).find((n) => n.tagName === 'SELECT' && n.children.some((o) => o.value === 'مكتمل'));
   assert(sel && !sel.children.some((o) => o.value === 'ملغي'), 'الفني مايلغيش');
+  // رسالة النجاح بتظهر مرة واحدة بعد التحويل
+  const st = new Map([['wf_tech_flash', '✅ اتقفل الأمر #A1 واتسجل ٧٥٠ ج']]);
+  e = makeEnv({ rootId: 'techRoot', search: '?tab=done', data, callImpl: accImpl, store: st }); run(e); await flush();
+  assert(e.msg.textContent.includes('اتقفل الأمر #A1') && st.get('wf_tech_flash') === '', 'الرسالة ظهرت واتمسحت');
 
-  // 4) عهدتي: رصيد من حساب الإدارة + تحصيل محلي لسه ما ظهرش + مصروفات
-  data = mkData();
-  const FS = { techWallets: { 'tech-a': { uid: 'tech-a', wallet: 'عهدة أحمد', balance: 1000, entries: [{ ref: 'order-final-r8', type: 'in', amount: 400, reason: 'تحصيل أمر 8', date: '2026-10-11', time: '09:00', category: 'تحصيل عميل' }, { ref: 'custody-exp-1', type: 'out', amount: 50, reason: 'بنزين', date: '2026-10-12', time: '08:00', category: 'مصروف تشغيل' }] } }, techExpenses: { e1: { techId: 'tech-a', amount: 30, note: 'مواصلات', status: 'pending', at: '2026-10-12T08:00:00Z' }, e2: { techId: 'tech-a', amount: 70, note: 'قطعة', status: 'rejected', decisionNote: 'مفيش فاتورة', at: '2026-10-11T08:00:00Z' } } };
-  e = makeEnv({ rootId: 'techRoot', search: '?tab=account', data, fs: FS });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush(); await flush();
+  // 4) المقفولة: من السيرفر
+  await flush();
   text = e.root.textContent;
-  assert(text.includes('1,120') || text.includes('١٬١٢٠'), 'الرصيد = 1000 + 120 تحصيل محلي: ' + text.slice(0, 250));
-  assert(text.includes('بانتظار ظهورها'), 'تنبيه التحصيل المحلي');
+  assert(text.includes('أوامرك المقفولة (2)') && text.includes('#A8 — سامي') && text.includes('تلاجة توشيبا') && text.includes('اتقفل من الإدارة'), 'سجل المقفولة: ' + text.slice(0, 300));
+  assert(text.includes('اتقفلت الشهر ده') && text.includes('حصّلت الشهر ده'), 'إحصائيات الشهر');
+  // بعد الخروج والدخول (جهاز فاضي): السجل والرصيد بيرجعوا من السيرفر
+  e = makeEnv({ rootId: 'techRoot', search: '?tab=done', data: { wf_r: [], wf_c: [], wf_d: [] }, callImpl: accImpl }); run(e); await flush(); await flush();
+  assert(e.root.textContent.includes('#A8 — سامي'), 'السجل رجع من السيرفر حتى والجهاز فاضي');
+  // أوفلاين: آخر نسخة محفوظة
+  const keep = e.store;
+  e = makeEnv({ rootId: 'techRoot', search: '?tab=done', data: { wf_r: [] }, callImpl: {}, online: false, store: keep }); run(e); await flush();
+  assert(e.root.textContent.includes('#A8 — سامي') && e.root.textContent.includes('أوفلاين'), 'النسخة المحفوظة أوفلاين');
+
+  // 5) عهدتي: الرصيد من السيرفر + المصروفات + الحركات
+  data = mkData();
+  e = makeEnv({ rootId: 'techRoot', search: '?tab=account', data, callImpl: accImpl }); run(e); await flush(); await flush();
+  text = e.root.textContent;
+  assert(text.includes('١٬١٢٠') || text.includes('1,120'), 'الرصيد من السيرفر: ' + text.slice(0, 250));
   assert(text.includes('مواصلات') && text.includes('⏳ معلّق') && text.includes('❌ مرفوض') && text.includes('مفيش فاتورة'), 'مصروفاتي');
   assert(text.includes('تحصيل أمر 8') && text.includes('بنزين'), 'الحركات');
-  // إلغاء مصروف معلّق
   await btnOf(e.root, 'إلغاء').onclick(); await flush();
   assert.deepStrictEqual(e.fsDeletes[0], ['techExpenses', 'e1']);
-  // مصروف جديد
   const nums = all(e.root).filter((n) => n.tagName === 'INPUT'); nums.find((n) => n.placeholder === 'المبلغ (ج)').value = '45'; nums.find((n) => n.placeholder.includes('المصروف على إيه')).value = 'بنزين العربية';
   await btnOf(e.root, 'إرسال للاعتماد').onclick(); await flush();
   assert.strictEqual(e.fsWrites.length, 1); assert.deepStrictEqual([e.fsWrites[0][2].amount, e.fsWrites[0][2].status, e.fsWrites[0][2].techId], [45, 'pending', 'tech-a']);
-  // أوفلاين: المصروف يترفض برسالة
-  e = makeEnv({ rootId: 'techRoot', search: '?tab=account', data, fs: FS, online: false });
-  vm.runInNewContext(fs.readFileSync('tech-portal.js', 'utf8'), e.win); await flush();
+  e = makeEnv({ rootId: 'techRoot', search: '?tab=account', data, callImpl: accImpl, online: false }); run(e); await flush();
   const nums2 = all(e.root).filter((n) => n.tagName === 'INPUT'); nums2.find((n) => n.placeholder === 'المبلغ (ج)').value = '10'; nums2.find((n) => n.placeholder.includes('المصروف على إيه')).value = 'شاي';
   await btnOf(e.root, 'إرسال للاعتماد').onclick(); await flush();
   assert(e.msg.textContent.includes('مفيش نت') && e.fsWrites.length === 0, 'الأوفلاين: رسالة وبدون كتابة');
 
-  // 5) صفحة الإدارة: الاعتماد والرفض والإيداع والتسوية
+  // 6) صفحة الإدارة: الاعتماد والرفض والإيداع والتسوية
   data = mkData(); data.wf_wallet_tx = [{ id: 'a', wallet: 'كاش الورشة', type: 'in', amount: 5000 }, { id: 'b', wallet: 'عهدة أحمد', type: 'in', amount: 300 }];
   const FS2 = { techExpenses: { e1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 100, note: 'بنزين', status: 'pending', at: '2026-10-12T08:00:00Z' } } };
   const c = makeEnv({ rootId: 'custodyRoot', data, fs: FS2, uid: 'boss' });
@@ -178,7 +241,7 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   vm.runInNewContext(fs.readFileSync('custody-page.js', 'utf8'), c3.win); await flush(); await flush();
   assert(!btnOf(c3.root, 'اعتماد') && !btnOf(c3.root, 'إيداع'), 'بدون صلاحية: لا اعتماد ولا إيداع');
 
-  // 6) ملفات الصفحات والكاش
+  // 7) ملفات الصفحات والكاش
   const sw = fs.readFileSync('service-worker.js', 'utf8');
   ['tech.html', 'tech-portal.js', 'custody.html', 'custody-page.js'].forEach((f) => assert(sw.includes('"./' + f + '"'), f + ' في الكاش'));
   const th = fs.readFileSync('tech.html', 'utf8');
