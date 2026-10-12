@@ -23,4 +23,6 @@ debug-check.html
 official-compressor-import-summary.json
 staging-setup-tests.js
 .git
+.git/**
 .wrangler
+.wrangler/**
