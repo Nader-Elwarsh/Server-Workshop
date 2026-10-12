@@ -202,6 +202,109 @@ async function main() {
     await assertSucceeds(updateDoc(doc(staff, 'phoneIndex/01012345678'), { email: 'staff-fixed@example.com' }));
     await assertSucceeds(deleteDoc(doc(staff, 'phoneIndex/01012345678')));
 
+    // ---- الفني محدود النطاق (sc = a): أوامره المعيّنة المفتوحة فقط ----
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      const seed = [
+        ['staff/tech-a', { name: 'Tech A', role: 'tech', acl: 1, sc: 'a' }],
+        ['staff/tech-b', { name: 'Tech B', role: 'tech', acl: 1, sc: 'a' }],
+        ['staff/tech-claim', { name: 'Tech claim only', role: 'tech', acl: 1 }],
+        ['staff/promoted', { name: 'Was tech', role: 'manager', acl: 1, sc: 'w' }],
+        ['requests/o1', { techId: 'tech-a', closed: false, customerId: 'customer-alice', deviceId: 'device-a', no: 'A1', total: 100, deposit: 10, work: '' }],
+        ['requests/o2', { techId: 'tech-b', closed: false, customerId: 'customer-bob', no: 'B1', total: 100 }],
+        ['requests/o3', { techId: 'tech-a', closed: true, customerId: 'customer-alice', no: 'A0', total: 100 }],
+        ['requests/o4', { closed: false, customerId: 'customer-alice', no: 'N1', total: 100 }],
+        ['requests/o5', { techId: 'tech-a', closed: false, customerId: 'customer-alice', no: 'A5', total: 50 }],
+        ['techOrders/o1', { techId: 'tech-a', customer: { name: 'Alice' }, device: { type: 'washer' } }],
+        ['techOrders/o2', { techId: 'tech-b', customer: { name: 'Bob' }, device: { type: 'dryer' } }],
+        ['techOrders/o5', { techId: 'tech-a', customer: { name: 'Alice' }, device: {} }],
+        ['settings/global', { wallets: ['Cash'] }],
+        ['settings/wf_meta', { ts: 1, dev: 'x' }],
+        ['settings/wfkv_wf_e', { n: 1 }],
+        ['parts/p1', { name: 'Compressor', cost: 900 }],
+        ['treasury/t1', { amount: 100 }],
+        ['walletTx/w1', { amount: 100 }]
+      ];
+      for (const [pathName, value] of seed) await setDoc(doc(db, pathName), value);
+    });
+    const techA = env.authenticatedContext('tech-a').firestore();
+    const techB = env.authenticatedContext('tech-b').firestore();
+    const techClaimOnly = env.authenticatedContext('tech-claim', { sc: 'a' }).firestore();
+    const promoted = env.authenticatedContext('promoted', { sc: 'a' }).firestore(); // claim قديم، لكن مستند الموظف بيقول نطاق كامل
+    const mine = query(collection(techA, 'requests'), where('techId', '==', 'tech-a'), where('closed', '==', false));
+    const minePassing = await assertSucceeds(getDocs(mine));
+    if (minePassing.size !== 2) throw new Error('tech-a must see exactly his two open assigned orders, got ' + minePassing.size);
+    await assertSucceeds(getDoc(doc(techA, 'requests/o1')));
+    await assertFails(getDoc(doc(techA, 'requests/o2')));     // أمر فني تاني
+    await assertFails(getDoc(doc(techA, 'requests/o3')));     // مقفول
+    await assertFails(getDoc(doc(techA, 'requests/o4')));     // غير معيّن
+    await assertFails(getDocs(collection(techA, 'requests'))); // قائمة من غير فلتر
+    await assertFails(getDocs(query(collection(techA, 'requests'), where('closed', '==', false)))); // فلتر ناقص
+    await assertFails(getDocs(query(collection(techA, 'requests'), where('techId', '==', 'tech-b'), where('closed', '==', false))));
+    for (const col of ['customers', 'devices', 'parts', 'treasury', 'walletTx', 'invoices', 'tasks', 'partMoves', 'portalOrders', 'portalRequests', 'guestRequests']) {
+      await assertFails(getDocs(collection(techA, col)));
+    }
+    await assertFails(getDoc(doc(techA, 'customers/customer-alice')));
+    await assertFails(getDoc(doc(techA, 'devices/device-a')));
+    await assertFails(getDoc(doc(techA, 'parts/p1')));
+    await assertFails(getDoc(doc(techA, 'treasury/t1')));
+    await assertFails(getDoc(doc(techA, 'walletTx/w1')));
+    await assertFails(getDocs(collection(techA, 'staff')));
+    await assertFails(getDocs(collection(techA, 'staffAudit')));
+    await assertSucceeds(getDoc(doc(techA, 'accessConfig/roles')));
+    await assertSucceeds(getDoc(doc(techA, 'staff/tech-a')));
+    await assertFails(getDoc(doc(techA, 'staff/tech-b')));
+    // تعديل أوامره: الحقول المسموحة بس
+    await assertSucceeds(updateDoc(doc(techA, 'requests/o1'), { work: 'تغيير فلتر', parts: [{ name: 'فلتر', qty: 1, sell: 50 }], partsTotal: 50 }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { techId: 'tech-b' }));          // مايسلّمش الأمر لغيره
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { techId: 'tech-a', customerId: 'customer-bob' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { deposit: 999 }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { no: 'Z9' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { assignedBy: 'x' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { somethingNew: 1 }));
+    await assertFails(updateDoc(doc(techA, 'requests/o2'), { work: 'x' }));                   // أمر فني تاني
+    await assertFails(updateDoc(doc(techA, 'requests/o3'), { work: 'x' }));                   // مقفول
+    await assertFails(updateDoc(doc(techA, 'requests/o4'), { work: 'x' }));                   // غير معيّن
+    await assertFails(setDoc(doc(techA, 'requests/new'), { techId: 'tech-a', closed: false })); // مايفتحش أوامر
+    await assertFails(deleteDoc(doc(techA, 'requests/o1')));
+    await assertFails(setDoc(doc(techA, 'customers/customer-alice'), { name: 'hacked' }));
+    await assertFails(setDoc(doc(techA, 'parts/p1'), { name: 'hacked' }));
+    // عرض العميل/الجهاز لأوامره
+    const mineTO = await assertSucceeds(getDocs(query(collection(techA, 'techOrders'), where('techId', '==', 'tech-a'))));
+    if (mineTO.size !== 2) throw new Error('tech-a must see exactly his techOrders, got ' + mineTO.size);
+    await assertFails(getDoc(doc(techA, 'techOrders/o2')));
+    await assertFails(getDocs(collection(techA, 'techOrders')));
+    await assertFails(setDoc(doc(techA, 'techOrders/o1'), { techId: 'tech-a', customer: { name: 'x' } }));
+    await assertFails(updateDoc(doc(techA, 'techOrders/o1'), { techId: 'tech-b' }));
+    await assertFails(deleteDoc(doc(techA, 'techOrders/o2')));
+    // الإعدادات
+    await assertSucceeds(getDoc(doc(techA, 'settings/global')));
+    await assertSucceeds(getDoc(doc(techA, 'settings/wf_meta')));
+    await assertFails(getDoc(doc(techA, 'settings/wfkv_wf_e')));
+    await assertFails(getDocs(collection(techA, 'settings')));
+    await assertFails(setDoc(doc(techA, 'settings/global'), { wallets: [] }));
+    await assertSucceeds(setDoc(doc(techA, 'settings/wf_meta'), { ts: 2, dev: 'tech' }));
+    await assertFails(setDoc(doc(techA, 'settings/wf_meta'), { ts: 2, dev: 'tech', extra: 1 }));
+    // مفيش تسريب بين الفنيين
+    await assertSucceeds(getDoc(doc(techB, 'requests/o2')));
+    await assertFails(getDoc(doc(techB, 'requests/o1')));
+    // claim من غير حقل في المستند = محدود برضه؛ والمستند بيتقدّم على claim قديم
+    await assertFails(getDocs(collection(techClaimOnly, 'customers')));
+    await assertFails(getDoc(doc(techClaimOnly, 'requests/o1')));
+    await assertSucceeds(getDoc(doc(promoted, 'customers/customer-alice')));
+    await assertSucceeds(getDoc(doc(promoted, 'requests/o2')));
+    // الموظف الكامل مش اتأثر
+    await assertSucceeds(getDocs(collection(staff, 'requests')));
+    await assertSucceeds(updateDoc(doc(staff, 'requests/o2'), { techId: 'tech-a' }));
+    await assertSucceeds(getDocs(collection(staff, 'techOrders')));
+    await assertSucceeds(setDoc(doc(staff, 'techOrders/o9'), { techId: 'tech-a' }));
+    await assertSucceeds(getDocs(collection(staff, 'settings')));
+    // بعد قفل الأمر الفني يفقد القراءة والتعديل فورًا
+    await assertSucceeds(updateDoc(doc(techA, 'requests/o5'), { closed: true, paid: true, status: 'مكتمل' }));
+    await assertFails(getDoc(doc(techA, 'requests/o5')));
+    await assertFails(updateDoc(doc(techA, 'requests/o5'), { work: 'بعد القفل' }));
+    await assertSucceeds(deleteDoc(doc(techA, 'techOrders/o5')));
+
     // ---- phoneIndex: مرحلة 2 (firestore.rules.proposed) — القراءة للموظفين وصاحب الحساب فقط ----
     const PROPOSED = fs.readFileSync(path.join(__dirname, '..', 'firestore.rules.proposed'), 'utf8');
     const env2 = await initializeTestEnvironment({ projectId: PROJECT_ID + '-phase2', firestore: { host: '127.0.0.1', port: 8091, rules: PROPOSED } });
@@ -236,7 +339,7 @@ async function main() {
       await env2.cleanup();
     }
 
-    console.log('firestore-rules-emulator-tests: PASS (owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock + suspended staff + accessConfig/staffAudit lock)');
+    console.log('firestore-rules-emulator-tests: PASS (technician assigned-only scope + owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock + suspended staff + accessConfig/staffAudit lock)');
   } finally {
     await env.cleanup();
   }
