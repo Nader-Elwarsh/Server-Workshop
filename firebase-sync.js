@@ -61,6 +61,9 @@
   var isLogin = /login\.html$/.test(location.pathname);
   /* الوضع المحدود (فني «أوامره المعيّنة فقط»): السيرفر نفسه (قواعد Firestore) بيمنعه من قراءة أي حاجة غير أوامره المفتوحة المعيّنة له
      + عميل/جهاز كل أمر منهم (من techOrders). فالمزامنة بتنزّل دول بس، وبترفع تعديلات أوامره بس، ومفيش أي عملية إدارية. */
+  // نفس قايمة المنع اللي في firestore.rules (techOrderPatch)
+  var TECH_LOCKED = {}; ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal",
+    "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech"].forEach(function (f) { TECH_LOCKED[f] = 1; });
   var SCOPED = false, MODE_KEY = "wf_sync_mode", UID_KEY = "wf_sync_uid", wipedForMode = false, TECH_PAGES = /\/(tech|login|privacy|terms|index|requests|request|customers|customer|devices|device|route)\.html$|\/$/; // صفحات بتشتغل ببيانات الفني (أوامره وعملاؤها وأجهزتها). أي صفحة تانية بتحوّله لبوابته
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
@@ -270,7 +273,11 @@
             if (SCOPED) { // الفني: تحديث الحقول اللي اتغيّرت بس (القواعد بتسمح بحقول شغل الأمر فقط)
               if (!snap.exists) return { state: "gone", remote: null, remoteHash: null };
               var lrec = toDoc(job.record), rdata = snap.data(), patch = {}, any = false;
-              Object.keys(lrec).forEach(function (f) { if (stable(clean(rdata[f])) !== stable(clean(lrec[f]))) { patch[f] = lrec[f]; any = true; } });
+              // الحقول اللي القواعد مش بتسمح للفني يغيّرها مابتترفعش أصلًا (لو اختلفت على الجهاز لأي سبب، زي شكل تاريخ أو رقم،
+              // كانت بتخلّي السيرفر يرفض التعديل كله — الحالة والشغل والأجرة — والأمر يفضل مايتقفلش). نسخة السحابة هي اللي بتفضل ليها.
+              Object.keys(lrec).forEach(function (f) { if (TECH_LOCKED[f]) return; if (stable(clean(rdata[f])) !== stable(clean(lrec[f]))) { patch[f] = lrec[f]; any = true; } });
+              if (patch.status === "ملغي") { delete patch.status; any = Object.keys(patch).length > 0; }
+              job.patchKeys = Object.keys(patch);
               if (any) tx.update(job.ref, patch);
               return { state: "written", remote: remote, remoteHash: remoteHash };
             }
@@ -279,7 +286,7 @@
           })).catch(function (e) {
             if (SCOPED && e && e.code === "permission-denied" && job.baseHash === undefined) { rejectedNew.push(job.id); return { state: "gone", remote: null, remoteHash: null }; } // سجل جديد عمله الفني: الفني مايقدرش ينشئ
             if (SCOPED && e && e.code === "permission-denied") { // الأمر اتقفل/اتنقل لفني تاني؟ لو لسه مقروء يبقى السيرفر رفض التعديل نفسه
-              return withTimeout(job.ref.get()).then(function () { throw new Error("السيرفر رفض التعديل ده على الأمر (غير مسموح لحساب الفني)"); }, function () { return { state: "gone", remote: null, remoteHash: null }; });
+              return withTimeout(job.ref.get()).then(function () { throw new Error("السيرفر رفض تعديل الأمر " + ((job.record && job.record.no) || "") + " (الحقول: " + ((job.patchKeys || []).join("، ") || "؟") + ") — انشر قواعد Firestore الأخيرة"); }, function () { return { state: "gone", remote: null, remoteHash: null }; });
             }
             throw e;
           }).then(function (result) {

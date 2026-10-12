@@ -202,24 +202,24 @@ function seedCloud() {
   assert.deepStrictEqual(cloud.denied, []);
   assert.strictEqual(cloud.data.customers["c-o1"].name, "عميل c-o1", "عميل السحابة زي ما هو");
 
-  /* ---- 4) تعديل غير مسموح (عربون) يترفض من السيرفر، والأمر يفضل عنده مع رسالة خطأ ---- */
-  rows = JSON.parse(ls.getItem("wf_r")); rows.find((r) => r.id === "o2").deposit = 9999; ls.setItem("wf_r", JSON.stringify(rows));
+  /* ---- 4) حقل ممنوع (العربون) اتغيّر على الجهاز مع شغل مسموح: الممنوع مابيترفعش، والمسموح بيوصل (من غير ما السيرفر يرفض الأمر كله) ---- */
+  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o2"), { deposit: 9999, work: "غيّرت الموتور", status: "مكتمل" }); ls.setItem("wf_r", JSON.stringify(rows));
   cloud.denied.length = 0;
   await s.sb.wfCloudSyncNow();
+  assert.deepStrictEqual(cloud.denied, [], "مفيش رفض: " + cloud.denied);
   assert.strictEqual(cloud.data.requests.o2.deposit, 10, "العربون ما اتغيرش في السحابة");
-  assert.ok(cloud.denied.some((x) => /update requests\/o2/.test(x)), "السيرفر رفض التعديل");
-  assert.ok(JSON.parse(ls.getItem("wf_r")).some((r) => r.id === "o2"), "الأمر لسه عند الفني (مش اتشال)");
-  rows = JSON.parse(ls.getItem("wf_r")); rows.find((r) => r.id === "o2").deposit = 10; ls.setItem("wf_r", JSON.stringify(rows));
+  assert.deepStrictEqual([cloud.data.requests.o2.work, cloud.data.requests.o2.status], ["غيّرت الموتور", "مكتمل"], "الشغل والحالة وصلوا للإدارة");
+  await s.sb.wfCloudSyncNow();
+  assert.strictEqual(JSON.parse(ls.getItem("wf_r")).find((r) => r.id === "o2").deposit, 10, "الجهاز رجع لعربون السحابة");
 
-  /* ---- 5) القفل مش من الجهاز: لو الجهاز حاول يقفل بنفسه السيرفر بيرفض. القفل بيتعمل من دالة السيرفر،
+  /* ---- 5) القفل مش من الجهاز: لو الجهاز علّم الأمر مقفول بنفسه مابيترفعش. القفل بيتعمل من دالة السيرفر،
            وبعدها المزامنة بتشيل الأمر وعميله وجهازه من جهاز الفني ---- */
   cloud.denied.length = 0;
-  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: true, paid: true }); ls.setItem("wf_r", JSON.stringify(rows));
+  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: true, paid: true, status: "ملغي" }); ls.setItem("wf_r", JSON.stringify(rows));
   await s.sb.wfCloudSyncNow();
-  assert.ok(cloud.denied.some((x) => /update requests\/o1/.test(x)), "القفل المباشر من الجهاز مرفوض");
-  assert.notStrictEqual(cloud.data.requests.o1.closed, true);
-  rows = JSON.parse(ls.getItem("wf_r")); Object.assign(rows.find((r) => r.id === "o1"), { closed: false }); delete rows.find((r) => r.id === "o1").paid; ls.setItem("wf_r", JSON.stringify(rows));
-  await s.sb.wfCloudSyncNow();
+  assert.deepStrictEqual(cloud.denied, []);
+  assert.notStrictEqual(cloud.data.requests.o1.closed, true, "القفل المباشر من الجهاز ما وصلش");
+  assert.notStrictEqual(cloud.data.requests.o1.status, "ملغي", "والإلغاء كمان");
   Object.assign(cloud.data.requests.o1, { closed: true, paid: true, status: "مكتمل", closedByTech: "tech-a" }); delete cloud.data.techOrders.o1; // = techCloseOrder
   cloud.denied.length = 0;
   await s.sb.wfCloudSyncNow();
