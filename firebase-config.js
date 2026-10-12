@@ -31,9 +31,11 @@
       try {
         if (!w.document || !w.document.body || w.document.getElementById("wfEnvBanner")) return;
         var b = w.document.createElement("div"); b.id = "wfEnvBanner";
-        b.style.cssText = "position:fixed;bottom:0;left:0;right:0;z-index:2147483000;padding:5px 8px;text-align:center;font:700 12px sans-serif;direction:rtl;color:#fff;pointer-events:none;background:" + (cfg ? "#c2570c" : "#b00020");
+        b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483000;padding:5px 8px;text-align:center;font:700 12px sans-serif;direction:rtl;color:#fff;pointer-events:none;background:" + (cfg ? "#c2570c" : "#b00020");
         b.textContent = cfg ? "🧪 بيئة تجريبية — بيانات وهمية (" + cfg.projectId + ")" : "⛔ بيئة تجريبية غير مجهّزة — لم يتم الاتصال بأي بيانات";
         w.document.body.appendChild(b);
+        // فوق مش تحت: عشان مايغطيش شريط الأقسام السفلي
+        try { w.document.body.style.paddingTop = "26px"; } catch (_) {}
       } catch (_) {}
     };
     if (w.document && w.document.readyState === "loading") w.document.addEventListener("DOMContentLoaded", show); else show();
