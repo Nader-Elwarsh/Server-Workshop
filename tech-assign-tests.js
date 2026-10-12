@@ -58,6 +58,28 @@ const USERS = [{ uid: 't1', name: 'أحمد', role: 'tech', roleName: 'فني', 
   vm.runInNewContext(fs.readFileSync('app-tech-assign.js', 'utf8'), e3.win);
   await assert.rejects(e3.win.WFTech.assign(['r1'], 't1'), /not_allowed/);
 
+  // أجور الفنيين: سعر النوع × نسبة الفني، أو سعر خاص، أو مبلغ يدوي؛ وتغيير الفني بيعيد الحساب لو مش يدوي
+  {
+    const pr = [{ id: 'p1', no: 7, customerId: 'c1', techId: 't1' }, { id: 'p2', no: 8, customerId: 'c1', techId: 't1', closed: true }];
+    const ep = makeWin({ requests: pr, dirUsers: USERS });
+    ep.win.WFPerm.can = (k) => k !== 'techpay.manage';
+    vm.runInNewContext(fs.readFileSync('app-tech-assign.js', 'utf8'), ep.win);
+    await assert.rejects(ep.win.WFTechPay.setOrderPay('p1', 'jt1', null), /not_allowed/);
+    ep.win.WFPerm.can = () => true;
+    vm.runInNewContext(fs.readFileSync('app-tech-assign.js', 'utf8'), ep.win);
+    const TP = ep.win.WFTechPay;
+    assert.strictEqual(TP.save({ types: [{ id: 'jt1', name: 'معاينة', amount: 100 }, { id: 'jt2', name: 'عطل كبير', amount: 400 }], techs: { t1: { pct: 50, amounts: { jt2: 300 } } } }), true);
+    assert(TP.config().since, 'تاريخ بداية النظام اتسجل');
+    assert.deepStrictEqual([TP.payFor('jt1', 't1'), TP.payFor('jt2', 't1'), TP.payFor('jt1', 't2'), TP.payFor('nope', 't1')], [50, 300, 100, 0]);
+    await TP.setOrderPay('p1', 'jt1', null);
+    assert.deepStrictEqual([pr[0].jobType, pr[0].jobTypeName, pr[0].techPay, pr[0].techPayManual], ['jt1', 'معاينة', 50, false]);
+    await ep.win.WFTech.assign(['p1'], 't2'); assert.strictEqual(pr[0].techPay, 100, 'فني تاني = نسبته هو');
+    await TP.setOrderPay('p1', 'jt1', 75); assert.deepStrictEqual([pr[0].techPay, pr[0].techPayManual], [75, true]);
+    await ep.win.WFTech.assign(['p1'], 't1'); assert.strictEqual(pr[0].techPay, 75, 'المبلغ اليدوي مايتغيّرش');
+    await TP.setOrderPay('p2', 'jt2', null); assert.strictEqual(pr[1].techPay, 300, 'الأجرة تتحدد حتى بعد القفل');
+    await TP.setOrderPay('p2', '', null); assert.deepStrictEqual([pr[1].jobType, pr[1].techPay], ['', 0]);
+  }
+
   // 2) صفحة التوزيع
   reqs = [{ id: 'r1', no: 1, customerId: 'c1', deviceId: 'd1', fault: 'مش بتسخن' }, { id: 'r2', no: 2, customerId: 'c2', closed: true }, { id: 'r3', no: 3, customerId: 'c2', techId: 't2', techName: 'محمد' }, { id: 'r4', no: 4, customerId: 'c2', status: 'ملغي' }];
   const d = makeWin({ requests: reqs, dirUsers: USERS });
@@ -97,5 +119,5 @@ const USERS = [{ uid: 't1', name: 'أحمد', role: 'tech', roleName: 'فني', 
   await flush(); await flush();
   assert(f.msg.textContent.includes('staffDirectory') && f.msg.textContent.includes('مش منشورة'), 'explains undeployed function');
   failing = false; assert.strictEqual((await f.win.WFTech.directory()).length, 2, 'empty result not cached -> retry works');
-  console.log('tech-assign-tests: PASS (تعيين/إلغاء/تخطي المقفول، كاش الفنيين أوفلاين، صفحة التوزيع، بدون صلاحية)');
+  console.log('tech-assign-tests: PASS (أجور الفنيين، تعيين/إلغاء/تخطي المقفول، كاش الفنيين أوفلاين، صفحة التوزيع، بدون صلاحية)');
 })().catch((e) => { console.error(e); process.exit(1); });

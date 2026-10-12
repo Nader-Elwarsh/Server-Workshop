@@ -63,7 +63,7 @@
       var ok = await w.updateRequestRecordAsync(ids[i], function (_, r) {
         if (r.closed || r.paid) return false;
         if (r.closed === undefined) r.closed = false; // قواعد السيرفر بتفلتر أوامر الفني بـ closed == false
-        if (uid) { r.techId = uid; r.techName = tech.name || ""; r.techWallet = tech.wallet || ""; r.assignedAt = when; r.assignedBy = by; }
+        if (uid) { r.techId = uid; r.techName = tech.name || ""; r.techWallet = tech.wallet || ""; r.assignedAt = when; r.assignedBy = by; if (r.jobType && !r.techPayManual) r.techPay = payFor(r.jobType, uid); }
         else { r.techId = ""; r.techName = ""; r.techWallet = ""; r.assignedAt = ""; r.assignedBy = by; }
         return true;
       });
@@ -71,6 +71,42 @@
     }
     return { done: done, skipped: skipped };
   }
+  /* ---------- أجور الفنيين ----------
+     الإعداد في مفتاح مستقل wf_techpay (بيتزامن بين أجهزة الإدارة بس؛ الفني ما بيقراش نسب زمايله):
+     أنواع الشغل بمبلغ ثابت لكل نوع، ولكل فني نسبة من المبلغ (افتراضي 100%) أو مبلغ خاص بيه لنوع معيّن.
+     على الأمر: jobType (نوع الشغل) + techPay (المبلغ) + techPayManual (المالك/المدير كتبه بإيده).
+     المبلغ بيتحسب وقت تحديد النوع (أو تغيير الفني) ويتخزن على الأمر، فتعديل الأسعار بعدين ما بيغيّرش أوامر قديمة. */
+  var PAY_KEY = "wf_techpay";
+  function payConfig() {
+    var c = {}; try { c = JSON.parse(w.WFStorage.getItem(PAY_KEY)) || {}; } catch (e) {}
+    return { types: Array.isArray(c.types) ? c.types.filter(function (t) { return t && t.id && t.name; }) : [], techs: c.techs && typeof c.techs === "object" ? c.techs : {}, since: c.since || "" };
+  }
+  function savePayConfig(cfg) {
+    try { w.WFStorage.setItem(PAY_KEY, JSON.stringify({ types: cfg.types || [], techs: cfg.techs || {}, since: payConfig().since || new Date().toISOString(), updatedAt: new Date().toISOString() })); return true; }
+    catch (e) { alert("تعذر الحفظ: " + (e && e.message || e)); return false; }
+  }
+  function payTypeName(id) { var t = payConfig().types.filter(function (x) { return x.id === id; })[0]; return t ? t.name : ""; }
+  function payFor(typeId, techUid) {
+    var cfg = payConfig(), t = cfg.types.filter(function (x) { return x.id === typeId; })[0];
+    if (!t) return 0;
+    var mine = (techUid && cfg.techs[techUid]) || {};
+    if (mine.amounts && mine.amounts[typeId] !== undefined && mine.amounts[typeId] !== "" && isFinite(+mine.amounts[typeId])) return Math.round(+mine.amounts[typeId] * 100) / 100;
+    var pct = isFinite(+mine.pct) && mine.pct !== "" && mine.pct !== undefined ? +mine.pct : 100;
+    return Math.round((+t.amount || 0) * pct) / 100;
+  }
+  function canPay() { return !!(w.WFPerm && w.WFPerm.can("techpay.manage")); }
+  /* يحدد نوع الشغل و/أو الأجرة على أمر. manual = رقم مكتوب باليد (null = حساب تلقائي من النوع). مسموح حتى بعد قفل الأمر. */
+  function setOrderPay(orderId, typeId, manual) {
+    if (!canPay()) return Promise.reject(new Error("not_allowed"));
+    return w.updateRequestRecordAsync(orderId, function (_, r) {
+      r.jobType = typeId || ""; r.jobTypeName = typeId ? payTypeName(typeId) : "";
+      if (manual !== null && manual !== undefined && manual !== "") { r.techPay = Math.max(0, Math.round(+manual * 100) / 100); r.techPayManual = true; }
+      else { r.techPay = typeId ? payFor(typeId, r.techId) : 0; r.techPayManual = false; }
+      r.techPayAt = new Date().toISOString(); r.techPayBy = myUid();
+      return true;
+    });
+  }
+  w.WFTechPay = { config: payConfig, save: savePayConfig, typeName: payTypeName, payFor: payFor, canPay: canPay, setOrderPay: setOrderPay };
   w.WFTech = { directory: directory, assign: assign, canAssign: canAssign, lastError: function () { return lastError; } };
 
   /* ---------- لوحة request.html ---------- */
@@ -95,7 +131,8 @@
       box.appendChild(cur);
       if (!canAssign() || r.closed || r.paid) {
         if (r.closed || r.paid) box.appendChild(mk("div", "font-size:13px;opacity:.7;margin-top:4px", "الأمر مقفول: لا يمكن تغيير الفني."));
-        if (!canAssign() && !r.techName) box.style.display = "none"; else box.style.display = "";
+        if (!canAssign() && !r.techName && !canPay()) box.style.display = "none"; else box.style.display = "";
+        payBlock(box, r);
         return;
       }
       var users = await directory();
@@ -112,7 +149,34 @@
       };
       box.appendChild(sel); box.appendChild(btn); box.appendChild(msg);
       if (!users.length) box.appendChild(mk("div", "font-size:13px;opacity:.75;margin-top:6px", "مفيش قائمة فنيين متحمّلة (محتاج نت مرة واحدة)."));
+      payBlock(box, r);
     } finally { rendering = false; }
+  }
+  /* أجرة الفني على الأمر: نوع الشغل (من الإعداد) والمبلغ المحسوب، أو مبلغ يدوي. للمالك/المدير بصلاحية techpay.manage. */
+  function payBlock(box, r) {
+    if (!canPay() && !(r.techPay > 0)) return;
+    var wrap = mk("div", "margin-top:12px;padding-top:10px;border-top:1px dashed var(--border,#cbd5e1)");
+    wrap.appendChild(mk("b", "", "💰 أجرة الفني على الأمر"));
+    var cur = r.techPay > 0 ? (+r.techPay).toFixed(2) + " ج" + (r.jobType ? " — " + (payTypeName(r.jobType) || "نوع محذوف") : "") + (r.techPayManual ? " (مبلغ يدوي)" : "") : (r.jobType ? "0 ج" : "لسه ما اتحددش نوع الشغل");
+    wrap.appendChild(mk("div", "margin-top:4px", cur));
+    if (!canPay()) { box.appendChild(wrap); return; }
+    var cfg = payConfig();
+    if (!cfg.types.length) { wrap.appendChild(mk("div", "font-size:13px;opacity:.8;margin-top:4px", "حدّد أنواع الشغل وأسعارها الأول من «الفنيين والعهدة» ← ⚙️ أجور الفنيين.")); box.appendChild(wrap); return; }
+    var sel = mk("select", "margin-top:8px;width:100%;box-sizing:border-box;padding:9px;border-radius:10px");
+    var o0 = mk("option", "", "— نوع الشغل —"); o0.value = ""; sel.appendChild(o0);
+    cfg.types.forEach(function (t) { var o = mk("option", "", t.name + " — " + payFor(t.id, r.techId) + " ج" + (r.techId ? "" : " (قبل تعيين فني)")); o.value = t.id; if (t.id === r.jobType) o.selected = true; sel.appendChild(o); });
+    var man = mk("input", "margin-top:8px;width:100%;box-sizing:border-box;padding:9px;border-radius:10px"); man.type = "number"; man.min = "0"; man.step = "any"; man.inputMode = "decimal";
+    man.placeholder = "مبلغ يدوي (اختياري — بيلغي الحساب التلقائي)"; if (r.techPayManual) man.value = r.techPay;
+    var save = mk("button", "margin-top:8px", "💾 حفظ الأجرة"); save.type = "button"; save.className = "primary small-btn";
+    var msg = mk("div", "margin-top:6px;font-size:13px", "");
+    save.onclick = function () {
+      var v = man.value.trim();
+      if (v !== "" && (!isFinite(+v) || +v < 0)) { msg.textContent = "اكتب مبلغ صحيح."; return; }
+      save.disabled = true;
+      setOrderPay(r.id, sel.value, v === "" ? null : +v).then(function (ok) { msg.textContent = ok ? "✅ اتحفظت الأجرة." : "تعذّر الحفظ."; save.disabled = false; rendering = false; render(); }, function () { msg.textContent = "مفيش صلاحية."; save.disabled = false; });
+    };
+    wrap.appendChild(sel); wrap.appendChild(man); wrap.appendChild(save); wrap.appendChild(msg);
+    box.appendChild(wrap);
   }
   function boot() {
     var tries = 0;

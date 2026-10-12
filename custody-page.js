@@ -63,6 +63,165 @@
       return fsdb().collection("techExpenses").doc(e.id).update({ status: "rejected", decidedBy: myUid(), decidedAt: new Date().toISOString(), decisionNote: noteText || "" }).catch(function (err) { throw "فشل الرفض (" + ((err && err.code) || "شبكة") + ")"; });
     }
 
+    /* ---------- أجور الفنيين ---------- */
+    function P() { return window.WFTechPay; }
+    function canPay() { return !!(P() && P().canPay()); }
+    function r2(n) { return Math.round((+n || 0) * 100) / 100; }
+    function payState(uid) { // المستحق = أجور الأوامر المقفولة − اللي اتصرف (حركات صرف أجور ليه مش محذوفة)
+      var closed = A(window.K.r).filter(function (r) { return r && r.techId === uid && r.closed && r.status !== "ملغي"; });
+      var priced = closed.filter(function (r) { return +r.techPay > 0 || r.jobType; });
+      var earned = priced.reduce(function (s, r) { return s + (+r.techPay || 0); }, 0);
+      var ym = monthOf(new Date()), earnedMonth = priced.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; }).reduce(function (s, r) { return s + (+r.techPay || 0); }, 0);
+      var since = P().config().since;
+      var pays = A(window.K.wtx).filter(function (x) { return x && !x.deleted && x.source === "techpay" && x.techPayFor === uid; });
+      var paid = pays.reduce(function (s, x) { return s + (x.type === "out" ? +x.amount || 0 : -(+x.amount || 0)); }, 0);
+      return { earned: r2(earned), earnedMonth: r2(earnedMonth), paid: r2(paid), due: r2(earned - paid), unpriced: closed.filter(function (r) { return !(+r.techPay > 0) && !r.jobType && since && String(r.closedAt || r.paidAt || "") >= since; }), priced: priced, pays: pays };
+    }
+    function addPayout(u, wallet, amount, note) {
+      var t = nowParts(), fromCustody = wallet === u.wallet;
+      var tx = { id: window.id(), refKey: null, manualOverride: true, deleted: false, type: "out", amount: amount, wallet: wallet, category: "أجور فنيين",
+        reason: "👷 أجرة " + (u.name || "") + (fromCustody ? " (من عهدته)" : ""), note: note || "", source: "techpay", techPayFor: u.uid, techPayName: u.name || "", date: t.date, time: t.time, createdAt: t.iso };
+      if (!window.put(window.K.wtx, A(window.K.wtx).concat(tx))) return false;
+      try { window.auditLog && window.auditLog("صرف أجرة فني", "فني", u.uid, (u.name || "") + " " + amount + " ج من " + wallet); } catch (e) {}
+      return true;
+    }
+    function payBox(u) {
+      var ps = payState(u.uid), box = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-sunken,#f1f5ff)");
+      box.appendChild(mk("div", "font-size:13px;opacity:.8", "💰 مستحقات الفني (أجور الأوامر)"));
+      box.appendChild(mk("div", "font-size:24px;font-weight:800;color:" + (ps.due < 0 ? "#b91c1c" : "#0b57d0"), money(ps.due)));
+      box.appendChild(mk("div", "font-size:13px", "اتكسب: " + money(ps.earned) + " • اتصرف: " + money(ps.paid) + " • الشهر ده: " + money(ps.earnedMonth)));
+      if (ps.unpriced.length) box.appendChild(mk("div", "font-size:13px;color:#b45309;margin-top:4px", "⚠️ " + ps.unpriced.length + " أمر مقفول لسه من غير أجرة"));
+      var row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px");
+      if (canSettle()) row.appendChild(btn("💸 صرف مستحقات", BTN, function () { payoutForm(u, ps); }));
+      var k = "pay_" + u.uid;
+      row.appendChild(btn(state.open[k] ? "إخفاء التفاصيل" : "🧾 تفاصيل الأجور", BTN2, function () { state.open[k] = !state.open[k]; draw(); }));
+      box.appendChild(row);
+      if (state.open[k]) {
+        var cfg = P().config();
+        if (ps.unpriced.length) {
+          box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "أوامر من غير أجرة — حدّد نوع الشغل:"));
+          if (!cfg.types.length) box.appendChild(mk("div", "font-size:13px;opacity:.8", "ضيف أنواع الشغل الأول من «⚙️ أجور الفنيين» فوق."));
+          ps.unpriced.slice(0, 20).forEach(function (r) {
+            var line = mk("div", "display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;padding:5px 0;border-bottom:1px dashed #cbd5e1");
+            var a = mk("a", "flex:1;min-width:140px", "#" + (r.no || "") + " " + custName(r.customerId) + " — " + money(r.total)); a.href = "request.html?id=" + encodeURIComponent(r.id);
+            line.appendChild(a);
+            if (cfg.types.length) {
+              var sel = mk("select", "padding:5px;border-radius:8px;max-width:170px"); var o0 = mk("option", "", "نوع الشغل…"); o0.value = ""; sel.appendChild(o0);
+              cfg.types.forEach(function (t) { var o = mk("option", "", t.name + " (" + P().payFor(t.id, u.uid) + ")"); o.value = t.id; sel.appendChild(o); });
+              sel.onchange = function () { if (!sel.value) return; sel.disabled = true; P().setOrderPay(r.id, sel.value, null).then(function () { say("✅ اتحددت أجرة الأمر #" + (r.no || "")); draw(); }, function () { say("تعذّر الحفظ.", true); sel.disabled = false; }); };
+              line.appendChild(sel);
+            }
+            box.appendChild(line);
+          });
+        }
+        var recent = ps.priced.slice().sort(function (a, b) { return String(b.closedAt || "").localeCompare(String(a.closedAt || "")); }).slice(0, 15);
+        if (recent.length) {
+          box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "آخر الأجور:"));
+          recent.forEach(function (r) {
+            var line = mk("div", "display:flex;gap:6px;font-size:13px;padding:4px 0;border-bottom:1px dashed #cbd5e1");
+            var a = mk("a", "flex:1", "#" + (r.no || "") + " " + custName(r.customerId) + " — " + (P().typeName(r.jobType) || (r.techPayManual ? "يدوي" : "")) ); a.href = "request.html?id=" + encodeURIComponent(r.id);
+            line.appendChild(a); line.appendChild(mk("b", "", money(r.techPay))); box.appendChild(line);
+          });
+        }
+        var pays = ps.pays.slice().sort(function (a, b) { return String((b.date || "") + (b.time || "")).localeCompare(String((a.date || "") + (a.time || ""))); }).slice(0, 10);
+        if (pays.length) {
+          box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "آخر مرات الصرف:"));
+          pays.forEach(function (x) { box.appendChild(mk("div", "font-size:13px", "• " + (x.date || "") + " — " + money(x.amount) + " من " + (x.wallet || "") + (x.note ? " (" + x.note + ")" : ""))); });
+        }
+      }
+      return box;
+    }
+    function payoutForm(u, ps) {
+      var modal = mk("div", "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px");
+      var box = mk("div", "background:var(--bg-elevated,#fff);color:inherit;max-width:420px;width:100%;border-radius:14px;padding:16px;max-height:90vh;overflow:auto");
+      box.appendChild(mk("b", "font-size:17px", "💸 صرف مستحقات " + (u.name || "")));
+      box.appendChild(mk("p", "font-size:13px;opacity:.8", "المستحق دلوقتي: " + money(ps.due) + ". تقدر تصرف جزء أو الكل، من محفظة الورشة أو يخصمها من العهدة اللي معاه."));
+      var ws = mk("select", INP), ww = workshopWallets();
+      ww.forEach(function (w) { var o = mk("option", "", w); o.value = w; ws.appendChild(o); });
+      if (u.wallet) { var oc = mk("option", "", "يخصمها من عهدته (" + u.wallet + ")"); oc.value = u.wallet; ws.appendChild(oc); }
+      var def = typeof window.resolveDefaultWallet === "function" ? window.resolveDefaultWallet() : ""; if (def && ww.indexOf(def) > -1) ws.value = def;
+      var amt = mk("input", INP + ";margin-top:8px"); amt.type = "number"; amt.min = "0"; amt.step = "any"; amt.inputMode = "decimal"; amt.placeholder = "المبلغ (ج)"; amt.value = Math.max(0, ps.due);
+      var note = mk("input", INP + ";margin-top:8px"); note.placeholder = "ملاحظة (اختياري) — مثلًا: أجرة أسبوع";
+      var msg = mk("p", "color:#b91c1c;min-height:20px;margin:6px 0");
+      var row = mk("div", "display:flex;gap:8px");
+      row.appendChild(btn("تأكيد الصرف", BTN + ";flex:1", function () {
+        var v = r2(amt.value);
+        if (!ws.value) { msg.textContent = "مفيش محفظة تختار منها."; return; }
+        if (!isFinite(v) || v <= 0) { msg.textContent = "اكتب مبلغ صحيح."; return; }
+        if (v > ps.due && !confirm("المبلغ أكبر من المستحق (" + money(ps.due) + "). تكمّل؟ (الزيادة هتبقى سلفة عليه)")) return;
+        if (!addPayout(u, ws.value, v, note.value.trim())) { msg.textContent = "تعذّر الحفظ."; return; }
+        modal.remove(); say("✅ اتصرف " + money(v) + " لـ " + (u.name || "")); draw();
+      }));
+      row.appendChild(btn("إلغاء", BTN2, function () { modal.remove(); }));
+      box.appendChild(ws); box.appendChild(amt); box.appendChild(note); box.appendChild(msg); box.appendChild(row);
+      modal.appendChild(box); modal.onclick = function (e) { if (e.target === modal) modal.remove(); };
+      document.body.appendChild(modal);
+    }
+    /* إعداد الأجور: أنواع الشغل بسعرها الأساسي، ولكل فني نسبة أو سعر خاص لنوع معيّن */
+    function payConfigForm() {
+      var cfg = JSON.parse(JSON.stringify(P().config())), techs = state.users.filter(function (u) { return u.scope === "assigned" || u.wallet; });
+      var modal = mk("div", "position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:12px");
+      var box = mk("div", "background:var(--bg-elevated,#fff);color:inherit;max-width:560px;width:100%;border-radius:14px;padding:16px;max-height:92vh;overflow:auto");
+      modal.appendChild(box);
+      var openT = {}, fresh = [];
+      function refresh() { fresh.forEach(function (f) { f(); }); }
+      function paint() {
+        fresh = [];
+        while (box.firstChild) box.removeChild(box.firstChild);
+        box.appendChild(mk("b", "font-size:18px", "⚙️ أجور الفنيين"));
+        box.appendChild(mk("p", "font-size:13px;opacity:.8;margin:4px 0 10px", "حدّد أنواع الشغل وسعر كل نوع. أجرة الفني على الأمر = سعر النوع × نسبته (أو سعر خاص ليه). وتقدر دايمًا تكتب مبلغ يدوي على أي أمر من صفحة الأمر. تغيير الأسعار هنا مش بيغيّر أوامر اتسعّرت قبل كده."));
+        box.appendChild(mk("b", "display:block;margin:6px 0", "🧰 أنواع الشغل"));
+        cfg.types.forEach(function (t, i) {
+          var line = mk("div", "display:flex;gap:6px;margin:4px 0;align-items:center");
+          var n = mk("input", INP + ";flex:2"); n.value = t.name; n.placeholder = "اسم النوع"; n.oninput = function () { t.name = n.value; }; n.onchange = refresh;
+          var a = mk("input", INP + ";flex:1"); a.type = "number"; a.min = "0"; a.step = "any"; a.inputMode = "decimal"; a.value = t.amount; a.placeholder = "السعر"; a.oninput = function () { t.amount = a.value; }; a.onchange = refresh;
+          line.appendChild(n); line.appendChild(a);
+          line.appendChild(btn("🗑️", BTN2 + ";padding:6px 9px", function () { if (!confirm("تحذف نوع «" + t.name + "»؟ الأوامر اللي اتسعّرت بيه هتفضل بأجرتها.")) return; cfg.types.splice(i, 1); paint(); }));
+          box.appendChild(line);
+        });
+        box.appendChild(btn("➕ نوع شغل", BTN2 + ";margin:4px 0 12px", function () { cfg.types.push({ id: "jt" + Date.now().toString(36), name: "", amount: "" }); paint(); }));
+        if (!cfg.types.length) box.appendChild(mk("div", "font-size:13px;opacity:.75;margin-bottom:10px", "أمثلة: معاينة 100 • تركيب قطعة غيار 200 • عطل كبير 400"));
+        box.appendChild(mk("b", "display:block;margin:6px 0", "👷 نسبة كل فني"));
+        if (!techs.length) box.appendChild(mk("div", "font-size:13px;opacity:.75", "مفيش فنيين."));
+        techs.forEach(function (u) {
+          var tc = cfg.techs[u.uid] = cfg.techs[u.uid] || {}, d = mk("details", "margin:4px 0;padding:8px;border:1px solid var(--border,#d5dbe8);border-radius:10px");
+          d.open = !!openT[u.uid]; d.ontoggle = function () { openT[u.uid] = d.open; };
+          var pct = tc.pct === undefined || tc.pct === "" ? 100 : tc.pct, ov = Object.keys(tc.amounts || {}).filter(function (k) { return tc.amounts[k] !== "" && tc.amounts[k] != null; }).length;
+          var sm = mk("summary", "cursor:pointer;font-weight:700"); d.appendChild(sm);
+          fresh.push(function () { var pc = tc.pct === undefined || tc.pct === "" ? 100 : tc.pct, n = Object.keys(tc.amounts || {}).filter(function (k) { return tc.amounts[k] !== "" && tc.amounts[k] != null; }).length; sm.textContent = (u.name || u.uid) + " — " + pc + "%" + (n ? " • " + n + " سعر خاص" : ""); });
+          var l1 = mk("label", "display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px", "النسبة من سعر النوع %");
+          var pi = mk("input", INP + ";max-width:110px"); pi.type = "number"; pi.min = "0"; pi.step = "any"; pi.value = pct; pi.oninput = function () { tc.pct = pi.value === "" ? 100 : +pi.value; }; pi.onchange = refresh;
+          l1.appendChild(pi); d.appendChild(l1);
+          if (cfg.types.length) d.appendChild(mk("div", "font-size:12px;opacity:.75;margin-top:6px", "سعر خاص لنوع معيّن (سيبه فاضي = بالنسبة):"));
+          cfg.types.forEach(function (t) {
+            var l = mk("label", "display:flex;gap:8px;align-items:center;margin-top:4px;font-size:13px"), ln = mk("span", "flex:1"); l.appendChild(ln);
+            var ai = mk("input", INP + ";max-width:110px"); ai.type = "number"; ai.min = "0"; ai.step = "any"; tc.amounts = tc.amounts || {};
+            ai.value = tc.amounts[t.id] != null ? tc.amounts[t.id] : "";
+            fresh.push(function () { var pc = tc.pct === undefined || tc.pct === "" ? 100 : +tc.pct; ln.textContent = (t.name || "—") + " (بالنسبة: " + r2((+t.amount || 0) * pc / 100) + ")"; ai.placeholder = String(r2((+t.amount || 0) * pc / 100)); });
+            ai.oninput = function () { if (ai.value === "") delete tc.amounts[t.id]; else tc.amounts[t.id] = +ai.value; }; ai.onchange = refresh;
+            l.appendChild(ai); d.appendChild(l);
+          });
+          box.appendChild(d);
+        });
+        var msg = mk("p", "color:#b91c1c;min-height:18px;margin:8px 0"), row = mk("div", "display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg-elevated,#fff);padding-top:6px");
+        row.appendChild(btn("💾 حفظ", BTN + ";flex:1", function () {
+          var bad = cfg.types.filter(function (t) { return !String(t.name || "").trim() || !isFinite(+t.amount) || t.amount === "" || +t.amount < 0; });
+          if (bad.length) { msg.textContent = "كل نوع لازم يبقى ليه اسم وسعر صحيح."; return; }
+          cfg.types = cfg.types.map(function (t) { return { id: t.id, name: String(t.name).trim(), amount: r2(t.amount) }; });
+          Object.keys(cfg.techs).forEach(function (k) { var tc = cfg.techs[k]; if (!isFinite(+tc.pct) || tc.pct === "" || tc.pct == null) tc.pct = 100; tc.pct = +tc.pct; var am = tc.amounts || {}; Object.keys(am).forEach(function (x) { if (!cfg.types.some(function (t) { return t.id === x; }) || !isFinite(+am[x])) delete am[x]; }); });
+          if (!P().save(cfg)) { msg.textContent = "تعذّر الحفظ."; return; }
+          try { window.auditLog && window.auditLog("إعداد أجور الفنيين", "إعدادات", "techpay", cfg.types.length + " نوع"); } catch (e) {}
+          modal.remove(); say("✅ اتحفظ إعداد الأجور."); draw();
+        }));
+        row.appendChild(btn("إلغاء", BTN2, function () { modal.remove(); }));
+        box.appendChild(msg); box.appendChild(row);
+        refresh();
+      }
+      paint();
+      modal.onclick = function (e) { if (e.target === modal) modal.remove(); };
+      document.body.appendChild(modal);
+    }
+
     /* ---------- الرسم ---------- */
     function techCard(u) {
       var card = mk("div", CARD), wal = u.wallet;
@@ -112,6 +271,7 @@
         }
       }
       card.appendChild(money1);
+      if (canPay()) card.appendChild(payBox(u));
       return card;
     }
     function moveForm(u, kind) {
@@ -168,7 +328,10 @@
       root.appendChild(mk("h3", "margin:6px 0", "🧾 مصروفات بانتظار الاعتماد (" + state.pending.length + ")"));
       state.pending.forEach(function (e) { root.appendChild(expenseRow(e)); });
       if (!state.pending.length) root.appendChild(mk("p", "opacity:.7", "مفيش مصروفات معلّقة. 👌"));
-      root.appendChild(mk("h3", "margin:14px 0 6px", "👷 الفنيون"));
+      var th = mk("div", "display:flex;justify-content:space-between;align-items:center;gap:8px;margin:14px 0 6px;flex-wrap:wrap");
+      th.appendChild(mk("h3", "margin:0", "👷 الفنيون"));
+      if (canPay()) th.appendChild(btn("⚙️ أجور الفنيين", BTN2, payConfigForm));
+      root.appendChild(th);
       var techs = state.users.filter(function (u) { return u.scope === "assigned" || u.wallet; });
       techs.forEach(function (u) { root.appendChild(techCard(u)); });
       if (!techs.length) root.appendChild(mk("p", "opacity:.7", "مفيش فنيين لسه: اعمل مستخدم بنطاق «أوامره المعيّنة فقط» أو حدد له محفظة عهدة من «المستخدمون والصلاحيات»."));

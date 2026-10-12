@@ -249,7 +249,7 @@
       var tiles = el("div", "tp-tiles tp-tiles-3");
       tiles.appendChild(tile("اتقفلت الشهر ده", st.closedMonth || 0, "tp-t-green"));
       tiles.appendChild(tile("حصّلت الشهر ده", money(st.collectedMonth || 0), "tp-t-blue"));
-      tiles.appendChild(tile("أجرة الشهر ده", money(st.laborMonth || 0), "tp-t-amber"));
+      tiles.appendChild(a && a.pay ? tile("أجرتك الشهر ده", money(a.pay.earnedMonth || 0), "tp-t-amber") : tile("مصنعية الشهر ده", money(st.laborMonth || 0), "tp-t-amber"));
       box.appendChild(tiles);
       var hist = (a && a.history) || [];
       box.appendChild(el("h3", "tp-h3", "✅ أوامرك المقفولة (" + hist.length + ")"));
@@ -264,6 +264,8 @@
         var f = el("div", "tp-row tp-wrap tp-foot");
         f.appendChild(el("span", "tp-chip tp-st-done", "الإجمالي " + money(h.total)));
         if (h.collected) f.appendChild(el("span", "tp-chip tp-st-work", "حصّلت " + money(h.collected) + (h.wallet ? " • " + h.wallet : "")));
+        if (h.priced) f.appendChild(el("span", "tp-chip tp-st-new", "👷 أجرتك " + money(h.pay) + (h.jobType ? " • " + h.jobType : "")));
+        else if (a && a.pay) f.appendChild(el("span", "tp-chip", "أجرتك لسه ما اتحددتش"));
         if (!h.byTech) f.appendChild(el("span", "tp-chip", "اتقفل من الإدارة"));
         c.appendChild(f);
         box.appendChild(c);
@@ -422,10 +424,15 @@
       box.appendChild(pc);
 
       var mc = block("💰 الحساب");
-      mc.appendChild(kv("الأجرة", money(r.labor))); mc.appendChild(kv("القطع", money(r.partsTotal)));
+      mc.appendChild(kv("المصنعية (على العميل)", money(r.labor))); mc.appendChild(kv("القطع", money(r.partsTotal)));
       mc.appendChild(kv("الإجمالي", money(r.total))); mc.appendChild(kv("العربون", money(r.deposit)));
       var rem = kv("المتبقي على العميل", money(remainOf(r))); rem.className = "tp-kv tp-kv-total"; mc.appendChild(rem);
       box.appendChild(mc);
+      // أجرة الفني نفسه على الأمر (المالك/المدير بيحددها) — منفصلة عن حساب العميل
+      var pyc = block("👷 أجرتك على الأمر");
+      if (+r.techPay > 0 || r.jobType) { var pk = kv(r.jobTypeName || (r.techPayManual ? "مبلغ محدد" : "الأجرة"), money(r.techPay)); pk.className = "tp-kv tp-kv-total"; pyc.appendChild(pk); }
+      else pyc.appendChild(el("div", "tp-muted", "لسه ما اتحددتش — الإدارة بتحددها حسب نوع الشغل."));
+      box.appendChild(pyc);
 
       if (!locked && can("requests.close")) {
         var cl = el("div", "tp-card tp-close"); cl.appendChild(el("h3", "tp-card-title", "🔒 تحصيل وقفل الأمر"));
@@ -478,6 +485,19 @@
       if (a && a.stats && a.stats.pendingExpenses) hero.appendChild(el("div", "tp-hero-note", "⏳ مصروفات مستنية اعتماد: " + money(a.stats.pendingExpenses)));
       if (!w) hero.appendChild(el("div", "tp-hero-warn", "مفيش محفظة عهدة متحددة لحسابك — اطلب من المسؤول يحددها."));
       box.appendChild(hero);
+      if (a && a.pay) { // مستحقاتي: أجور الأوامر اللي اتقفلت − اللي اتصرف لي
+        var pv = a.pay, pc2 = block("💰 مستحقاتي");
+        var dk = kv("المستحق ليك دلوقتي", money(pv.due)); dk.className = "tp-kv tp-kv-total"; pc2.appendChild(dk);
+        pc2.appendChild(kv("أجرتك الشهر ده", money(pv.earnedMonth))); pc2.appendChild(kv("إجمالي اللي اتكسب", money(pv.earned))); pc2.appendChild(kv("اتصرف لك", money(pv.paid)));
+        if (pv.openPay) pc2.appendChild(kv("أوامر مفتوحة متسعّرة (لما تتقفل)", money(pv.openPay)));
+        if (pv.unpriced) pc2.appendChild(el("div", "tp-small-t tp-muted", "⏳ " + pv.unpriced + " أمر مقفول الشهر ده لسه أجرته ما اتحددتش."));
+        if (pv.payouts && pv.payouts.length) {
+          var pd = el("details", "tp-mt"); pd.appendChild(el("summary", "", "آخر مرات الصرف (" + pv.payouts.length + ")"));
+          pv.payouts.forEach(function (x) { pd.appendChild(el("div", "tp-small-t", "• " + (x.date || "") + " — " + money(x.amount) + (x.note ? " (" + x.note + ")" : ""))); });
+          pc2.appendChild(pd);
+        }
+        box.appendChild(pc2);
+      }
 
       var fc = el("details", "tp-card tp-add"); fc.appendChild(el("summary", "", "➕ تسجيل مصروف (بيستنى اعتماد الإدارة)"));
       var amt = el("input", "tp-input"); amt.type = "number"; amt.min = "0"; amt.step = "any"; amt.inputMode = "decimal"; amt.placeholder = "المبلغ (ج)";

@@ -87,7 +87,7 @@ assert.strictEqual(core.scopeOf(cfgS, { role: 'owner', acl: 1, scope: 'assigned'
 assert.strictEqual(core.scopeOf(core.defaultConfig(), { role: 'tech', acl: 1 }), 'all');
 assert.strictEqual(core.normalizeConfig({ roles: { owner: { name: 'm', perms: [], scope: 'assigned' } } }).roles.owner.scope, 'all');
 assert.strictEqual(core.normalizeConfig({ roles: { x1: { name: 'x', perms: [], scope: 'bogus' } } }).roles.x1.scope, 'all');
-assert.deepStrictEqual(core.KEYS.slice(-3), ['requests.assign', 'custody.approve', 'custody.settle'], 'new perms appended at the end (masks stay valid)');
+assert.deepStrictEqual(core.KEYS.slice(-4), ['requests.assign', 'custody.approve', 'custody.settle', 'techpay.manage'], 'new perms appended at the end (masks stay valid)');
 assert.strictEqual(core.KEYS.indexOf('data.wipe'), 49, 'older indexes unchanged');
 assert.deepStrictEqual(core.fromMask(core.toMask(core.KEYS.slice(0, 50))).length, 50, 'old 50-bit masks still decode');
 assert.strictEqual(core.PAGES['dispatch.html'], 'requests.assign');

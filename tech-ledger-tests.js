@@ -116,6 +116,18 @@ function makeDb(seed) {
   // بعد ربع ساعة: الأمر المقفول من جهاز إدارة ولسه حركته ناقصة يتكمّل
   clock = new Date("2026-10-12T10:30:00.000Z");
   assert.strictEqual((await L.account("t1", {})).healed, 1);
+  // أجور الفني: المكسوب من الأوامر المقفولة − المصروف له (حركات techpay مش محذوفة)
+  Object.assign(db.data.requests.r1, { jobType: "jt1", techPay: 200 }); Object.assign(db.data.requests.old, { techPay: 150, techPayManual: true });
+  db.data.requests.r2.jobType = "jt0"; db.data.requests.r2.techPay = 0; // معاينة مجانية: متسعّرة بصفر
+  db.data.requests.r6 = { techId: "t1", no: "A6", status: "جديد", closed: false, techPay: 70, jobType: "jt1" };
+  db.data.walletTx.p1 = { wallet: "كاش الورشة", type: "out", amount: 100, source: "techpay", techPayFor: "t1", date: "2026-10-12", note: "أسبوع", deleted: false };
+  db.data.walletTx.p2 = { wallet: "كاش الورشة", type: "out", amount: 500, source: "techpay", techPayFor: "t1", date: "2026-10-12", deleted: true };
+  db.data.walletTx.p3 = { wallet: "كاش الورشة", type: "out", amount: 40, source: "techpay", techPayFor: "t2", date: "2026-10-12", deleted: false };
+  const pa = (await L.account("t1", {})).pay;
+  assert.deepStrictEqual([pa.earned, pa.paid, pa.due, pa.earnedMonth, pa.unpriced, pa.openPay, pa.payouts.length], [350, 100, 250, 350, 1, 70, 1]);
+  const ph = (await L.account("t1", {})).history.filter((h) => h.no === "A1")[0];
+  assert.deepStrictEqual([ph.pay, ph.priced], [200, true]);
+  delete db.data.requests.r6;
   // فني تاني مايشوفش حساب غيره، والمالك يشوف
   await fail(L.account("t2", { uid: "t1" }), "custody_only");
   const byBoss = await L.account("boss", { uid: "t1" });

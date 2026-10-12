@@ -13,7 +13,7 @@ const copy = (o) => (o === undefined ? undefined : JSON.parse(JSON.stringify(o, 
 const plain = (v) => JSON.stringify(v, (k, x) => (x instanceof TS ? x.d.toISOString() : x));
 const ISO = (d) => d.d.toISOString();
 
-const TECH_FORBIDDEN = ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal", "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech"];
+const TECH_FORBIDDEN = ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal", "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech", "jobType", "jobTypeName", "techPay", "techPayManual", "techPayAt", "techPayBy"];
 const sameVal = (a, b) => plain(a) === plain(b);
 
 function makeCloud(seed) {
