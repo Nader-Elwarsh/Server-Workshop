@@ -261,7 +261,10 @@ async function main() {
     await assertFails(updateDoc(doc(techA, 'requests/o1'), { deposit: 999 }));
     await assertFails(updateDoc(doc(techA, 'requests/o1'), { no: 'Z9' }));
     await assertFails(updateDoc(doc(techA, 'requests/o1'), { assignedBy: 'x' }));
-    await assertFails(updateDoc(doc(techA, 'requests/o1'), { somethingNew: 1 }));
+    await assertSucceeds(updateDoc(doc(techA, 'requests/o1'), { visit: '2026-10-12T10:00', frozenAt: '2026-10-12T10:00:00Z', cancelReason: 'x' })); // الموعد وأي حقل شغل تاني مسموح
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { depositWallet: 'x' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { techWallet: 'x' }));
+    await assertFails(updateDoc(doc(techA, 'requests/o1'), { source: 'portal' }));
     await assertFails(updateDoc(doc(techA, 'requests/o2'), { work: 'x' }));                   // أمر فني تاني
     await assertFails(updateDoc(doc(techA, 'requests/o3'), { work: 'x' }));                   // مقفول
     await assertFails(updateDoc(doc(techA, 'requests/o4'), { work: 'x' }));                   // غير معيّن
@@ -269,6 +272,37 @@ async function main() {
     await assertFails(deleteDoc(doc(techA, 'requests/o1')));
     await assertFails(setDoc(doc(techA, 'customers/customer-alice'), { name: 'hacked' }));
     await assertFails(setDoc(doc(techA, 'parts/p1'), { name: 'hacked' }));
+    // حساب العهدة والمصروفات
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      await setDoc(doc(db, 'techWallets/tech-a'), { uid: 'tech-a', wallet: 'عهدة أ', balance: 100, entries: [] });
+      await setDoc(doc(db, 'techWallets/tech-b'), { uid: 'tech-b', wallet: 'عهدة ب', balance: 5, entries: [] });
+      await setDoc(doc(db, 'techExpenses/e-a'), { techId: 'tech-a', amount: 10, note: 'بنزين', status: 'pending', at: '2026-10-12T10:00:00Z' });
+      await setDoc(doc(db, 'techExpenses/e-a2'), { techId: 'tech-a', amount: 10, note: 'قطعة', status: 'approved', at: '2026-10-12T10:00:00Z' });
+      await setDoc(doc(db, 'techExpenses/e-b'), { techId: 'tech-b', amount: 10, note: 'بنزين', status: 'pending', at: '2026-10-12T10:00:00Z' });
+    });
+    await assertSucceeds(getDoc(doc(techA, 'techWallets/tech-a')));
+    await assertFails(getDoc(doc(techA, 'techWallets/tech-b')));
+    await assertFails(getDocs(collection(techA, 'techWallets')));
+    await assertFails(setDoc(doc(techA, 'techWallets/tech-a'), { balance: 999999 }));
+    await assertSucceeds(getDocs(query(collection(techA, 'techExpenses'), where('techId', '==', 'tech-a'))));
+    await assertFails(getDocs(collection(techA, 'techExpenses')));
+    await assertFails(getDoc(doc(techA, 'techExpenses/e-b')));
+    const EXP = { techId: 'tech-a', techName: 'A', wallet: 'عهدة أ', amount: 25, note: 'بنزين للعربية', status: 'pending', at: '2026-10-12T11:00:00Z' };
+    await assertSucceeds(setDoc(doc(techA, 'techExpenses/new1'), EXP));
+    await assertFails(setDoc(doc(techA, 'techExpenses/new2'), Object.assign({}, EXP, { status: 'approved' })));   // مايعتمدش لنفسه
+    await assertFails(setDoc(doc(techA, 'techExpenses/new3'), Object.assign({}, EXP, { techId: 'tech-b' })));    // باسم فني تاني
+    await assertFails(setDoc(doc(techA, 'techExpenses/new4'), Object.assign({}, EXP, { amount: -5 })));
+    await assertFails(setDoc(doc(techA, 'techExpenses/new5'), Object.assign({}, EXP, { amount: 0 })));
+    await assertFails(setDoc(doc(techA, 'techExpenses/new6'), Object.assign({}, EXP, { extra: 1 })));
+    await assertFails(updateDoc(doc(techA, 'techExpenses/e-a'), { amount: 1 }));                                   // مايعدّلش
+    await assertFails(updateDoc(doc(techA, 'techExpenses/e-a'), { status: 'approved' }));
+    await assertSucceeds(deleteDoc(doc(techA, 'techExpenses/e-a')));                                              // يلغي المعلّق
+    await assertFails(deleteDoc(doc(techA, 'techExpenses/e-a2')));                                                // المعتمد لأ
+    await assertFails(deleteDoc(doc(techA, 'techExpenses/e-b')));
+    await assertSucceeds(updateDoc(doc(staff, 'techExpenses/e-b'), { status: 'approved' }));                       // الإدارة تعتمد
+    await assertSucceeds(setDoc(doc(staff, 'techWallets/tech-a'), { uid: 'tech-a', balance: 1 }));
+
     // عرض العميل/الجهاز لأوامره
     const mineTO = await assertSucceeds(getDocs(query(collection(techA, 'techOrders'), where('techId', '==', 'tech-a'))));
     if (mineTO.size !== 2) throw new Error('tech-a must see exactly his techOrders, got ' + mineTO.size);
