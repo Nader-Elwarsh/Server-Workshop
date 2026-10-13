@@ -224,7 +224,7 @@ function createTechLedger(deps) {
       const c = custs[r.customerId] || {}, d = devs[r.deviceId] || {};
       return { id: r.id, no: r.no || "", customer: c.name || "", device: [d.type, d.brand, d.model].filter(Boolean).join(" "), fault: String(r.fault || "").slice(0, 120), work: String(r.work || "").slice(0, 200),
         status: r.status || "", total: r2(r.total), deposit: r2(r.deposit), collected: r.paid ? collectedOf(r) : 0, wallet: String(r.closeWallet || ""), closedAt: iso(r.closedAt || r.paidAt), byTech: r.closedByTech === target,
-        pay: r2(r.techPay), jobType: String(r.jobTypeName || ""), priced: num(r.techPay) > 0 || !!r.jobType };
+        pay: r2(r.techPay), jobType: String(r.jobTypeName || ""), priced: num(r.techPay) !== 0 || !!r.jobType };
     });
 
     const eSnap = await db.collection("techExpenses").where("techId", "==", target).get();
@@ -242,16 +242,21 @@ function createTechLedger(deps) {
       pendingExpenses: r2(allExp.filter((e) => e.status === "pending" && e.pay === "custody").reduce((a, e) => a + e.amount, 0))
     };
     // أجور الفني: المكسوب من الأوامر المقفولة (الأجرة اللي المالك/المدير حددها) − اللي اتصرف له (حركات source=techpay)
-    const priced = closed.filter((r) => r.status !== "ملغي" && (num(r.techPay) > 0 || r.jobType));
-    const earned = r2(priced.reduce((a, r) => a + num(r.techPay), 0));
+    const priced = closed.filter((r) => r.status !== "ملغي" && (num(r.techPay) !== 0 || r.jobType));
+    // حصص أجرة اتثبتت له على أوامر اتعملها مرتجع (حتى لو الأمر دلوقتي مع فني تاني)
+    const shSnap = await db.collection("requests").where("payShareUids", "array-contains", target).get();
+    const shares = [];
+    shSnap.docs.forEach((d) => { const r = d.data() || {}; if (r.status === "ملغي") return; (Array.isArray(r.payShares) ? r.payShares : []).forEach((sh) => { if (sh && sh.uid === target) shares.push({ orderId: d.id, no: String(r.no || ""), amount: r2(sh.amount), note: String(sh.note || "").slice(0, 120), at: iso(sh.at) }); }); });
+    const sharesSum = r2(shares.reduce((a, x) => a + x.amount, 0));
+    const earned = r2(priced.reduce((a, r) => a + num(r.techPay), 0) + sharesSum);
     const pSnap = await db.collection("walletTx").where("techPayFor", "==", target).get();
     const paidRows = pSnap.docs.map((d) => d.data() || {}).filter((x) => x.deleted !== true && x.source === "techpay");
     const paid = r2(paidRows.reduce((a, x) => a + (x.type === "in" ? -num(x.amount) : num(x.amount)), 0));
     // مصاريف دفعها من جيبه واتعتمدت: الورشة مديونة له بيها (بتتضاف للمستحق)
     const reimb = r2(allExp.filter((e) => e.pay === "own" && e.status === "approved").reduce((a, e) => a + e.amount, 0));
     const pendingReimb = r2(allExp.filter((e) => e.pay === "own" && e.status === "pending").reduce((a, e) => a + e.amount, 0));
-    const pay = { earned, reimb, pendingReimb, paid, due: r2(earned + reimb - paid), earnedMonth: r2(priced.filter((r) => inMonth(r.closedAt || r.paidAt)).reduce((a, r) => a + num(r.techPay), 0)),
-      unpriced: closed.filter((r) => r.status !== "ملغي" && !(num(r.techPay) > 0) && !r.jobType && inMonth(r.closedAt || r.paidAt)).length,
+    const pay = { earned, reimb, pendingReimb, paid, due: r2(earned + reimb - paid), earnedMonth: r2(priced.filter((r) => inMonth(r.closedAt || r.paidAt)).reduce((a, r) => a + num(r.techPay), 0) + shares.filter((x) => inMonth(x.at)).reduce((a, x) => a + x.amount, 0)), shares: shares.slice(0, 30),
+      unpriced: closed.filter((r) => r.status !== "ملغي" && !(num(r.techPay) !== 0) && !r.jobType && inMonth(r.closedAt || r.paidAt)).length,
       openPay: r2(open.reduce((a, r) => a + num(r.techPay), 0)),
       payouts: paidRows.map((x) => ({ amount: r2(x.amount), date: x.date || "", note: String(x.note || "").slice(0, 120) })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20) };
     return { uid: target, name: String(staff.name || ""), wallet, balance, entries, history, expenses, stats, pay, healed: healed.length, at: now().toISOString() };
