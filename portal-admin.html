@@ -177,7 +177,7 @@ function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function ms(v){if(!v)return 0;if(v.toDate)return v.toDate().getTime();if(typeof v.seconds==="number")return v.seconds*1000;return Date.parse(v)||0}
 function fdt(v){var t=ms(v);return t?new Date(t).toLocaleDateString("ar-EG",{day:"numeric",month:"short",year:"numeric"}):""}
-function money(n){return(+n||0).toLocaleString("ar-EG")}
+function money(n){return(+n||0).toLocaleString("en-US",{maximumFractionDigits:2})}
 function byNew(a,b){return ms(b.createdAt)-ms(a.createdAt)}
 /* ترتيب المقالات (نفس ترتيب بوابة العميل بالظبط): المثبّت الأول، وبعدين الجديد اللي لسه ماتحددلوش ترتيب، وبعدين اللي ليه ترتيب يدوي (order) تصاعديًا. */
 function postCmp(a,b){var pa=a.pinned?1:0,pb=b.pinned?1:0;if(pa!==pb)return pb-pa;var oa=typeof a.order==="number",ob=typeof b.order==="number";if(oa&&ob&&a.order!==b.order)return a.order-b.order;if(oa!==ob)return oa?1:-1;return ms(b.createdAt)-ms(a.createdAt)}

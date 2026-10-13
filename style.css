@@ -715,3 +715,46 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .part-add-external,.route-quickclose-parts .part-add-external{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px;align-items:stretch}
 .part-add-external input[id$="ExtName"],.part-add-external select,.part-add-external button{grid-column:1/-1;width:100%}
 [data-theme="dark"] .part-add-external{background:rgba(224,166,60,.10);border-color:#b7822c;color:var(--text)}
+
+/* =========================================================
+   مراجعة الوضعين (فاتح/داكن): متغيرات كانت بتتستخدم من الصفحات ومش متعرّفة (فكانت بترجع لأبيض ثابت)
+   + الأسطح الملوّنة الفاتحة الثابتة بقت درجات شفافة فوق الخلفية الداكنة بدل مربعات بيضا/وردي فاقع.
+   ========================================================= */
+:root{--panel:var(--bg-elevated);--bg-soft:var(--bg-sunken);--accent:var(--accent-text);--danger:var(--danger-text);--primary:#0b57d0;--link:#0b57d0}
+[data-theme="dark"]{--primary:#5fb0ff;--link:#8ec9ff}
+[data-theme="dark"] .back{color:var(--link)}
+[data-theme="dark"] #wfSyncStatusPanel,[data-theme="dark"] #wfSyncStatusPanel summary,[data-theme="dark"] #wfSyncDetails>div{border-color:var(--border)!important}
+[data-theme="dark"] .notice,[data-theme="dark"] .backup-reminder-banner{background:rgba(224,179,74,.12);border:1px solid rgba(224,179,74,.45);color:var(--text)}
+[data-theme="dark"] .quick-add{background:rgba(95,176,255,.08);border-color:#2f5c86;color:var(--text)}
+[data-theme="dark"] .quick-add-btn.quick-add-open{background:rgba(255,107,107,.15);color:var(--danger-text)}
+[data-theme="dark"] .part-row-external{background:rgba(224,166,60,.10);color:var(--text)}
+[data-theme="dark"] .simple-value-stat{background:rgba(95,176,255,.08);border-color:#2f5c86;color:var(--text)}
+[data-theme="dark"] .simple-value-stat b{color:var(--text-muted)}
+[data-theme="dark"] .report-card{background:var(--bg-sunken)}
+[data-theme="dark"] .report-card-warn{background:rgba(224,179,74,.12);border-color:rgba(224,179,74,.45);color:var(--text)}
+[data-theme="dark"] .report-card-warn b{color:var(--warn-text)}
+[data-theme="dark"] .simple-line-warn,[data-theme="dark"] .report-list-row.report-danger{background:rgba(255,107,107,.12);border-color:rgba(255,107,107,.4);color:var(--danger-text)}
+[data-theme="dark"] .simple-line-warn b,[data-theme="dark"] .report-list-row.report-danger b{color:var(--danger-text)}
+[data-theme="dark"] .report-section h3,[data-theme="dark"] .report-table-full th{color:var(--text-muted)}
+[data-theme="dark"] .route-contact-unavailable{background:rgba(255,107,107,.14)!important;color:#ff9d9d!important;border-color:rgba(255,107,107,.45)!important}
+[data-theme="dark"] .route-contact-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important;border-color:rgba(224,179,74,.45)!important}
+[data-theme="dark"] .route-contact-needspart{background:rgba(74,222,128,.12)!important;color:#7ee2a6!important;border-color:rgba(74,222,128,.4)!important}
+[data-theme="dark"] .route-badge-done,[data-theme="dark"] .route-badge-needspart{background:rgba(74,222,128,.14)!important;color:#7ee2a6!important}
+[data-theme="dark"] .route-badge-visited{background:rgba(95,176,255,.14)!important;color:#8ec9ff!important}
+[data-theme="dark"] .route-badge-pending,[data-theme="dark"] .route-badge-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important}
+[data-theme="dark"] .route-badge-offsched{background:rgba(251,146,60,.14)!important;color:#fdba74!important}
+[data-theme="dark"] .route-badge-workshop{background:rgba(167,139,250,.16)!important;color:#c4b5fd!important}
+[data-theme="dark"] .route-badge-unavailable{background:rgba(255,107,107,.14)!important;color:#ff9d9d!important}
+/* كشف حساب العميل: الخلايا كانت بتتزنق وتركب على بعض في الموبايل (التاريخ فوق رقم الأمر) — سطر واحد لكل خلية والجدول يتمرر أفقيًا */
+.statement-table th,.statement-table td{white-space:nowrap;padding:7px 8px;font-size:12px;border-bottom:1px solid var(--border);text-align:right}
+.statement-table thead th{background:var(--bg-sunken);color:var(--text-muted);font-weight:700}
+.statement-table tfoot td,.statement-table tr:last-child td{font-weight:700}
+/* الأزرار الثانوية كانت بنفس لون خلفية الصناديق اللي جواها (قطع الغيار/الحساب) فبتبان كنص عادي مش زرار */
+.secondary,.icon-btn{border:1px solid var(--border)}
+.parts-box .secondary,.request-parts .secondary,.request-account .secondary,.route-quickclose-parts .secondary,.part-add-external .secondary{background:var(--bg-elevated)}
+[data-theme="dark"] .report-card span{color:var(--text-muted)}
+/* متابعة العملاء الساكتين: كارت عادي (كان بياخد تنسيق كروت القوائم بعمودين فالاسم بيتزنق في عمود ضيق) */
+.followup-card{display:block;border-top:4px solid #e0b029}
+.followup-card .item-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.followup-card .followup-line{margin-top:6px;font-size:14px;line-height:1.6}
+.followup-card .actions{margin-top:10px}

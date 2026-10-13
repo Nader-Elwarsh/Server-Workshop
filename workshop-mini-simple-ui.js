@@ -326,7 +326,7 @@
       const unpaidCount = cnt("unpaid");
       el.innerHTML = `
         <section class="simple-home ps-context-target" data-ps-title="ملخص العملاء">
-          <div class="simple-summary-title"><b>👤 العملاء</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
+          <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
           ${dupGroupsBar()}
           ${unpaidCount > 0
             ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showCustomerBucket('unpaid')" role="button" tabindex="0"><span>💰 ${unpaidCount} عميل عليه متبقي غير محصل</span><b>عرض ›</b></div>`
@@ -442,7 +442,7 @@
       const cnt = (b) => all.filter(d => deviceBucketMatch(d, b)).length;
       const types = [...new Set(all.map(d => d.type).filter(Boolean))];
       const recurringCount = cnt("recurring");
-      el.innerHTML = `<section class="simple-home ps-context-target" data-ps-title="ملخص الأجهزة"><div class="simple-summary-title"><b>🔧 الأجهزة</b><span>${all.length} إجمالي ${psActions("ملخص الأجهزة")}</span></div>
+      el.innerHTML = `<section class="simple-home ps-context-target" data-ps-title="ملخص الأجهزة"><div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص الأجهزة")}</span></div>
         ${recurringCount > 0
           ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showDeviceBucket('recurring')" role="button" tabindex="0"><span>🔁 ${recurringCount} جهاز يتكرر عطله</span><b>عرض ›</b></div>`
           : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أجهزة متكررة العطل حاليًا</span></div>`}
@@ -585,7 +585,7 @@
 
       el.innerHTML = `
         <section class="simple-home ps-context-target" data-ps-title="ملخص المخزن">
-          <div class="simple-summary-title"><b>📦 المخزن</b><span>${all.length} صنف ${psActions("ملخص المخزن")}</span></div>
+          <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} صنف ${psActions("ملخص المخزن")}</span></div>
           <div class="report-cards report-cards-summary">
             <div class="report-card report-card-btn report-card-value" data-wf-event="click" data-wf-code="showPartsValueBreakdown('buy')" role="button" tabindex="0"><span>💰 قيمة المخزون بالتكلفة</span><b>${stockValueBuy.toFixed(2)} ج</b></div>
             <div class="report-card report-card-btn report-card-value" data-wf-event="click" data-wf-code="showPartsValueBreakdown('use')" role="button" tabindex="0"><span>💵 قيمة المخزون ببيع الاستخدام</span><b>${stockValueUse.toFixed(2)} ج</b></div>
@@ -796,7 +796,7 @@
 
     el.innerHTML = `
       <section class="simple-home request-simple-home ps-context-target" data-ps-title="ملخص أوامر الشغل">
-        <div class="simple-summary-title"><b>🛠️ أوامر الشغل</b><span>${all.length} إجمالي ${psActions("ملخص أوامر الشغل")}</span></div>
+        <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص أوامر الشغل")}</span></div>
         ${counts.overdue > 0
           ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showRequestBucket('overdue')" role="button" tabindex="0"><span>⚠️ ${counts.overdue} أمر متأخر عن موعده</span><b>عرض ›</b></div>`
           : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أوامر متأخرة حاليًا</span></div>`}

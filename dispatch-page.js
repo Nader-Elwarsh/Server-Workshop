@@ -53,7 +53,7 @@
         body.appendChild(mk("b", "", "#" + (x.r.no || "") + " — " + x.cname + (x.phone ? " (" + x.phone + ")" : "")));
         if (x.dev) body.appendChild(mk("div", "font-size:14px", "🔧 " + x.dev));
         if (x.r.fault) body.appendChild(mk("div", "font-size:13px;opacity:.8", String(x.r.fault).slice(0, 90)));
-        body.appendChild(mk("div", "font-size:13px;margin-top:2px;" + (x.r.techId ? "color:#1d4ed8" : "color:#b45309"), x.r.techId ? "👷 " + (x.r.techName || "فني") : "بدون فني"));
+        body.appendChild(mk("div", "font-size:13px;margin-top:2px;" + (x.r.techId ? "color:var(--primary,#1d4ed8)" : "color:var(--warn-text,#b45309)"), x.r.techId ? "👷 " + (x.r.techName || "فني") : "بدون فني"));
         card.appendChild(cb); card.appendChild(body); root.appendChild(card);
       });
       if (list.length > state.limit) { var more = mk("button", "width:100%;margin:4px 0 8px", "عرض المزيد (" + (list.length - state.limit) + " أمر كمان)"); more.type = "button"; more.className = "secondary"; more.onclick = function () { state.limit += 100; draw(); }; root.appendChild(more); }

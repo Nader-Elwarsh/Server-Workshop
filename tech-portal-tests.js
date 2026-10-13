@@ -257,7 +257,7 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   c.win.WFTech = { directory: async () => [{ uid: 'tech-a', name: 'أحمد', role: 'tech', roleName: 'فني', wallet: 'عهدة أحمد', scope: 'assigned' }, { uid: 'boss', name: 'المالك', wallet: '', scope: 'all' }], lastError: '' };
   vm.runInNewContext(fs.readFileSync('custody-page.js', 'utf8'), c.win); await flush(); await flush();
   text = c.root.textContent;
-  assert(text.includes('بانتظار الاعتماد (1)') && text.includes('٣٠٠ ج'), 'كارت الفني ورصيده: ' + text.slice(0, 300));
+  assert(text.includes('بانتظار الاعتماد (1)') && text.includes('300 ج'), 'كارت الفني ورصيده: ' + text.slice(0, 300));
   assert(!text.includes('المالك'), 'غير الفني مش ظاهر');
   assert(text.includes('اليوم 1') && text.includes('متأخر 1'), 'جدول الفني');
   await btnOf(c.root, 'اعتماد').onclick(); await flush(); await flush();

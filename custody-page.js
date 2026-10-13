@@ -24,7 +24,7 @@
     function btn(label, css, fn) { var b = mk("button", css || "", label); b.type = "button"; if (fn) b.onclick = fn; return b; }
     function say(t, bad) { msgBox.textContent = ""; if (!t) return; msgBox.appendChild(mk("p", "padding:8px 10px;border-radius:10px;margin:8px 0;background:" + (bad ? "#fde2e2;color:#8a1c1c" : "#dff5e3;color:#14532d"), t)); }
     function A(k) { try { return window.arr(k) || []; } catch (e) { return []; } }
-    function money(n) { return (Math.round((+n || 0) * 100) / 100).toLocaleString("ar-EG") + " ج"; }
+    function money(n) { return (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " ج"; }
     function myUid() { try { return window.firebase.auth().currentUser.uid; } catch (e) { return ""; } }
     function fsdb() { return window.firebase.firestore(); }
     function canApprove() { return window.WFPerm.can("custody.approve"); }
@@ -119,9 +119,9 @@
     function payBox(u) {
       var ps = payState(u.uid), box = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-sunken,#f1f5ff)");
       box.appendChild(mk("div", "font-size:13px;opacity:.8", "💰 مستحقات الفني (أجور + مصاريف دفعها من جيبه)"));
-      box.appendChild(mk("div", "font-size:24px;font-weight:800;color:" + (ps.due < 0 ? "#b91c1c" : "#0b57d0"), money(ps.due)));
+      box.appendChild(mk("div", "font-size:24px;font-weight:800;color:" + (ps.due < 0 ? "var(--danger-text)" : "var(--primary)"), money(ps.due)));
       box.appendChild(mk("div", "font-size:13px", "أجور: " + money(ps.earned) + (ps.reimb ? " • من جيبه: " + money(ps.reimb) : "") + " • اتصرف: " + money(ps.paid) + " • أجور الشهر: " + money(ps.earnedMonth)));
-      if (ps.unpriced.length) box.appendChild(mk("div", "font-size:13px;color:#b45309;margin-top:4px", "⚠️ " + ps.unpriced.length + " أمر مقفول لسه من غير أجرة"));
+      if (ps.unpriced.length) box.appendChild(mk("div", "font-size:13px;color:var(--warn-text,#b45309);margin-top:4px", "⚠️ " + ps.unpriced.length + " أمر مقفول لسه من غير أجرة"));
       var row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px");
       if (canSettle()) row.appendChild(btn("💸 صرف مستحقات", BTN, function () { payoutForm(u, ps); }));
       var k = "pay_" + u.uid;
@@ -133,7 +133,7 @@
           box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "أوامر من غير أجرة — حدّد نوع الشغل:"));
           if (!cfg.types.length) box.appendChild(mk("div", "font-size:13px;opacity:.8", "ضيف أنواع الشغل الأول من «⚙️ أجور الفنيين» فوق."));
           ps.unpriced.slice(0, 20).forEach(function (r) {
-            var line = mk("div", "display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;padding:5px 0;border-bottom:1px dashed #cbd5e1");
+            var line = mk("div", "display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--border,#cbd5e1)");
             var a = mk("a", "flex:1;min-width:140px", "#" + (r.no || "") + " " + custName(r.customerId) + " — " + money(r.total)); a.href = "request.html?id=" + encodeURIComponent(r.id);
             line.appendChild(a);
             if (cfg.types.length) {
@@ -149,7 +149,7 @@
         if (recent.length) {
           box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "آخر الأجور:"));
           recent.forEach(function (r) {
-            var line = mk("div", "display:flex;gap:6px;font-size:13px;padding:4px 0;border-bottom:1px dashed #cbd5e1");
+            var line = mk("div", "display:flex;gap:6px;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--border,#cbd5e1)");
             var a = mk("a", "flex:1", "#" + (r.no || "") + " " + custName(r.customerId) + " — " + (P().typeName(r.jobType) || (r.techPayManual ? "يدوي" : "")) ); a.href = "request.html?id=" + encodeURIComponent(r.id);
             line.appendChild(a); line.appendChild(mk("b", "", money(r.techPay))); box.appendChild(line);
           });
@@ -173,7 +173,7 @@
       var def = typeof window.resolveDefaultWallet === "function" ? window.resolveDefaultWallet() : ""; if (def && ww.indexOf(def) > -1) ws.value = def;
       var amt = mk("input", INP + ";margin-top:8px"); amt.type = "number"; amt.min = "0"; amt.step = "any"; amt.inputMode = "decimal"; amt.placeholder = "المبلغ (ج)"; amt.value = Math.max(0, ps.due);
       var note = mk("input", INP + ";margin-top:8px"); note.placeholder = "ملاحظة (اختياري) — مثلًا: أجرة أسبوع";
-      var msg = mk("p", "color:#b91c1c;min-height:20px;margin:6px 0");
+      var msg = mk("p", "color:var(--danger-text,#b91c1c);min-height:20px;margin:6px 0");
       var row = mk("div", "display:flex;gap:8px");
       row.appendChild(btn("تأكيد الصرف", BTN + ";flex:1", function () {
         var v = r2(amt.value);
@@ -234,7 +234,7 @@
           });
           box.appendChild(d);
         });
-        var msg = mk("p", "color:#b91c1c;min-height:18px;margin:8px 0"), row = mk("div", "display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg-elevated,#fff);padding-top:6px");
+        var msg = mk("p", "color:var(--danger-text,#b91c1c);min-height:18px;margin:8px 0"), row = mk("div", "display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg-elevated,#fff);padding-top:6px");
         row.appendChild(btn("💾 حفظ", BTN + ";flex:1", function () {
           var bad = cfg.types.filter(function (t) { return !String(t.name || "").trim() || !isFinite(+t.amount) || t.amount === "" || +t.amount < 0; });
           if (bad.length) { msg.textContent = "كل نوع لازم يبقى ليه اسم وسعر صحيح."; return; }
@@ -279,13 +279,13 @@
       }
 
       var money1 = mk("div", "margin:10px 0;padding:10px;border-radius:12px;background:var(--bg-sunken,#f1f5ff)");
-      if (!wal) { money1.appendChild(mk("div", "color:#b91c1c;font-size:14px", "مفيش محفظة عهدة لفني ده — حدّدها من «المستخدمون والصلاحيات».")); }
+      if (!wal) { money1.appendChild(mk("div", "color:var(--danger-text,#b91c1c);font-size:14px", "مفيش محفظة عهدة لفني ده — حدّدها من «المستخدمون والصلاحيات».")); }
       else {
         var bal = window.walletBalance(wal);
         money1.appendChild(mk("div", "font-size:13px;opacity:.8", "💼 " + wal));
-        money1.appendChild(mk("div", "font-size:26px;font-weight:800;color:" + (bal < 0 ? "#b91c1c" : "#15803d"), money(bal)));
+        money1.appendChild(mk("div", "font-size:26px;font-weight:800;color:" + (bal < 0 ? "var(--danger-text)" : "var(--success-text)"), money(bal)));
         var mine = state.pending.filter(function (e) { return e.techId === u.uid; });
-        if (mine.length) money1.appendChild(mk("div", "font-size:13px;color:#b45309", "⏳ " + mine.length + " مصروف معلّق بمجموع " + money(mine.reduce(function (s, e) { return s + (+e.amount || 0); }, 0))));
+        if (mine.length) money1.appendChild(mk("div", "font-size:13px;color:var(--warn-text,#b45309)", "⏳ " + mine.length + " مصروف معلّق بمجموع " + money(mine.reduce(function (s, e) { return s + (+e.amount || 0); }, 0))));
         var row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px");
         if (canSettle()) {
           row.appendChild(btn("💵 إيداع عهدة", BTN, function () { moveForm(u, "deposit"); }));
@@ -296,7 +296,7 @@
         if (state.open[u.uid]) {
           var txs = A(window.K.wtx).filter(function (x) { return x && !x.deleted && String(x.wallet || "").trim() === wal; }).sort(function (a, b) { return String((b.date || "") + (b.time || "")).localeCompare(String((a.date || "") + (a.time || ""))); }).slice(0, 25);
           var list = mk("div", "margin-top:8px");
-          txs.forEach(function (x) { var r = mk("div", "display:flex;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px dashed #cbd5e1"); r.appendChild(mk("span", "flex:1", (x.date || "") + " " + (x.reason || x.category || ""))); r.appendChild(mk("b", "color:" + (x.type === "in" ? "#15803d" : "#b91c1c"), (x.type === "in" ? "+" : "−") + money(x.amount))); list.appendChild(r); });
+          txs.forEach(function (x) { var r = mk("div", "display:flex;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--border,#cbd5e1)"); r.appendChild(mk("span", "flex:1", (x.date || "") + " " + (x.reason || x.category || ""))); r.appendChild(mk("b", "color:" + (x.type === "in" ? "#15803d" : "#b91c1c"), (x.type === "in" ? "+" : "−") + money(x.amount))); list.appendChild(r); });
           if (!txs.length) list.appendChild(mk("div", "opacity:.7;font-size:13px", "مفيش حركات."));
           money1.appendChild(list);
         }
@@ -316,7 +316,7 @@
       var amt = mk("input", INP + ";margin-top:8px"); amt.type = "number"; amt.min = "0"; amt.step = "any"; amt.inputMode = "decimal"; amt.placeholder = "المبلغ (ج)";
       if (kind === "settle") amt.value = Math.max(0, window.walletBalance(u.wallet));
       var note = mk("input", INP + ";margin-top:8px"); note.placeholder = "ملاحظة (اختياري)";
-      var msg = mk("p", "color:#b91c1c;min-height:20px;margin:6px 0");
+      var msg = mk("p", "color:var(--danger-text,#b91c1c);min-height:20px;margin:6px 0");
       var row = mk("div", "display:flex;gap:8px");
       row.appendChild(btn("تأكيد", BTN + ";flex:1", function () {
         var v = Math.round(+amt.value * 100) / 100;
@@ -338,7 +338,7 @@
       var main = mk("div", "flex:1;min-width:180px");
       main.appendChild(mk("b", "", "👷 " + (e.techName || e.techId) + " — " + money(e.amount)));
       main.appendChild(mk("div", "", e.note || ""));
-      main.appendChild(mk("div", "font-size:13px;font-weight:700;color:" + ({ custody: "#0b57d0", own: "#b45309", workshop: "#15803d" })[payKind(e)], PAY_LBL[payKind(e)]));
+      main.appendChild(mk("div", "font-size:13px;font-weight:700;color:" + ({ custody: "var(--primary)", own: "var(--warn-text)", workshop: "var(--success-text)" })[payKind(e)], PAY_LBL[payKind(e)]));
       main.appendChild(mk("div", "font-size:12px;opacity:.75", (e.orderNo ? "أمر " + e.orderNo + " • " : "") + (e.at ? new Date(e.at).toLocaleString("ar-EG") : "") + (e.wallet ? " • " + e.wallet : "")));
       row.appendChild(main);
       if (canApprove()) {
@@ -360,7 +360,7 @@
     }
     function draw() {
       while (root.firstChild) root.removeChild(root.firstChild);
-      if (state.err) root.appendChild(mk("p", "padding:8px 10px;border-radius:10px;background:#fff4e0;color:#8a5a00", state.err));
+      if (state.err) root.appendChild(mk("p", "padding:8px 10px;border-radius:10px;background:rgba(224,179,74,.15);color:var(--warn-text,#8a5a00)", state.err));
       root.appendChild(mk("h3", "margin:6px 0", "🧾 مصروفات بانتظار الاعتماد (" + state.pending.length + ")"));
       state.pending.forEach(function (e) { root.appendChild(expenseRow(e)); });
       if (!state.pending.length) root.appendChild(mk("p", "opacity:.7", "مفيش مصروفات معلّقة. 👌"));

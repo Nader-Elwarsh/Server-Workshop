@@ -59,7 +59,7 @@
       try { window.scrollTo(0, 0); } catch (e) {}
     }
     function A(k) { try { return window.arr(k) || []; } catch (e) { return []; } }
-    function money(n) { return (Math.round((+n || 0) * 100) / 100).toLocaleString("ar-EG") + " ج"; }
+    function money(n) { return (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " ج"; }
     function uid() { try { return window.firebase.auth().currentUser.uid; } catch (e) { return ""; } }
     function me() { var p = window.WFPerm.profile && window.WFPerm.profile(); return (p && p.name) || ""; }
     function can(k) { try { return window.WFPerm.can(k) !== false; } catch (e) { return true; } }
