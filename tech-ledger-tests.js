@@ -151,11 +151,20 @@ function makeDb(seed) {
   await fail(L.usePart("v", { orderId: "u1", partId: "P1", qty: 1 }), "no_edit_permission");
   await L.returnPart("t1", { orderId: "u1", partId: "P1" });
   assert.deepStrictEqual([db.data.parts.P1.qty, db.data.requests.u1.parts.length, db.data.requests.u1.total], [3, 1, 400], "رجعت المخزن");
+  // عربون يستلمه الفني (معاينة وزيارة تانية): العربون يزيد، حركة منفصلة في عهدته، والقفل بعدين يحصّل الباقي بس
+  const dep = await L.collectDeposit("t1", { orderId: "u1", amount: 150, note: "معاينة" });
+  assert.deepStrictEqual([dep.deposit, dep.depositExtra, dep.wallet, db.data.requests.u1.deposit, db.data.requests.u1.remain], [200, 150, "عهدة نادر", 200, 200]);
+  const dtx = Object.values(db.data.walletTx).filter((x) => x.orderId === "u1" && x.source === "order-part");
+  assert.deepStrictEqual([dtx.length, dtx[0].amount, dtx[0].wallet, dtx[0].type], [1, 150, "عهدة نادر", "in"]);
+  await fail(L.collectDeposit("t1", { orderId: "u1", amount: 0 }), "bad_amount");
+  await fail(L.collectDeposit("t1", { orderId: "u1", amount: 10, wallet: "محفظة غريبة" }), "bad_wallet");
+  await fail(L.collectDeposit("t2", { orderId: "u1", amount: 10 }), "not_your_order");
+  await fail(L.collectDeposit("v", { orderId: "u1", amount: 10 }), "no_close_permission");
   // القفل مايقبلش سطر مخزن مزوّر من الجهاز
   db.data.requests.u1.status = "مكتمل";
   await L.closeOrder("t1", { orderId: "u1", fields: { parts: [{ partId: "P1", qty: 50, sell: 1, cost: 0 }, { external: true, name: "موتور", qty: 1, sell: 300, cost: 200 }] } });
-  assert.deepStrictEqual([db.data.requests.u1.parts.length, db.data.requests.u1.total, db.data.requests.u1.closed], [1, 400, true]);
-  delete db.data.requests.u1; delete db.data.walletTx["order-final-u1"];
+  assert.deepStrictEqual([db.data.requests.u1.parts.length, db.data.requests.u1.total, db.data.requests.u1.closed, db.data.walletTx["order-final-u1"].amount], [1, 400, true, 200], "القفل حصّل الباقي بعد العربون بس");
+  delete db.data.requests.u1; delete db.data.walletTx["order-final-u1"]; Object.keys(db.data.walletTx).forEach((k) => { if (db.data.walletTx[k].orderId === "u1") delete db.data.walletTx[k]; });
   // فني تاني مايشوفش حساب غيره، والمالك يشوف
   await fail(L.account("t2", { uid: "t1" }), "custody_only");
   const byBoss = await L.account("boss", { uid: "t1" });

@@ -501,6 +501,29 @@
       mc.appendChild(kv("المصنعية (على العميل)", money(r.labor))); mc.appendChild(kv("القطع", money(r.partsTotal)));
       mc.appendChild(kv("الإجمالي", money(r.total))); mc.appendChild(kv("العربون", money(r.deposit)));
       var rem = kv("المتبقي على العميل", money(remainOf(r))); rem.className = "tp-kv tp-kv-total"; mc.appendChild(rem);
+      if (!locked && can("requests.close") && r.status !== "ملغي") { // عربون/دفعة من العميل (معاينة والجهاز محتاج قطع وزيارة تانية مثلًا)
+        var df = el("details", "tp-add tp-mt"); df.appendChild(el("summary", "", "💵 استلام عربون / دفعة من العميل"));
+        var da = el("input", "tp-input"); da.type = "number"; da.min = "0"; da.step = "any"; da.inputMode = "decimal"; da.placeholder = "المبلغ اللي استلمته (ج)";
+        var dw = el("select", "tp-input"); walletChoices().forEach(function (w) { var o = el("option", "", w === myWallet() ? "💼 " + w + " (عهدتك)" : w); o.value = w; dw.appendChild(o); });
+        var dn = el("input", "tp-input"); dn.placeholder = "ملاحظة (اختياري) — مثلًا: عربون قطعة الغيار"; dn.maxLength = 200;
+        df.appendChild(da); df.appendChild(dw); df.appendChild(dn);
+        df.appendChild(btn("✅ تسجيل العربون", "tp-btn tp-mt", function () {
+          var v = Math.round(+da.value * 100) / 100;
+          if (!isFinite(v) || v <= 0) return say("اكتب المبلغ.", true);
+          if (!online()) return say("تسجيل العربون محتاج نت (عشان يتسجل في عهدتك على السيرفر).", true);
+          if ((+r.total || 0) > 0 && (+r.deposit || 0) + v > (+r.total || 0) + 0.001 && !window.confirm("العربون كده أكبر من إجمالي الأمر الحالي (" + money(r.total) + "). تكمّل؟")) return;
+          if (!window.confirm("تأكيد استلام " + money(v) + " من العميل في «" + dw.value + "»؟")) return;
+          say("⏳ جارٍ التسجيل…");
+          window.WFPerm.call("techCollectDeposit", { orderId: r.id, amount: v, wallet: dw.value, note: dn.value.trim(), fields: workFields(r) }).then(function (res) {
+            return window.updateRequestRecordAsync(r.id, function (_, x) { x.deposit = res.deposit; x.depositExtra = res.depositExtra; x.remain = res.remain; return true; })
+              .then(function () { say("✅ اتسجل عربون " + money(v) + " — الباقي على العميل " + money(res.remain) + "."); loadAccount(); draw(); });
+          }, function (e) {
+            var code = (e && (e.message || e.code)) || "", MSG = { bad_wallet: "المحفظة دي مش مسموحة.", already_closed: "الأمر اتقفل.", not_your_order: "الأمر مش متعيّن ليك.", no_close_permission: "مالكش صلاحية التحصيل.", wallet_required: "مفيش محفظة عهدة متحددة لحسابك." };
+            say(MSG[code] || errText(e, "ما اتسجلش"), true);
+          });
+        }));
+        mc.appendChild(df);
+      }
       box.appendChild(mc);
       // أجرة الفني نفسه على الأمر (المالك/المدير بيحددها) — منفصلة عن حساب العميل
       var pyc = block("👷 أجرتك على الأمر");
