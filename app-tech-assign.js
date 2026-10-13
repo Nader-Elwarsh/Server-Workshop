@@ -124,7 +124,7 @@
       var host = doc.getElementById("requestProfile"); if (!host || !host.parentNode) return;
       var r = currentRequest(); if (!r) return;
       var box = doc.getElementById("wfTechAssign");
-      if (!box) { box = mk("section", "margin:10px 0;padding:12px;border-radius:12px;border:1px solid var(--border,#d5dbe8);background:var(--bg-sunken,#f3f6fb)"); box.id = "wfTechAssign"; host.parentNode.insertBefore(box, host); }
+      if (!box) { box = mk("section", "margin:10px 0;padding:12px;border-radius:12px;border:1px solid var(--border,#d5dbe8);background:var(--bg-sunken,#f3f6fb)"); box.id = "wfTechAssign"; } if (box.previousSibling !== host) host.parentNode.insertBefore(box, host.nextSibling); // تحت تفاصيل الأمر: الشغل الأول، وبعده الفني والأجرة (معلومات إدارة)
       while (box.firstChild) box.removeChild(box.firstChild);
       box.appendChild(mk("b", "", "👷 الفني المسؤول"));
       var cur = mk("div", "margin-top:4px", r.techName ? r.techName : "لم يُعيَّن فني بعد");
