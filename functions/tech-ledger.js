@@ -315,7 +315,48 @@ function createTechLedger(deps) {
     log("tech part " + dir, uid, orderId, partId, out.moved);
     return out;
   }
-  return { closeOrder, account, partsCatalog, usePart: (uid, d) => stockMove(uid, d, "use"), returnPart: (uid, d) => stockMove(uid, d, "return"), _cairoParts: cairoParts };
+  /* ---------- عربون/دفعة يستلمها الفني (معاينة والجهاز محتاج قطع وزيارة تانية مثلًا) ----------
+     بتتسجل زي الدفعة الجزئية من خط السير: العربون يزيد، والمبلغ يتسجل كحركة منفصلة في محفظة الفني (depositExtra)،
+     فحركة العربون الأساسية للأمر ماتتلمسش، والقفل بعدين بيحصّل الباقي بس. */
+  async function collectDeposit(uid, data) {
+    const { staff, perms } = await requireStaff(uid);
+    if (!perms["requests.close"]) throw new AdminError("permission-denied", "no_close_permission");
+    const orderId = String((data && data.orderId) || "");
+    if (!orderId || orderId.length > 120 || orderId.indexOf("/") > -1) throw new AdminError("invalid-argument", "bad_order");
+    const amount = r2(data && data.amount);
+    if (!(amount > 0) || amount > 1000000) throw new AdminError("invalid-argument", "bad_amount");
+    const myWallet = String(staff.wallet || "").trim();
+    const g = await settingsGlobal();
+    const allowed = new Set((Array.isArray(g.wallets) ? g.wallets : []).map((w) => String(w || "").trim()).filter(Boolean));
+    if (myWallet) allowed.add(myWallet);
+    const wallet = String((data && data.wallet) || "").replace(/\s+/g, " ").trim() || myWallet;
+    if (!wallet) throw new AdminError("failed-precondition", "wallet_required");
+    if (!allowed.has(wallet)) throw new AdminError("invalid-argument", "bad_wallet");
+    const note = String((data && data.note) || "").slice(0, 200);
+    const when = cairoParts(now());
+    const ref = db.doc(`requests/${orderId}`), txRef = db.collection("walletTx").doc();
+    const out = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new AdminError("not-found", "no_order");
+      const r = Object.assign({ id: orderId }, snap.data());
+      if (r.techId !== uid) throw new AdminError("permission-denied", "not_your_order");
+      if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
+      if (r.status === "ملغي") throw new AdminError("failed-precondition", "cancelled");
+      const work = cleanWork(data && data.fields), srvParts = r.parts;
+      Object.assign(r, work);
+      if (work.parts || work.labor !== undefined) { r.parts = mergeParts(srvParts, work.parts); recalc(r); ["parts", "partsTotal", "partsCost", "total"].forEach((k) => { work[k] = r[k]; }); }
+      const deposit = r2(num(r.deposit) + amount), extra = r2(num(r.depositExtra) + amount);
+      const remain = Math.max(0, r2(num(r.total) - deposit));
+      tx.update(ref, Object.assign({}, work, { deposit, depositExtra: extra, remain, _ts: stamp() }));
+      tx.set(txRef, { id: txRef.id, refKey: null, orderId, manualOverride: true, deleted: false, type: "in", amount, wallet, category: "تحصيل عميل",
+        reason: `💵 عربون/دفعة أمر الشغل ${r.no || ""} — استلمها ${staff.name || "الفني"}`, note, date: when.date, time: when.time, source: "order-part", byTech: uid, createdAt: ts(now()), _ts: stamp() });
+      bumpMeta(tx);
+      return { deposit, depositExtra: extra, remain, total: r2(r.total), wallet, amount };
+    });
+    log("tech deposit", uid, orderId, amount, wallet);
+    return out;
+  }
+  return { closeOrder, account, partsCatalog, collectDeposit, usePart: (uid, d) => stockMove(uid, d, "use"), returnPart: (uid, d) => stockMove(uid, d, "return"), _cairoParts: cairoParts };
 }
 
 module.exports = { createTechLedger };

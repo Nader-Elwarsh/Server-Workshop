@@ -163,6 +163,7 @@ const techLedger = createTechLedger({
 });
 exports.techCloseOrder = adminCallable("techCloseOrder", (uid, d) => techLedger.closeOrder(uid, d));
 exports.techAccount = adminCallable("techAccount", (uid, d) => techLedger.account(uid, d));
+exports.techCollectDeposit = adminCallable("techCollectDeposit", (uid, d) => techLedger.collectDeposit(uid, d));
 exports.techPartsCatalog = adminCallable("techPartsCatalog", (uid) => techLedger.partsCatalog(uid));
 exports.techUsePart = adminCallable("techUsePart", (uid, d) => techLedger.usePart(uid, d));
 exports.techReturnPart = adminCallable("techReturnPart", (uid, d) => techLedger.returnPart(uid, d));
