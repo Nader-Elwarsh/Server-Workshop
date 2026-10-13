@@ -91,7 +91,7 @@ async function restoreFromTrash(trashId) {
 
   const refKeys = new Set(p.walletRefKeys || []);
   const restoredOrderIds = new Set([p.request, ...(p.requests || [])].filter(Boolean).map(r => String(r.id)));
-  values[K.wtx] = arr(K.wtx).map(x => (refKeys.has(String(x.refKey || "")) || (x.source === "order-part" && x.deletedWithOrder && restoredOrderIds.has(String(x.orderId)))) ? { ...x, deleted: false, deletedWithOrder: undefined } : x);
+  values[K.wtx] = arr(K.wtx).map(x => (refKeys.has(String(x.refKey || "")) || ((x.source === "order-part" || x.source === "ext-part") && x.deletedWithOrder && restoredOrderIds.has(String(x.orderId)))) ? { ...x, deleted: false, deletedWithOrder: undefined } : x);
   const taskSnapshots = new Map((p.tasks || []).filter(Boolean).map(task => [String(task.id), task]));
   if (taskSnapshots.size && K.tasks) {
     values[K.tasks] = arr(K.tasks).map(task => {

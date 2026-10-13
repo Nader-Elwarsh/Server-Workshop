@@ -540,7 +540,7 @@ function renderWalletDetail(){dedupeWalletTxByRef();
     ${entries.length?WFPager.render("wallet-tx",entries,x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
       <div class="treasury-row-main">
         <b>${(()=>{let order=linkedOrderForWalletTx(x);return order?`<a href="request.html?id=${encodeURIComponent(order.id)}" title="فتح أمر الشغل ${escAttr(order.no||"")}">${esc(x.reason||"—")} ↗</a>`:esc(x.reason||"—")})()}</b>
-        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
+        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="ext-part"?" • 🧳 قطعة لأمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
         ${x.note?`<small>📝 ${esc(x.note)}</small>`:""}
       </div>
       <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>

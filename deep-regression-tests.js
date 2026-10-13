@@ -62,7 +62,29 @@ await context.confirmAddPartToRequest('r2');
 check(get(K.p)[0].qty===4&&get(K.r)[0].parts.length===1&&get(K.m).length===1,'valid part addition must persist stock, movement, and order together');
 controls.rpExtName={value:'قطعة خارجية'};controls.rpExtBuy={value:'5'};controls.rpExtSell={value:'10'};controls.rpExtQty={value:'1'};
 await context.confirmAddExternalPartToRequest('r2');
-check(get(K.r)[0].parts.length===2&&get(K.r)[0].parts[1].external,'valid external part must persist to IndexedDB-backed requests');
+check(get(K.r)[0].parts.length===1&&alerts.some(x=>/اتدفع منين/.test(x)),'external part with a cost needs its payment source');
+controls.rpExtPay={value:'none'};
+await context.confirmAddExternalPartToRequest('r2');
+check(get(K.r)[0].parts.length===2&&get(K.r)[0].parts[1].external&&get(K.r)[0].parts[1].paidBy==='none','valid external part must persist to IndexedDB-backed requests');
+// تمنها من محفظة: حركة صرف مربوطة بالقطعة؛ تعديل الكمية من النموذج بيعدّلها، وشيل القطعة/الإلغاء بيشيلها
+{
+  const s0=get(K.s)||{};set(K.s,Object.assign({},s0,{wallets:['كاش الورشة','عهدة نادر']}));set(K.wtx,[]);
+  set(K.r,[{id:'r9',no:'R9',status:'جاري التنفيذ',labor:0,parts:[],partsTotal:0,partsCost:0,total:0,deposit:0,closed:false,paid:false,techId:'t1',techName:'نادر',techWallet:'عهدة نادر'}]);
+  controls.rpExtName={value:'موتور'};controls.rpExtBuy={value:'100'};controls.rpExtSell={value:'150'};controls.rpExtQty={value:'2'};controls.rpExtPay={value:'w:عهدة نادر'};
+  await context.confirmAddExternalPartToRequest('r9');
+  const part=get(K.r)[0].parts[0],tx=get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey);
+  check(part.paidBy==='custody'&&part.payWallet==='عهدة نادر'&&tx&&tx.type==='out'&&tx.amount===200&&tx.wallet==='عهدة نادر'&&tx.source==='ext-part'&&tx.orderId==='r9','custody-paid external part records an out tx on the tech wallet');
+  const ord=get(K.r)[0];ord.parts[0].qty=3;context.syncExtPartPayments(ord,[]);
+  check(get(K.wtx).filter(x=>x.refKey==='extpart-'+part.payKey&&!x.deleted).length===1&&get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).amount===300,'quantity change updates the same tx');
+  context.syncExtPartPayments(Object.assign({},ord,{status:'ملغي'}),ord.parts);
+  check(get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).deleted===true,'cancelled order removes the part payment');
+  context.syncExtPartPayments(ord,[]);
+  check(get(K.wtx).filter(x=>x.refKey==='extpart-'+part.payKey&&!x.deleted).length===1,'reopened order brings it back once');
+  context.syncExtPartPayments(Object.assign({},ord,{parts:[]}),ord.parts);
+  check(get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).deleted===true,'removing the part removes its payment');
+  check(context.extPayPick('own',{techId:''},10)===null&&context.extPayPick('',{},0).paidBy==='none'&&context.extPayPick('w:كاش الورشة',{techWallet:'عهدة نادر'},5).paidBy==='workshop','payment source parsing');
+  set(K.r,[{id:'r2',status:'جاري التنفيذ',labor:20,parts:[],partsTotal:0,partsCost:0,total:20,deposit:0,closed:false,paid:false}]);
+}
 await context.changeRequestVisit('r2','2026-10-08');
 await context.changeRequestFault('r2','عطل محدث');
 await context.setWorkshopStatus('r2','تم السحب');

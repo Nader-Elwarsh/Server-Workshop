@@ -7,7 +7,7 @@ function walletEntriesAfterRemovingRequests(requestIds){
   return arr(K.wtx).map(x=>{
     const ref=String(x.refKey||"");
     // دفعة جزئية منفصلة (من خط السير) بتتحذف مع أمرها، وبنعلّمها عشان تتسترجع لو الأمر رجع من السلة.
-    if(x.source==="order-part"&&!x.deleted&&ids.has(String(x.orderId)))return{...x,deleted:true,deletedWithOrder:true};
+    if((x.source==="order-part"||x.source==="ext-part")&&!x.deleted&&ids.has(String(x.orderId)))return{...x,deleted:true,deletedWithOrder:true};
     return (ref.startsWith("order-deposit-")||ref.startsWith("order-final-"))&&ids.has(ref.replace(/^order-(?:deposit|final)-/,""))?{...x,deleted:true}:x;
   });
 }

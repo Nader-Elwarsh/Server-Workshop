@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v52-partpay";
+const CACHE_NAME = "workshop-v53-extpay";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
