@@ -292,6 +292,31 @@
     function kv(label, value) { var d = el("div", "tp-kv"); d.appendChild(el("b", "", label)); d.appendChild(el("span", "", value)); return d; }
     function block(title) { var c = el("div", "tp-card"); c.appendChild(el("h3", "tp-card-title", title)); return c; }
 
+    var CAT_KEY = "wf_tech_parts";
+    function catName(id) { var c = state.catalog || readCat(); var x = (c || []).filter(function (p) { return p.id === id; })[0]; return x ? x.name : ""; }
+    function readCat() { try { var v = JSON.parse(window.WFStorage.getItem(CAT_KEY) || "null"); return v && v.uid === uid() ? v.parts : null; } catch (e) { return null; } }
+    function loadCatalog() {
+      if (!state.catalog) state.catalog = readCat();
+      if (!online()) { if (!state.catalog) state.catalogErr = "📴 المخزن محتاج نت أول مرة."; return Promise.resolve(); }
+      return window.WFPerm.call("techPartsCatalog", {}).then(function (res) {
+        state.catalog = (res && res.parts) || []; state.catalogErr = "";
+        try { window.WFStorage.setItem(CAT_KEY, JSON.stringify({ uid: uid(), at: Date.now(), parts: state.catalog })); } catch (e) {}
+      }, function (e) { state.catalogErr = "تعذّر تحميل المخزن (" + errText(e, "") + ")"; });
+    }
+    function stockCall(name, data, r, okMsg) {
+      if (!online()) return say("الإضافة من المخزن محتاجة نت (عشان تتخصم من المخزن فعلًا).", true);
+      data.fields = workFields(r);
+      say("⏳ جارٍ التنفيذ…");
+      return window.WFPerm.call(name, data).then(function (res) {
+        if (state.catalog && res) state.catalog.forEach(function (x) { if (x.id === data.partId) x.qty = res.left; });
+        return window.updateRequestRecordAsync(r.id, function (_, x) { ["parts", "partsTotal", "partsCost", "total", "remain"].forEach(function (k) { if (res && res[k] !== undefined) x[k] = res[k]; }); return true; })
+          .then(function () { say(okMsg); draw(); });
+      }, function (e) {
+        var code = (e && (e.message || e.code)) || "";
+        var MSG = { not_enough: "الكمية مش متاحة في المخزن دلوقتي.", not_your_order: "الأمر مش متعيّن ليك.", already_closed: "الأمر اتقفل.", no_edit_permission: "مالكش صلاحية تعديل الأوامر.", not_on_order: "القطعة مش على الأمر." };
+        say(MSG[code] || errText(e, "ما اتنفذش"), true); loadCatalog().then(draw);
+      });
+    }
     function workFields(r) { var o = {}; ["status", "work", "labor", "parts", "partsTotal", "partsCost", "total", "statusHistory", "startedAt", "completedAt", "visit"].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }
     function closeOrder(r, wallet, button) {
       if (state.busy) return;
@@ -319,7 +344,13 @@
       var r = A(window.K.r).filter(function (x) { return String(x.id) === state.id && isMine(x); })[0];
       var box = el("div");
       box.appendChild(btn("→ رجوع", "tp-btn2 tp-back", function () { go({ tab: state.tab }); }));
-      if (!r) { box.appendChild(el("p", "tp-empty-line", "الأمر مش موجود عندك (ممكن يكون اتقفل أو اتنقل لفني تاني).")); return box; }
+      if (!r) {
+        // لسه المزامنة بتجيب أوامره (أول فتح/بعد تحويل): ماتقولش «مش موجود» قبل ما نتأكد
+        var inf = (window.wfSyncInfo && window.wfSyncInfo()) || {};
+        if (inf.ready === false || state.waitingOrder) { box.appendChild(el("p", "tp-empty-line", "⏳ جارٍ تحميل الأمر…")); if (!state.waitingOrder) { state.waitingOrder = true; setTimeout(function () { state.waitingOrder = false; draw(); }, 4000); } return box; }
+        box.appendChild(el("p", "tp-empty-line", "الأمر مش موجود عندك (ممكن يكون اتقفل أو اتنقل لفني تاني).")); return box;
+      }
+      var full = el("a", "tp-btn2 tp-full-link", "📄 صفحة الأمر الكاملة"); full.href = "request.html?id=" + encodeURIComponent(r.id); box.appendChild(full);
       var c = custOf(r), d = devOf(r), addr = addrOf(c, r), locked = !!(r.closed || r.paid), edit = !locked && can("requests.edit");
 
       var h = el("div", "tp-card tp-order-head");
@@ -386,10 +417,14 @@
       var pc = block("🔩 القطع المستخدمة");
       (r.parts || []).forEach(function (p, i) {
         var row = el("div", "tp-part");
-        var nm = el("span", "", (p.external ? "🧳 " : "🔧 ") + (p.name || "قطعة مخزن") + " × " + (p.qty || 1));
+        var nm = el("span", "", (p.external ? "🧳 " : "📦 ") + (p.name || catName(p.partId) || "قطعة من المخزن") + " × " + (p.qty || 1));
         if (p.external && p.paidBy) nm.appendChild(el("small", "tp-muted", " • " + (PAY_SHORT[p.paidBy] || "")));
         row.appendChild(nm);
         row.appendChild(el("b", "", money((+p.qty || 0) * (+p.sell || 0))));
+        if (edit && !p.external && p.partId) row.appendChild(btn("✖", "tp-btn2 tp-small", function () {
+          if (!window.confirm("ترجّع القطعة دي للمخزن وتشيلها من الأمر؟")) return;
+          stockCall("techReturnPart", { orderId: r.id, partId: p.partId }, r, "✅ القطعة رجعت المخزن.");
+        }));
         if (edit && p.external) row.appendChild(btn("✖", "tp-btn2 tp-small", function () {
           if (!window.confirm("شيل القطعة دي من الأمر؟")) return;
           mutate(r.id, function (x) { x.parts = (x.parts || []).filter(function (_, j) { return j !== i; }); recompute(x); }).then(function (ok) {
@@ -400,9 +435,39 @@
         pc.appendChild(row);
       });
       if (!(r.parts || []).length) pc.appendChild(el("p", "tp-muted", "مفيش قطع مسجّلة."));
+      if (edit) { // من المخزن: بيتخصم على السيرفر وقت الإضافة (الفني مابيشوفش سعر الشراء)
+        var sf = el("details", "tp-add");
+        sf.appendChild(el("summary", "", "📦 إضافة من المخزن"));
+        var sq = el("input", "tp-input"); sq.placeholder = "🔍 ابحث باسم القطعة…"; sq.type = "search";
+        var sres = el("div", "tp-stock-list");
+        var paint = function () {
+          while (sres.firstChild) sres.removeChild(sres.firstChild);
+          if (!state.catalog) { sres.appendChild(el("p", "tp-muted", state.catalogErr || "⏳ جارٍ تحميل المخزن…")); return; }
+          var q = sq.value.trim().toLowerCase(), list = state.catalog.filter(function (x) { return !q || (x.name + " " + x.code + " " + x.category).toLowerCase().indexOf(q) > -1; }).slice(0, 30);
+          if (!list.length) sres.appendChild(el("p", "tp-muted", "مفيش قطعة بالاسم ده في المخزن."));
+          list.forEach(function (x) {
+            var it = el("div", "tp-stock-item" + (x.qty > 0 ? "" : " tp-out"));
+            var info = el("div", "tp-grow"); info.appendChild(el("b", "", x.name)); info.appendChild(el("div", "tp-small-t tp-muted", (x.qty > 0 ? "متاح " + x.qty : "خلصانة") + " • " + money(x.sell)));
+            it.appendChild(info);
+            if (x.qty > 0) {
+              var qn = el("input", "tp-input tp-qty"); qn.type = "number"; qn.min = "1"; qn.max = String(x.qty); qn.value = "1"; qn.inputMode = "numeric";
+              it.appendChild(qn);
+              it.appendChild(btn("➕", "tp-btn tp-small", function () {
+                var n = Math.floor(+qn.value); if (!(n >= 1) || n > x.qty) return say("الكمية لازم تكون من 1 لـ " + x.qty + ".", true);
+                stockCall("techUsePart", { orderId: r.id, partId: x.id, qty: n }, r, "✅ اتضافت " + x.name + " واتخصمت من المخزن.");
+              }));
+            }
+            sres.appendChild(it);
+          });
+        };
+        sq.oninput = paint;
+        sf.ontoggle = function () { if (sf.open) { loadCatalog().then(paint); paint(); } };
+        sf.appendChild(sq); sf.appendChild(sres);
+        pc.appendChild(sf);
+      }
       if (edit) {
         var f = el("details", "tp-add");
-        f.appendChild(el("summary", "", "➕ إضافة قطعة"));
+        f.appendChild(el("summary", "", "🧳 إضافة قطعة من بره المخزن"));
         var pn = el("input", "tp-input"); pn.placeholder = "اسم القطعة";
         var g = el("div", "tp-grid3");
         var pq = el("input", "tp-input"); pq.type = "number"; pq.min = "1"; pq.step = "1"; pq.value = "1"; pq.placeholder = "الكمية";

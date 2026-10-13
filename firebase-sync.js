@@ -64,11 +64,6 @@
   // نفس قايمة المنع اللي في firestore.rules (techOrderPatch)
   var TECH_LOCKED = {}; ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal",
     "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech", "jobType", "jobTypeName", "techPay", "techPayManual", "techPayAt", "techPayBy"].forEach(function (f) { TECH_LOCKED[f] = 1; });
-  /* الفني لما يفتح صفحة أمر الإدارة (من رابط في الرئيسية/العميل/خط السير): بنوديه لنفس الأمر في بوابته.
-     صفحة الإدارة فيها خانات (العربون/المخزن/الحذف...) السيرفر بيرفضها للفني، وبوابته معمولة للشغل ده. */
-  function techOrderRedirect() {
-    try { if (!/\/request\.html$/.test(location.pathname)) return false; var id = new URLSearchParams(location.search).get("id"); if (!id) return false; location.replace("tech.html?id=" + encodeURIComponent(id)); return true; } catch (e) { return false; }
-  }
   var SCOPED = false, MODE_KEY = "wf_sync_mode", UID_KEY = "wf_sync_uid", wipedForMode = false, TECH_PAGES = /\/(tech|login|privacy|terms|index|requests|request|customers|customer|devices|device|route)\.html$|\/$/; // صفحات بتشتغل ببيانات الفني (أوامره وعملاؤها وأجهزتها). أي صفحة تانية بتحوّله لبوابته
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};
@@ -1141,7 +1136,6 @@
     var hydrated = ls.getItem(HYD) === user.uid, recent = Date.now() - (+ls.getItem(FULL) || 0) < 5 * 60 * 1000;
     SCOPED = ls.getItem(MODE_KEY) === "scoped"; window.wfSyncMode = SCOPED ? "scoped" : "full";
     if (SCOPED && ls.getItem(UID_KEY) === user.uid && !TECH_PAGES.test(location.pathname)) { location.replace("tech.html"); return; }
-    if (SCOPED && ls.getItem(UID_KEY) === user.uid && techOrderRedirect()) return;
     function goReady(reload) {
       primeClean();
       ready = true; uncover(); resumeRetries(); badge();
@@ -1192,7 +1186,6 @@
     if ((SCOPED && (prevMode !== "scoped" || prevUid !== user.uid)) || (!SCOPED && prevMode === "scoped")) { wipeLocal(); hydrated = false; recent = false; }
     origSet.call(ls, MODE_KEY, SCOPED ? "scoped" : "full"); origSet.call(ls, UID_KEY, user.uid);
     if (SCOPED && !TECH_PAGES.test(location.pathname)) { location.replace("tech.html"); return; } // بوابة الفني المستقلة
-    if (SCOPED && techOrderRedirect()) return;
     var quick = hydrated && recent;
     (quick ? withTimeout(meta.get()).then(function (d) { return d.exists && String(d.data().ts) !== ls.getItem(SEEN); }).catch(function () { return false; }) : Promise.resolve(true)).then(function (needFull) {
       if (!needFull && !Object.keys(timers).length) return goReady(false);

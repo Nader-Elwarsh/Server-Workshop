@@ -768,3 +768,17 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 /* لوحة السحابة في الإعدادات: الأزرار كانت بشكل المتصفح الافتراضي */
 .cloud-panel>button,.cloud-panel>a{display:inline-flex;align-items:center;gap:6px;margin:4px 0 4px 6px;text-decoration:none}
 .cloud-panel>.danger-btn{padding:11px 14px;border-radius:9px}
+/* تفاصيل حركة المحفظة */
+.tx-clickable{cursor:pointer}
+.txd-modal{position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}
+.txd-sheet{background:var(--bg-elevated);color:var(--text);width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px 22px;box-shadow:0 -6px 24px rgba(0,0,0,.25)}
+@media(min-width:700px){.txd-modal{align-items:center}.txd-sheet{border-radius:16px}}
+.txd-amount{font-size:28px;font-weight:800;text-align:center}.txd-amount.in{color:var(--success-text)}.txd-amount.out{color:var(--danger-text)}
+.txd-title{text-align:center;font-weight:700;margin:4px 0 12px}
+.txd-sheet h4{margin:14px 0 6px;font-size:14px}
+.txd-box{background:var(--bg-sunken);border:1px solid var(--border);border-radius:12px;padding:6px 10px}
+.txd-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.txd-row:last-child{border-bottom:0}.txd-row span{color:var(--text-muted);min-width:0}.txd-row b{text-align:left;white-space:nowrap}
+.txd-row b.in{color:var(--success-text)}.txd-row b.out{color:var(--danger-text)}.txd-row small{color:var(--text-muted)}
+.txd-open{display:block;text-align:center;margin-top:12px;text-decoration:none}
+.txd-actions{display:flex;gap:8px;margin-top:14px}.txd-actions button{flex:1}

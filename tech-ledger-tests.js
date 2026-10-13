@@ -2,6 +2,7 @@
 const assert = require("assert");
 const { createTechLedger } = require("./functions/tech-ledger");
 
+let autoN = 0;
 function makeDb(seed) {
   const data = JSON.parse(JSON.stringify(seed));
   const get = (path) => { const [c, id] = path.split("/"); return data[c] && data[c][id] ? JSON.parse(JSON.stringify(data[c][id])) : null; };
@@ -23,7 +24,7 @@ function makeDb(seed) {
   return {
     data,
     doc,
-    collection: (c) => query(c, [], 0),
+    collection: (c) => Object.assign(query(c, [], 0), { doc: (id) => { const d = doc(`${c}/${id || "auto" + (++autoN)}`); d.id = d.path.split("/")[1]; return d; } }),
     runTransaction: async (fn) => {
       const writes = [];
       const tx = { get: async (ref) => snap(ref.path), set: (ref, v) => writes.push(() => put(ref.path, v)), update: (ref, v) => writes.push(() => put(ref.path, Object.assign(get(ref.path) || {}, v))), delete: (ref) => writes.push(() => del(ref.path)) };
@@ -135,6 +136,26 @@ function makeDb(seed) {
   const ph = (await L.account("t1", {})).history.filter((h) => h.no === "A1")[0];
   assert.deepStrictEqual([ph.pay, ph.priced], [200, true]);
   delete db.data.requests.r6;
+  // قطع من المخزن: الفني يضيف من المخزن (يتخصم ويتسجل حركة)، والقطع اللي من بره من شغله تفضل، ويرجّع القطعة
+  db.data.parts = { P1: { name: "سخان", qty: 3, buy: 100, use: 180 }, P2: { name: "فيشة", qty: 0, buy: 5, use: 10 } };
+  db.data.requests.u1 = { techId: "t1", no: "U1", status: "جاري التنفيذ", labor: 100, deposit: 50, parts: [], total: 100, closed: false };
+  const cat = await L.partsCatalog("t1");
+  assert.deepStrictEqual(cat.parts.map((x) => [x.name, x.qty, x.sell, x.cost]), [["سخان", 3, 180, undefined], ["فيشة", 0, 10, undefined]], "من غير سعر الشراء");
+  const u = await L.usePart("t1", { orderId: "u1", partId: "P1", qty: 2, fields: { parts: [{ external: true, name: "موتور", qty: 1, sell: 300, cost: 200 }, { partId: "P2", qty: 9, sell: 1, cost: 0 }], work: "ركبت" } });
+  const o = db.data.requests.u1;
+  assert.deepStrictEqual([db.data.parts.P1.qty, o.parts.length, o.partsTotal, o.partsCost, o.total, o.remain, o.work], [1, 2, 660, 400, 760, 710, "ركبت"], "اتخصم ومزوّرش سطر مخزن");
+  assert(Object.values(db.data.partMoves || {}).some((m) => m.partId === "P1" && m.qty === 2 && m.requestId === "u1"), "حركة مخزن");
+  assert.strictEqual(u.left, 1);
+  await fail(L.usePart("t1", { orderId: "u1", partId: "P1", qty: 5 }), "not_enough");
+  await fail(L.usePart("t2", { orderId: "u1", partId: "P1", qty: 1 }), "not_your_order");
+  await fail(L.usePart("v", { orderId: "u1", partId: "P1", qty: 1 }), "no_edit_permission");
+  await L.returnPart("t1", { orderId: "u1", partId: "P1" });
+  assert.deepStrictEqual([db.data.parts.P1.qty, db.data.requests.u1.parts.length, db.data.requests.u1.total], [3, 1, 400], "رجعت المخزن");
+  // القفل مايقبلش سطر مخزن مزوّر من الجهاز
+  db.data.requests.u1.status = "مكتمل";
+  await L.closeOrder("t1", { orderId: "u1", fields: { parts: [{ partId: "P1", qty: 50, sell: 1, cost: 0 }, { external: true, name: "موتور", qty: 1, sell: 300, cost: 200 }] } });
+  assert.deepStrictEqual([db.data.requests.u1.parts.length, db.data.requests.u1.total, db.data.requests.u1.closed], [1, 400, true]);
+  delete db.data.requests.u1; delete db.data.walletTx["order-final-u1"];
   // فني تاني مايشوفش حساب غيره، والمالك يشوف
   await fail(L.account("t2", { uid: "t1" }), "custody_only");
   const byBoss = await L.account("boss", { uid: "t1" });

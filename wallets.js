@@ -538,9 +538,9 @@ function renderWalletDetail(){dedupeWalletTxByRef();
     </div>
     <h3 class="treasury-list-title">📋 كشف حركات ${isWallet?"المحفظة":"التصنيف"}</h3>
     ${entries.length?WFPager.render("wallet-tx",entries,x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
-      <div class="treasury-row-main">
-        <b>${(()=>{let order=linkedOrderForWalletTx(x);return order?`<a href="request.html?id=${encodeURIComponent(order.id)}" title="فتح أمر الشغل ${escAttr(order.no||"")}">${esc(x.reason||"—")} ↗</a>`:esc(x.reason||"—")})()}</b>
-        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="ext-part"?" • 🧳 قطعة لأمر شغل":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
+      <div class="treasury-row-main tx-clickable" role="button" tabindex="0" title="عرض تفاصيل الحركة" data-wf-event="click" data-wf-code="showWalletTxDetail('${escAttr(x.id)}')">
+        <b>${(()=>{let order=walletTxOrder(x);return order?`<a href="request.html?id=${encodeURIComponent(order.id)}" title="فتح أمر الشغل ${escAttr(order.no||"")}" data-wf-event="click" data-wf-code="event.stopPropagation()">${esc(x.reason||"—")} ↗</a>`:esc(x.reason||"—")})()}</b>
+        <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))}${!isWallet?` • 💳 ${esc(x.wallet||"—")}`:""} • 🏷️ ${esc(x.category||"أخرى")}${x.subCategory?` • 📂 ${esc(x.subCategory)}`:""}${x.source==="order-link"||x.source==="order-part"?" • 🔗 أمر شغل":""}${x.source==="ext-part"?" • 🧳 قطعة لأمر شغل":""}${x.source==="custody"?" • 💼 عهدة":""}${x.source==="custody-expense"?" • 🧾 مصروف فني":""}${x.source==="techpay"?" • 👷 أجرة فني":""}${x.source==="transfer"?" • 🔁 تحويل":""}${x.source==="migrated-expense"?" • ↩️ مرحّل من كشف الحساب القديم":""}</small>
         ${x.note?`<small>📝 ${esc(x.note)}</small>`:""}
       </div>
       <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>
@@ -557,6 +557,55 @@ function renderWalletDetail(){dedupeWalletTxByRef();
    up = بيرفع الرصيد المعروض (الأرقام في التطبيق أعلى من الفعلي)
    down = بيخفضه، info = للعلم.
 --------------------------------------------------------------------- */
+
+/* ---------- تفاصيل حركة محفظة: مصدرها، أمر الشغل المربوط بيها، وتفاصيل تسوية/إيداع العهدة ---------- */
+function walletTxOrder(x){
+  if(!x)return null;
+  let o=linkedOrderForWalletTx(x);if(o)return o;
+  const rs=arrCached(K.r);
+  if(x.orderId){o=rs.find(r=>String(r.id)===String(x.orderId));if(o)return o}
+  const m=String(x.reason||"").match(/أمر\s*#?\s*([A-Za-z]+[\w-]*\d)/);
+  if(m){o=rs.find(r=>String(r.no||"")===m[1]);if(o)return o}
+  return null;
+}
+function walletTxSortKey(x){return String(x.date||"")+" "+String(x.time||"")+" "+String(x.createdAt||"")}
+function showWalletTxDetail(id){
+  const all=arr(K.wtx),x=all.find(t=>String(t.id)===String(id));if(!x)return;
+  const order=walletTxOrder(x),money=n=>(+n||0).toFixed(2)+" ج",row=(k,v)=>v===""||v==null?"":`<div class="txd-row"><span>${k}</span><b>${v}</b></div>`;
+  const SRC={"order-link":"🔗 تحصيل/عربون أمر شغل (تلقائي)","order-part":"💵 دفعة جزئية على أمر شغل","ext-part":"🧳 شراء قطعة من بره المخزن لأمر شغل","custody":"💼 حركة عهدة فني (إيداع/تسوية)","custody-expense":"🧾 مصروف فني اتعتمد","techpay":"👷 صرف أجرة/مستحقات فني","transfer":"🔁 تحويل بين المحافظ والخزنة","migrated-expense":"↩️ مرحّل من كشف الحساب القديم"};
+  let h=`<div class="txd-amount ${x.type}">${x.type==="in"?"+":"−"}${money(x.amount)}</div><div class="txd-title">${esc(x.reason||"—")}</div>`;
+  h+=`<div class="txd-box">${row("💳 المحفظة",esc(x.wallet||"—"))}${row("📅 التاريخ",esc(new Date((x.date||"")+"T"+(x.time||"00:00")).toLocaleString("ar-EG")))}${row("🏷️ التصنيف",esc(x.category||"أخرى")+(x.subCategory?" • "+esc(x.subCategory):""))}${row("🔎 المصدر",esc(SRC[x.source]||(x.refKey?"تلقائي من النظام":"حركة يدوية")))}${x.note?row("📝 ملاحظة",esc(x.note)):""}${x.techPayName?row("👷 الفني",esc(x.techPayName)):""}</div>`;
+  if(order){
+    const cust=(arrCached(K.c).find(c=>c.id===order.customerId)||{}).name||"";
+    h+=`<h4>🛠️ أمر الشغل</h4><div class="txd-box">${row("رقم الأمر",esc(order.no||""))}${row("العميل",esc(cust))}${row("الحالة",esc(order.status||"")+(order.closed?" 🔒":""))}${row("المصنعية",money(order.labor))}${row("القطع",money(order.partsTotal))}${row("الإجمالي",money(order.total))}${row("العربون",money(order.deposit))}${order.techName?row("الفني",esc(order.techName)):""}</div>`;
+    const parts=(order.parts||[]).map(p=>{const sp=p.external?null:arrCached(K.p).find(z=>z.id===p.partId);return `<div class="txd-row"><span>${p.external?"🧳":"🔧"} ${esc(p.external?(p.name||"قطعة"):(sp?.name||"قطعة"))} × ${+p.qty||1}</span><b>${money((+p.qty||0)*(+p.sell||0))}</b></div>`}).join("");
+    if(parts)h+=`<h4>🔩 القطع على الأمر</h4><div class="txd-box">${parts}</div>`;
+    h+=`<a class="primary txd-open" href="request.html?id=${encodeURIComponent(order.id)}">📄 فتح أمر الشغل</a>`;
+  }
+  if(x.source==="custody"&&x.custodyId){
+    const pair=all.find(t=>t&&t.custodyId===x.custodyId&&t.id!==x.id&&!t.deleted);
+    if(pair)h+=`<h4>🔁 الطرف التاني</h4><div class="txd-box">${row(x.type==="in"?"جاية من":"راحت لـ",esc(pair.wallet||"—"))}</div>`;
+    // التسوية/الإيداع: حركات العهدة من آخر تسوية لحد الحركة دي (اللي اتجمع عند الفني وسلّمه)
+    const techW=x.type==="out"?x.wallet:(pair?pair.wallet:"");
+    const isSettle=x.type==="out"?true:!!(pair&&pair.type==="out"&&/عهدة/.test(pair.wallet||""));
+    const W=x.type==="out"?x.wallet:(pair?pair.wallet:x.wallet);
+    if(W){
+      const wtx=all.filter(t=>t&&!t.deleted&&t.wallet===W).sort((a,b)=>walletTxSortKey(a).localeCompare(walletTxSortKey(b)));
+      const me=x.wallet===W?x:pair,idx=wtx.findIndex(t=>t.id===(me&&me.id));
+      if(idx>=0){
+        let start=0;for(let i=idx-1;i>=0;i--){if(wtx[i].source==="custody"&&wtx[i].type==="out"){start=i+1;break}}
+        const seg=wtx.slice(start,idx),before=wtx.slice(0,idx).reduce((a,t)=>a+(t.type==="in"?+t.amount:-t.amount),0);
+        h+=`<h4>💼 رصيد «${esc(W)}»</h4><div class="txd-box">${row("قبل الحركة",money(before))}${row("بعد الحركة",money(before+(me.type==="in"?+me.amount:-me.amount)))}</div>`;
+        if(seg.length&&me.type==="out")h+=`<h4>📋 اللي اتجمع في العهدة من آخر تسوية (${seg.length} ${seg.length>2&&seg.length<11?"حركات":"حركة"})</h4><div class="txd-box">${seg.map(t=>{const o=walletTxOrder(t);return `<div class="txd-row"><span>${o?`<a href="request.html?id=${encodeURIComponent(o.id)}">${esc(t.reason||"—")} ↗</a>`:esc(t.reason||"—")}<small> ${esc(t.date||"")}</small></span><b class="${t.type}">${t.type==="in"?"+":"−"}${money(t.amount)}</b></div>`}).join("")}</div>`;
+      }
+    }
+  }
+  h+=`<div class="txd-actions"><button type="button" class="secondary" data-wf-event="click" data-wf-code="closeWalletTxDetail();editWalletTx('${escAttr(x.id)}')">✏️ تعديل</button><button type="button" class="secondary" data-wf-event="click" data-wf-code="closeWalletTxDetail()">إغلاق</button></div>`;
+  closeWalletTxDetail();
+  const m=document.createElement("div");m.id="txDetailModal";m.className="txd-modal";m.innerHTML=`<div class="txd-sheet" role="dialog" aria-label="تفاصيل الحركة">${h}</div>`;
+  m.addEventListener("click",e=>{if(e.target===m)closeWalletTxDetail()});document.body.appendChild(m);
+}
+function closeWalletTxDetail(){document.getElementById("txDetailModal")?.remove()}
 function walletAudit(){
   const orders=arr(K.r),byId=new Map(orders.map(r=>[String(r.id),r]));
   const all=arr(K.wtx),active=all.filter(x=>x&&!x.deleted);
