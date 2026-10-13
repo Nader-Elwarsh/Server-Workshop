@@ -765,3 +765,6 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 /* مربعات الملخص بتظهر حسب الموجود (اللي بصفر بيستخبى)، فلما العدد يبقى فردي آخر مربع كان بيسيب خانة فاضية جنبه — بياخد السطر كله */
 .compact-stats>.stat:last-child:nth-child(odd){grid-column:1/-1}
 @media(max-width:650px){.report-cards>.report-card:last-child:nth-child(odd){grid-column:1/-1}}
+/* لوحة السحابة في الإعدادات: الأزرار كانت بشكل المتصفح الافتراضي */
+.cloud-panel>button,.cloud-panel>a{display:inline-flex;align-items:center;gap:6px;margin:4px 0 4px 6px;text-decoration:none}
+.cloud-panel>.danger-btn{padding:11px 14px;border-radius:9px}

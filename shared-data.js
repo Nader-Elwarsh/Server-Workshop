@@ -49,7 +49,7 @@ var WFStorage = window.WFStorage;
     // تصنيف حركة المحفظة (شخصي / تشغيل / تحصيل عميل...). "تحصيل عميل" مستخدم
     // تلقائيًا لما تُنشأ الحركة من عربون أو تحصيل نهائي لأمر شغل، فيُفضّل عدم
     // حذفه، لكنه قابل لإعادة التسمية زي أي عنصر تاني.
-    walletCategories: ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "سلفة / تحويل", "أخرى"]
+    walletCategories: ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "مشتريات قطع غيار", "سلفة / تحويل", "أخرى"]
   };
 
   let storageErrorSeq = 0;
@@ -182,6 +182,10 @@ var WFStorage = window.WFStorage;
         try { WFStorage.setItem(key, JSON.stringify(value)); }
         finally { writingThroughDataApi = false; }
       }
+      // نفس اللي put بيعمله: نسخة القراءة الفورية بتتحدث دلوقتي (ورقم نسختها بيزيد). من غيرها، لو كتابة سابقة لنفس
+      // المجموعة لسه بتخلص في IndexedDB، كانت بتلاقي رقم النسخة زي ما هو فتكتب بياناتها القديمة فوق الحفظ ده،
+      // والحفظ ده نفسه بيتخطّى تحديث النسخة → السجل الجديد بيختفي (مثلًا put ثم حفظ أمر في نفس اللحظة).
+      if (typeof window.WorkshopDB.setSnapshot === "function") Object.entries(operational).forEach(([key, value]) => window.WorkshopDB.setSnapshot(key, value));
       invalidateReadCache(entries.map(([key]) => key));
       await window.WorkshopDB.replaceMany(operational);
       const taskEntry = entries.find(([key]) => key === K.tasks);
@@ -193,6 +197,7 @@ var WFStorage = window.WFStorage;
       try {
         for (const [key, raw] of Object.entries(previous)) {
           try { if (raw === null) WFStorage.removeItem(key); else WFStorage.setItem(key, raw); } catch (_) {}
+          try { if (OPERATIONAL_KEYS.has(key) && typeof window.WorkshopDB.setSnapshot === "function") window.WorkshopDB.setSnapshot(key, raw === null ? [] : JSON.parse(raw)); } catch (_) {}
         }
       } finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([key]) => key));

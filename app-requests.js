@@ -11,7 +11,8 @@ function extPayPick(val,order,cost){val=String(val||"");if(!(+cost>0))return{pai
 function extPartAmount(p){return Math.round((+p.cost||0)*(+p.qty||0)*100)/100}
 function syncExtPartPayments(order,oldParts){
   if(!order)return true;
-  const live=order.status==="ملغي"?[]:(order.parts||[]).filter(p=>p&&p.external&&p.payKey);
+  // إلغاء الأمر مابيلغيش مصروف القطعة: الفلوس اتصرفت فعلًا (لو القطعة رجعت للمورد امسح الحركة من المحفظة)
+  const live=(order.parts||[]).filter(p=>p&&p.external&&p.payKey);
   const want={};live.forEach(p=>{if((p.paidBy==="workshop"||p.paidBy==="custody")&&p.payWallet&&extPartAmount(p)>0)want["extpart-"+p.payKey]=p});
   let a=arr(K.wtx),changed=false;const seen={},now=new Date();
   a=a.map(x=>{
@@ -24,7 +25,7 @@ function syncExtPartPayments(order,oldParts){
     if(Math.abs((+x.amount||0)-extPartAmount(p))>0.004||x.wallet!==p.payWallet){changed=true;return{...x,amount:extPartAmount(p),wallet:p.payWallet}}
     return x;
   });
-  Object.keys(want).forEach(k=>{if(seen[k])return;const p=want[k];changed=true;a.push({id:k,refKey:k,manualOverride:false,deleted:false,type:"out",amount:extPartAmount(p),wallet:p.payWallet,category:"مصروف تشغيل",reason:`🧳 قطعة: ${p.name||""} × ${p.qty} (أمر ${order.no||""})`+(p.paidBy==="custody"?` — من عهدة ${order.techName||"الفني"}`:""),note:"",date:localDateKey(now),time:now.toTimeString().slice(0,5),source:"ext-part",orderId:order.id,createdAt:now.toISOString()})});
+  Object.keys(want).forEach(k=>{if(seen[k])return;const p=want[k];changed=true;a.push({id:k,refKey:k,manualOverride:false,deleted:false,type:"out",amount:extPartAmount(p),wallet:p.payWallet,category:"مشتريات قطع غيار",reason:`🧳 قطعة: ${p.name||""} × ${p.qty} (أمر ${order.no||""})`+(p.paidBy==="custody"?` — من عهدة ${order.techName||"الفني"}`:""),note:"",date:localDateKey(now),time:now.toTimeString().slice(0,5),source:"ext-part",orderId:order.id,createdAt:now.toISOString()})});
   const ok=changed?put(K.wtx,a):true;
   // «من جيبه»: مصروف معتمد باسم الفني (بيتضاف لمستحقاته). مفتاح ثابت = ما يتكررش.
   try{
@@ -32,7 +33,7 @@ function syncExtPartPayments(order,oldParts){
     if(fs){
       const prev={};(oldParts||[]).forEach(p=>{if(p&&p.external&&p.payKey&&p.paidBy==="own")prev[p.payKey]=p});
       const cur={};live.forEach(p=>{if(p.paidBy==="own"&&order.techId&&extPartAmount(p)>0)cur[p.payKey]=p});
-      Object.keys(cur).forEach(k=>{const p=cur[k],o=prev[k];if(o&&extPartAmount(o)===extPartAmount(p)&&o.qty===p.qty)return;const at=new Date().toISOString();fs.collection("techExpenses").doc("extpart-"+k).set({techId:String(order.techId),techName:order.techName||"",wallet:order.techWallet||"",amount:extPartAmount(p),note:`قطعة: ${p.name||""} × ${p.qty}`,orderId:String(order.id),orderNo:String(order.no||""),status:"approved",pay:"own",at,decidedAt:at,decidedBy:(window.firebase.auth().currentUser||{}).uid||"",decisionNote:"سجّلتها الإدارة مع الأمر",source:"admin-part"}).catch(e=>console.warn("ext part own",e))});
+      Object.keys(cur).forEach(k=>{const p=cur[k],o=prev[k];if(o&&extPartAmount(o)===extPartAmount(p)&&o.qty===p.qty)return;const at=new Date().toISOString();fs.collection("techExpenses").doc("extpart-"+k).set({techId:String(order.techId),techName:order.techName||"",wallet:order.techWallet||"",amount:extPartAmount(p),note:`قطعة: ${p.name||""} × ${p.qty}`,orderId:String(order.id),orderNo:String(order.no||""),status:"approved",pay:"own",category:"part",at,decidedAt:at,decidedBy:(window.firebase.auth().currentUser||{}).uid||"",decisionNote:"سجّلتها الإدارة مع الأمر",source:"admin-part"}).catch(e=>console.warn("ext part own",e))});
       Object.keys(prev).forEach(k=>{if(!cur[k])fs.collection("techExpenses").doc("extpart-"+k).delete().catch(()=>{})});
       // قطعة ضافها الفني وشالتها الإدارة: مصروفها لو لسه معلّق يتلغي
       (oldParts||[]).forEach(p=>{if(p&&p.external&&p.expenseId&&!(order.parts||[]).some(n=>n&&n.expenseId===p.expenseId)){const ref=fs.collection("techExpenses").doc(p.expenseId);ref.get().then(d=>{if(d.exists&&(d.data()||{}).status==="pending")return ref.delete()}).catch(()=>{})}});

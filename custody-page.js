@@ -61,7 +61,7 @@
       var ref = "custody-exp-" + e.id;
       if (!A(window.K.wtx).some(function (x) { return x && x.refKey === ref && !x.deleted; })) { // بنسجّل الحركة الأول (مفتاح ثابت = ما تتكررش لو الاعتماد اتعاد)
         var t = nowParts();
-        var tx = { id: ref, refKey: ref, manualOverride: true, deleted: false, type: "out", amount: +e.amount, wallet: wallet, category: "مصروف تشغيل", reason: "🧾 " + e.note + (e.orderNo ? " (أمر " + e.orderNo + ")" : "") + " — " + (e.techName || "") + (kind === "workshop" ? " (دفعتها الإدارة)" : ""), note: "", date: t.date, time: t.time, source: "custody-expense", createdAt: t.iso };
+        var tx = { id: ref, refKey: ref, manualOverride: true, deleted: false, type: "out", amount: +e.amount, wallet: wallet, category: e.category === "part" ? "مشتريات قطع غيار" : "مصروف تشغيل", reason: "🧾 " + e.note + (e.orderNo ? " (أمر " + e.orderNo + ")" : "") + " — " + (e.techName || "") + (kind === "workshop" ? " (دفعتها الإدارة)" : ""), note: "", date: t.date, time: t.time, source: "custody-expense", createdAt: t.iso };
         if (!window.put(window.K.wtx, A(window.K.wtx).concat(tx))) return Promise.reject("تعذّر حفظ حركة المحفظة.");
       }
       return markDecision(e, "approved", noteText, wallet).catch(function (err) { throw "الحركة اتسجلت لكن تحديث حالة المصروف فشل (" + String(err) + ") — اضغط اعتماد تاني (مش هيتكرر)."; });

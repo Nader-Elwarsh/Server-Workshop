@@ -247,7 +247,12 @@
   function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; ["createdAt", "updatedAt", "at"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
   function byCreated(a, b) { return (Date.parse(a.createdAt || a.at) || 0) - (Date.parse(b.createdAt || b.at) || 0); }
   function local(k) { try { return JSON.parse(ls.getItem(k) || "null"); } catch (e) { return null; } }
-  function raw(k, v) { applying = true; origSet.call(ls, k, v); applying = false; }
+  var SNAP_KEYS = { wf_c: 1, wf_d: 1, wf_r: 1, wf_p: 1, wf_m: 1, wf_wallet_tx: 1 };
+  function raw(k, v) {
+    applying = true; origSet.call(ls, k, v); applying = false;
+    // نسخة القراءة الفورية لازم تتحدث مع التخزين، وإلا كتابة محلية لسه بتخلص في IndexedDB كانت ترجّع البيانات القديمة فوق اللي نزل من السحابة
+    if (SNAP_KEYS[k] && window.WorkshopDB && typeof window.WorkshopDB.setSnapshot === "function") { try { window.WorkshopDB.setSnapshot(k, JSON.parse(v || "[]")); } catch (e) {} }
+  }
   /* أصل الإعدادات (آخر نسخة معروفة إنها متطابقة مع السحابة) بيتحفظ على الجهاز كمان، مش في الذاكرة بس:
      من غيره كل فتح للصفحة بيبدأ بأصل مجهول، وأي تعديل بسيط في الإعدادات وقت الفتح كان بيتعامل كتعارض
      مع السحابة حتى على جهاز واحد («تعارض إعدادات: لم تتم الكتابة فوق النسخة الأحدث»). */

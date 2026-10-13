@@ -77,9 +77,7 @@ check(get(K.r)[0].parts.length===2&&get(K.r)[0].parts[1].external&&get(K.r)[0].p
   const ord=get(K.r)[0];ord.parts[0].qty=3;context.syncExtPartPayments(ord,[]);
   check(get(K.wtx).filter(x=>x.refKey==='extpart-'+part.payKey&&!x.deleted).length===1&&get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).amount===300,'quantity change updates the same tx');
   context.syncExtPartPayments(Object.assign({},ord,{status:'ملغي'}),ord.parts);
-  check(get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).deleted===true,'cancelled order removes the part payment');
-  context.syncExtPartPayments(ord,[]);
-  check(get(K.wtx).filter(x=>x.refKey==='extpart-'+part.payKey&&!x.deleted).length===1,'reopened order brings it back once');
+  check(get(K.wtx).filter(x=>x.refKey==='extpart-'+part.payKey&&!x.deleted).length===1,'cancelling keeps the part purchase (money was spent)');
   context.syncExtPartPayments(Object.assign({},ord,{parts:[]}),ord.parts);
   check(get(K.wtx).find(x=>x.refKey==='extpart-'+part.payKey).deleted===true,'removing the part removes its payment');
   check(context.extPayPick('own',{techId:''},10)===null&&context.extPayPick('',{},0).paidBy==='none'&&context.extPayPick('w:كاش الورشة',{techWallet:'عهدة نادر'},5).paidBy==='workshop','payment source parsing');

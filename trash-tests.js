@@ -17,6 +17,17 @@ function freshStore(){const store={};
   return {store,ctx,window};
 }
 
+// أمر اتعمله مرتجع (التحصيل اتشال واتحوّل لعربون) وبعدين اتحذف واترجع من السلة: التحصيل القديم مايرجعش (كان بيتحسب مرتين)
+{
+  const {store,ctx,window}=freshStore();
+  store[ctx.K.r]=JSON.stringify([{id:'r1',no:'W-1',parts:[]}]);
+  store[ctx.K.p]=JSON.stringify([]);store[ctx.K.m]=JSON.stringify([]);
+  store[ctx.K.wtx]=JSON.stringify([{id:'d1',refKey:'order-deposit-r1',deleted:false,amount:950,wallet:'كاش',type:'in'},{id:'f1',refKey:'order-final-r1',deleted:true,amount:850,wallet:'كاش',type:'in'}]);
+  await window.deleteRequestRecord('r1');
+  await window.restoreFromTrash(window.trashEntries()[0].id);
+  const w=JSON.parse(store[ctx.K.wtx]);
+  assert.deepStrictEqual([w.find(x=>x.id==='d1').deleted,w.find(x=>x.id==='f1').deleted],[false,true],'only what was deleted with the order comes back');
+}
 // حذف أمر شغل واحد لازم يظهر في سلة المهملات، والاسترجاع لازم يرجّع الأمر
 // وحركة القطعة وحركة المحفظة المرتبطة بيه بالظبط زي ما كانوا.
 {

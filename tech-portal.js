@@ -424,7 +424,7 @@
           mutate(r.id, function (x) { x.parts = (x.parts || []).concat(part); recompute(x); }).then(function (ok) {
             if (!ok) return;
             if (withExp) {
-              submitExpense({ ref: ref, pay: how, amount: cost * q, note: "قطعة: " + name + " × " + q, orderId: r.id, orderNo: r.no || "" }).then(function () { say("✅ اتضافت القطعة وتمنها اتبعت للإدارة (" + PAY_SHORT[how] + ") — مستني الاعتماد."); draw(); }, function (e) { say("القطعة اتضافت لكن المصروف ما اتسجلش (" + e + "). سجّله من «عهدتي».", true); draw(); });
+              submitExpense({ ref: ref, part: true, pay: how, amount: cost * q, note: "قطعة: " + name + " × " + q, orderId: r.id, orderNo: r.no || "" }).then(function () { say("✅ اتضافت القطعة وتمنها اتبعت للإدارة (" + PAY_SHORT[how] + ") — مستني الاعتماد."); draw(); }, function (e) { say("القطعة اتضافت لكن المصروف ما اتسجلش (" + e + "). سجّله من «عهدتي».", true); draw(); });
             } else { say("✅ اتضافت القطعة."); draw(); }
           });
         }));
@@ -475,6 +475,7 @@
       var u = uid(); if (!u) return Promise.reject("سجّل الدخول");
       if (!online()) return Promise.reject("مفيش نت");
       var data = { techId: u, techName: me(), wallet: myWallet(), amount: Math.round(+x.amount * 100) / 100, note: String(x.note || "").trim(), status: "pending", at: new Date().toISOString(), pay: x.pay || "custody" };
+      if (x.part) data.category = "part"; // تمن قطعة على أمر: تكلفتها محسوبة في «تكلفة القطع» فمش هتتحسب تاني كمصروف تشغيل
       if (x.orderId) { data.orderId = String(x.orderId); data.orderNo = String(x.orderNo || ""); }
       var ref = x.ref || fsdb().collection("techExpenses").doc();
       return ref.set(data).then(function () {
