@@ -758,3 +758,10 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .followup-card .item-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .followup-card .followup-line{margin-top:6px;font-size:14px;line-height:1.6}
 .followup-card .actions{margin-top:10px}
+/* منطقة الحذف الجماعي: في آخر الصفحة ومقفولة لحد ما تفتحها */
+.danger-zone{margin:18px 0 8px;border:1px dashed rgba(185,28,28,.45);border-radius:12px;padding:10px 12px;background:var(--bg-elevated)}
+.danger-zone summary{cursor:pointer;font-weight:700;color:var(--danger-text)}
+.danger-zone-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+/* مربعات الملخص بتظهر حسب الموجود (اللي بصفر بيستخبى)، فلما العدد يبقى فردي آخر مربع كان بيسيب خانة فاضية جنبه — بياخد السطر كله */
+.compact-stats>.stat:last-child:nth-child(odd){grid-column:1/-1}
+@media(max-width:650px){.report-cards>.report-card:last-child:nth-child(odd){grid-column:1/-1}}
