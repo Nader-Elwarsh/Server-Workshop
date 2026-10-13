@@ -264,8 +264,10 @@ function formatDuration(ms){
   if(hours)return `${hours} س${mins?` و ${mins} د`:""}`;
   return `${Math.max(0,mins)} د`;
 }
+// بداية الدورة الحالية للأمر: لو اتعمله مرتجع واخترت «تبدأ من جديد»، العمر والمدد بتتحسب من المرتجع (تاريخ البلاغ نفسه مابيتغيرش)
+function requestCycleStart(r){if(r&&r.restartedAt){let d=new Date(r.restartedAt);if(!Number.isNaN(d.getTime()))return d}return requestCreatedDate(r)}
 function requestTotalCompletionMs(r){
-  let s=requestCreatedDate(r),e=requestCompletedDate(r);
+  let s=requestCycleStart(r),e=requestCompletedDate(r);
   return durationMs(s,e);
 }
 function requestWorkshopExecutionMs(r){
@@ -283,7 +285,7 @@ function requestWorkshopStayMs(r){
   return durationMs(s,e);
 }
 function requestAgeMs(r){
-  let s=requestCreatedDate(r);if(!s)return null;
+  let s=requestCycleStart(r);if(!s)return null;
   let e=r?.status==="مكتمل"?requestCompletedDate(r):null;
   // أمر مجمد: العداد بيتوقف عند لحظة التجميد، فمش بيزيد وهو واقف منتظر رد
   // العميل. frozenMs بيجمع كل فترات التجميد السابقة (لو اتفك وتجمد أكتر من مرة).
@@ -332,6 +334,7 @@ function markPaidAndClose(i){
   // مفيش محفظة، زي ما بالظبط بيحصل في تقفيل خط السير — نفس التحذير هنا
   // عشان المستخدم مش يفاجأ إن المبلغ "اختفى" من الحسابات).
   if(collected>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المُحصّل (${collected.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة الإغلاق من غير تسجيله في محفظة؟`))return;
+  if(r.returnPayPending&&!confirm("🔄 حساب الفني على المرتجع ده لسه ما اتحددش (من «أجرة الفني على الأمر» تحت). تقفل الأمر وتحدده بعدين؟"))return;
   if(!confirm("تأكيد استلام كامل قيمة الأمر وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
   let now=new Date().toISOString();
   r.paid=true;

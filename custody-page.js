@@ -99,14 +99,17 @@
     function r2(n) { return Math.round((+n || 0) * 100) / 100; }
     function payState(uid) { // المستحق = أجور الأوامر المقفولة − اللي اتصرف (حركات صرف أجور ليه مش محذوفة)
       var closed = A(window.K.r).filter(function (r) { return r && r.techId === uid && r.closed && r.status !== "ملغي"; });
-      var priced = closed.filter(function (r) { return +r.techPay > 0 || r.jobType; });
-      var earned = priced.reduce(function (s, r) { return s + (+r.techPay || 0); }, 0);
-      var ym = monthOf(new Date()), earnedMonth = priced.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; }).reduce(function (s, r) { return s + (+r.techPay || 0); }, 0);
+      var priced = closed.filter(function (r) { return (+r.techPay || 0) !== 0 || r.jobType; });
+      // حصص أجرة اتثبتت للفني على أوامر اتعملها مرتجع (الشغل الأول) — بتتحسب حتى لو الأمر لسه مفتوح أو مع فني تاني
+      var shares = []; A(window.K.r).forEach(function (r) { if (r && r.status !== "ملغي") (r.payShares || []).forEach(function (sh) { if (sh && sh.uid === uid) shares.push({ r: r, sh: sh }); }); });
+      var ym = monthOf(new Date());
+      var earned = priced.reduce(function (s, r) { return s + (+r.techPay || 0); }, 0) + shares.reduce(function (s, x) { return s + (+x.sh.amount || 0); }, 0);
+      var earnedMonth = priced.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; }).reduce(function (s, r) { return s + (+r.techPay || 0); }, 0) + shares.filter(function (x) { return monthOf(x.sh.at) === ym; }).reduce(function (s, x) { return s + (+x.sh.amount || 0); }, 0);
       var since = P().config().since;
       var pays = A(window.K.wtx).filter(function (x) { return x && !x.deleted && x.source === "techpay" && x.techPayFor === uid; });
       var paid = pays.reduce(function (s, x) { return s + (x.type === "out" ? +x.amount || 0 : -(+x.amount || 0)); }, 0);
       var reimb = state.own.filter(function (x) { return x.techId === uid && x.status === "approved"; }).reduce(function (s2, x) { return s2 + (+x.amount || 0); }, 0);
-      return { earned: r2(earned), reimb: r2(reimb), earnedMonth: r2(earnedMonth), paid: r2(paid), due: r2(earned + reimb - paid), unpriced: closed.filter(function (r) { return !(+r.techPay > 0) && !r.jobType && since && String(r.closedAt || r.paidAt || "") >= since; }), priced: priced, pays: pays };
+      return { earned: r2(earned), reimb: r2(reimb), earnedMonth: r2(earnedMonth), paid: r2(paid), due: r2(earned + reimb - paid), shares: shares, unpriced: closed.filter(function (r) { return !((+r.techPay || 0) !== 0) && !r.jobType && since && String(r.closedAt || r.paidAt || "") >= since; }), priced: priced, pays: pays };
     }
     function addPayout(u, wallet, amount, note) {
       var t = nowParts(), fromCustody = wallet === u.wallet;
@@ -121,6 +124,8 @@
       box.appendChild(mk("div", "font-size:13px;opacity:.8", "💰 مستحقات الفني (أجور + مصاريف دفعها من جيبه)"));
       box.appendChild(mk("div", "font-size:24px;font-weight:800;color:" + (ps.due < 0 ? "var(--danger-text)" : "var(--primary)"), money(ps.due)));
       box.appendChild(mk("div", "font-size:13px", "أجور: " + money(ps.earned) + (ps.reimb ? " • من جيبه: " + money(ps.reimb) : "") + " • اتصرف: " + money(ps.paid) + " • أجور الشهر: " + money(ps.earnedMonth)));
+      var pendR = A(window.K.r).filter(function (r) { return r && r.returnPayPending && (r.payShares || []).some(function (sh) { return sh && sh.pending && sh.uid === u.uid; }); });
+      if (pendR.length) { var pl = mk("div", "font-size:13px;color:var(--warn-text,#b45309);margin-top:4px", "🔄 " + pendR.length + " مرتجع حسابه لسه ما اتحددش: "); pendR.slice(0, 5).forEach(function (r) { var a = mk("a", "margin-inline-start:6px", "#" + (r.no || "")); a.href = "request.html?id=" + encodeURIComponent(r.id); pl.appendChild(a); }); box.appendChild(pl); }
       if (ps.unpriced.length) box.appendChild(mk("div", "font-size:13px;color:var(--warn-text,#b45309);margin-top:4px", "⚠️ " + ps.unpriced.length + " أمر مقفول لسه من غير أجرة"));
       var row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px");
       if (canSettle()) row.appendChild(btn("💸 صرف مستحقات", BTN, function () { payoutForm(u, ps); }));
@@ -153,6 +158,10 @@
             var a = mk("a", "flex:1", "#" + (r.no || "") + " " + custName(r.customerId) + " — " + (P().typeName(r.jobType) || (r.techPayManual ? "يدوي" : "")) ); a.href = "request.html?id=" + encodeURIComponent(r.id);
             line.appendChild(a); line.appendChild(mk("b", "", money(r.techPay))); box.appendChild(line);
           });
+        }
+        if (ps.shares.length) {
+          box.appendChild(mk("b", "display:block;margin-top:10px;font-size:14px", "أجور من أوامر اتعملها مرتجع:"));
+          ps.shares.forEach(function (x) { var line = mk("div", "display:flex;gap:6px;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--border,#cbd5e1)"); var a = mk("a", "flex:1", "#" + (x.r.no || "") + " " + custName(x.r.customerId) + " — " + (x.sh.note || "")); a.href = "request.html?id=" + encodeURIComponent(x.r.id); line.appendChild(a); line.appendChild(mk("b", "", money(x.sh.amount))); box.appendChild(line); });
         }
         var pays = ps.pays.slice().sort(function (a, b) { return String((b.date || "") + (b.time || "")).localeCompare(String((a.date || "") + (a.time || ""))); }).slice(0, 10);
         if (pays.length) {

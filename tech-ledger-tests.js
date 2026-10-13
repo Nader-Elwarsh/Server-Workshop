@@ -12,10 +12,10 @@ function makeDb(seed) {
   const doc = (path) => ({ path, get: async () => snap(path), set: async (v) => put(path, v), update: async (v) => put(path, Object.assign(get(path) || {}, v)) });
   function query(c, filters, lim) {
     return {
-      where: (f, op, v) => query(c, filters.concat([[f, v]]), lim),
+      where: (f, op, v) => query(c, filters.concat([[f, v, op]]), lim),
       limit: (n) => query(c, filters, n),
       get: async () => {
-        let docs = Object.keys(data[c] || {}).filter((id) => filters.every(([f, v]) => data[c][id][f] === v)).map((id) => ({ id, data: () => JSON.parse(JSON.stringify(data[c][id])) }));
+        let docs = Object.keys(data[c] || {}).filter((id) => filters.every(([f, v, op]) => op === "array-contains" ? Array.isArray(data[c][id][f]) && data[c][id][f].includes(v) : data[c][id][f] === v)).map((id) => ({ id, data: () => JSON.parse(JSON.stringify(data[c][id])) }));
         if (lim) docs = docs.slice(0, lim);
         return { docs, empty: !docs.length, size: docs.length };
       }
@@ -133,6 +133,12 @@ function makeDb(seed) {
   const acR = await L.account("t1", {});
   assert.deepStrictEqual([acR.pay.reimb, acR.pay.pendingReimb, acR.pay.due, acR.stats.pendingExpenses, acR.expenses.filter((x) => x.id === "o1")[0].pay], [25, 15, 275, 40, "own"]);
   delete db.data.techExpenses.o1; delete db.data.techExpenses.o2; delete db.data.techExpenses.w1;
+  // مرتجع: حصة الشغل الأول اتثبتت للفني t1 والأمر اتحوّل لـ t2 → بتتحسب لـ t1، والخصم (أجرة بالسالب) بيتطرح
+  db.data.requests.sh1 = { techId: "t2", no: "S1", status: "جاري التنفيذ", closed: false, techPay: 50, payShares: [{ uid: "t1", name: "نادر", amount: 120, note: "أجرة الشغل الأول", at: "2026-10-12T09:00:00.000Z" }], payShareUids: ["t1"] };
+  db.data.requests.sh2 = { techId: "t1", no: "S2", status: "مكتمل", closed: true, paid: true, closedAt: "2026-10-12T09:30:00.000Z", total: 0, deposit: 0, techPay: -30, techPayManual: true };
+  const acS = await L.account("t1", {});
+  assert.deepStrictEqual([acS.pay.earned, acS.pay.shares.length, acS.pay.shares[0].no], [350 - 30 + 120, 1, "S1"]);
+  delete db.data.requests.sh1; delete db.data.requests.sh2;
   const ph = (await L.account("t1", {})).history.filter((h) => h.no === "A1")[0];
   assert.deepStrictEqual([ph.pay, ph.priced], [200, true]);
   delete db.data.requests.r6;

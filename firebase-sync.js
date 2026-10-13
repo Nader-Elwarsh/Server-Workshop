@@ -63,7 +63,7 @@
      + عميل/جهاز كل أمر منهم (من techOrders). فالمزامنة بتنزّل دول بس، وبترفع تعديلات أوامره بس، ومفيش أي عملية إدارية. */
   // نفس قايمة المنع اللي في firestore.rules (techOrderPatch)
   var TECH_LOCKED = {}; ["techId", "techName", "techWallet", "assignedAt", "assignedBy", "customerId", "deviceId", "addressKey", "no", "createdAt", "source", "portalRequestId", "portalVis", "portal",
-    "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech", "jobType", "jobTypeName", "techPay", "techPayManual", "techPayAt", "techPayBy"].forEach(function (f) { TECH_LOCKED[f] = 1; });
+    "deposit", "depositWallet", "depositExtra", "closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech", "jobType", "jobTypeName", "techPay", "techPayManual", "techPayAt", "techPayBy", "payShares", "payShareUids", "returnPayPending"].forEach(function (f) { TECH_LOCKED[f] = 1; });
   var SCOPED = false, MODE_KEY = "wf_sync_mode", UID_KEY = "wf_sync_uid", wipedForMode = false, TECH_PAGES = /\/(tech|login|privacy|terms|index|requests|request|customers|customer|devices|device|route)\.html$|\/$/; // صفحات بتشتغل ببيانات الفني (أوامره وعملاؤها وأجهزتها). أي صفحة تانية بتحوّله لبوابته
   var ls = window.WFStorage, origSet = ls.setItem.bind(ls), origRemove = ls.removeItem.bind(ls);
   var db = null, meta = null, ready = false, applying = false, timers = {}, lastRaw = {}, flushing = false, hydrating = false, pushing = {};

@@ -289,7 +289,7 @@
       });
     }
     function remainOf(r) { return Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100); }
-    function kv(label, value) { var d = el("div", "tp-kv"); d.appendChild(el("b", "", label)); d.appendChild(el("span", "", value)); return d; }
+    function kv(label, value) { var d = el("div", "tp-kv"); d.appendChild(el("b", "", label)); d._v = d.appendChild(el("span", "", value)); return d; }
     function block(title) { var c = el("div", "tp-card"); c.appendChild(el("h3", "tp-card-title", title)); return c; }
 
     var CAT_KEY = "wf_tech_parts";
@@ -305,6 +305,8 @@
     }
     function stockCall(name, data, r, okMsg) {
       if (!online()) return say("الإضافة من المخزن محتاجة نت (عشان تتخصم من المخزن فعلًا).", true);
+      if (state.flushWork) state.flushWork();
+      r = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
       data.fields = workFields(r);
       say("⏳ جارٍ التنفيذ…");
       return window.WFPerm.call(name, data).then(function (res) {
@@ -317,6 +319,14 @@
         say(MSG[code] || errText(e, "ما اتنفذش"), true); loadCatalog().then(draw);
       });
     }
+    function refreshTotals(id) {
+      var x = A(window.K.r).filter(function (o) { return o.id === id; })[0], t = state.totalsEls; if (!x || !t || !t.lab) return;
+      t.lab.textContent = money(x.labor); t.tot.textContent = money(x.total); t.rem.textContent = money(remainOf(x));
+    }
+    function savedTag() { // علامة صغيرة «✓ اتحفظ» جنب الخانات اللي بتتحفظ لوحدها
+      var t = el("span", "tp-saved"); var tm = null;
+      return { el: t, show: function (txt, bad) { clearTimeout(tm); t.textContent = txt || ""; t.className = "tp-saved" + (bad ? " tp-saved-bad" : ""); if (/اتحفظ$/.test(txt || "")) tm = setTimeout(function () { t.textContent = ""; }, 2500); } };
+    }
     function workFields(r) { var o = {}; ["status", "work", "labor", "parts", "partsTotal", "partsCost", "total", "statusHistory", "startedAt", "completedAt", "visit"].forEach(function (k) { if (r[k] !== undefined) o[k] = r[k]; }); return o; }
     function closeOrder(r, wallet, button) {
       if (state.busy) return;
@@ -325,7 +335,7 @@
       if (!window.confirm("تأكيد استلام " + money(remain) + " من العميل وقفل الأمر #" + (r.no || "") + (remain > 0 ? "\nالمبلغ هيتسجل في: " + wallet : "") + "\nبعد القفل مش هتقدر تعدّل الأمر.")) return;
       state.busy = true; button.disabled = true; button.textContent = "⏳ جارٍ القفل…";
       var t = nowKey();
-      Promise.resolve(window.wfCloudSyncNow ? window.wfCloudSyncNow() : null).catch(function () {}).then(function () {
+      Promise.resolve(state.flushWork ? state.flushWork() : null).catch(function () {}).then(function () { return window.wfCloudSyncNow ? window.wfCloudSyncNow() : null; }).catch(function () {}).then(function () {
         var cur = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
         return window.WFPerm.call("techCloseOrder", { orderId: r.id, wallet: wallet, expectTotal: +cur.total || 0, expectDeposit: +cur.deposit || 0, date: t.date, time: t.time, fields: workFields(cur) });
       }).then(function (res) {
@@ -385,12 +395,14 @@
       if (edit) {
         var sc = block("📅 الموعد" + (r.visit ? "" : " (لسه ما اتحددش)"));
         var inp = el("input", "tp-input"); inp.type = "datetime-local"; inp.value = toInputValue(r.visit);
-        var row3 = el("div", "tp-row tp-wrap tp-gap");
-        row3.appendChild(btn("حفظ الموعد", "tp-btn", function () {
-          if (!inp.value) return say("اختار التاريخ والوقت الأول.", true);
-          mutate(r.id, function (x) { x.visit = inp.value; }).then(function (ok) { if (ok) { say("✅ اتحفظ الموعد وهيظهر للإدارة في جدولك."); draw(); } });
-        }));
+        var row3 = el("div", "tp-row tp-wrap tp-gap"), vs = savedTag();
+        // حفظ تلقائي: أول ما تختار الموعد بيتحفظ (من غير زرار حفظ)
+        inp.onchange = function () {
+          if (!inp.value || inp.value === toInputValue(r.visit)) return;
+          vs.show("⏳"); mutate(r.id, function (x) { x.visit = inp.value; }).then(function (ok) { if (ok) { r.visit = inp.value; vs.show("✓ اتحفظ"); say("✅ اتحفظ الموعد وهيظهر للإدارة في جدولك."); } else vs.show(""); });
+        };
         if (r.visit) row3.appendChild(btn("مسح الموعد", "tp-btn2", function () { mutate(r.id, function (x) { x.visit = ""; }).then(function (ok) { if (ok) draw(); }); }));
+        row3.appendChild(vs.el);
         sc.appendChild(inp); sc.appendChild(row3); box.appendChild(sc);
 
         var stc = block("🚦 الحالة");
@@ -405,12 +417,25 @@
         var work = el("textarea", "tp-input"); work.value = r.work || ""; work.placeholder = "اكتب اللي اتعمل في الجهاز…";
         var lbl = el("label", "tp-label", "أجرة الصنعة (ج)");
         var labor = el("input", "tp-input"); labor.type = "number"; labor.min = "0"; labor.step = "any"; labor.inputMode = "decimal"; labor.value = r.labor == null ? "" : r.labor; labor.placeholder = "أجرة الصنعة (ج)";
-        wc.appendChild(work); wc.appendChild(lbl); wc.appendChild(labor);
-        wc.appendChild(btn("حفظ الشغل والأجرة", "tp-btn tp-mt", function () {
+        var ws = savedTag(), wTimer = null, lastSaved = (r.work || "") + "|" + (r.labor == null ? "" : r.labor);
+        wc.appendChild(work); wc.appendChild(lbl); wc.appendChild(labor); wc.appendChild(ws.el);
+        // حفظ تلقائي: بعد ما تبطّل كتابة بثانية، ولما تخرج من الخانة (والحساب تحت بيتحدث لما تخرج)
+        var saveWork = function (redraw) {
+          clearTimeout(wTimer);
           var l = labor.value === "" ? 0 : +labor.value;
-          if (!isFinite(l) || l < 0) return say("اكتب أجرة صحيحة.", true);
-          mutate(r.id, function (x) { x.work = work.value.trim(); x.labor = l; recompute(x); }).then(function (ok) { if (ok) { say("✅ اتحفظ."); draw(); } });
-        }));
+          if (!isFinite(l) || l < 0) { ws.show("اكتب أجرة صحيحة", true); return Promise.resolve(false); }
+          var key = work.value.trim() + "|" + labor.value;
+          if (key === lastSaved) { if (redraw) refreshTotals(r.id); return Promise.resolve(true); }
+          ws.show("⏳ بيتحفظ…");
+          return mutate(r.id, function (x) { x.work = work.value.trim(); x.labor = l; recompute(x); }).then(function (ok) {
+            if (!ok) { ws.show("ما اتحفظش", true); return false; }
+            lastSaved = key; ws.show("✓ اتحفظ"); refreshTotals(r.id);
+            return true;
+          });
+        };
+        work.oninput = labor.oninput = function () { clearTimeout(wTimer); ws.show("…"); wTimer = setTimeout(function () { saveWork(false); }, 1000); };
+        work.onchange = labor.onchange = function () { saveWork(true); };
+        state.flushWork = function () { return saveWork(false); };
         box.appendChild(wc);
       }
 
@@ -498,9 +523,12 @@
       box.appendChild(pc);
 
       var mc = block("💰 الحساب");
-      mc.appendChild(kv("المصنعية (على العميل)", money(r.labor))); mc.appendChild(kv("القطع", money(r.partsTotal)));
-      mc.appendChild(kv("الإجمالي", money(r.total))); mc.appendChild(kv("العربون", money(r.deposit)));
+      var kLab = kv("المصنعية (على العميل)", money(r.labor)), kTot = kv("الإجمالي", money(r.total));
+      mc.appendChild(kLab); mc.appendChild(kv("القطع", money(r.partsTotal)));
+      mc.appendChild(kTot); mc.appendChild(kv("العربون", money(r.deposit)));
       var rem = kv("المتبقي على العميل", money(remainOf(r))); rem.className = "tp-kv tp-kv-total"; mc.appendChild(rem);
+      // الحساب بيتحدث مكانه بعد الحفظ التلقائي (من غير ما الصفحة تترسم تاني وتضيّع الضغطة اللي بعدها)
+      state.totalsEls = { lab: kLab._v, tot: kTot._v, rem: rem._v };
       if (!locked && can("requests.close") && r.status !== "ملغي") { // عربون/دفعة من العميل (معاينة والجهاز محتاج قطع وزيارة تانية مثلًا)
         var df = el("details", "tp-add tp-mt"); df.appendChild(el("summary", "", "💵 استلام عربون / دفعة من العميل"));
         var da = el("input", "tp-input"); da.type = "number"; da.min = "0"; da.step = "any"; da.inputMode = "decimal"; da.placeholder = "المبلغ اللي استلمته (ج)";
@@ -514,7 +542,9 @@
           if ((+r.total || 0) > 0 && (+r.deposit || 0) + v > (+r.total || 0) + 0.001 && !window.confirm("العربون كده أكبر من إجمالي الأمر الحالي (" + money(r.total) + "). تكمّل؟")) return;
           if (!window.confirm("تأكيد استلام " + money(v) + " من العميل في «" + dw.value + "»؟")) return;
           say("⏳ جارٍ التسجيل…");
-          window.WFPerm.call("techCollectDeposit", { orderId: r.id, amount: v, wallet: dw.value, note: dn.value.trim(), fields: workFields(r) }).then(function (res) {
+          if (state.flushWork) state.flushWork();
+          var curR = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
+          window.WFPerm.call("techCollectDeposit", { orderId: r.id, amount: v, wallet: dw.value, note: dn.value.trim(), fields: workFields(curR) }).then(function (res) {
             return window.updateRequestRecordAsync(r.id, function (_, x) { x.deposit = res.deposit; x.depositExtra = res.depositExtra; x.remain = res.remain; return true; })
               .then(function () { say("✅ اتسجل عربون " + money(v) + " — الباقي على العميل " + money(res.remain) + "."); loadAccount(); draw(); });
           }, function (e) {

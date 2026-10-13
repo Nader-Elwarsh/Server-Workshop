@@ -782,3 +782,12 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .txd-row b.in{color:var(--success-text)}.txd-row b.out{color:var(--danger-text)}.txd-row small{color:var(--text-muted)}
 .txd-open{display:block;text-align:center;margin-top:12px;text-decoration:none}
 .txd-actions{display:flex;gap:8px;margin-top:14px}.txd-actions button{flex:1}
+/* حوار المرتجع */
+.rd-sheet .rd-l{display:block;font-weight:700;font-size:13px;margin:6px 0 10px}.rd-sheet .rd-l textarea{width:100%;margin-top:6px;box-sizing:border-box}
+.rd-g{background:var(--bg-sunken);border:1px solid var(--border);border-radius:12px;padding:8px 10px;margin:8px 0}
+.rd-g b{display:block;margin-bottom:4px;font-size:14px}
+.rd-g label{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;font-size:13px;line-height:1.5}
+.rd-g label input[type=radio]{width:auto;flex:none}.rd-g select,.rd-g input[type=datetime-local]{flex:1;min-width:150px;padding:6px;border-radius:8px}
+.rd-g label>span{flex:1;min-width:0}
+.rd-sub{margin:6px 0 2px;padding:8px;border-radius:10px;border:1px dashed var(--border);background:var(--bg-elevated)}
+.rd-sub label{display:flex;flex-wrap:wrap;gap:6px}.rd-sub label>span{flex:1 1 100%}.rd-sub select,.rd-sub input{flex:1;min-width:120px;padding:6px;border-radius:8px}
