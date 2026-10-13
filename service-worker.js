@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v60-tech-deposit";
+const CACHE_NAME = "workshop-v61-public-theme";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -47,6 +47,7 @@ const CORE_FILES = [
   "./portal-admin.html",
   "./portal-ticker.js",
   "./pw-eye.js",
+  "./theme-mini.js",
   "./wf-session.js",
   "./audit-log.js",
   "./global-search.js",
