@@ -46,6 +46,20 @@ function cleanWork(f) {
   });
   return out;
 }
+/* قطع الأمر: سطور المخزن (partId) دايمًا من نسخة السيرفر (اتخصمت من المخزن هنا)، والقطع اللي من بره من شغل الفني */
+function mergeParts(serverParts, clientParts) {
+  const stock = (Array.isArray(serverParts) ? serverParts : []).filter((p) => p && !p.external && p.partId);
+  const ext = (Array.isArray(clientParts) ? clientParts : (Array.isArray(serverParts) ? serverParts : [])).filter((p) => p && p.external);
+  return stock.concat(ext);
+}
+function recalc(r) {
+  const parts = Array.isArray(r.parts) ? r.parts : [];
+  r.partsTotal = r2(parts.reduce((a, p) => a + num(p.qty) * num(p.sell), 0));
+  r.partsCost = r2(parts.reduce((a, p) => a + num(p.qty) * num(p.cost), 0));
+  r.total = r2(num(r.labor) + r.partsTotal);
+  r.remain = Math.max(0, r2(r.total - num(r.deposit)));
+  return r;
+}
 function collectedOf(r) { return Math.max(0, r2(num(r.total) - num(r.deposit))); }
 
 const PAY_KINDS = ["custody", "own", "workshop"];
@@ -108,7 +122,9 @@ function createTechLedger(deps) {
       if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
       // شغل الفني على الأمر (الحالة/الشغل/الأجرة/القطع) بيتسجل مع القفل نفسه، حتى لو المزامنة لسه مارفعتهوش
       const work = cleanWork(data && data.fields);
+      const srvParts = r.parts;
       Object.assign(r, work);
+      if (work.parts || work.labor !== undefined) { r.parts = mergeParts(srvParts, work.parts); recalc(r); ["parts", "partsTotal", "partsCost", "total"].forEach((k) => { work[k] = r[k]; }); }
       if (r.status !== "مكتمل") throw new AdminError("failed-precondition", "not_completed");
       const total = num(r.total), deposit = num(r.deposit);
       if (!isFinite(total) || total < 0 || !isFinite(deposit) || deposit < 0) throw new AdminError("failed-precondition", "bad_amounts");
@@ -241,7 +257,65 @@ function createTechLedger(deps) {
     return { uid: target, name: String(staff.name || ""), wallet, balance, entries, history, expenses, stats, pay, healed: healed.length, at: now().toISOString() };
   }
 
-  return { closeOrder, account, _cairoParts: cairoParts };
+  /* ---------- قطع من المخزن للفني ---------- */
+  async function requireTechEdit(uid) {
+    const me = await requireStaff(uid);
+    if (!me.perms["requests.edit"]) throw new AdminError("permission-denied", "no_edit_permission");
+    return me;
+  }
+  // قايمة المخزن للفني: الاسم والكمية وسعر البيع بس (من غير سعر الشراء)
+  async function partsCatalog(uid) {
+    await requireTechEdit(uid);
+    const snap = await db.collection("parts").get();
+    const parts = snap.docs.map((d) => { const x = d.data() || {}; return { id: d.id, name: String(x.name || ""), qty: num(x.qty), sell: r2(x.use), category: String(x.category || ""), code: String(x.code || "") }; })
+      .filter((p) => p.name).sort((a, b) => a.name.localeCompare(b.name, "ar"));
+    return { parts };
+  }
+  async function stockMove(uid, data, dir) {
+    await requireTechEdit(uid);
+    const orderId = String((data && data.orderId) || ""), partId = String((data && data.partId) || "");
+    if (!orderId || orderId.indexOf("/") > -1 || !partId || partId.indexOf("/") > -1) throw new AdminError("invalid-argument", "bad_args");
+    const q = dir === "use" ? Math.floor(+data.qty) : 0;
+    if (dir === "use" && (!(q >= 1) || q > 1000)) throw new AdminError("invalid-argument", "bad_qty");
+    const ref = db.doc(`requests/${orderId}`), pref = db.doc(`parts/${partId}`), mref = db.collection("partMoves").doc();
+    const at = now().toISOString();
+    const out = await db.runTransaction(async (tx) => {
+      const [snap, psnap] = [await tx.get(ref), await tx.get(pref)];
+      if (!snap.exists) throw new AdminError("not-found", "no_order");
+      const r = Object.assign({ id: orderId }, snap.data());
+      if (r.techId !== uid) throw new AdminError("permission-denied", "not_your_order");
+      if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
+      if (r.status === "ملغي") throw new AdminError("failed-precondition", "cancelled");
+      if (!psnap.exists) throw new AdminError("not-found", "no_part");
+      const p = psnap.data() || {};
+      const work = cleanWork(data && data.fields); const srvParts = r.parts;
+      Object.assign(r, work); r.parts = mergeParts(srvParts, work.parts);
+      let moved;
+      if (dir === "use") {
+        if (num(p.qty) < q) throw new AdminError("failed-precondition", "not_enough");
+        const sell = r2(p.use), cost = r2(p.buy);
+        const line = r.parts.find((x) => !x.external && x.partId === partId && num(x.sell) === sell && num(x.cost) === cost);
+        if (line) line.qty = num(line.qty) + q; else r.parts.push({ partId, qty: q, sell, cost });
+        moved = q;
+        tx.update(pref, { qty: num(p.qty) - q, _ts: stamp() });
+        tx.set(mref, { id: mref.id, partId, type: "خروج بسبب إضافة قطعة لأمر شغل", qty: q, requestId: orderId, at, byTech: uid, _ts: stamp() });
+      } else {
+        moved = r.parts.filter((x) => !x.external && x.partId === partId).reduce((a, x) => a + num(x.qty), 0);
+        if (!moved) throw new AdminError("failed-precondition", "not_on_order");
+        r.parts = r.parts.filter((x) => x.external || x.partId !== partId);
+        tx.update(pref, { qty: num(p.qty) + moved, _ts: stamp() });
+        tx.set(mref, { id: mref.id, partId, type: "إرجاع بسبب تعديل أمر", qty: moved, requestId: orderId, at, byTech: uid, _ts: stamp() });
+      }
+      recalc(r);
+      const patch = Object.assign({}, work, { parts: r.parts, partsTotal: r.partsTotal, partsCost: r.partsCost, total: r.total, remain: r.remain, _ts: stamp() });
+      tx.update(ref, patch);
+      bumpMeta(tx);
+      return { parts: r.parts, partsTotal: r.partsTotal, partsCost: r.partsCost, total: r.total, remain: r.remain, moved, name: String(p.name || ""), left: dir === "use" ? num(p.qty) - q : num(p.qty) + moved };
+    });
+    log("tech part " + dir, uid, orderId, partId, out.moved);
+    return out;
+  }
+  return { closeOrder, account, partsCatalog, usePart: (uid, d) => stockMove(uid, d, "use"), returnPart: (uid, d) => stockMove(uid, d, "return"), _cairoParts: cairoParts };
 }
 
 module.exports = { createTechLedger };
