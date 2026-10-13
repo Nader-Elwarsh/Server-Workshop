@@ -501,7 +501,10 @@ function renderWalletDetail(){dedupeWalletTxByRef();
   if(!name){el.innerHTML="<div class='item'>الحساب غير محدد.</div>";return}
   let categories=settings().walletCategories||[];
   let isWallet=type==="wallet";
-  let filterCategory=document.getElementById("wdFilterCategory")?.value||"";
+  let fcEl=document.getElementById("wdFilterCategory");
+  // أول رسم بعد الرجوع: التصنيف من الرابط؛ بعد كده من الخانة، ونكتبه في الرابط.
+  let filterCategory=fcEl?(fcEl.value||""):(window.WFNavState?.getParam("cat")||"");
+  window.WFNavState?.setParams({cat:filterCategory||null});
   let today=localDateKey(new Date());
   let entries=walletDetailEntries(type,name)
     .filter(x=>!filterCategory||x.category===filterCategory)

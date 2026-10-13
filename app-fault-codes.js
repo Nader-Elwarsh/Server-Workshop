@@ -83,7 +83,7 @@ function saveFaultCode(e,existing=null){
   if(dup)return alert(`⚠️ الكود «${dup.code}» مسجّل بالفعل لنفس النوع/الماركة (${dup.title||""}).\n\nعدّل الكود الموجود بدل ما تضيف نسخة تانية.`);
   let result=persistFaultRecord(formData,existing);
   if(!result.ok)return;
-  location.href=`faultcode.html?id=${result.fault.id}`;
+  if(existing&&typeof wfLeaveTo==="function")wfLeaveTo(`faultcode.html?id=${result.fault.id}`,true);else location.href=`faultcode.html?id=${result.fault.id}`;
 }
 /* زي saveFaultCode بالظبط بس من غير الانتقال لصفحة الكود — بتسيب النوع
    والماركة واسم الفني زي ما هم وتفضح بس حقول الكود/الوصف/السبب/الحل،
@@ -109,7 +109,7 @@ function deleteFaultCodeRecord(fid){
   if(!confirm(`حذف كود العطل «${f.code}» نهائيًا؟`))return;
   if(!saveFaultCodesRecords(a.filter(x=>x.id!==fid)))return;
   renderFaultCodes?.();
-  if(document.getElementById("faultCodeProfile"))location.href="faultcodes.html";
+  if(document.getElementById("faultCodeProfile")){if(typeof wfLeaveTo==="function")wfLeaveTo("faultcodes.html",false);else location.href="faultcodes.html"}
 }
 function deleteAllFaultCodes(){
   let a=arr(K.fc);
@@ -235,6 +235,7 @@ function initFaultCodes(){
     if(brandFilter){let v=brandFilter.value;brandFilter.innerHTML='<option value="">🏷️ كل الماركات</option>'+(typeof wfBrandList==="function"?wfBrandList(settings().brands):(settings().brands||[])).map(b=>`<option>${esc(b)}</option>`).join("");brandFilter.value=v}
   };
   fillFilters();
+  window.WFNavState?.keep({t:"fcFilterType",b:"fcFilterBrand",q:"faultSearch"});
   if(typeFilter)typeFilter.onchange=renderFaultCodes;
   if(brandFilter)brandFilter.onchange=renderFaultCodes;
   // لو أضفت نوع/ماركة جديدة من الفورم تظهر فورًا في فلاتر القائمة.

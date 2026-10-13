@@ -505,7 +505,7 @@
   window.initCompressorCodesPage = function () {
     if(typeof fillListSearch==="function")fillListSearch("ccBrand","compBrand","");
     const search=document.getElementById("compSearch"),brand=document.getElementById("compBrandFilter");
-    const loadAndRender=()=>{const q=search?.value.trim(),b=brand?.value;return (b&&!q?loadCompressorBrand(b):loadAllCompressorBrands()).then(()=>renderCompressorResults())};
+    const loadAndRender=()=>{const q=search?.value.trim(),b=brand?.value;window.WFNavState?.setParams({q:q||null,brand:b||null});return (b&&!q?loadCompressorBrand(b):loadAllCompressorBrands()).then(()=>renderCompressorResults())};
     search?.addEventListener("input",loadAndRender);
     brand?.addEventListener("change",loadAndRender);
     document.getElementById("compAddToggle")?.addEventListener("click",()=>{editingCustomId=null;const save=document.getElementById("compSaveCustom");if(save)save.textContent="💾 حفظ";toggle("compAddBox")});

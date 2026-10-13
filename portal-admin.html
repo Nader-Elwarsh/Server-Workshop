@@ -190,7 +190,7 @@ function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id=
 /* ---- الأرقام والتبويبات ---- */
 function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
 rq:RQ.length,gu:GR.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
-function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
+function go(k){if(!TABS.some(function(t){return t[0]===k}))k="ov";tab=k;if(window.WFNavState)WFNavState.setParams({tab:k==="ov"?null:k});rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
 function rTabs(){var c=counts(),bd={or:c.rq,gu:c.gu,q:c.qn,cp:c.cp,sg:c.sg};
 $("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
 function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
@@ -412,7 +412,7 @@ document.addEventListener("change",function(e){var t=e.target;if(!TKD||!t.datase
 window.addEventListener("beforeunload",function(e){if(tkDirty){e.preventDefault();e.returnValue=""}});
 function rAll(){rTabs();rStats();rOv();rCl();rRq();rGu();rPo();rQs();rCp();rSg();rPt();rAc()}
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
-go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
+if(window.WFNavState)WFNavState.keep({cq:"cs",of:"of",qf:"qf",aq:"acs"});go((window.WFNavState&&WFNavState.getParam("tab"))||"ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});

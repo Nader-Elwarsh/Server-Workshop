@@ -63,7 +63,8 @@ async function deleteRequestRecord(rid){
   if(!ok)return;
   window.auditLog?.("حذف", "أمر شغل", r.id, r.no||"");
   renderRequests();
-  if(document.getElementById("requestProfile"))location.href="requests.html";
+  // من صفحة الأمر نفسه: نرجع للقايمة اللي جينا منها (بنفس الفلتر) ومن غير ما الأمر المحذوف يفضل في التاريخ.
+  if(document.getElementById("requestProfile")){if(typeof wfLeaveTo==="function")await wfLeaveTo("requests.html",false);else location.href="requests.html"}
 }
 async function deleteAllCustomers(){
   const c=arr(K.c);if(!c.length)return alert("لا توجد بيانات عملاء للحذف.");

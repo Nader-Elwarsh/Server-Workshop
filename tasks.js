@@ -101,6 +101,7 @@ function initTasks(){
   document.getElementById("taskSearch")?.addEventListener("input",renderTasks);
   document.getElementById("taskFilter")?.addEventListener("change",renderTasks);
   let qsf=new URLSearchParams(location.search).get("filter");if(qsf&&document.getElementById("taskFilter"))document.getElementById("taskFilter").value=qsf;
+  window.WFNavState?.keep({q:"taskSearch",filter:"taskFilter"});
   renderTasks();
 }
 function fillTaskRequests(el,cid){

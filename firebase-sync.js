@@ -245,6 +245,7 @@
   var SNAP_KEYS = { wf_c: 1, wf_d: 1, wf_r: 1, wf_p: 1, wf_m: 1, wf_wallet_tx: 1 };
   function raw(k, v) {
     applying = true; origSet.call(ls, k, v); applying = false;
+    try { if (window.wfBumpDataRev) window.wfBumpDataRev(); } catch (e) {}
     // نسخة القراءة الفورية لازم تتحدث مع التخزين، وإلا كتابة محلية لسه بتخلص في IndexedDB كانت ترجّع البيانات القديمة فوق اللي نزل من السحابة
     if (SNAP_KEYS[k] && window.WorkshopDB && typeof window.WorkshopDB.setSnapshot === "function") { try { window.WorkshopDB.setSnapshot(k, JSON.parse(v || "[]")); } catch (e) {} }
   }

@@ -310,7 +310,7 @@ function techCloseOnServer(r){
   }).then(res=>{
     put(K.r,arr(K.r).filter(x=>String(x.id)!==String(r.id)));
     alert(res&&res.collected>0?`✅ اتقفل الأمر واتسجل ${(+res.collected).toFixed(2)} ج في «${res.wallet}».`:"✅ اتقفل الأمر.");
-    location.href="tech.html?tab=done";
+    if(typeof location.replace==="function")location.replace("tech.html?tab=done");else location.href="tech.html?tab=done";
   },e=>{
     let m=String(e&&e.message||""),M={stale_total:"التعديلات لسه بتترفع. استنى ثواني وجرّب تاني.",not_completed:"خلي الحالة «مكتمل» الأول.",already_closed:"الأمر اتقفل بالفعل.",not_your_order:"الأمر اتنقل لفني تاني.",bad_wallet:"المحفظة دي مش من محافظ الورشة.",no_close_permission:"حسابك مالوش صلاحية قفل الأوامر."};
     alert(M[m]||("تعذّر قفل الأمر ("+(m||e&&e.code||"خطأ")+")."));

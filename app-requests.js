@@ -175,7 +175,9 @@ async function saveRequest(e,existing=null){
   try{
     let result=await persistRequestRecord(formData,existing);
     if(!result.ok)return alert(result.error);
-    if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${result.request.id}`);else location.href=`request.html?id=${result.request.id}`
+    // تعديل أمر موجود: نرجع لصفحة الأمر نفسها (مش خطوة جديدة) عشان زر الرجوع مايفتحش فورم التعديل تاني.
+    if(existing&&typeof wfLeaveTo==="function")await wfLeaveTo(`request.html?id=${result.request.id}`,true);
+    else if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${result.request.id}`);else location.href=`request.html?id=${result.request.id}`
   }finally{_requestSaving=false}
 }
 // renderRequests: كانت هنا نسخة "أساسية" بتفلتر بعناصر statusFilter/workshopFilter

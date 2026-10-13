@@ -47,7 +47,7 @@
   function start() {
     var root = document.getElementById("techRoot"), msgBox = document.getElementById("techMsg");
     var qs = new URLSearchParams(location.search);
-    var state = { tab: qs.get("tab") || "today", id: qs.get("id") || "", filter: "all", acct: null, acctAt: "", acctErr: "", acctLoading: false, busy: false };
+    var state = { tab: qs.get("tab") || "today", id: qs.get("id") || "", filter: qs.get("f") || "all", q: qs.get("q") || "", acct: null, acctAt: "", acctErr: "", acctLoading: false, busy: false };
     var lastRaw = "", statusEl = null;
 
     /* ---------- أدوات ---------- */
@@ -85,7 +85,16 @@
       return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
     }
     function nowKey() { var d = new Date(); return { date: dayOf(d), time: String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }; }
-    function go(params) { var u = new URL(location.href); u.search = ""; Object.keys(params).forEach(function (k) { if (params[k]) u.searchParams.set(k, params[k]); }); location.href = u.href; }
+    // زرار «رجوع» جوه الأمر: لو جاي من قايمة البوابة نرجع لها فعلًا (history.back) بنفس الفلتر
+    // ومكان السكرول، بدل ما نفتح صفحة جديدة وزر رجوع الموبايل يرجّعك للأمر تاني.
+    function goBackTo(params) {
+      try {
+        var ref = document.referrer ? new URL(document.referrer) : null;
+        if (ref && ref.origin === location.origin && ref.pathname === location.pathname && !ref.searchParams.get("id") && history.length > 1) { history.back(); return; }
+      } catch (e) {}
+      go(params);
+    }
+    function go(params, replace) { var u = new URL(location.href); u.search = ""; Object.keys(params).forEach(function (k) { if (params[k]) u.searchParams.set(k, params[k]); }); if (replace && typeof location.replace === "function") location.replace(u.href); else location.href = u.href; }
     function myWallet() {
       var w = window.WFPerm.wallet && window.WFPerm.wallet();
       if (w) return w;
@@ -220,7 +229,7 @@
       [["all", "الكل"], ["جديد", "جديد"], ["جاري التنفيذ", "جاري التنفيذ"], ["مكتمل", "مكتمل"], ["مجمد", "مجمد"]].forEach(function (f) {
         var n = f[0] === "all" ? all.length : all.filter(function (r) { return r.status === f[0]; }).length;
         if (f[0] !== "all" && !n) return;
-        chips.appendChild(btn(f[1] + " (" + n + ")", "tp-filter" + (state.filter === f[0] ? " tp-on" : ""), function () { state.filter = f[0]; draw(); }));
+        chips.appendChild(btn(f[1] + " (" + n + ")", "tp-filter" + (state.filter === f[0] ? " tp-on" : ""), function () { state.filter = f[0]; if (window.WFNavState) window.WFNavState.setParams({ f: f[0] === "all" ? null : f[0] }); draw(); }));
       });
       var list = el("div"); box.appendChild(q); box.appendChild(chips); box.appendChild(list);
       function paint() {
@@ -233,7 +242,9 @@
         rows.forEach(function (r) { list.appendChild(orderCard(r)); });
         if (!rows.length) list.appendChild(el("p", "tp-empty-line", "مفيش أوامر."));
       }
-      q.oninput = paint; paint();
+      q.value = state.q || "";
+      q.oninput = function () { state.q = q.value; if (window.WFNavState) window.WFNavState.setParams({ q: q.value.trim() || null }); paint(); };
+      paint();
       return box;
     }
 
@@ -342,7 +353,7 @@
         try { window.WFStorage.setItem(window.K.r, JSON.stringify(A(window.K.r).filter(function (x) { return x.id !== r.id; }))); } catch (e) {}
         try { window.WFStorage.setItem("wf_tech_flash", (res && res.collected > 0) ? "✅ اتقفل الأمر #" + (res.no || r.no || "") + " واتسجل " + money(res.collected) + " في «" + res.wallet + "»." : "✅ اتقفل الأمر #" + (r.no || "") + "."); } catch (e) {}
         state.busy = false;
-        Promise.resolve(window.wfCloudSyncNow ? window.wfCloudSyncNow() : null).catch(function () {}).then(function () { go({ tab: "done" }); });
+        Promise.resolve(window.wfCloudSyncNow ? window.wfCloudSyncNow() : null).catch(function () {}).then(function () { go({ tab: "done" }, true); }); // replace: زر الرجوع مايرجّعش لأمر اتقفل خلاص
       }, function (e) {
         state.busy = false; button.disabled = false; button.textContent = "💳 تم الدفع بالكامل وقفل الأمر";
         say(errText(e, "تعذّر قفل الأمر."), true);
@@ -353,7 +364,7 @@
     function drawOrder() {
       var r = A(window.K.r).filter(function (x) { return String(x.id) === state.id && isMine(x); })[0];
       var box = el("div");
-      box.appendChild(btn("→ رجوع", "tp-btn2 tp-back", function () { go({ tab: state.tab }); }));
+      box.appendChild(btn("→ رجوع", "tp-btn2 tp-back", function () { goBackTo({ tab: state.tab }); }));
       if (!r) {
         // لسه المزامنة بتجيب أوامره (أول فتح/بعد تحويل): ماتقولش «مش موجود» قبل ما نتأكد
         var inf = (window.wfSyncInfo && window.wfSyncInfo()) || {};

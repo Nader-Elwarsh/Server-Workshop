@@ -134,6 +134,7 @@ function renderRoute(){
   let today=dayKeyLocal(new Date()), cf=document.getElementById("routeCenterFilter")?.value||"", summaryEl=document.getElementById("routeSummary");
   let sq=(document.getElementById("routeSearch")?.value||"").trim().toLowerCase();
   if(!routeViewState.day)routeViewState.day=today;
+  window.WFNavState?.setParams({day:routeViewState.day!==today?routeViewState.day:null,od:routeViewState.overdueView?1:null});
   const allRequests=arr(K.r), customers=byIdCached(K.c);
   let list,headTitle;
   if(routeViewState.overdueView){
@@ -379,6 +380,12 @@ function initRoutePage(){
   cfEl.onchange=renderRoute;
   routeViewState.day=dayKeyLocal(new Date());
   routeViewState.overdueView=false;
+  // زر الرجوع: نرجع لنفس اليوم/البحث/المركز اللي كنت عليه قبل ما تفتح الأمر.
+  if(window.WFNavState){
+    WFNavState.keep({q:"routeSearch",c:"routeCenterFilter"});
+    const d=WFNavState.getParam("day");if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d))routeViewState.day=d;
+    if(WFNavState.getParam("od")==="1")routeViewState.overdueView=true;
+  }
   renderRouteDayStrip();
   renderRoute();
 }
@@ -461,6 +468,7 @@ function renderFollowup(){
 function initFollowupPage(){
   let dEl=document.getElementById("followupDays");if(!dEl)return;
   dEl.onchange=renderFollowup;
+  window.WFNavState?.keep({days:"followupDays"});
   renderFollowup();
   // إعدادات رسائل واتساب الجاهزة لمتابعة العملاء بقت هنا جوه صفحة
   // "متابعة العملاء" نفسها (مش في الإعدادات العامة)، عشان تتحكم فيها من
