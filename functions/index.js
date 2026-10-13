@@ -8,7 +8,7 @@ const { createStaffAdmin, AdminError } = require("./staff-admin");
 const { createTechLedger } = require("./tech-ledger");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 
 initializeApp();
 const cloudName = defineString("CLOUDINARY_CLOUD_NAME");
@@ -158,6 +158,7 @@ exports.rolesSave = adminCallable("rolesSave", (uid, d) => staffAdmin.saveRoles(
 const techLedger = createTechLedger({
   db: getFirestore(),
   ts: (d) => Timestamp.fromDate(d),
+  stamp: () => FieldValue.serverTimestamp(),
   log: (...a) => console.log("[tech-ledger]", ...a)
 });
 exports.techCloseOrder = adminCallable("techCloseOrder", (uid, d) => techLedger.closeOrder(uid, d));

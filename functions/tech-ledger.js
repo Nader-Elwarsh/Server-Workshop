@@ -50,7 +50,7 @@ function collectedOf(r) { return Math.max(0, r2(num(r.total) - num(r.deposit)));
 
 const PAY_KINDS = ["custody", "own", "workshop"];
 function createTechLedger(deps) {
-  const { db, now = () => new Date(), ts = (d) => d, log = () => {} } = deps;
+  const { db, now = () => new Date(), ts = (d) => d, log = () => {}, stamp = () => now() } = deps; // stamp = ختم وقت السيرفر للمزامنة بالتغييرات (_ts)
 
   async function loadConfig() {
     const s = await db.doc(CONFIG_PATH).get();
@@ -79,7 +79,7 @@ function createTechLedger(deps) {
     return Object.assign(base, {
       refKey: `order-final-${order.id}`, manualOverride: false, deleted: false, type: "in", amount, wallet,
       category: "تحصيل عميل", reason: `💳 تحصيل نهائي أمر الشغل ${order.no || ""}`, note: base.note || "",
-      date: when.date, time: when.time, source: "order-link", createdAt: base.createdAt || ts(now()), byServer: true
+      date: when.date, time: when.time, source: "order-link", createdAt: base.createdAt || ts(now()), byServer: true, _ts: stamp()
     });
   }
 
@@ -122,7 +122,7 @@ function createTechLedger(deps) {
       const txSnap = collected > 0 ? await tx.get(txRef) : null;
 
       const at = now().toISOString();
-      const patch = Object.assign({}, work, { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid });
+      const patch = Object.assign({}, work, { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid, _ts: stamp() });
       if (wc.enabled !== false && !r.warrantyManual) {
         const days = isFinite(+wc.days) && +wc.days > 0 ? +wc.days : 90;
         patch.warrantyDays = days;
