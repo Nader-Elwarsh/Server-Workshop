@@ -55,7 +55,11 @@
   function compute(r,light){
     const allOrders=arr(K.r).filter(Boolean),os=orders(r,allOrders),ex=expenses(r);
     const closedOrders=allOrders.filter(x=>x.closed&&inRangeDate(x.closedAt||x.createdAt,r));
-    const labor=closedOrders.reduce((a,x)=>a+(+x.labor||0),0),partsSell=closedOrders.reduce((a,x)=>a+(+x.partsTotal||0),0),partsCost=closedOrders.reduce((a,x)=>a+(+x.partsCost||0),0),revenue=labor+partsSell,gross=revenue-partsCost;
+    const labor=closedOrders.reduce((a,x)=>a+(+x.labor||0),0),partsSell=closedOrders.reduce((a,x)=>a+(+x.partsTotal||0),0),partsCost=closedOrders.reduce((a,x)=>a+(+x.partsCost||0),0);
+    // 🛒 بيع قطع مباشر (من غير أمر شغل): من حركات المخزن «خروج بيع مباشر» اللي ماتلغتش
+    const directSales=list(K.m).filter(m=>m&&m.saleId&&m.type==='خروج بيع مباشر'&&!m.voided&&inRangeDate(m.at,r));
+    const saleRev=directSales.reduce((a,m)=>a+(+m.total||0),0),saleCost=directSales.reduce((a,m)=>a+(+m.cost||0)*Math.abs(+m.qty||0),0),saleQty=directSales.reduce((a,m)=>a+Math.abs(+m.qty||0),0);
+    const orderRevenue=labor+partsSell,revenue=orderRevenue+saleRev,gross=revenue-partsCost-saleCost;
     const totalExp=ex.reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0);
     const sharesIn=x=>x&&x.status!=="ملغي"?(x.payShares||[]).filter(s=>s&&inRangeDate(s.at,r)).reduce((b,s)=>b+(+s.amount||0),0):0;
     const techPay=closedOrders.reduce((a,x)=>a+(+x.techPay||0),0)+allOrders.reduce((a,x)=>a+sharesIn(x),0),net=gross-totalExp-techPay;
@@ -71,7 +75,7 @@
     const cancelAt=o=>{const h=(Array.isArray(o.statusHistory)?o.statusHistory:[]).filter(x=>x&&x.to==='ملغي').pop();return h?h.at:(o.cancelledAt||o.createdAt)};
     const cancelled=allOrders.filter(o=>o.status==='ملغي'&&inRangeDate(cancelAt(o),r));
     const base={r,os,closedOrders,created,labor,partsSell,partsCost,revenue,gross,totalExp,techPay,net,completed,collected,avgDays,returns,cancelled,
-      avgTicket:closedOrders.length?revenue/closedOrders.length:0};
+      avgTicket:closedOrders.length?orderRevenue/closedOrders.length:0,directSales,saleRev,saleCost,saleQty,orderRevenue};
     if(light)return base;
     const cs=list(K.c),ds=list(K.d),psAll=list(K.p),ps=psAll.filter(p=>p&&!p.archived&&!p.deleted),ts=list(K.tasks).filter(x=>inRangeDay(x.date,r)),tr=list(K.tr).filter(x=>!x.deleted&&inRangeDay(x.date,r));
     const open=os.filter(x=>!x.closed&&x.status!=='ملغي').length,activeOrders=allOrders.filter(x=>!x.closed&&x.status!=='مكتمل'&&x.status!=='ملغي'),waiting=activeOrders.filter(x=>x.partsWaiting===true||x.partsWaiting==='yes').length,currentWorkshop=activeOrders.filter(x=>x.workshopStatus!=='تم التسليم'&&(x.executionPlace==='الورشة'||(x.workshopStatus&&x.workshopStatus!=='غير مطلوب'))).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i),workshop=currentWorkshop.length;
@@ -100,6 +104,7 @@
     const keyFor=k=>{if(!k)return '';if(bucket==='day')return k;const d=new Date(k+'T12:00:00');if(bucket==='month')return k.slice(0,7);const s=new Date(d);s.setDate(d.getDate()-((d.getDay()+1)%7));return dateKey(s)}; // الأسبوع بيبدأ السبت
     const series=new Map();for(let d=new Date(r.start);d<=r.end;d.setDate(d.getDate()+1)){const k=keyFor(dateKey(d));if(!series.has(k))series.set(k,{rev:0,orders:0})}
     closedOrders.forEach(o=>{const k=keyFor(dayOf(o.closedAt||o.createdAt));if(series.has(k))series.get(k).rev+=revOf(o)});
+    directSales.forEach(m=>{const k=keyFor(dayOf(m.at));if(series.has(k))series.get(k).rev+=(+m.total||0)});
     created.forEach(o=>{const k=keyFor(dayOf(o.createdAt));if(series.has(k))series.get(k).orders++});
     // العملاء
     const ordersPerCust=new Map();allOrders.forEach(o=>{if(o.customerId)ordersPerCust.set(o.customerId,(ordersPerCust.get(o.customerId)||0)+1)});
@@ -182,7 +187,7 @@
   function exportInventoryCSV(){const d=reportData();downloadCSV(`تقرير-المخزن-${d.r.to}.csv`,["اسم الصنف","الكمية الحالية","الحد الأدنى","سعر الشراء","سعر البيع","المستهلك بالفترة"],d.ps.map(p=>[p.name||"",p.qty||0,p.min||0,(+p.buy||0).toFixed(2),(+p.sell||0).toFixed(2),d.use.get(p.id)||0]))}
   function exportTreasuryCSV(){const d=reportData();downloadCSV(`تقرير-الخزنة-${d.r.from}-الى-${d.r.to}.csv`,["التاريخ","الوقت","الحركة","السبب","لمن/من","المكان","المبلغ"],d.tr.map(x=>[x.date||"",x.time||"",x.type==="in"?"وارد":"صرف",x.reason||"",x.counterparty||"",x.place||"",(+x.amount||0).toFixed(2)]))}
   function exportSummaryCSV(){const d=reportData();const p=d.prev;downloadCSV(`ملخص-التقرير-${d.r.from}-الى-${d.r.to}.csv`,["البند","الفترة","الفترة اللي قبلها"],[
-    ["الإيراد",d.revenue.toFixed(2),p.revenue.toFixed(2)],["المصنعية",d.labor.toFixed(2),p.labor.toFixed(2)],["قطع الغيار",d.partsSell.toFixed(2),p.partsSell.toFixed(2)],["تكلفة القطع",d.partsCost.toFixed(2),p.partsCost.toFixed(2)],
+    ["الإيراد",d.revenue.toFixed(2),p.revenue.toFixed(2)],["المصنعية",d.labor.toFixed(2),p.labor.toFixed(2)],["قطع الغيار",d.partsSell.toFixed(2),p.partsSell.toFixed(2)],["بيع قطع مباشر",d.saleRev.toFixed(2),p.saleRev.toFixed(2)],["تكلفة القطع",(d.partsCost+d.saleCost).toFixed(2),(p.partsCost+p.saleCost).toFixed(2)],
     ["مصاريف التشغيل",d.totalExp.toFixed(2),p.totalExp.toFixed(2)],["أجور الفنيين",d.techPay.toFixed(2),p.techPay.toFixed(2)],["صافي المكسب",d.net.toFixed(2),p.net.toFixed(2)],["المحصّل فعليًا",d.collected.toFixed(2),p.collected.toFixed(2)],
     ["أوامر جديدة",d.created.length,p.created.length],["أوامر اتقفلت",d.closedOrders.length,p.closedOrders.length],["متوسط قيمة الأمر",d.avgTicket.toFixed(2),p.avgTicket.toFixed(2)],["مرتجعات",d.returns.length,p.returns.length],["ملغي",d.cancelled.length,p.cancelled.length]])}
 
@@ -227,6 +232,7 @@
   function insights(d){
     const p=d.prev,out=[];
     if(p.revenue||d.revenue){const ch=p.revenue?(d.revenue-p.revenue)/p.revenue*100:null;out.push(ch===null?`💰 إيراد الفترة ${money0(d.revenue)}.`:`💰 الإيراد ${ch>=0?'زاد':'قل'} ${num(Math.abs(ch))}% عن الفترة اللي فاتت (${money0(d.revenue)} مقابل ${money0(p.revenue)}).`)}
+    if(d.saleRev>0)out.push(`🛒 بعت قطع مباشر (من غير أمر شغل) بـ ${money0(d.saleRev)} في ${d.directSales.length} بيعة — مكسبها ${money0(d.saleRev-d.saleCost)}.`);
     if(d.revenue>0)out.push(`📈 هامش الربح بعد كل المصاريف ${num(d.net/d.revenue*100)}% — ${d.net>=0?'كل 100 ج إيراد بيفضل منها':'خسارة'} ${num(Math.abs(d.net/d.revenue*100))} ج.`);
     if(d.receivables.length)out.push(`🧾 ${d.receivables.length} أمر مكتمل لسه ماتحصّلش (${money0(d.receivables.reduce((a,x)=>a+x.due,0))}) — شوف قسم «التحصيل».`);
     const topArea=[...d.areas.entries()].filter(x=>x[0]!=='غير محدد').sort((a,b)=>b[1].orders-a[1].orders)[0];if(topArea)out.push(`📍 أكتر منطقة طلبًا: ${escR(topArea[0])} (${topArea[1].orders} أمر).`);
@@ -248,8 +254,8 @@
   function finance(d){
     const margin=d.revenue?` (${num(d.gross/d.revenue*100)}%)`:'';
     const expRows=bars(d.expByCat,{fmt:v=>money(v),empty:'لا توجد مصاريف تشغيل في الفترة.'});
-    return section('💰 التقرير المالي',`<div class="report-table-wrap"><table class="report-table-full rep-fin"><tr><th>البند</th><th>القيمة</th><th>ملاحظة</th></tr><tr><td>🔨 المصنعية</td><td>${money(d.labor)}</td><td>من الأوامر المقفولة</td></tr><tr><td>🔧 قطع الغيار المحصلة</td><td>${money(d.partsSell)}</td><td>من الأوامر المقفولة</td></tr><tr><td>📦 تكلفة القطع</td><td>${money(d.partsCost)}</td><td>تكلفة القطع المستخدمة</td></tr><tr><td>💰 الإيراد</td><td>${money(d.revenue)}</td><td>مصنعية + قطع</td></tr><tr><td>📈 مكسب قبل المصاريف</td><td>${money(d.gross)}</td><td>الإيراد − تكلفة القطع${margin}</td></tr><tr><td>🧯 مصاريف التشغيل</td><td>${money(d.totalExp)}</td><td>لا تدخل في رصيد الخزنة (مشتريات القطع محسوبة في تكلفة القطع)</td></tr>${d.techPay!==0?`<tr><td>👷 أجور الفنيين</td><td>${money(d.techPay)}</td><td>الأجرة على الأوامر المقفولة</td></tr>`:""}<tr class="report-total"><td>✅ صافي المكسب</td><td>${money(d.net)}</td><td>للنشاط${d.revenue?` — ${num(d.net/d.revenue*100)}% من الإيراد`:''}</td></tr></table></div>
-      <div class="report-cards"><div class="report-card"><span>ربح القطع</span><b>${money(d.partsSell-d.partsCost)}</b><small>${d.partsSell?num((d.partsSell-d.partsCost)/d.partsSell*100)+'% من بيع القطع':''}</small></div><div class="report-card"><span>المصنعية من الإيراد</span><b>${d.revenue?num(d.labor/d.revenue*100)+'%':'—'}</b></div><div class="report-card"><span>متوسط مكسب الأمر</span><b>${money(d.closedOrders.length?d.net/d.closedOrders.length:0)}</b></div><div class="report-card"><span>الفترة اللي فاتت (صافي)</span><b>${money(d.prev.net)}</b><small>${escR(fmtDay(d.prev.r.from))} – ${escR(fmtDay(d.prev.r.to))}</small></div></div>
+    return section('💰 التقرير المالي',`<div class="report-table-wrap"><table class="report-table-full rep-fin"><tr><th>البند</th><th>القيمة</th><th>ملاحظة</th></tr><tr><td>🔨 المصنعية</td><td>${money(d.labor)}</td><td>من الأوامر المقفولة</td></tr><tr><td>🔧 قطع الغيار المحصلة</td><td>${money(d.partsSell)}</td><td>من الأوامر المقفولة</td></tr>${d.directSales.length?`<tr><td>🛒 بيع قطع مباشر</td><td>${money(d.saleRev)}</td><td>${d.directSales.length} بيعة (${d.saleQty} قطعة) من غير أمر شغل — مكسبها ${money(d.saleRev-d.saleCost)}</td></tr>`:""}<tr><td>📦 تكلفة القطع</td><td>${money(d.partsCost+d.saleCost)}</td><td>تكلفة القطع المستخدمة${d.saleCost?" + المباعة مباشر":""}</td></tr><tr><td>💰 الإيراد</td><td>${money(d.revenue)}</td><td>مصنعية + قطع${d.saleRev?" + بيع مباشر":""}</td></tr><tr><td>📈 مكسب قبل المصاريف</td><td>${money(d.gross)}</td><td>الإيراد − تكلفة القطع${margin}</td></tr><tr><td>🧯 مصاريف التشغيل</td><td>${money(d.totalExp)}</td><td>لا تدخل في رصيد الخزنة (مشتريات القطع محسوبة في تكلفة القطع)</td></tr>${d.techPay!==0?`<tr><td>👷 أجور الفنيين</td><td>${money(d.techPay)}</td><td>الأجرة على الأوامر المقفولة</td></tr>`:""}<tr class="report-total"><td>✅ صافي المكسب</td><td>${money(d.net)}</td><td>للنشاط${d.revenue?` — ${num(d.net/d.revenue*100)}% من الإيراد`:''}</td></tr></table></div>
+      <div class="report-cards"><div class="report-card"><span>ربح القطع</span><b>${money(d.partsSell+d.saleRev-d.partsCost-d.saleCost)}</b><small>${(d.partsSell+d.saleRev)?num((d.partsSell+d.saleRev-d.partsCost-d.saleCost)/(d.partsSell+d.saleRev)*100)+'% من بيع القطع':''}${d.saleRev?' • منه بيع مباشر '+escR(money0(d.saleRev-d.saleCost)):''}</small></div><div class="report-card"><span>المصنعية من الإيراد</span><b>${d.revenue?num(d.labor/d.revenue*100)+'%':'—'}</b></div><div class="report-card"><span>متوسط مكسب الأمر</span><b>${money(d.closedOrders.length?(d.net-(d.saleRev-d.saleCost))/d.closedOrders.length:0)}</b></div><div class="report-card"><span>الفترة اللي فاتت (صافي)</span><b>${money(d.prev.net)}</b><small>${escR(fmtDay(d.prev.r.from))} – ${escR(fmtDay(d.prev.r.to))}</small></div></div>
       <h3>🧯 المصاريف حسب البند</h3>${expRows}${weakSection(d)}`,'report-finance');
   }
   function trend(d){

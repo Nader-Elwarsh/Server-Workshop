@@ -86,4 +86,169 @@ function partConsumptionForecast(p,allMoves){
   const daysLeft=(+p.qty||0)/dailyRate;
   return {dailyRate,daysLeft};
 }
-async function partProfile(){let el=document.getElementById("partProfile");if(!el)return;let p=arr(K.p).find(x=>x.id===new URLSearchParams(location.search).get("id"));if(!p){el.innerHTML="<div class='item'>القطعة غير موجودة.</div>";return}let allMoves=arr(K.m).filter(x=>x.partId===p.id);let moves=allMoves.slice(-5).reverse();let profitVal=(+p.use||0)-(+p.buy||0),profitPct=(+p.use||0)>0?(profitVal/(+p.use||0)*100):0;let forecast=partConsumptionForecast(p,allMoves);let forecastHtml=forecast?`<div class="report-card ${forecast.daysLeft<=7?"report-card-warn":""}" style="margin-top:10px"><span>⏳ متوقع نفاذ الكمية خلال</span><b>${forecast.daysLeft<1?"أقل من يوم":Math.round(forecast.daysLeft)+" يوم"}</b><span>بمعدل ${forecast.dailyRate.toFixed(2)} قطعة/يوم آخر فترة</span></div>`:"";el.innerHTML=`<div class="profile ps-context-target" data-ps-title="قطعة ${esc(p.name)}"><div class="page-head"><h1 class="profile-title">${typeof categoryIcon==="function"?categoryIcon(p.category):"📦"} ${esc(p.name)}</h1><div class="compact-actions"><button class="secondary" data-wf-event="click" data-wf-code="editPart('${p.id}')">✏️ تعديل</button>${p.archived?`<button class="primary" data-wf-event="click" data-wf-code="restorePartRecord('${p.id}')">↩️ إلغاء الأرشفة</button>`:`<button class="danger-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button>`}${psActions("قطعة "+p.name)}</div></div><div class="profile-grid"><div class="kv"><b>الكود</b>${esc(p.code)||"—"}</div><div class="kv"><b>التصنيف</b><span class="badge cat-badge ${categoryColorClass(p.category)}">${esc(p.category)}</span></div><div class="kv"><b>المكان</b>📍 ${esc(p.location)||"—"}</div><div class="kv"><b>الكمية</b>${p.qty}</div><div class="kv"><b>الحد الأدنى</b>${p.min}</div><div class="kv"><b>سعر الشراء</b>${p.buy} ج</div><div class="kv"><b>سعر الاستخدام</b>${p.use} ج</div><div class="kv"><b>📈 مكسب القطعة</b>${profitVal.toFixed(2)} ج (${profitPct.toFixed(1)}%)</div></div>${forecastHtml}<div id="partProfilePhoto"></div>${typeof partLinkedInvoicesHtml==="function"?partLinkedInvoicesHtml(p.id):""}<h2>🔄 آخر حركات المخزن <a class="secondary small-btn" style="margin-inline-start:8px" href="part-moves.html?id=${p.id}">📋 عرض كل الحركات (${allMoves.length})</a></h2>${moves.length?moves.map(x=>{let req=x.requestId?(byIdCached(K.r).get(x.requestId)||null):null;return `<div class="item">${esc(x.type)} • ${x.qty} • ${new Date(x.at).toLocaleString("ar-EG")}${req?` • <a href="request.html?id=${req.id}">🛠️ ${esc(req.no||req.id)}</a>`:(x.note?` • ${esc(x.note)}`:"")}</div>`;}).join(""):"<div class='item'>لا توجد حركات.</div>"}</div>`;if(p.photo){let src=window.ImageStore?await window.ImageStore.resolveSrc(p.photo):p.photo;let ph=document.getElementById("partProfilePhoto");if(ph&&src)ph.innerHTML=`<img class="photo" src="${esc(src)}" loading="lazy" decoding="async">`}if(typeof resolveInvoiceThumbs==="function")resolveInvoiceThumbs(el);}
+async function partProfile(){let el=document.getElementById("partProfile");if(!el)return;let p=arr(K.p).find(x=>x.id===new URLSearchParams(location.search).get("id"));if(!p){el.innerHTML="<div class='item'>القطعة غير موجودة.</div>";return}let allMoves=arr(K.m).filter(x=>x.partId===p.id);let moves=allMoves.slice(-5).reverse();let profitVal=(+p.use||0)-(+p.buy||0),profitPct=(+p.use||0)>0?(profitVal/(+p.use||0)*100):0;let forecast=partConsumptionForecast(p,allMoves);let forecastHtml=forecast?`<div class="report-card ${forecast.daysLeft<=7?"report-card-warn":""}" style="margin-top:10px"><span>⏳ متوقع نفاذ الكمية خلال</span><b>${forecast.daysLeft<1?"أقل من يوم":Math.round(forecast.daysLeft)+" يوم"}</b><span>بمعدل ${forecast.dailyRate.toFixed(2)} قطعة/يوم آخر فترة</span></div>`:"";el.innerHTML=`<div class="profile ps-context-target" data-ps-title="قطعة ${esc(p.name)}"><div class="page-head"><h1 class="profile-title">${typeof categoryIcon==="function"?categoryIcon(p.category):"📦"} ${esc(p.name)}</h1><div class="compact-actions">${p.archived?"":`<button class="primary" data-wf-event="click" data-wf-code="openPartSale('${p.id}')">🛒 بيع</button>`}<button class="secondary" data-wf-event="click" data-wf-code="editPart('${p.id}')">✏️ تعديل</button>${p.archived?`<button class="primary" data-wf-event="click" data-wf-code="restorePartRecord('${p.id}')">↩️ إلغاء الأرشفة</button>`:`<button class="danger-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button>`}${psActions("قطعة "+p.name)}</div></div><div class="profile-grid"><div class="kv"><b>الكود</b>${esc(p.code)||"—"}</div><div class="kv"><b>التصنيف</b><span class="badge cat-badge ${categoryColorClass(p.category)}">${esc(p.category)}</span></div><div class="kv"><b>المكان</b>📍 ${esc(p.location)||"—"}</div><div class="kv"><b>الكمية</b>${p.qty}</div><div class="kv"><b>الحد الأدنى</b>${p.min}</div><div class="kv"><b>سعر الشراء</b>${p.buy} ج</div><div class="kv"><b>سعر الاستخدام</b>${p.use} ج</div><div class="kv"><b>📈 مكسب القطعة</b>${profitVal.toFixed(2)} ج (${profitPct.toFixed(1)}%)</div></div>${forecastHtml}<div id="partProfilePhoto"></div>${typeof partLinkedInvoicesHtml==="function"?partLinkedInvoicesHtml(p.id):""}<h2>🔄 آخر حركات المخزن <a class="secondary small-btn" style="margin-inline-start:8px" href="part-moves.html?id=${p.id}">📋 عرض كل الحركات (${allMoves.length})</a></h2>${moves.length?moves.map(x=>{let req=x.requestId?(byIdCached(K.r).get(x.requestId)||null):null;return `<div class="item">${esc(x.type)} • ${x.qty} • ${new Date(x.at).toLocaleString("ar-EG")}${req?` • <a href="request.html?id=${req.id}">🛠️ ${esc(req.no||req.id)}</a>`:(x.note?` • ${esc(x.note)}`:"")}</div>`;}).join(""):"<div class='item'>لا توجد حركات.</div>"}${typeof partSalesHtml==="function"?partSalesHtml(p.id):""}</div>`;if(p.photo){let src=window.ImageStore?await window.ImageStore.resolveSrc(p.photo):p.photo;let ph=document.getElementById("partProfilePhoto");if(ph&&src)ph.innerHTML=`<img class="photo" src="${esc(src)}" loading="lazy" decoding="async">`}if(typeof resolveInvoiceThumbs==="function")resolveInvoiceThumbs(el);}
+
+/* ---------------------------------------------------------------------
+   🛒 بيع قطعة غيار مباشر (من غير أمر شغل) — زبون جه اشترى قطعة على الواقف.
+   العملية الواحدة (بتتحفظ مع بعض أو مابتتحفظش خالص):
+   - الكمية بتنقص من المخزن.
+   - حركة مخزن «خروج بيع مباشر» فيها السعر والتكلفة (التقارير بتحسب منها الإيراد والمكسب).
+   - وارد في المحفظة اللي استلمت فيها الفلوس، تصنيف «تحصيل عميل» (فبيدخل في المحصّل فعليًا).
+   الإلغاء بيرجّع الكمية بحركة «إرجاع بيع مباشر» ويلغي الوارد، والبيعة الأصلية بتفضل في السجل متعلّمة «اتلغت».
+   --------------------------------------------------------------------- */
+const PART_SALE_TYPE="خروج بيع مباشر",PART_SALE_UNDO_TYPE="إرجاع بيع مباشر (إلغاء البيعة)";
+function partSaleRound(n){return Math.round((+n||0)*100)/100}
+function partSaleWallets(){return (settings().wallets||[]).map(x=>String(x||"").trim()).filter(Boolean)}
+function partSaleDefaultWallet(){return typeof resolveDefaultWallet==="function"?resolveDefaultWallet(null):(partSaleWallets()[0]||"")}
+/* بيبني القيم الجديدة من غير ما يحفظ: {ok, values, sale} أو {ok:false, error} */
+function buildPartSale(input){
+  input=input||{};
+  const all=arr(K.p),p=all.find(x=>String(x.id)===String(input.partId));
+  if(!p)return{ok:false,error:"القطعة مش موجودة (ممكن اتحذفت)."};
+  if(p.archived)return{ok:false,error:"القطعة دي متأرشفة. رجّعها من الأرشيف الأول."};
+  const qty=+input.qty;
+  if(!Number.isSafeInteger(qty)||qty<1)return{ok:false,error:"اكتب الكمية كعدد صحيح أكبر من صفر."};
+  const have=Number(p.qty??0);
+  if(!Number.isFinite(have)||have<qty)return{ok:false,error:`الكمية اللي في المخزن (${Number.isFinite(have)?have:0}) أقل من اللي عايز تبيعه (${qty}). لو المخزن غلط صحّحه من «تعديل» الأول.`};
+  const price=partSaleRound(input.price);
+  if(!Number.isFinite(+input.price)||price<0)return{ok:false,error:"اكتب سعر بيع صحيح."};
+  const total=partSaleRound(price*qty),wallet=String(input.wallet||"").trim();
+  if(total>0&&!wallet&&partSaleWallets().length)return{ok:false,error:"اختار المحفظة اللي استلمت فيها الفلوس."};
+  const saleId="sale-"+id(),now=new Date(),at=now.toISOString(),buyer=String(input.buyer||"").trim(),note=String(input.note||"").trim();
+  const cost=+p.buy||0;
+  const move={id:id(),partId:p.id,type:PART_SALE_TYPE,qty,price,cost,total,saleId,wallet,buyer,note,at};
+  const newStock=all.map(x=>x.id===p.id?{...x,qty:have-qty}:x);
+  const moves=arr(K.m).concat(move);
+  const values={[K.p]:newStock,[K.m]:moves};
+  if(total>0&&wallet){
+    values[K.wtx]=arr(K.wtx).concat({id:id(),refKey:null,saleId,partId:p.id,manualOverride:true,deleted:false,type:"in",amount:total,wallet,
+      category:"تحصيل عميل",reason:`🛒 بيع ${qty} × ${p.name}${buyer?" — "+buyer:""}`,note,
+      date:localDateKey(now),time:now.toTimeString().slice(0,5),source:"part-sale",createdAt:at});
+  }
+  return{ok:true,values,sale:{...move,name:p.name,left:have-qty}};
+}
+let _partSaleBusy=false;
+async function savePartSale(input){
+  if(_partSaleBusy)return{ok:false,error:"busy"};
+  _partSaleBusy=true;
+  try{
+    const b=buildPartSale(input);if(!b.ok)return b;
+    if(!await commitStorageAsync(b.values))return{ok:false,error:"تعذّر الحفظ. ماتغيّرش حاجة."};
+    if(typeof wfBumpDataRev==="function")try{wfBumpDataRev()}catch(_){}
+    return{ok:true,sale:b.sale};
+  }finally{_partSaleBusy=false}
+}
+function buildPartSaleUndo(saleId){
+  const moves=arr(K.m),m=moves.find(x=>x&&x.saleId===saleId&&x.type===PART_SALE_TYPE);
+  if(!m)return{ok:false,error:"البيعة مش موجودة."};
+  if(m.voided)return{ok:false,error:"البيعة دي اتلغت قبل كده."};
+  const at=new Date().toISOString(),all=arr(K.p),p=all.find(x=>x.id===m.partId);
+  const newMoves=moves.map(x=>x===m?{...x,voided:true,voidedAt:at}:x);
+  const values={[K.m]:newMoves};
+  if(p){values[K.p]=all.map(x=>x.id===p.id?{...x,qty:(Number(x.qty)||0)+(+m.qty||0)}:x);newMoves.push({id:id(),partId:m.partId,type:PART_SALE_UNDO_TYPE,qty:+m.qty||0,saleId,at})}
+  const tx=arr(K.wtx);
+  if(tx.some(x=>x&&x.saleId===saleId&&!x.deleted))values[K.wtx]=tx.map(x=>x&&x.saleId===saleId&&!x.deleted?{...x,deleted:true,deletedAt:at,saleVoided:true}:x);
+  return{ok:true,values,move:m,partFound:!!p};
+}
+async function undoPartSale(saleId,opts){
+  const b=buildPartSaleUndo(saleId);
+  if(!b.ok){if(!opts||!opts.silent)alert(b.error);return false}
+  const p=arr(K.p).find(x=>x.id===b.move.partId);
+  if(!(opts&&opts.yes)&&!confirm(`إلغاء بيعة ${b.move.qty} × «${p?p.name:"قطعة"}» بـ ${partSaleRound(b.move.total).toFixed(2)} ج؟\n\n• الكمية هترجع للمخزن\n• الوارد هيتشال من محفظة «${b.move.wallet||"—"}»`))return false;
+  if(!await commitStorageAsync(b.values)){alert("تعذّر الحفظ. ماتغيّرش حاجة.");return false}
+  if(typeof wfBumpDataRev==="function")try{wfBumpDataRev()}catch(_){}
+  try{refreshAllScreens?.()}catch(_){}
+  try{if(document.getElementById("partProfile"))partProfile()}catch(_){}
+  try{renderParts?.()}catch(_){}
+  return true;
+}
+/* بيعات اليوم/الفترة: للتقارير وللعرض */
+function directPartSales(){return arr(K.m).filter(x=>x&&x.saleId&&x.type===PART_SALE_TYPE)}
+
+function _partSaleCss(){
+  if(document.getElementById("wfPartSaleCss"))return;
+  const s=document.createElement("style");s.id="wfPartSaleCss";
+  s.textContent=".wf-sale{position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}"+
+    "@media(min-width:640px){.wf-sale{align-items:center;padding:12px}}"+
+    ".wf-sale-card{background:var(--bg-elevated,#fff);color:var(--text,#111);border-radius:18px 18px 0 0;padding:16px;width:100%;max-width:460px;max-height:92vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.4)}"+
+    "@media(min-width:640px){.wf-sale-card{border-radius:18px}}"+
+    ".wf-sale-card h3{margin:0 0 4px}.wf-sale-card label{display:block;font-size:13px;font-weight:700;margin:10px 0 4px}"+
+    ".wf-sale-card input,.wf-sale-card select{width:100%;box-sizing:border-box}"+
+    ".wf-sale-row{display:flex;gap:8px}.wf-sale-row>div{flex:1;min-width:0}"+
+    ".wf-sale-res{max-height:220px;overflow:auto;border:1px solid var(--border,#ddd);border-radius:10px;margin-top:4px}"+
+    ".wf-sale-res button{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:start;background:none;border:0;border-bottom:1px solid var(--border,#eee);padding:10px;color:inherit;cursor:pointer;font:inherit}"+
+    ".wf-sale-res button small{color:var(--text-muted,#666)}.wf-sale-res button:disabled{opacity:.45}"+
+    ".wf-sale-pick{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px;border-radius:10px;background:var(--surface-2,rgba(127,127,127,.12))}"+
+    ".wf-sale-total{font-size:20px;font-weight:800;text-align:center;margin:12px 0 4px}"+
+    ".wf-sale-hint{font-size:12px;color:var(--text-muted,#666);text-align:center}.wf-sale-hint.warn{color:#c0392b}"+
+    ".wf-sale-acts{display:flex;gap:8px;margin-top:12px}.wf-sale-acts button{flex:1;min-height:46px}";
+  document.head.appendChild(s);
+}
+/* شاشة البيع. partId اختياري: من ملف القطعة بتفتح عليها، ومن المخزن بتدوّر. */
+function openPartSale(partId){
+  _partSaleCss();
+  document.querySelector(".wf-sale")?.remove();
+  const wallets=partSaleWallets(),defW=partSaleDefaultWallet();
+  const ov=document.createElement("div");ov.className="wf-sale";ov.setAttribute("role","dialog");ov.setAttribute("aria-modal","true");
+  ov.innerHTML=`<div class="wf-sale-card">
+    <h3>🛒 بيع قطعة غيار</h3><div class="hint">بيع مباشر لزبون من غير أمر شغل — الكمية بتنقص من المخزن والفلوس بتدخل المحفظة.</div>
+    <div data-s="pickWrap"><label>القطعة</label><input data-s="q" type="search" placeholder="🔍 اكتب اسم القطعة أو الكود" autocomplete="off"><div class="wf-sale-res" data-s="res"></div></div>
+    <div data-s="picked" class="hidden"><label>القطعة</label><div class="wf-sale-pick"><span data-s="pname"></span><button type="button" class="secondary small-btn" data-s="change">تغيير</button></div></div>
+    <div class="wf-sale-row"><div><label>الكمية</label><input data-s="qty" type="number" inputmode="numeric" min="1" step="1" value="1"></div><div><label>سعر القطعة (ج)</label><input data-s="price" type="number" inputmode="decimal" min="0" step="0.01"></div></div>
+    <label>استلمت الفلوس في</label>${wallets.length?`<select data-s="wallet">${wallets.map(w=>`<option${w===defW?" selected":""}>${esc(w)}</option>`).join("")}</select>`:`<div class="hint">مفيش محافظ متسجلة — البيعة هتتسجل في المخزن والتقارير بس. (ضيف محفظة من ⚙️ الإعدادات)</div>`}
+    <label>اسم الزبون أو رقمه (اختياري)</label><input data-s="buyer" type="text" maxlength="80">
+    <label>ملاحظة (اختياري)</label><input data-s="note" type="text" maxlength="200">
+    <div class="wf-sale-total" data-s="total">—</div><div class="wf-sale-hint" data-s="hint"></div>
+    <div class="wf-sale-acts"><button type="button" class="primary" data-s="save">✅ تسجيل البيع</button><button type="button" class="secondary" data-s="cancel">إلغاء</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const $=k=>ov.querySelector(`[data-s="${k}"]`);
+  let chosen=null;
+  const close=()=>{ov.remove();document.removeEventListener("keydown",onKey)};
+  const onKey=e=>{if(e.key==="Escape")close()};document.addEventListener("keydown",onKey);
+  ov.addEventListener("click",e=>{if(e.target===ov)close()});
+  const calc=()=>{
+    const qty=+$("qty").value,price=+$("price").value,h=$("hint");h.className="wf-sale-hint";
+    if(!chosen){$("total").textContent="—";h.textContent="اختار القطعة الأول.";return}
+    const tot=partSaleRound((qty||0)*(price||0));$("total").textContent=`الإجمالي: ${tot.toFixed(2)} ج`;
+    const have=+chosen.qty||0,cost=+chosen.buy||0;
+    if(qty>have){h.className="wf-sale-hint warn";h.textContent=`⚠️ المتاح في المخزن ${have} بس.`;return}
+    const prof=partSaleRound(tot-cost*(qty||0));
+    h.textContent=`فاضل في المخزن بعد البيع: ${have-(qty||0)}${cost?` • مكسبك ${prof.toFixed(2)} ج`:""}`;
+    if(cost&&price<cost){h.className="wf-sale-hint warn";h.textContent+=" — ⚠️ السعر أقل من سعر الشراء"}
+  };
+  const pick=p=>{chosen=p;$("pickWrap").classList.add("hidden");$("picked").classList.remove("hidden");$("pname").textContent=`📦 ${p.name} — متاح ${+p.qty||0}`;$("price").value=+p.use||"";$("qty").value=1;$("qty").max=String(+p.qty||0);calc();$("qty").focus()};
+  const search=()=>{
+    const q=String($("q").value||"").trim().toLowerCase();
+    const list=arr(K.p).filter(p=>!p.archived&&(!q||String(p.name||"").toLowerCase().includes(q)||String(p.code||"").toLowerCase().includes(q)))
+      .sort((a,b)=>((+b.qty>0)-(+a.qty>0))||String(a.name).localeCompare(String(b.name),"ar")).slice(0,40);
+    $("res").innerHTML=list.length?list.map(p=>`<button type="button" data-pid="${esc(p.id)}"${(+p.qty||0)<1?" disabled":""}><span>📦 ${esc(p.name)}${p.code?` <small>${esc(p.code)}</small>`:""}</span><small>${(+p.qty||0)<1?"خلصانة":`متاح ${+p.qty} • ${+p.use||0} ج`}</small></button>`).join(""):'<div class="hint" style="padding:10px">مفيش قطعة بالاسم ده.</div>';
+  };
+  $("res").addEventListener("click",e=>{const b=e.target.closest("[data-pid]");if(!b||b.disabled)return;const p=arr(K.p).find(x=>String(x.id)===b.dataset.pid);if(p)pick(p)});
+  $("q").addEventListener("input",search);
+  $("change").addEventListener("click",()=>{chosen=null;$("picked").classList.add("hidden");$("pickWrap").classList.remove("hidden");search();calc();$("q").focus()});
+  $("qty").addEventListener("input",calc);$("price").addEventListener("input",calc);
+  $("cancel").addEventListener("click",close);
+  $("save").addEventListener("click",async()=>{
+    if(!chosen)return alert("اختار القطعة الأول.");
+    const btn=$("save");btn.disabled=true;
+    try{
+      const r=await savePartSale({partId:chosen.id,qty:+$("qty").value,price:$("price").value===""?NaN:+$("price").value,wallet:$("wallet")?$("wallet").value:"",buyer:$("buyer").value,note:$("note").value});
+      if(!r||!r.ok){if(r&&r.error&&r.error!=="busy")alert(r.error);return}
+      close();
+      try{refreshAllScreens?.()}catch(_){}
+      try{if(document.getElementById("partProfile"))partProfile()}catch(_){}
+      try{renderParts?.()}catch(_){}
+      const s=r.sale;
+      if(confirm(`✅ اتسجّل بيع ${s.qty} × «${s.name}» بـ ${partSaleRound(s.total).toFixed(2)} ج${s.wallet?` في «${s.wallet}»`:""}.\nفاضل في المخزن: ${s.left}.\n\nتبيع قطعة تانية؟`))openPartSale();
+    }finally{btn.disabled=false}
+  });
+  const pre=partId?arr(K.p).find(x=>String(x.id)===String(partId)):null;
+  if(pre&&(+pre.qty||0)>0&&!pre.archived)pick(pre);else{search();if(pre)alert(`«${pre.name}» خلصانة من المخزن — اختار قطعة تانية أو سجّل توريد الأول.`);setTimeout(()=>$("q")?.focus(),50)}
+}
+/* آخر البيعات المباشرة لقطعة — بتتعرض في ملف القطعة مع زرار إلغاء */
+function partSalesHtml(partId){
+  const list=directPartSales().filter(x=>!partId||x.partId===partId).slice(-5).reverse();
+  if(!list.length)return"";
+  return `<h2>🛒 آخر البيعات المباشرة</h2>`+list.map(x=>`<div class="item${x.voided?" muted":""}">${x.voided?"<s>":""}🛒 ${x.qty} × ${partSaleRound(x.price).toFixed(2)} = <b>${partSaleRound(x.total).toFixed(2)} ج</b>${x.wallet?` • 💳 ${esc(x.wallet)}`:""}${x.buyer?` • 👤 ${esc(x.buyer)}`:""} • ${new Date(x.at).toLocaleString("ar-EG")}${x.voided?"</s> • ↩️ اتلغت":` <button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="undoPartSale('${esc(x.saleId)}')">↩️ إلغاء البيعة</button>`}</div>`).join("");
+}

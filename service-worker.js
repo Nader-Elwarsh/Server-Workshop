@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v71-deposit-refund";
+const CACHE_NAME = "workshop-v72-part-sale";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

@@ -162,7 +162,7 @@
 
   // أزرار بتفتح نماذج أو أدوات (مش دوال محمية في الكتالوج) — صلاحيتها المطلوبة
   var UI_ACTIONS = { editCustomer: "customers.edit", editDevice: "devices.edit", editRequest: "requests.edit", wfInviteCustomer: "portal.manage",
-    toggleQuickAdd: "requests.add", toggleRestockBox: "inventory.add" };
+    toggleQuickAdd: "requests.add", toggleRestockBox: "inventory.add", openPartSale: "inventory.edit" };
   var TOGGLE_BOX = { bulkPriceBox: "inventory.edit", bulkFaultBox: "faultcodes.add" };
   function actionNeed(a) {
     var click = a.getAttribute("data-wf-click"), name = "", args = null;
