@@ -78,6 +78,7 @@
       '<p class="hint">أي كلمة أو جملة تتغيّر لكلمة تانية في كل صفحات النظام. مثال: «الورشة» ← «المركز». الاستبدال بيتطبق بعد الاسم والوصف، وبيشتغل على النصوص الظاهرة فقط (مش على بيانات العملاء المخزّنة).</p>' +
       '<div id="wlRepList">' + replaceRows(repDraft !== null ? repDraft : (l.replace || [])) + '</div>' +
       '<div class="wl-btns"><button type="button" class="secondary" data-wla="add-rep">➕ إضافة استبدال</button></div>' +
+      replaceSample() +
       '<p class="hint">الاسم الحالي المعروض: <b id="wlCurName">' + esc(e.name || DEFN) + '</b></p>' +
       '<p class="hint">ملاحظة: «اسم الورشة» جوه إعدادات النظام ← إعدادات الإيصال لو اتكتب بيغلب على الإيصالات فقط. سيبه فاضي عشان الإيصال ياخد اسم النظام من هنا.</p>';
   }
@@ -528,16 +529,60 @@
   }
 
   /* =========================================================
-     المعاينة
+     المعاينة المباشرة جوه كل قسم: نسخة مصغّرة من شكل النظام بتفضل ظاهرة (لازقة فوق) وإنت بتعدّل،
+     وبتتغير لحظيًا مع الاسم والصورة والألوان والشكل والخط والاستبدالات.
      ========================================================= */
+  css.textContent +=
+    ".wl-live-host{position:sticky;top:8px;z-index:6;margin:0 0 12px}" +
+    ".wl-mini{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--bg);box-shadow:0 6px 18px rgba(0,0,0,.14)}" +
+    ".wl-mini-cap{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:700;padding:5px 10px;background:var(--bg-sunken);color:var(--text-muted)}" +
+    ".wl-mini-cap button{margin:0;min-height:26px;padding:0 10px;font-size:12px}" +
+    ".wl-mini-head{display:flex;align-items:center;gap:10px;padding:10px 12px;background:linear-gradient(135deg,var(--header-grad-1),var(--header-grad-2));color:#fff}" +
+    ".wl-mini-head img.brand-logo{width:40px;height:40px;max-width:56px;max-height:56px;border-radius:22%;background:rgba(255,255,255,.12)}" +
+    ".wl-mini-head b{display:block;font-size:16px;color:#fff}.wl-mini-head small{display:block;font-size:11.5px;opacity:.9;color:#fff}" +
+    ".wl-mini-body{padding:10px 12px}" +
+    ".wl-mini-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}.wl-mini-stats .stat{margin:0;padding:6px;min-height:0}" +
+    ".wl-mini-stats .stat b{font-size:15px}.wl-mini-stats .stat span{font-size:11px}" +
+    ".wl-mini-btns{display:flex;gap:6px;margin-bottom:6px}.wl-mini-btns button{flex:1;margin:0;min-height:34px;padding:4px 6px;font-size:12.5px;pointer-events:none}" +
+    ".wl-mini-body p{margin:4px 0;font-size:12.5px}" +
+    ".wl-live.min .wl-mini-body{display:none}" +
+    ".wl-mock{border:1px solid var(--border);border-radius:16px;padding:12px;margin:8px 0 14px;background:var(--bg-elevated);box-shadow:0 4px 14px rgba(0,0,0,.08)}" +
+    ".wl-mock-cap{font-size:12px;font-weight:700;color:var(--text-muted);margin:-2px 0 8px}" +
+    ".wl-mock h2{font-size:18px;margin:4px 0}.wl-mock p{margin:4px 0;font-size:13.5px}.wl-mock ul,.wl-mock ol{margin:6px 0;padding-inline-start:20px;font-size:13px}" +
+    ".wl-mock .wl-fake{display:block;border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin:6px 0;color:var(--text-muted);font-size:13px;background:var(--bg-sunken)}" +
+    ".wl-mock .wl-mock-doc{max-height:220px;overflow:auto;border-top:1px dashed var(--border);margin-top:6px;padding-top:6px}" +
+    ".wl-mock .wl-mock-row{display:flex;gap:10px;align-items:center}.wl-mock .wl-mock-row img{width:44px;height:44px;border-radius:22%;object-fit:cover}";
+  var liveMin = false; try { liveMin = sessionStorage.getItem("wl_live_min") === "1"; } catch (e) {}
+  function miniApp() {
+    return '<div class="wl-live' + (liveMin ? " min" : "") + '"><div class="wl-mini" aria-label="معاينة مباشرة">' +
+      '<div class="wl-mini-cap"><span>👁️ معاينة مباشرة — بتتغير وإنت بتعدّل</span><button type="button" class="secondary" data-wla="live-toggle">' + (liveMin ? "إظهار" : "تصغير") + "</button></div>" +
+      '<div class="wl-mini-head"><img class="brand-logo" data-wf-brand="icon" src="app-icon.svg" alt=""><div><b class="wl-mini-name">' + esc(WL.name()) + '</b><small class="wl-mini-tag">' + esc(WL.tagline()) + "</small></div></div>" +
+      '<div class="wl-mini-body" aria-hidden="true">' +
+      '<div class="wl-mini-btns"><button type="button" class="primary" tabindex="-1">زر أساسي</button><button type="button" class="secondary" tabindex="-1">ثانوي</button><button type="button" class="danger-btn" tabindex="-1">حذف</button></div>' +
+      '<p>نص عادي، <a href="#" tabindex="-1" onclick="return false">رابط</a>، <span style="color:var(--text-muted)">نص ثانوي</span> · <span style="color:var(--success-text)">✔ نجاح</span> · <span style="color:var(--warn-text)">⚠ تحذير</span> · <span style="color:var(--danger-text)">✖ خطأ</span></p>' +
+      "</div></div></div>";
+  }
+  /* بنحط المعاينة المصغّرة فوق كل قسم بيأثر على الشكل */
   function renderPreview() {
-    $("wlPreview").innerHTML =
-      '<div class="wl-prev"><div class="wl-prev-head"><img class="brand-logo" src="app-icon.svg" alt=""><div><h3>' + "الورشة الفنية" + "</h3><p>" + "نظام إدارة الورشة المصغر" + "</p></div></div>" +
-      '<div class="wl-prev-body"><div class="wl-prev-logo"><img data-wf-brand="logo" src="workshop-logo.svg" alt=""></div>' +
-      '<div class="wl-btns"><button type="button" class="primary">زر أساسي</button><button type="button" class="secondary">زر ثانوي</button><button type="button" class="danger-btn">حذف</button></div>' +
-      '<div class="wl-prev-stats"><div class="stat"><b>12</b><span>أوامر شغل</span></div><div class="stat"><b>5</b><span>عملاء</span></div><div class="stat"><b>3</b><span>مهام</span></div></div>' +
-      '<p>نص عادي، <a href="#" onclick="return false">رابط</a>، <span style="color:var(--text-muted)">نص ثانوي</span></p>' +
-      '<p><span style="color:var(--success-text)">✔ نجاح</span> · <span style="color:var(--warn-text)">⚠ تحذير</span> · <span style="color:var(--danger-text)">✖ خطأ</span></p></div></div>';
+    ["wlNames", "wlColors", "wlShape", "brandingSettings"].forEach(function (id) {
+      var host = $(id); if (!host || !host.parentNode) return;
+      var old = host.parentNode.querySelector(":scope > .wl-live-host");
+      if (!old) { old = document.createElement("div"); old.className = "wl-live-host"; host.parentNode.insertBefore(old, host); }
+      old.innerHTML = miniApp();
+    });
+    if (window.WFBrand && WFBrand.refresh) WFBrand.refresh();
+  }
+  function refreshMiniText() {
+    var n = document.querySelectorAll(".wl-mini-name"), t = document.querySelectorAll(".wl-mini-tag"), i;
+    for (i = 0; i < n.length; i++) n[i].textContent = WL.name();
+    for (i = 0; i < t.length; i++) t[i].textContent = WL.tagline();
+  }
+  /* أمثلة نصوص للاستبدالات: محرك الاستبدال بيغيّرها لحظيًا زي ما هيحصل في النظام */
+  function replaceSample() {
+    return '<div class="wl-mock"><div class="wl-mock-cap">👁️ كده هتبان الجمل في النظام:</div>' +
+      "<p>📲 «أهلاً بيك في الورشة الفنية — أمر الشغل بتاعك جاهز للاستلام.»</p>" +
+      "<p>🧾 «إيصال استلام جهاز — الفني هيتواصل معاك قبل الزيارة.»</p>" +
+      "<p>📋 «العملاء • الأجهزة • أوامر الشغل • المخزن • الخزنة»</p></div>";
   }
 
   /* =========================================================
@@ -610,6 +655,10 @@
       var inp = $("wlCode");
       if (inp && inp.value === WL.lock()) { try { sessionStorage.setItem("wf_wl_unlocked", "1"); } catch (er) {} gate(); setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 50); }
       else toast("الكود غلط", true);
+    } else if (a === "live-toggle") {
+      liveMin = !liveMin; try { sessionStorage.setItem("wl_live_min", liveMin ? "1" : "0"); } catch (er) {}
+      var lv = document.querySelectorAll(".wl-live"); for (var li = 0; li < lv.length; li++) lv[li].classList.toggle("min", liveMin);
+      var tb = document.querySelectorAll('[data-wla="live-toggle"]'); for (var tj = 0; tj < tb.length; tj++) tb[tj].textContent = liveMin ? "إظهار" : "تصغير";
     } else if (a.indexOf("set-") === 0 || a === "plan-del") {
       setsClick(a, b);
     } else if (a === "open-sets") {
@@ -694,6 +743,7 @@
   WL.onChange(function (c) {
     var n = $("wlCurName"); if (n) n.textContent = c.name || DEFN;
     var sp = $("wlShortPrev"); if (sp) sp.textContent = WL.shortName();
+    refreshMiniText();
     renderApp();
   });
   window.addEventListener("wfbrand:change", function () {

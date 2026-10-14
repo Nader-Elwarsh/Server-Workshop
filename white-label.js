@@ -469,6 +469,22 @@
     });
   }
   function ref() { return firebase.firestore().collection("portal").doc("branding"); }
+  /* Firebase بيرجّع جلسة الدخول بعد فتح الصفحة بثانية تقريبًا: نستنى لحد ما ترجع قبل ما نقول «سجّل الدخول» */
+  function authUser(ms) {
+    return new Promise(function (res) {
+      try {
+        var au = firebase.auth(); if (au.currentUser) return res(au.currentUser);
+        var done = false, off = au.onAuthStateChanged(function (u) { if (u && !done) { done = true; try { off(); } catch (e) {} res(u); } });
+        setTimeout(function () { if (!done) { done = true; try { off(); } catch (e) {} res(au.currentUser || null); } }, ms || 10000);
+      } catch (e) { res(null); }
+    });
+  }
+  function readyDb(ms) {
+    return waitFor(fbReady, ms || 8000).then(function (ok) {
+      if (!ok) throw new Error("لازم تكون أونلاين");
+      return authUser(10000);
+    }).then(function (u) { if (!u) throw new Error("سجّل الدخول الأول"); return firebase.firestore(); });
+  }
   function brandReady() { return !!window.WFBrand; }
   /* adopting>0: التغيير جاي من السحابة/من النشر نفسه (مش من المستخدم) — النشر التلقائي مايتعملش عليه */
   var adopting = 0;
@@ -566,9 +582,7 @@
     });
   }
   function cloudPush() {
-    return waitFor(fbReady, 8000).then(function (ok) {
-      if (!ok) throw new Error("لازم تكون أونلاين");
-      if (!firebase.auth().currentUser) throw new Error("سجّل الدخول الأول");
+    return readyDb(8000).then(function () {
       return window.WFBrand && WFBrand.exportData ? WFBrand.exportData() : null;
     }).then(function (brand) {
       if (!brand) return brand;
@@ -601,8 +615,7 @@
   }
   /* إضافة/تعديل عرض مجدول: entry = {id, name, from, to, cfg (JSON string), brand (JSON string)} */
   function scheduleSave(entry) {
-    return waitFor(fbReady, 8000).then(function (ok) {
-      if (!ok) throw new Error("لازم تكون أونلاين");
+    return readyDb(8000).then(function () {
       return ref().get();
     }).then(function (d) {
       var r = d.exists ? (d.data() || {}) : {}, day = todayKey(), ts = Date.now();
@@ -618,8 +631,7 @@
     });
   }
   function scheduleRemove(id) {
-    return waitFor(fbReady, 8000).then(function (ok) {
-      if (!ok) throw new Error("لازم تكون أونلاين");
+    return readyDb(8000).then(function () {
       return ref().get();
     }).then(function (d) {
       if (!d.exists) return null;
@@ -851,7 +863,7 @@
     mix: mix, contrast: contrast, onColor: onColor,
     reset: function () { local = clean({}); local.updatedAt = Date.now(); saveLocal(); recompute(); render(); schedulePublish(); },
     cloudPull: cloudPull, cloudPush: cloudPush, syncInstallAssets: syncInstallAssets,
-    shrinkImage: shrinkImage, todayKey: todayKey, scheduleSave: scheduleSave, scheduleRemove: scheduleRemove, schedules: schedules, activeSchedule: activeSchedule, refreshRemote: function () { return cloudPull({ wait: 6000 }); }, db: function (ms) { return waitFor(fbReady, ms || 8000).then(function (ok) { if (!ok) throw new Error("لازم تكون أونلاين"); if (!firebase.auth().currentUser) throw new Error("سجّل الدخول الأول"); return firebase.firestore(); }); },
+    shrinkImage: shrinkImage, todayKey: todayKey, scheduleSave: scheduleSave, scheduleRemove: scheduleRemove, schedules: schedules, activeSchedule: activeSchedule, refreshRemote: function () { return cloudPull({ wait: 6000 }); }, db: readyDb,
     schedulePublish: schedulePublish, publishNow: publishNow, isAdopting: function () { return adopting > 0; },
     pushState: function () { return pushState; }, onPushState: function (f) { pushListeners.push(f); },
     hasPending: function () { try { return !!WFStorage.getItem(PENDING); } catch (e) { return false; } },

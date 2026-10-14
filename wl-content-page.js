@@ -38,20 +38,46 @@
       fld(k, label, true, 14) +
       '<div class="wl-btns"><button type="button" class="secondary" data-wlb="load" data-k="' + k + '">📥 حمّل النص الحالي للتعديل</button><button type="button" class="secondary" data-wlb="clear" data-k="' + k + '">↩️ رجّع الأصلي</button></div>';
   }
+  /* معاينات حيّة: نفس علامات data-wl-* اللي في الصفحات الحقيقية، فبتتحدّث لحظيًا وإنت بتكتب */
+  function lis(k) { return DEF[k].split("\n").map(function (x) { return "<li>" + esc(x) + "</li>"; }).join(""); }
+  function mockHead(cap) {
+    return '<div class="wl-mock"><div class="wl-mock-cap">👁️ ' + esc(cap) + '</div><div class="wl-mock-row"><img data-wf-brand="icon" src="app-icon.svg" alt=""><b class="wl-mini-name">' + esc(WL.name()) + "</b></div>";
+  }
+  function staffMock() {
+    return mockHead("كده هتبان صفحة دخول الموظفين:") +
+      '<h2 data-wl-text="staffLoginTitle">' + esc(DEF.staffLoginTitle) + '</h2><p data-wl-text="staffLoginIntro">' + esc(DEF.staffLoginIntro) + "</p>" +
+      '<b data-wl-text="staffLoginListTitle">' + esc(DEF.staffLoginListTitle) + '</b><ul data-wl-list="staffLoginList">' + lis("staffLoginList") + "</ul>" +
+      '<b data-wl-text="staffLoginFormTitle">' + esc(DEF.staffLoginFormTitle) + '</b><span class="wl-fake">📧 الإيميل</span><span class="wl-fake">🔒 كلمة السر</span></div>';
+  }
+  function customerMock() {
+    return mockHead("كده هتبان صفحة دخول العميل:") +
+      '<h2 data-wl-text="customerLoginTitle">' + esc(DEF.customerLoginTitle) + '</h2><p data-wl-text="customerLoginIntro">' + esc(DEF.customerLoginIntro) + "</p>" +
+      '<b data-wl-text="customerStepsTitle">' + esc(DEF.customerStepsTitle) + '</b><ol data-wl-list="customerSteps">' + lis("customerSteps") + "</ol></div>";
+  }
+  function guestMock() {
+    return '<div class="wl-mock" data-wl-guest><div class="wl-mock-cap">👁️ كده هيبان كارت الطلب السريع:</div>' +
+      '<b data-wl-text="guestTitle">' + esc(DEF.guestTitle) + '</b><p data-wl-text="guestIntro">' + esc(DEF.guestIntro) + "</p>" +
+      '<span class="wl-fake">👤 الاسم</span><span class="wl-fake">📞 الموبايل</span><span class="wl-fake">🔧 العطل</span>' +
+      '<p class="hint">بعد الإرسال: <span data-wl-text="guestThanks">' + esc(DEF.guestThanks) + "</span></p></div>";
+  }
+  function docMock(k) { return '<div class="wl-mock"><div class="wl-mock-cap">👁️ معاينة الصفحة:</div><div class="wl-mock-doc" data-wl-doc="' + k + '" data-wl-mockdoc="' + k + '"></div></div>'; }
   function renderContent() {
     var guestOn = WL.cfg().guest !== "off";
     $("wlContent").innerHTML =
       '<p class="hint">كل نص هنا بيحل محل النص الأصلي في الصفحة. الخانة الفاضية بتسيب النص الأصلي. أي تعديل بيتنشر لوحده على كل الأجهزة والزوّار.</p>' +
       "<h3>🔐 صفحة دخول الموظفين</h3>" +
       fld("staffLoginTitle", "العنوان الرئيسي") + fld("staffLoginIntro", "الجملة تحت العنوان", true, 2) +
-      fld("staffLoginListTitle", "عنوان القائمة") + fld("staffLoginList", "القائمة (كل سطر نقطة)", true, 4) + fld("staffLoginFormTitle", "عنوان نموذج الدخول") +
+      fld("staffLoginListTitle", "عنوان القائمة") + fld("staffLoginList", "القائمة (كل سطر نقطة)", true, 4) + fld("staffLoginFormTitle", "عنوان نموذج الدخول") + staffMock() +
       "<h3>👥 صفحة دخول العميل (البوابة)</h3>" +
       fld("customerLoginTitle", "العنوان الرئيسي") + fld("customerLoginIntro", "الجملة تحت العنوان", true, 2) +
-      fld("customerStepsTitle", "عنوان الخطوات") + fld("customerSteps", "الخطوات (كل سطر خطوة)", true, 4) +
+      fld("customerStepsTitle", "عنوان الخطوات") + fld("customerSteps", "الخطوات (كل سطر خطوة)", true, 4) + customerMock() +
       "<h3>🛠️ طلب الصيانة السريع للزائر</h3>" +
       '<label class="wl-fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-wlg="1" style="width:auto;margin:0"' + (guestOn ? " checked" : "") + '> تفعيل «طلب صيانة سريع» لغير المسجّلين في بوابة العملاء</label>' +
-      fld("guestTitle", "عنوان الكارت") + fld("guestIntro", "الجملة تحت العنوان", true, 2) + fld("guestThanks", "رسالة الشكر بعد الإرسال", true, 2) +
-      docFld("privacy", "🛡️ سياسة الخصوصية", "privacy.html") + docFld("terms", "📜 شروط الاستخدام", "terms.html");
+      fld("guestTitle", "عنوان الكارت") + fld("guestIntro", "الجملة تحت العنوان", true, 2) + fld("guestThanks", "رسالة الشكر بعد الإرسال", true, 2) + guestMock() +
+      docFld("privacy", "🛡️ سياسة الخصوصية", "privacy.html") + docMock("privacy") + docFld("terms", "📜 شروط الاستخدام", "terms.html") + docMock("terms");
+    // النص الأصلي جوه معاينة السياسة/الشروط (لازم يتحط قبل أول applyContent عشان يتحفظ كنص افتراضي)
+    var docs = document.querySelectorAll("[data-wl-mockdoc]");
+    for (var i = 0; i < docs.length; i++) docs[i].appendChild(WL.buildDoc(DEF[docs[i].getAttribute("data-wl-mockdoc")] || ""));
   }
 
   function wsv(k) { return (WL.localCfg().workshop || {})[k] || ""; }
@@ -76,7 +102,7 @@
       wf("mapUrl", "الموقع على الخريطة (رابط)", "https://maps.google.com/...", true) + wf("facebook", "فيسبوك", "https://facebook.com/...", true) + wf("instagram", "إنستجرام", "https://instagram.com/...", true) +
       wf("youtube", "يوتيوب", "https://youtube.com/@...", true) + wf("tiktok", "تيك توك", "https://tiktok.com/@...", true) + wf("website", "موقع إلكتروني", "https://...", true) +
       '<label class="wl-fld" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-wshide="1" style="width:auto;margin:0"' + (l.hide ? " checked" : "") + "> إخفاء الكارت عن العملاء</label>" +
-      "<h3>👁️ معاينة</h3><div data-wl-info></div>";
+      '<div class="wl-mock"><div class="wl-mock-cap">👁️ كده هيبان الكارت للعملاء (لو فاضي = مخفي):</div><div data-wl-info></div></div>';
     WL.applyContent();
   }
   function renderAll() { renderContent(); renderWorkshop(); }
