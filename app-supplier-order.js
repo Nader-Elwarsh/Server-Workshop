@@ -286,7 +286,9 @@
       ".wf-po-bigph{position:relative;border-radius:12px;overflow:hidden;background:#0001;aspect-ratio:1}.wf-po-bigph img{width:100%;height:100%;object-fit:contain;display:block}" +
       ".wf-po-bigph small{position:absolute;bottom:4px;inset-inline-start:4px;background:#000a;color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}" +
       ".wf-po-rm{position:absolute;top:6px;inset-inline-end:6px;width:30px;height:30px;border-radius:50%;border:0;background:#000a;color:#fff;cursor:pointer;padding:0}" +
-      ".wf-po-addph{aspect-ratio:1;border:2px dashed var(--border,#bbb);border-radius:12px;background:none;font:inherit;font-size:14px;color:var(--text-muted,#555);cursor:pointer}";
+      ".wf-po-addph{aspect-ratio:1;border:2px dashed var(--border,#bbb);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:8px;font-size:14px;color:var(--text-muted,#555)}" +
+      ".wf-po-addph .wf-po-dual{flex-direction:column;align-items:stretch;width:100%}.wf-po-dual{margin-top:6px}.wf-po-dual .dual-photo-btn{flex:1}" +
+      "div.wf-po-ph{cursor:default}.wf-po-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}.wf-po-fields input{margin:0}.wf-po-fields .wf-po-dual{grid-column:1/-1;margin:0}";
     document.head.appendChild(s);
   }
 
@@ -304,9 +306,18 @@
       '<div class="wf-po-foot"><button type="button" class="primary" data-po="share">📤 ابعت صورة (واتساب)</button><button type="button" class="secondary" data-po="text">💬 ابعت كنص</button>' +
       '<button type="button" class="secondary" data-po="preview">🖼️ معاينة الصورة</button><button type="button" class="secondary" data-po="clear">🗑️ طلبية جديدة</button></div></div>';
     document.body.appendChild(ov);
-    var body = ov.querySelector('[data-po="body"]'), picker = document.createElement("input");
-    picker.type = "file"; picker.accept = "image/*"; picker.className = "hidden"; ov.appendChild(picker);
-    var pickFor = null, pickMode = "", searchQ = "", showSearch = false;
+    var body = ov.querySelector('[data-po="body"]');
+    var searchQ = "", showSearch = false;
+    /* نفس طريقة رفع الصور في باقي النظام: زرار 📷 كاميرا (بيفتح الكاميرا على طول) وزرار 🖼️ من الصور */
+    function pick(key, big, camera) {
+      var temp = document.createElement("input"); temp.type = "file"; temp.accept = "image/*";
+      if (camera) { temp.setAttribute("capture", "environment"); temp.capture = "environment"; } else if (big) temp.multiple = true;
+      temp.addEventListener("change", function () { gotFiles(key, big, Array.prototype.slice.call(temp.files || [])); });
+      temp.click();
+    }
+    function dualBtns(big) {
+      return '<div class="dual-photo-picker wf-po-dual"><button type="button" class="secondary small-btn dual-photo-btn" data-pick="camera" data-pbig="' + (big ? 1 : 0) + '">📷 كاميرا</button><button type="button" class="secondary small-btn dual-photo-btn" data-pick="gallery" data-pbig="' + (big ? 1 : 0) + '">🖼️ من الصور</button></div>';
+    }
     function close() { ov.remove(); document.removeEventListener("keydown", onKey); }
     function onKey(ev) { if (ev.key === "Escape") close(); }
     document.addEventListener("keydown", onKey);
@@ -316,7 +327,7 @@
       if (l.big) return bigSrcs(l).then(function (srcs) {
         var el = body.querySelector('[data-big="' + l.key + '"]'); if (!el) return;
         el.innerHTML = srcs.map(function (s, k) { return '<div class="wf-po-bigph"><img alt="" src="' + e(s) + '">' + (l.photos.length ? '<button type="button" class="wf-po-rm" data-rmk="' + k + '" title="شيل الصورة">✕</button>' : '<small>من المخزن</small>') + '</div>'; }).join("") +
-          (l.photos.length < MAX_PHOTOS ? '<button type="button" class="wf-po-addph" data-addph="1">📷<br>' + (srcs.length ? "صورة كمان" : "صوّر الصنف") + '</button>' : "");
+          (l.photos.length < MAX_PHOTOS ? '<div class="wf-po-addph"><span>' + (srcs.length ? "➕ صورة كمان" : "➕ صوّر الصنف") + '</span>' + dualBtns(true) + '</div>' : "");
       });
       return lineSrc(l).then(function (src) {
         var el = body.querySelector('[data-ph="' + l.key + '"]'); if (el && src) el.innerHTML = '<img alt="" src="' + e(src) + '">';
@@ -342,12 +353,15 @@
         '<div class="wf-po-count">' + countText() + '</div>' +
         (ls.length ? ls.map(function (l) {
           return '<div class="wf-po-line' + (l.big ? " is-big" : "") + '" data-k="' + e(l.key) + '"><div class="wf-po-top">' +
-            (l.big ? '<div class="wf-po-ph wf-po-ph-big">📷<small>' + (l.photos.length || (l.usePartPhoto && l.partId ? 1 : 0)) + '</small></div>' : '<button type="button" class="wf-po-ph" data-ph="' + e(l.key) + '" title="صورة صغيرة للصنف">📷</button>') +
+            (l.big ? '<div class="wf-po-ph wf-po-ph-big">📷<small>' + (l.photos.length || (l.usePartPhoto && l.partId ? 1 : 0)) + '</small></div>' : '<div class="wf-po-ph" data-ph="' + e(l.key) + '">📦</div>') +
             '<div class="wf-po-mid"><b>' + e(l.name) + '</b><small>' + e([l.cat || "", l.code ? "كود " + l.code : "", l.partId ? "" : "صنف مش في المخزن"].filter(Boolean).join(" • ")) + '</small>' +
-            '<input data-lf="kind" list="wfPoKinds" placeholder="النوع: مستورد / صناعة / ماركة..." maxlength="50" value="' + e(l.kind) + '">' +
-            '<input data-lf="note" placeholder="ملاحظة للمورد (مقاس، رقم...)" maxlength="80" value="' + e(l.note) + '"></div>' +
+            '</div>' +
             '<div><div class="wf-po-qty"><button type="button" class="secondary" data-q="1">+</button><input data-lf="qty" type="number" inputmode="numeric" min="1" step="1" value="' + Math.round(num(l.qty)) + '"><button type="button" class="secondary" data-q="-1">−</button></div>' +
             '<div class="wf-po-acts"><button type="button" class="wf-po-x" data-del="1" title="شيل الصنف">🗑️</button>' + (!l.big && (l.photos.length || (l.usePartPhoto && l.partId)) ? '<button type="button" class="wf-po-x wf-po-x-s" data-rmph="1" title="شيل الصورة">✕ الصورة</button>' : "") + '</div></div></div>' +
+            '<div class="wf-po-fields">' +
+            '<input data-lf="kind" list="wfPoKinds" placeholder="النوع: مستورد، صناعة..." maxlength="50" value="' + e(l.kind) + '">' +
+            '<input data-lf="note" placeholder="ملاحظة: مقاس، رقم..." maxlength="80" value="' + e(l.note) + '">' + (l.big ? "" : dualBtns(false)) +
+            '</div>' +
             '<button type="button" class="wf-po-bigtoggle' + (l.big ? " on" : "") + '" data-bigt="1">' + (l.big ? "🔍 صور كبيرة: شغّالة — اضغط ترجع صورة صغيرة" : "🔍 صور كبيرة للصنف ده (لحد " + MAX_PHOTOS + " صور)") + '</button>' +
             (l.big ? '<div class="wf-po-bigs" data-big="' + e(l.key) + '"></div>' : "") + '</div>';
         }).join("") : '<div class="wf-po-empty">الطلبية فاضية.<br>اضغط «➕ ضيف صنف» وابدأ، أو «⚠️ ضيف النواقص» لو عايز النظام يقترح عليك.</div>') +
@@ -385,13 +399,12 @@
       if (t.hasAttribute("data-del")) { if ((l.photos.length || l.note || l.kind) && !confirm("تشيل «" + l.name + "» من الطلبية؟")) return; d.lines = d.lines.filter(function (x) { return x !== l; }); persist(); render(); return; }
       if (t.hasAttribute("data-rmph")) { l.photos = []; l.usePartPhoto = false; persist(); render(); return; }
       if (t.hasAttribute("data-rmk")) { l.photos.splice(+t.getAttribute("data-rmk"), 1); persist(); render(); return; }
-      if (t.hasAttribute("data-bigt")) { l.big = !l.big; persist(); render(); var row = body.querySelector('[data-k="' + l.key + '"]'); if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" }); if (l.big && !l.photos.length && !(l.usePartPhoto && l.partId)) { pickFor = l.key; pickMode = "big"; picker.multiple = true; picker.value = ""; picker.click(); } return; }
-      if (t.hasAttribute("data-addph")) { pickFor = l.key; pickMode = "big"; picker.multiple = true; picker.value = ""; picker.click(); return; }
-      if (t.hasAttribute("data-ph")) { pickFor = l.key; pickMode = "small"; picker.multiple = false; picker.value = ""; picker.click(); }
+      if (t.hasAttribute("data-bigt")) { l.big = !l.big; persist(); render(); var row = body.querySelector('[data-k="' + l.key + '"]'); if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" }); return; }
+      if (t.hasAttribute("data-pick")) { pick(l.key, t.getAttribute("data-pbig") === "1", t.getAttribute("data-pick") === "camera"); }
     });
-    picker.addEventListener("change", function () {
-      var files = Array.prototype.slice.call(picker.files || []), l = d.lines.find(function (x) { return x.key === pickFor; }); if (!files.length || !l) return;
-      var big = pickMode === "big", room = big ? MAX_PHOTOS - l.photos.length : 1;
+    function gotFiles(key, big, files) {
+      var l = d.lines.find(function (x) { return x.key === key; }); if (!files.length || !l) return;
+      var room = big ? MAX_PHOTOS - l.photos.length : 1;
       if (room <= 0) return alert("أقصى عدد " + MAX_PHOTOS + " صور للصنف.");
       if (files.length > room) alert("هاخد أول " + room + " صورة بس (أقصى عدد " + MAX_PHOTOS + " صور للصنف).");
       Promise.all(files.slice(0, room).map(function (f) { return typeof imageToDataURL === "function" ? imageToDataURL(f, big ? 1280 : 640, big ? 0.8 : 0.72) : ""; })).then(function (urls) {
@@ -401,7 +414,7 @@
         if (!persist()) alert("الصورة كبيرة على مساحة الجهاز — جرّب صورة تانية.");
         render();
       }).catch(function () { alert("تعذّر قراءة الصورة."); });
-    });
+    }
     function needLines() { if (!validLines(d).length) { alert("الطلبية فاضية — ضيف أصناف الأول."); return false; } return true; }
     function busy(btn, on) { if (btn) { btn.disabled = on; if (on) { btn.dataset.t = btn.textContent; btn.textContent = "⏳ ..."; } else if (btn.dataset.t) btn.textContent = btn.dataset.t; } }
     function afterSend(how) {

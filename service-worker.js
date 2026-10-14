@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v74-supplier-order-photos";
+const CACHE_NAME = "workshop-v75-supplier-order-dual-photo";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
