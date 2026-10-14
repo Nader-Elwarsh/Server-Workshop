@@ -10,7 +10,7 @@ function normalizePartText(v){
     .replace(/[\s\-_./\\]+/g,"").trim();
 }
 /* بحث مرن: بيتجاهل الهمزات/التاء المربوطة/المسافات/الأرقام الهندي، وكل كلمة لازم تكون موجودة في الاسم أو الكود أو المكان أو التصنيف */
-function partMatchesQuery(p,q){const words=String(q||"").trim().split(/\s+/).map(normalizePartText).filter(Boolean);if(!words.length)return true;const hay=normalizePartText([p&&p.name,p&&p.code,p&&p.location,p&&p.category].filter(Boolean).join(" "));return words.every(w=>hay.includes(w))}
+function partMatchesQuery(p,q){if(typeof wfMatch==="function")return wfMatch([p&&p.name,p&&p.code,p&&p.location,p&&p.category],q);const words=String(q||"").trim().split(/\s+/).map(normalizePartText).filter(Boolean);if(!words.length)return true;const hay=normalizePartText([p&&p.name,p&&p.code,p&&p.location,p&&p.category].filter(Boolean).join(" "));return words.every(w=>hay.includes(w))}
 function findDuplicatePartName(name,excludeId){const n=normalizePartText(name);if(!n)return null;return arr(K.p).find(p=>String(p.id)!==String(excludeId||"")&&!p.archived&&normalizePartText(p.name)===n)||null;}
 function findSimilarPartNames(name,excludeId,limit){
   const n=normalizePartText(name);if(!n)return [];

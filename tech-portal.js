@@ -237,7 +237,9 @@
         var t = q.value.trim().toLowerCase();
         var rows = all.filter(function (r) {
           if (state.filter !== "all" && r.status !== state.filter) return false;
-          var c = custOf(r); return !t || ((c.name || "") + " " + (c.phone || "") + " " + devLabel(devOf(r)) + " " + (r.no || "") + " " + (r.fault || "")).toLowerCase().indexOf(t) > -1;
+          var c = custOf(r); if (!t) return true;
+          if (typeof window.wfMatch === "function") return window.wfMatch([c.name, c.phone, devLabel(devOf(r)), r.no, r.fault], t);
+          return ((c.name || "") + " " + (c.phone || "") + " " + devLabel(devOf(r)) + " " + (r.no || "") + " " + (r.fault || "")).toLowerCase().indexOf(t) > -1;
         });
         rows.forEach(function (r) { list.appendChild(orderCard(r)); });
         if (!rows.length) list.appendChild(el("p", "tp-empty-line", "مفيش أوامر."));
@@ -479,7 +481,7 @@
         var paint = function () {
           while (sres.firstChild) sres.removeChild(sres.firstChild);
           if (!state.catalog) { sres.appendChild(el("p", "tp-muted", state.catalogErr || "⏳ جارٍ تحميل المخزن…")); return; }
-          var q = sq.value.trim().toLowerCase(), list = state.catalog.filter(function (x) { return !q || (x.name + " " + x.code + " " + x.category).toLowerCase().indexOf(q) > -1; }).slice(0, 30);
+          var q = sq.value.trim().toLowerCase(), list = state.catalog.filter(function (x) { return !q || (typeof window.wfMatch === "function" ? window.wfMatch([x.name, x.code, x.category], q) : (x.name + " " + x.code + " " + x.category).toLowerCase().indexOf(q) > -1); }).slice(0, 30);
           if (!list.length) sres.appendChild(el("p", "tp-muted", "مفيش قطعة بالاسم ده في المخزن."));
           list.forEach(function (x) {
             var it = el("div", "tp-stock-item" + (x.qty > 0 ? "" : " tp-out"));

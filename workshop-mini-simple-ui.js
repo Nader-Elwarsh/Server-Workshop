@@ -368,12 +368,12 @@
     const bucket = state.customerBucket || "";
     const filtered = all.filter(c => {
       if (bucket && !customerBucketMatch(c, bucket)) return false;
-      const text = [c.name, c.phone, c.phone2, c.nickname,
-        addressText(c.mainAddress || {}), addressText(c.extraAddress || {})]
-        .filter(Boolean).join(" ").toLowerCase();
-      return !q || text.includes(q);
+      const parts = [c.name, c.phone, c.phone2, c.nickname,
+        addressText(c.mainAddress || {}), addressText(c.extraAddress || {})];
+      return !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
     });
-    const sortKey = $("customerSortSelect")?.value || "newest";
+    const sortKey = $("customerSortSelect")?.value || state.customerSort || "newest";
+    state.customerSort = sortKey;
     const byCreated = c => new Date(c.createdAt || 0).getTime() || 0;
     if (sortKey === "newest") filtered.sort((a, b) => byCreated(b) - byCreated(a));
     else if (sortKey === "oldest") filtered.sort((a, b) => byCreated(a) - byCreated(b));
@@ -481,10 +481,11 @@
     const filtered = all.filter(d => {
       if (bucket && !deviceBucketMatch(d, bucket)) return false;
       const c = customerById.get(d.customerId) || {};
-      const text = [c.name,c.phone,d.type,d.category,d.brand,d.model,d.desc,addressText(c.mainAddress||{}),addressText(c.extraAddress||{})].filter(Boolean).join(" ").toLowerCase();
-      return !q || text.includes(q);
+      const parts = [c.name,c.phone,d.type,d.category,d.brand,d.model,d.desc,addressText(c.mainAddress||{}),addressText(c.extraAddress||{})];
+      return !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
     });
-    const sortKey = $("deviceSortSelect")?.value || "newest";
+    const sortKey = $("deviceSortSelect")?.value || state.deviceSort || "newest";
+    state.deviceSort = sortKey;
     const byCreated = d => new Date(d.createdAt || 0).getTime() || 0;
     if (sortKey === "newest") filtered.sort((a, b) => byCreated(b) - byCreated(a));
     else if (sortKey === "oldest") filtered.sort((a, b) => byCreated(a) - byCreated(b));
@@ -847,8 +848,8 @@
     state.requestSort = sort;
 
     let filtered = all.filter(r => {
-      const text = [r.no, customerName(r.customerId), r.fault, orderLocationLabel(r), r.tag].filter(Boolean).join(" ").toLowerCase();
-      let ok = !q || text.includes(q);
+      const parts = [r.no, customerName(r.customerId), r.fault, orderLocationLabel(r), r.tag, typeof deviceName === "function" ? deviceName(r.deviceId) : ""];
+      let ok = !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
       if (focus) ok = ok && bucketFilter(r,focus);
       if (sf) ok = ok && r.status === sf;
       if (wf === "workshop") ok = ok && r.executionPlace === "الورشة";
@@ -952,9 +953,9 @@
           loc: $("requestOpsWorkshop")?.value || state.requestLocation, sort: state.requestSort && state.requestSort !== "oldest" ? state.requestSort : null, q: qv("requestSearch") });
       }
     } else if ($("customerList")) {
-      if (state.customers) Object.assign(P, { list: 1, f: state.customerBucket, q: qv("customerSearch") });
+      if (state.customers) Object.assign(P, { list: 1, f: state.customerBucket, q: qv("customerSearch"), sort: state.customerSort && state.customerSort !== "newest" ? state.customerSort : null });
     } else if ($("deviceList")) {
-      if (state.devices) Object.assign(P, { list: 1, f: state.deviceBucket, q: qv("deviceSearch") });
+      if (state.devices) Object.assign(P, { list: 1, f: state.deviceBucket, q: qv("deviceSearch"), sort: state.deviceSort && state.deviceSort !== "newest" ? state.deviceSort : null });
     } else if ($("partList")) {
       if (state.parts) Object.assign(P, { list: 1, f: state.partBucket, cat: state.partCategory, vm: state.partBucket === "value" ? state.partValueMode : null, q: qv("partSearch") });
       Object.assign(P, { pp: state.partsStatsPeriod !== "30" ? state.partsStatsPeriod : null, pv: state.partsViewMode !== "cards" ? state.partsViewMode : null });
@@ -979,10 +980,10 @@
           $("requestSearch")?.classList.remove("hidden");
           renderRequests();
         } else if ($("customerList")) {
-          setQ("customerSearch");
+          setQ("customerSearch"); if (g("sort")) state.customerSort = g("sort");
           if (g("f")) window.showCustomerBucket(g("f")); else window.showAllCustomers();
         } else if ($("deviceList")) {
-          setQ("deviceSearch");
+          setQ("deviceSearch"); if (g("sort")) state.deviceSort = g("sort");
           if (g("f")) window.showDeviceBucket(g("f")); else window.showAllDevices();
         } else if ($("partList")) {
           if (g("pp")) state.partsStatsPeriod = g("pp");

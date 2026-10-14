@@ -173,7 +173,8 @@ function renderRoute(){
     summaryEl.innerHTML=`<div class="route-summary"><div class="stat"><b>${headTitle}</b><span>&nbsp;</span></div><div class="stat"><b>${scheduledOnly.length}</b><span>📋 إجمالي اليوم</span></div><div class="stat"><b>${closedToday.length}</b><span>✅ أُغلق وتم التحصيل</span></div><div class="stat"><b>${visitedNotClosed.length}</b><span>🚶 العمل جارٍ</span></div><div class="stat"><b>${notVisited.length}</b><span>⏳ لم تتم الزيارة بعد</span></div><div class="stat"><b>${collected.toFixed(2)} ج</b><span>💰 المُحصَّل</span></div>${offSchedule?`<div class="stat"><b>${offSchedule}</b><span>📦 اتقفل بدون جدولة مسبقة</span></div>`:""}</div>${progressHtml}`;
   }
   if(cf)list=list.filter(x=>x._addr.center===cf);
-  if(sq)list=list.filter(x=>(x._c.name||"").toLowerCase().includes(sq)||(x._c.phone||"").toLowerCase().includes(sq)||(x.no||"").toLowerCase().includes(sq)||addressText(x._addr).toLowerCase().includes(sq)||deviceName(x.deviceId).toLowerCase().includes(sq)||(x.fault||"").toLowerCase().includes(sq));
+  if(sq&&typeof wfMatch==="function")list=list.filter(x=>wfMatch([x._c.name,x._c.phone,x._c.phone2,x.no,addressText(x._addr),deviceName(x.deviceId),x.fault],sq));
+  else if(sq)list=list.filter(x=>(x._c.name||"").toLowerCase().includes(sq)||(x._c.phone||"").toLowerCase().includes(sq)||(x.no||"").toLowerCase().includes(sq)||addressText(x._addr).toLowerCase().includes(sq)||deviceName(x.deviceId).toLowerCase().includes(sq)||(x.fault||"").toLowerCase().includes(sq));
   const orderIds=routeOrderForList(list), byId=new Map(list.map(x=>[x.id,x]));
   list=orderIds.map(id=>byId.get(id)).filter(Boolean);
   if(!list.length){el.innerHTML=`<div class="item">لا يوجد مواعيد ضمن الاختيار الحالي.</div>`;return}

@@ -1,0 +1,21 @@
+/* البحث الموحّد (wfMatch) وسجل آخر عمليات البحث */
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const store={};const WFStorage={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v)},removeItem:k=>delete store[k]};
+const window={WFStorage,localStorage:WFStorage,crypto:{randomUUID:()=>'x'}};
+const ctx={window,WFStorage,localStorage:WFStorage,console};ctx.window.window=ctx.window;
+vm.createContext(ctx);vm.runInContext(fs.readFileSync(__dirname+'/shared-data.js','utf8'),ctx,{filename:'shared-data.js'});
+const m=window.wfMatch,H0=window.WFSearchHistory,H={...H0,list:k=>JSON.parse(JSON.stringify(H0.list(k)))};
+assert.ok(m(['أحمد إبراهيم','01012345678'],'احمد ابراهيم'),'hamza');
+assert.ok(m(['فاطمة'],'فاطمه'),'ta marbuta');assert.ok(m(['مصطفى'],'مصطفي'),'alef maqsura');
+assert.ok(m(['01012345678'],'٠١٠١٢٣'),'arabic digits');assert.ok(m(['0101 234 5678'],'01012345'),'phone spaces');
+assert.ok(m(['غسالة توشيبا','سمالوط'],'سمالوط غساله'),'any order');assert.ok(!m(['غسالة توشيبا'],'تلاجة'));
+assert.ok(m([null,undefined,'x'],''),'empty query matches');
+H.remember('customers:customerSearch','قط');H.remember('customers:customerSearch','قطعة');
+assert.deepStrictEqual(H.list('customers:customerSearch'),['قطعة'],'typing continuation replaces');
+['a1','b2','c3','d4','e5','f6'].forEach(q=>H.remember('k',q));
+assert.deepStrictEqual(H.list('k'),['f6','e5','d4','c3','b2'],'last 5, newest first');
+H.remember('k','c3');assert.strictEqual(H.list('k')[0],'c3');assert.strictEqual(H.list('k').length,5,'no duplicates');
+H.remember('k','x');assert.strictEqual(H.list('k')[0],'c3','single char ignored');
+H.forget('k','c3');assert.ok(!H.list('k').includes('c3'));H.clear('k');assert.deepStrictEqual(H.list('k'),[]);
+assert.deepStrictEqual(H.list('customers:customerSearch'),['قطعة'],'per-input history');
+console.log('search-history-tests: PASS');

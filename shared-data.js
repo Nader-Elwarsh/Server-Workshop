@@ -924,3 +924,158 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     });
   })();
 }
+
+/* WFSEARCH:BEGIN — بحث موحّد لكل النظام + سجل آخر عمليات البحث.
+   1) wfSearchNorm/wfMatch: نفس قواعد المطابقة في كل الأقسام — بيتجاهل الهمزات (أ/إ/آ = ا)، التاء المربوطة (ة = ه)،
+      الياء (ى = ي)، التشكيل، الأرقام الهندي (٠١٢ = 012)، والمسافات/الشرط جوه الكلمة (0101 234 = 0101234).
+      كل كلمة في البحث لازم تكون موجودة (بأي ترتيب).
+   2) سجل البحث: أي خانة بحث في النظام بتفتكر آخر 5 عمليات بحث فيها (لكل خانة لوحدها، على الجهاز ده).
+      لما تدوس على الخانة وهي فاضية بيظهرلك آخر 5 — تدوس على واحدة يرجع يدوّر بيها، و✕ يشيلها. */
+(function (w) {
+  "use strict";
+  function wfSearchNorm(v) {
+    return String(v == null ? "" : v).toLowerCase().normalize("NFKC")
+      .replace(/[ً-ٰٟ]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/ـ/g, "")
+      .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); });
+  }
+  function compact(v) { return wfSearchNorm(v).replace(/[\s\-_./\\()+:،,]+/g, ""); }
+  /* hay: نص أو Array من النصوص اللي بندوّر فيها. q: اللي المستخدم كتبه. */
+  function wfMatch(hay, q) {
+    var words = String(q == null ? "" : q).trim().split(/\s+/).map(compact).filter(Boolean);
+    if (!words.length) return true;
+    var h = compact(Array.isArray(hay) ? hay.filter(function (x) { return x != null && x !== ""; }).join(" ") : hay);
+    for (var i = 0; i < words.length; i++) if (h.indexOf(words[i]) === -1) return false;
+    return true;
+  }
+  w.wfSearchNorm = wfSearchNorm; w.wfMatch = wfMatch;
+
+  /* ---------- سجل البحث ---------- */
+  var KEY = "wf_search_history", MAX = 5;
+  function store() { try { return w.WFStorage || null; } catch (e) { return null; } }
+  function loadAll() { try { var s = store(); var v = s ? JSON.parse(s.getItem(KEY) || "{}") : {}; return v && typeof v === "object" ? v : {}; } catch (e) { return {}; } }
+  function saveAll(v) { try { var s = store(); if (s) s.setItem(KEY, JSON.stringify(v)); } catch (e) {} }
+  function pageName() { try { return (w.location.pathname.split("/").pop() || "index.html").replace(/\.html$/, "") || "index"; } catch (e) { return "page"; } }
+  function keyOf(el) { if (el.id === "gsInput") return "global"; return pageName() + ":" + (el.id || el.name || el.getAttribute("placeholder") || "search"); }
+  function list(k) { var a = loadAll()[k]; return Array.isArray(a) ? a.slice(0, MAX) : []; }
+  function remember(k, q) {
+    q = String(q || "").trim(); if (q.length < 2 || q.length > 80) return;
+    var all = loadAll(), a = Array.isArray(all[k]) ? all[k] : [], nq = wfSearchNorm(q);
+    // لو كملت كتابة نفس البحث («قط» ← «قطعة») نستبدله بدل ما نسجّل الاتنين
+    a = a.filter(function (x) { var nx = wfSearchNorm(x); return nx !== nq && !(nq.indexOf(nx) === 0 && a.indexOf(x) === 0); });
+    a.unshift(q); all[k] = a.slice(0, MAX); saveAll(all);
+  }
+  function forget(k, q) { var all = loadAll(); all[k] = (all[k] || []).filter(function (x) { return x !== q; }); if (!all[k].length) delete all[k]; saveAll(all); }
+  function clear(k) { var all = loadAll(); delete all[k]; saveAll(all); }
+  w.WFSearchHistory = { list: list, remember: remember, forget: forget, clear: clear, keyOf: keyOf };
+
+  if (!w.document || typeof w.document.addEventListener !== "function") return;
+  var d = w.document;
+  function isSearch(el) {
+    if (!el || el.tagName !== "INPUT" || el.disabled || el.readOnly) return false;
+    if (el.hasAttribute("data-no-history") || (el.classList && el.classList.contains("part-autocomplete-input"))) return false;
+    if (el.closest && el.closest(".wf-sale,.wf-po,[data-no-history]")) return false;
+    var t = (el.getAttribute("type") || "text").toLowerCase();
+    if (t !== "search" && t !== "text") return false;
+    return t === "search" || el.id === "gsInput" || (el.classList && el.classList.contains("search")) || /Search$/.test(el.id || "");
+  }
+  var box = null, owner = null, timer = null;
+  function css() {
+    if (d.getElementById("wfShCss")) return;
+    var s = d.createElement("style"); s.id = "wfShCss";
+    s.textContent = ".wf-sh{position:fixed;z-index:100001;background:var(--bg-elevated,#fff);color:var(--text,#111);border:1px solid var(--border,#ddd);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);overflow:hidden;font-size:14px}" +
+      ".wf-sh-h{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:12px;color:var(--text-muted,#666);border-bottom:1px solid var(--border,#eee)}" +
+      ".wf-sh-h button{background:none;border:0;color:var(--text-muted,#666);font:inherit;font-size:12px;cursor:pointer;padding:2px 4px;text-decoration:underline}" +
+      ".wf-sh-i{display:flex;align-items:center}.wf-sh-i+.wf-sh-i{border-top:1px solid var(--border,#f0f0f0)}" +
+      ".wf-sh-q{flex:1;text-align:start;background:none;border:0;padding:10px 12px;font:inherit;color:inherit;cursor:pointer;min-height:42px}" +
+      ".wf-sh-q:hover,.wf-sh-q:focus{background:var(--surface-2,rgba(127,127,127,.1))}" +
+      ".wf-sh-x{background:none;border:0;color:var(--text-muted,#888);font-size:15px;padding:8px 12px;cursor:pointer;min-height:42px}";
+    (d.head || d.documentElement).appendChild(s);
+  }
+  function hide() { if (box) { box.remove(); box = null; } owner = null; }
+  function place() {
+    if (!box || !owner) return;
+    var r = owner.getBoundingClientRect();
+    if (!r.width || r.bottom < 0 || r.top > (w.innerHeight || 0)) { hide(); return; }
+    box.style.left = Math.max(8, r.left) + "px"; box.style.width = Math.max(220, r.width) + "px"; box.style.top = (r.bottom + 4) + "px";
+  }
+  function esc(v) { return String(v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function show(el) {
+    var k = keyOf(el), items = list(k);
+    if (!items.length || String(el.value || "").trim()) { hide(); return; }
+    css(); if (!box) { box = d.createElement("div"); box.className = "wf-sh"; box.setAttribute("role", "listbox"); d.body.appendChild(box); }
+    owner = el;
+    box.innerHTML = '<div class="wf-sh-h"><span>🕘 آخر عمليات البحث</span><button type="button" data-sh-clear="1">مسح</button></div>' +
+      items.map(function (q, i) { return '<div class="wf-sh-i"><button type="button" class="wf-sh-q" data-sh-q="' + i + '">🕘 ' + esc(q) + '</button><button type="button" class="wf-sh-x" data-sh-x="' + i + '" aria-label="شيل">✕</button></div>'; }).join("");
+    place();
+    // mousedown بدل click عشان الخانة ماتفقدش التركيز وتقفل القايمة قبل ما الضغطة توصل
+    box.onmousedown = function (e) { e.preventDefault(); };
+    box.onclick = function (e) {
+      var b = e.target.closest("button"); if (!b || !owner) return;
+      var cur = owner, arr2 = list(k);
+      if (b.hasAttribute("data-sh-clear")) { clear(k); hide(); return; }
+      if (b.hasAttribute("data-sh-x")) { forget(k, arr2[+b.getAttribute("data-sh-x")]); show(cur); return; }
+      var q = arr2[+b.getAttribute("data-sh-q")]; if (q == null) return;
+      hide(); cur.value = q; remember(k, q);
+      cur.dispatchEvent(new Event("input", { bubbles: true })); cur.dispatchEvent(new Event("change", { bubbles: true }));
+      try { cur.focus(); } catch (x) {}
+    };
+  }
+  d.addEventListener("focusin", function (e) { if (isSearch(e.target)) show(e.target); });
+  d.addEventListener("click", function (e) { if (isSearch(e.target) && !box) show(e.target); else if (box && !box.contains(e.target) && e.target !== owner) hide(); }, true);
+  d.addEventListener("input", function (e) {
+    var el = e.target; if (!isSearch(el)) return;
+    if (String(el.value || "").trim()) { if (owner === el) hide(); } else show(el);
+    clearTimeout(timer);
+    // بنسجّل البحث لما تقف عن الكتابة ثانية ونص (مش كل حرف)
+    timer = setTimeout(function () { if (String(el.value || "").trim().length >= 2) remember(keyOf(el), el.value); }, 1500);
+  });
+  d.addEventListener("keydown", function (e) {
+    var el = e.target; if (!isSearch(el)) return;
+    if (e.key === "Enter" && String(el.value || "").trim()) { clearTimeout(timer); remember(keyOf(el), el.value); hide(); }
+    else if (e.key === "Escape") hide();
+  });
+  d.addEventListener("focusout", function (e) {
+    var el = e.target; if (!isSearch(el)) return;
+    if (String(el.value || "").trim().length >= 2) { clearTimeout(timer); remember(keyOf(el), el.value); }
+    setTimeout(function () { if (owner === el && d.activeElement !== el) hide(); }, 150);
+  });
+  w.addEventListener && w.addEventListener("resize", place);
+  w.addEventListener && w.addEventListener("scroll", place, true);
+})(window);
+/* WFSEARCH:END */
+
+/* WFPICKIMAGE — نفس طريقة رفع الصور في كل النظام لأي مكان بيختار صورة من زرار واحد (زي أيقونة التطبيق واللوجو):
+   بيسألك «📷 كاميرا» ولا «🖼️ من الصور» وبعدين بيفتح المناسب. بيرجّع Promise بـ File (أو null لو اتلغى). */
+(function (w) {
+  "use strict";
+  if (!w.document) return;
+  w.wfPickImage = function (opts) {
+    opts = opts || {};
+    var d = w.document;
+    return new Promise(function (resolve) {
+      var ov = d.createElement("div");
+      ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true");
+      ov.style.cssText = "position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center";
+      ov.innerHTML = '<div style="background:var(--bg-elevated,#fff);color:var(--text,#111);border-radius:18px 18px 0 0;padding:16px;width:100%;max-width:420px;box-shadow:0 -6px 24px rgba(0,0,0,.25)">' +
+        '<b style="display:block;margin-bottom:10px">' + (opts.title || "اختار الصورة منين؟") + '</b>' +
+        '<div style="display:flex;gap:8px"><button type="button" class="secondary" data-src="camera" style="flex:1;min-height:52px">📷 كاميرا</button><button type="button" class="secondary" data-src="gallery" style="flex:1;min-height:52px">🖼️ من الصور</button></div>' +
+        '<button type="button" class="secondary" data-src="" style="width:100%;margin-top:8px;min-height:44px">إلغاء</button></div>';
+      var done = false;
+      function finish(f) { if (done) return; done = true; resolve(f || null); }
+      function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+      ov.addEventListener("click", function (e) {
+        if (e.target === ov) { close(); finish(null); return; }
+        var b = e.target.closest && e.target.closest("button[data-src]"); if (!b) return;
+        var src = b.getAttribute("data-src"); close();
+        if (!src) { finish(null); return; }
+        var i = d.createElement("input"); i.type = "file"; i.accept = src === "camera" ? "image/*" : (opts.accept || "image/*"); i.hidden = true;
+        if (src === "camera") { i.setAttribute("capture", "environment"); i.capture = "environment"; }
+        d.body.appendChild(i);
+        i.addEventListener("change", function () { var f = i.files && i.files[0]; if (i.parentNode) i.parentNode.removeChild(i); finish(f || null); });
+        i.click();
+      });
+      d.body.appendChild(ov);
+    });
+  };
+})(window);
