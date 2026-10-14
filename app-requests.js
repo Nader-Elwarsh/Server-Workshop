@@ -162,9 +162,8 @@ async function saveRequest(e,existing=null){
   if(existing&&existing.status!==formData.status){
     if(!canTransitionStatus(existing.status,formData.status)){alert(`لا يمكن الانتقال من حالة «${existing.status}» إلى «${formData.status}» مباشرة.`);return}
     if(formData.status==="ملغي"){
-      let reason=prompt("سبب إلغاء أمر الشغل (مطلوب):","");
+      let reason=askCancelReason();
       if(reason===null)return;
-      reason=reason.trim();
       if(!reason){alert("سبب الإلغاء مطلوب لإلغاء أمر الشغل.");return}
       formData.cancelReason=reason;
     }
@@ -274,9 +273,8 @@ async function changeRequestStatus(i,status){
     if(!canTransitionStatus(r.status,status)){alert(`لا يمكن الانتقال من حالة «${r.status}» إلى «${status}» مباشرة.`);renderRequests();requestProfile();return}
     let from=r.status,reason="",freezeNote="";
     if(status==="ملغي"){
-      reason=prompt("سبب إلغاء أمر الشغل (مطلوب):","");
+      reason=askCancelReason();
       if(reason===null){renderRequests();requestProfile();return}
-      reason=reason.trim();
       if(!reason){alert("سبب الإلغاء مطلوب لإلغاء أمر الشغل.");renderRequests();requestProfile();return}
       if((+r.deposit||0)>0&&String(r.depositWallet||"").trim()&&!confirm(`الأمر عليه عربون ${(+r.deposit).toFixed(2)} ج في محفظة «${r.depositWallet}» وهيفضل محسوب في رصيدها بعد الإلغاء. لو هترجّعه للعميل سجّل صرف يدوي من المحفظة. تكمّل الإلغاء؟`)){renderRequests();requestProfile();return}
     }
@@ -308,6 +306,15 @@ async function changeRequestStatus(i,status){
     if(!await commitStorageAsync(values)){renderRequests();requestProfile();return}
     window.auditLog?.("تغيير حالة", "أمر شغل", r.id, `${from} ← ${status}`);renderRequests();renderDash();requestProfile();return true;
   });
+}
+/* سبب الإلغاء: أسباب جاهزة برقم (عشان تقرير «المعاينات اللي ماتحولتش لشغل» يجمّعها صح) أو تكتب سبب من عندك. */
+const CANCEL_REASONS=["السعر عالي على العميل","العميل اتراجع / مش عايز يصلّح","القطعة مش متوفرة","الجهاز مايستاهلش التصليح","العميل مابيردّش","أمر مكرر / اتسجل بالغلط"];
+function askCancelReason(){
+  let v=prompt("سبب إلغاء أمر الشغل (مطلوب) — اكتب رقم أو سبب من عندك:\n"+CANCEL_REASONS.map((x,i)=>(i+1)+") "+x).join("\n"),"");
+  if(v===null)return null;
+  v=String(v).trim().replace(/[\u0660-\u0669]/g,c=>String(c.charCodeAt(0)-1632));
+  if(/^\d+$/.test(v)&&CANCEL_REASONS[+v-1])return CANCEL_REASONS[+v-1];
+  return v;
 }
 // إعادة فتح أمر شغل "مكتمل" كمرتجع: بيرجّعه لحالة "جاري التنفيذ" (نفس الانتقال
 // المعتمد في دورة الحالة) عشان تقدر تفعّله أو تعدّل عليه، مع تسجيل سبب/ملاحظة
