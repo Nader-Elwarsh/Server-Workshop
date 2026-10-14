@@ -22,13 +22,20 @@ const d={supplier:'الحاج محمد',phone:'',note:'قبل الخميس',line
 assert.strictEqual(S.addShortages(d),2);assert.strictEqual(S.addShortages(d),0,'no duplicates');
 assert.ok(S.addPartToDraft(d,'a',3));assert.strictEqual(d.lines.find(l=>l.partId==='a').qty,4,'adding existing part increases qty');
 assert.ok(S.addPartToDraft(d,'c'));assert.strictEqual(d.lines.length,3);
-d.lines.push({key:'x',partId:null,name:'سلك 2 ملي',cat:'كهرباء',qty:5,note:'لفة'});
+d.lines.push({key:'x',partId:null,name:'سلك 2 ملي',kind:'مصري السويدي',qty:5,note:'لفة',photos:['data:a','data:b'],big:true});
+d.lines.find(l=>l.partId==='a').kind='صيني';
 d.lines.push({key:'y',partId:null,name:'   ',qty:2});
 const t=S.orderText(d);
-assert.ok(t.includes('ريلاي تلاجة')&&t.includes('كهرباء')&&t.includes('كود R1')&&t.includes('العدد: *4*'),t);
-assert.ok(t.includes('سلك 2 ملي')&&t.includes('📝 لفة')&&t.includes('إلى: الحاج محمد')&&t.includes('قبل الخميس'));
+assert.ok(t.includes('ريلاي تلاجة')&&t.includes('النوع: صيني')&&t.includes('كود R1')&&t.includes('العدد: *4*'),t);
+assert.ok(t.includes('النوع: مصري السويدي')&&t.includes('📷 صورتين')&&t.includes('سلك 2 ملي')&&t.includes('📝 لفة')&&t.includes('إلى: الحاج محمد')&&t.includes('قبل الخميس'));
 assert.ok(t.includes('إجمالي: 4 صنف'),'blank lines are skipped');
 assert.strictEqual(S.waPhone('0101 234 5678'),'201012345678');assert.strictEqual(S.waPhone('+20 101 234 5678'),'201012345678');
 assert.strictEqual(S.waPhone('00966500000000'),'966500000000');assert.strictEqual(S.waPhone(''),'');
-assert.ok(JSON.parse(store.wf_supplier_order_draft||'null')===null||true);
+// المسودات القديمة: صورة واحدة → photos، والتصنيف بتاع الصنف الجديد كان هو النوع
+const old=S.normLine({key:'o',partId:null,name:'x',cat:'تركي',photo:'data:z',qty:1});
+assert.deepStrictEqual([old.kind,old.cat,old.photos.length,old.big,'photo' in old],['تركي','',1,false,false]);
+const old2=S.normLine({key:'o2',partId:'a',name:'x',cat:'كهرباء',qty:1});assert.deepStrictEqual([old2.kind,old2.cat],['','كهرباء']);
+// فتح الطلبية مابيضيفش نواقص لوحده (مفيش استدعاء لـ addShortages جوه open غير من الزرار)
+const src=fs.readFileSync(__dirname+'/app-supplier-order.js','utf8'),openSrc=src.slice(src.indexOf('function open(opts)'));
+assert.ok(!/autoAdded|d = emptyDraft\(\); addShortages/.test(openSrc),'no automatic shortage adding');
 console.log('supplier-order-tests: PASS');
