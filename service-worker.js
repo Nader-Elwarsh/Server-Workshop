@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v72-part-sale";
+const CACHE_NAME = "workshop-v73-supplier-order";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -85,6 +85,7 @@ const CORE_FILES = [
   "./app-customer-autocomplete.js",
   "./app-list-autocomplete.js",
   "./app-restock.js",
+  "./app-supplier-order.js",
   "./app-quick-add.js",
   "./app-notifications-bootstrap.js",
   "./share-target.html",
