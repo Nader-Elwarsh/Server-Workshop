@@ -160,7 +160,8 @@
     return Object.assign(base,{weak,faultsByType,partsByType,runout,leads,firstVisit,onTime,late,withPlan,markedPct,overdueNow,lostInspections,visitedTotal,ltvArr,sleepingVip,tripCost,perTrip,homeJobs,areaProfit,warranty,ex,cs,ds,ps,ts,tr,open,waiting,workshop,low:ps.filter(p=>(+p.qty||0)<=(+p.min||0)).length,treasuryBalance:treasuryUntil(r.end),
       byWallet,receivables,depositsHeld,techs,areas,villages,byType,byBrand,sources,places,weekdays,series,bucket,activeCust,repeat,custRev,moves,use,inQty,outQty,usedValue,expByCat,custMap,devMap});
   }
-  function reportData(){const r=range();const d=compute(r);d.prev=compute(prevRange(r),true);return d}
+  let CUR=null;
+  function reportData(){const r=range();const d=compute(r);d.prev=compute(prevRange(r),true);CUR=d;return d}
 
   /* ---------- CSV ---------- */
   function csvCell(v){const s=String(v??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
@@ -192,7 +193,8 @@
     const p=(cur-prev)/Math.abs(prev)*100;if(Math.abs(p)<0.5)return '<small class="rep-delta">— تقريبًا زي الفترة اللي فاتت</small>';
     const good=lowerIsBetter?p<0:p>0;return `<small class="rep-delta ${good?'up':'down'}">${p>0?'▲':'▼'} ${num(Math.abs(p))}% عن اللي فاتت</small>`;
   }
-  function card(label,value,sub,href,cls){const tag=href?'a':'div';return `<${tag} class="report-card${href?' report-card-link':''}${cls?' '+cls:''}"${href?` href="${href}"`:''}><span>${label}</span><b>${value}</b>${sub||''}</${tag}>`}
+  function linkFor(href){if(!href||href.charAt(0)!=='#'||onlyKeys()==='all')return href;const sec=SECTIONS.find(x=>'#'+x.id===href);return sec&&CUR?sectionHref(sec.k,'',CUR):href}
+  function card(label,value,sub,href,cls){href=linkFor(href);const tag=href?'a':'div';return `<${tag} class="report-card${href?' report-card-link':''}${cls?' '+cls:''}"${href?` href="${href}"`:''}><span>${label}</span><b>${value}</b>${sub||''}</${tag}>`}
   function bars(map,opts={}){
     const rows=[...map.entries()].sort((a,b)=>(opts.val?opts.val(b[1]):b[1])-(opts.val?opts.val(a[1]):a[1])).slice(0,opts.top||10);
     if(!rows.length)return `<div class="report-empty">${opts.empty||'لا توجد بيانات في الفترة.'}</div>`;
@@ -213,12 +215,12 @@
 
   /* ---------- الأقسام ---------- */
   const NAV=[['report-insights','💡 ملخص'],['report-target','🎯 الهدف'],['report-finance','المالية'],['report-trend','الاتجاه'],['report-collect','التحصيل'],['report-orders','أوامر الشغل'],['report-techs','الفنيين'],['report-response','المواعيد'],['report-areas','المناطق'],['report-customers','العملاء'],['report-devices','الأجهزة'],['report-inventory','المخزن'],['report-workshop','الورشة'],['report-returns','الإلغاء والمرتجعات'],['report-warranty','الضمان'],['report-treasury','الخزنة'],['report-tasks','المهام']];
-  function cards(d){const p=d.prev;return `<nav class="report-shortcuts" aria-label="الانتقال إلى أقسام التقرير">${NAV.map(([id,t])=>`<a href="#${id}">${t}</a>`).join('')}</nav><div class="report-cards report-summary-cards">
+  function cards(d){const p=d.prev;const all=onlyKeys()==='all';return `${all?`<nav class="report-shortcuts" aria-label="الانتقال إلى أقسام التقرير">${NAV.map(([id,t])=>`<a href="#${id}">${t}</a>`).join('')}</nav>`:''}<div class="report-cards report-summary-cards">
     ${card('💰 الإيراد',money(d.revenue),delta(d.revenue,p.revenue),'#report-finance')}${card('✅ صافي المكسب',money(d.net),delta(d.net,p.net),'#report-finance',d.net<0?'report-card-warn':'')}
     ${card('💵 المحصّل فعليًا',money(d.collected),delta(d.collected,p.collected),'#report-collect')}${card('🧾 متوسط قيمة الأمر',money(d.avgTicket),delta(d.avgTicket,p.avgTicket),'#report-finance')}
     ${card('🛠️ أوامر الفترة',d.os.length,`<small>جديد ${d.created.length} ${delta(d.created.length,p.created.length)}</small>`,'#report-orders')}${card('🔒 مكتملة/مغلقة',d.completed,delta(d.closedOrders.length,p.closedOrders.length),'#report-orders')}
     ${card('⏱️ متوسط مدة الإنجاز',d.avgDays===null?'—':num(d.avgDays)+' يوم',d.prev.avgDays!==null&&d.avgDays!==null?delta(d.avgDays,d.prev.avgDays,true):'<small>من الفتح للقفل</small>','#report-techs')}${card('🔄 مرتجعات',d.returns.length,`<small>${d.closedOrders.length?num(d.returns.length/d.closedOrders.length*100)+'% من المقفول':''}</small>`,'#report-returns',d.returns.length?'report-card-warn':'')}
-    <a class="report-card report-card-link" href="#report-workshop"><span>📦 انتظار قطع</span><b>${d.waiting}</b><small>فتح تقرير الورشة</small></a><a class="report-card report-card-link" href="#report-workshop"><span>🏭 في الورشة</span><b>${d.workshop}</b><small>عرض الموجود بالورشة</small></a><a class="report-card report-card-link" href="#report-customers"><span>👤 العملاء</span><b>${d.cs.length}</b><small>فتح تقرير العملاء</small></a><a class="report-card report-card-link" href="#report-inventory"><span>📦 أصناف المخزن</span><b>${d.ps.length} · منخفض ${d.low}</b><small>فتح تقرير المخزن</small></a>
+    <a class="report-card report-card-link" href="${linkFor('#report-workshop')}"><span>📦 انتظار قطع</span><b>${d.waiting}</b><small>فتح تقرير الورشة</small></a><a class="report-card report-card-link" href="${linkFor('#report-workshop')}"><span>🏭 في الورشة</span><b>${d.workshop}</b><small>عرض الموجود بالورشة</small></a><a class="report-card report-card-link" href="${linkFor('#report-customers')}"><span>👤 العملاء</span><b>${d.cs.length}</b><small>فتح تقرير العملاء</small></a><a class="report-card report-card-link" href="${linkFor('#report-inventory')}"><span>📦 أصناف المخزن</span><b>${d.ps.length} · منخفض ${d.low}</b><small>فتح تقرير المخزن</small></a>
   </div>`}
   function insights(d){
     const p=d.prev,out=[];
@@ -380,6 +382,44 @@
     return section('🛡️ تكلفة الضمان',`<p class="hint">الشغل اللي رجعلك وهو لسه في الضمان (مرتجعات جوه مدة الضمان/المرتجع، أو أمر جديد على جهاز لسه في ضمان أمر قبله). التكلفة = قطع اتصرفت بعد الرجوع + أجر الفني عليه.</p><div class="report-cards"><div class="report-card ${d.warranty.length?'report-card-warn':''}"><span>شغل ضمان في الفترة</span><b>${d.warranty.length}</b></div><div class="report-card"><span>كلّفك</span><b>${money(cost)}</b></div><div class="report-card"><span>اتحصّل منه</span><b>${money(charged)}</b></div><div class="report-card"><span>من الإيراد</span><b>${d.revenue?num(cost/d.revenue*100)+'%':'—'}</b></div></div><div class="report-mini-grid"><div><h3>أكتر شغل ضمان كلّف</h3><div class="report-list">${rows||'<div class="report-empty">مفيش شغل ضمان في الفترة 👌</div>'}</div></div><div><h3>تكلفة الضمان حسب الفني</h3>${bars(byTech,{fmt:v=>money(v),empty:'مفيش 👌'})}</div></div>`,'report-warranty');
   }
 
+
+  /* ---------- أقسام التقرير: كل قسم سطر بالعرض بيفتحه لوحده (reports.html?only=...) ----------
+     الصفحة الرئيسية للتقارير = الملخص + الملاحظات + الهدف + سطر لكل قسم. ومن أي صفحة في النظام (العملاء، المخزن…)
+     فيه سطر «📊 إحصائيات القسم» بيفتح أقسامها بس. only=all = كل التقارير في صفحة واحدة (للطباعة). */
+  const SECTIONS=[
+    {k:'finance',id:'report-finance',icon:'💰',t:'المالية والأرباح',fn:d=>finance(d),sum:d=>`صافي ${money0(d.net)} • إيراد ${money0(d.revenue)}`},
+    {k:'trend',id:'report-trend',icon:'📈',t:'الاتجاه وأيام الشغل',fn:d=>trend(d),sum:d=>`${d.created.length} أمر جديد في الفترة`},
+    {k:'collect',id:'report-collect',icon:'🧾',t:'التحصيل والمديونية',fn:d=>collections(d),sum:d=>`اتحصّل ${money0(d.collected)} • لسه ${money0(d.receivables.reduce((a,x)=>a+x.due,0))}`},
+    {k:'orders',id:'report-orders',icon:'🛠️',t:'أوامر الشغل',fn:d=>ordersReport(d),sum:d=>`${d.os.length} أمر • اتقفل ${d.closedOrders.length}`},
+    {k:'techs',id:'report-techs',icon:'👷',t:'أداء الفنيين',fn:d=>techsReport(d),sum:d=>`${[...d.techs.keys()].filter(k=>k!=='بدون فني').length} فني`},
+    {k:'response',id:'report-response',icon:'⏱️',t:'المواعيد وسرعة الاستجابة',fn:d=>responseSection(d),sum:d=>d.withPlan.length?`${num(d.onTime.length/d.withPlan.length*100)}% في الميعاد • ${d.overdueNow.length} متأخر`:`${d.overdueNow.length} زيارة فات ميعادها`},
+    {k:'areas',id:'report-areas',icon:'📍',t:'المناطق وربحيتها',fn:d=>areasReport(d),sum:d=>{const a=[...d.areas.entries()].filter(x=>x[0]!=='غير محدد').sort((x,y)=>y[1].orders-x[1].orders)[0];return a?`الأكتر: ${escR(a[0])}`:'—'}},
+    {k:'customers',id:'report-customers',icon:'👤',t:'العملاء',fn:d=>customersReport(d),sum:d=>`${d.activeCust.size} اتعاملوا • ${d.sleepingVip.length} كبار بطّلوا ييجوا`},
+    {k:'devices',id:'report-devices',icon:'🔧',t:'الأجهزة والأعطال',fn:d=>devicesReport(d),sum:d=>{const t=[...d.byType.entries()].sort((a,b)=>b[1].rev-a[1].rev)[0];return t?`الأكتر دخلًا: ${escR(t[0])}`:`${d.ds.length} جهاز`}},
+    {k:'inventory',id:'report-inventory',icon:'📦',t:'المخزن والشراء',fn:d=>inventoryReport(d),sum:d=>`${d.low} منخفض • ${d.runout.filter(x=>x.days!==null&&x.days<=7).length} هيخلص خلال أسبوع`},
+    {k:'workshop',id:'report-workshop',icon:'🏭',t:'الورشة',fn:d=>workshopReport(d),sum:d=>`${d.workshop} جوه الورشة • ${d.waiting} انتظار قطع`},
+    {k:'returns',id:'report-returns',icon:'❌',t:'الإلغاء والمرتجعات والمعاينات',fn:d=>returnsReport(d),sum:d=>`${d.cancelled.length} ملغي • ${d.returns.length} مرتجع`},
+    {k:'warranty',id:'report-warranty',icon:'🛡️',t:'تكلفة الضمان',fn:d=>warrantySection(d),sum:d=>`${d.warranty.length} شغل ضمان • ${money0(d.warranty.reduce((a,x)=>a+x.cost,0))}`},
+    {k:'treasury',id:'report-treasury',icon:'💵',t:'الخزنة',fn:d=>treasuryReport(d),sum:d=>`رصيد ${money0(d.treasuryBalance)}`},
+    {k:'tasks',id:'report-tasks',icon:'📋',t:'المهام',fn:d=>tasksReport(d),sum:d=>`${d.ts.filter(t=>!t.completed).length} مفتوحة من ${d.ts.length}`}
+  ];
+  function qp(name){const m=safe(()=>new RegExp('[?&]'+name+'=([^&#]*)').exec(location.search),null);return m?safe(()=>decodeURIComponent(m[1].replace(/\+/g,' ')),''):''}
+  function onlyKeys(){const v=qp('only');if(!v)return null;if(v==='all')return 'all';const ks=v.split(',').filter(k=>SECTIONS.some(x=>x.k===k));return ks.length?ks:null}
+  function sectionHref(keys,title,d){return `reports.html?only=${encodeURIComponent(keys)}${title?'&t='+encodeURIComponent(title):''}&from=${d.r.from}&to=${d.r.to}`}
+  function menu(d){
+    return `<section class="panel report-section rep-menu" id="report-menu"><div class="report-section-head"><h2>📂 الإحصائيات حسب القسم</h2></div><p class="hint">اضغط على أي قسم يفتحلك إحصائياته لوحده.</p>`+
+      SECTIONS.map(x=>`<a class="rep-row" href="${sectionHref(x.k,'',d)}"><i>${x.icon}</i><span><b>${x.t}</b><small>${safe(()=>x.sum(d),'')}</small></span><em>›</em></a>`).join('')+
+      `<a class="rep-row rep-row-all" href="${sectionHref('all','',d)}"><i>📄</i><span><b>كل التقارير في صفحة واحدة</b><small>للطباعة أو المراجعة الكاملة</small></span><em>›</em></a></section>`;
+  }
+  function body(d){
+    const only=onlyKeys();
+    if(!only)return cards(d)+insights(d)+targetSection(d.target)+menu(d);
+    if(only==='all')return cards(d)+insights(d)+targetSection(d.target)+SECTIONS.map(x=>x.fn(d)).join('');
+    const list=only.map(k=>SECTIONS.find(x=>x.k===k)).filter(Boolean),title=qp('t')||list.map(x=>x.t).join(' • ');
+    const nav=list.length>1?`<nav class="report-shortcuts" aria-label="أقسام">${list.map(x=>`<a href="#${x.id}">${x.icon} ${x.t}</a>`).join('')}</nav>`:'';
+    return `<div class="rep-only-head"><a class="rep-back" href="reports.html?from=${d.r.from}&amp;to=${d.r.to}">← كل الإحصائيات</a><h2>📊 إحصائيات ${escR(title)}</h2></div>`+nav+list.map(x=>x.fn(d)).join('');
+  }
+
   /* ---------- تنسيق خاص بالصفحة ---------- */
   function injectCss(){
     if(!document.head||!document.createElement||document.getElementById('rep-css'))return;
@@ -394,6 +434,9 @@
       '.rep-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin:6px 2px}.rep-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-inline-end:5px;vertical-align:middle}.rep-legend i.b{background:var(--pri,var(--accent-text,#17324d))}.rep-legend i.l{background:var(--wl-accent,#f2a93b);height:4px}'+
       '.rep-details summary{cursor:pointer;font-weight:700;margin:12px 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.rep-order small{display:block;color:var(--text-muted);font-size:12px}.rep-bad{color:var(--danger-text)}'+
       '.report-list-row small{color:var(--text-muted)}.rep-presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.rep-presets button{flex:1 1 auto;min-width:84px}.rep-presets button.on{background:var(--wl-primary,#17324d);color:var(--wl-on-primary,#fff)}'+
+      '.rep-row{display:flex;align-items:center;gap:12px;padding:12px;margin:8px 0;border:1px solid var(--border);border-radius:14px;background:var(--bg-elevated);color:var(--text);text-decoration:none;min-height:60px}.rep-row:active{opacity:.75}.rep-row i{font-style:normal;font-size:24px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--bg-sunken)}.rep-row span{flex:1;min-width:0}.rep-row b{display:block;font-size:15px}.rep-row small{display:block;color:var(--text-muted);font-size:12.5px;margin-top:2px}.rep-row em{font-style:normal;font-size:22px;color:var(--text-muted)}.rep-row-all{border-style:dashed}'+
+      '.rep-compact{padding:10px 14px}.rep-compact h2{font-size:15px;margin:0 0 4px}.rep-compact .report-filters,.rep-compact .report-filter-actions,.rep-compact .rep-presets{display:none}.rep-compact.open .report-filters{display:grid}.rep-compact.open .report-filter-actions,.rep-compact.open .rep-presets{display:flex}.rep-period-toggle{margin:0 0 6px}'+
+      '.rep-only-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0 4px}.rep-only-head h2{margin:0;font-size:18px}.rep-back{font-weight:700;text-decoration:none}'+
       '.rep-target{margin:6px 0 12px}.rep-target-bar{position:relative;height:16px;border-radius:10px;background:var(--bg-sunken);border:1px solid var(--border);overflow:hidden}.rep-target-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--success-text,#18794e),var(--pri,var(--accent-text,#17324d)))}.rep-target-bar u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--text);opacity:.6}.rep-target-row{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px;margin-top:6px}'+
       '.rep-faults{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.rep-fault{border:1px solid var(--border);border-radius:12px;padding:10px;background:var(--bg-sunken)}.rep-fault ul{margin:6px 0;padding-inline-start:18px;font-size:13px}.rep-fault-parts{display:block;color:var(--text-muted);font-size:12px}'+
       '.wl-warn{background:rgba(224,179,74,.16);border:1px solid var(--warn-text);color:var(--warn-text);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:13px}.wl-btns{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}'+
@@ -413,7 +456,7 @@
     window.WFNavState?.setParams({from:r.from,to:r.to});
     markPreset(r);
     const run=()=>{try{injectCss();const d=reportData();const lbl=document.getElementById('reportPeriodLabel');if(lbl)lbl.textContent=`من ${fmtLong(d.r.from)} إلى ${fmtLong(d.r.to)} • بنقارن بـ ${fmtDay(d.prev.r.from)} – ${fmtDay(d.prev.r.to)}`;
-        const t=targetData();d.target=t;host.innerHTML=cards(d)+insights(d)+targetSection(t)+finance(d)+trend(d)+collections(d)+ordersReport(d)+techsReport(d)+responseSection(d)+areasReport(d)+customersReport(d)+devicesReport(d)+inventoryReport(d)+workshopReport(d)+returnsReport(d)+warrantySection(d)+treasuryReport(d)+tasksReport(d);if(status)status.textContent='تم تحديث التقارير.'}
+        d.target=targetData();host.innerHTML=body(d);if(status)status.textContent='تم تحديث التقارير.'}
       catch(e){console.error('[reports] تعذر تحميل التقرير',e);if(status){status.textContent='تعذر تحميل التقرير. تأكد من البيانات ثم اضغط «تحديث التقرير» مرة أخرى.';status.classList.add('report-status-error');status.setAttribute('role','alert')}}
       finally{renderQueued=false;host.setAttribute('aria-busy','false');controls.forEach(el=>{el.disabled=false;el.removeAttribute('aria-disabled')})}};
     if(typeof window.requestAnimationFrame==='function')window.requestAnimationFrame(run);else window.setTimeout(run,0);
@@ -447,6 +490,9 @@
     const pr=document.createElement('button');pr.type='button';pr.className='secondary';pr.textContent='🖨️ طباعة / PDF';pr.addEventListener('click',()=>{try{(window.printWorkshopPage||window.print)()}catch(e){window.print()}});wrap.appendChild(pr);
     const sm=document.createElement('button');sm.type='button';sm.className='secondary';sm.textContent='⬇️ ملخص CSV';sm.addEventListener('click',exportSummaryCSV);wrap.appendChild(sm);
     box.insertAdjacentElement('afterend',wrap);
+    // صفحة قسم لوحده: الفترة بتتلم في سطر صغير عشان الإحصائيات تبان على طول
+    const ok=onlyKeys(),panel=box.closest&&box.closest('section.panel');
+    if(ok&&ok!=='all'&&panel){panel.classList.add('rep-compact');const h=panel.querySelector('h2');const tg=document.createElement('button');tg.type='button';tg.className='secondary small-btn rep-period-toggle';tg.textContent='📅 تغيير الفترة';tg.addEventListener('click',()=>{panel.classList.toggle('open');tg.textContent=panel.classList.contains('open')?'إخفاء':'📅 تغيير الفترة'});if(h)h.insertAdjacentElement('afterend',tg)}
     ['repFrom','repTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',()=>{const r=range();if(r.valid)render()})});
   }
   window.exportOrdersCSV=exportOrdersCSV;

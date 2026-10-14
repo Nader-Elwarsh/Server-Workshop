@@ -851,6 +851,51 @@ var WFStorage = window.WFStorage;
 })(typeof window !== "undefined" ? window : globalThis);
 /* WFNAVSTATE:END */
 
+/* WFSTATSENTRY:BEGIN */
+/* ---------------------------------------------------------------------
+   سطر «📊 إحصائيات القسم» تحت عنوان كل صفحة رئيسية: بيفتح صفحة التقارير على أقسام الصفحة دي بس
+   (reports.html?only=...). بيختفي لوحده عن اللي مالوش صلاحية «التقارير» (data-perm).
+   --------------------------------------------------------------------- */
+(function (w) {
+  "use strict";
+  if (typeof document === "undefined" || !document.addEventListener) return;
+  var MAP = {
+    "requests.html": ["orders,response,returns,collect", "أوامر الشغل"],
+    "customers.html": ["customers,areas", "العملاء"],
+    "devices.html": ["devices", "الأجهزة والأعطال"],
+    "inventory.html": ["inventory", "المخزن"],
+    "wallets.html": ["finance,collect", "الحسابات"],
+    "treasury.html": ["treasury", "الخزنة"],
+    "route.html": ["response,areas", "خط السير والمواعيد"],
+    "tasks.html": ["tasks", "المهام"],
+    "warranty.html": ["warranty,returns", "الضمان والمرتجعات"],
+    "dispatch.html": ["techs,response", "الفنيين"],
+    "custody.html": ["techs", "الفنيين"],
+    "followup.html": ["customers", "العملاء"]
+  };
+  function add() {
+    if (typeof location === "undefined" || !document.querySelector || !document.createElement) return;
+    var page = (String(location.pathname || "").split("/").pop() || "index.html").toLowerCase(), m = MAP[page];
+    if (!m || document.querySelector(".wf-stats-entry")) return;
+    var h1 = document.querySelector("main h1"); if (!h1) return;
+    var after = (h1.closest && h1.closest(".page-head")) || h1;
+    if (!document.getElementById("wf-stats-entry-css")) {
+      var st = document.createElement("style"); st.id = "wf-stats-entry-css";
+      st.textContent = ".wf-stats-entry{display:flex;align-items:center;gap:10px;margin:6px 0 12px;padding:11px 14px;border:1px solid var(--border);border-radius:14px;background:var(--bg-elevated);color:var(--text);text-decoration:none;font-weight:700}" +
+        ".wf-stats-entry:active{opacity:.75}.wf-stats-entry i{font-style:normal;font-size:20px}.wf-stats-entry span{flex:1}.wf-stats-entry small{display:block;font-weight:400;font-size:12px;color:var(--text-muted)}.wf-stats-entry em{font-style:normal;font-size:20px;color:var(--text-muted)}@media print{.wf-stats-entry{display:none}}";
+      document.head.appendChild(st);
+    }
+    var a = document.createElement("a");
+    a.className = "wf-stats-entry no-print"; a.setAttribute("data-perm", "reports.view");
+    a.href = "reports.html?only=" + encodeURIComponent(m[0]) + "&t=" + encodeURIComponent(m[1]);
+    a.innerHTML = '<i aria-hidden="true">📊</i><span>إحصائيات ' + m[1].replace(/[<>&]/g, "") + "<small>أرقام وتحليلات القسم ده — اضغط للتفاصيل</small></span><em aria-hidden=\"true\">›</em>";
+    after.insertAdjacentElement("afterend", a);
+  }
+  function safeAdd() { try { add(); } catch (e) {} }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", safeAdd); else safeAdd();
+})(typeof window !== "undefined" ? window : globalThis);
+/* WFSTATSENTRY:END */
+
 /* ---------------------------------------------------------------------
    دعم الروابط اللي بتوجّه لسجل معيّن جوه صفحة (زي فحص سلامة البيانات في
    الإعدادات، اللي بقى بيودّي لسجل الحركة/الحساب نفسه مش لقسمه العام بس):

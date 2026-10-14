@@ -44,6 +44,7 @@ records.settings = null;
 const SETTINGS = { monthlyTarget: 1000 };
 const ctx = { settings: () => SETTINGS, put() {}, document: { addEventListener(t, f) { ev[t] = f; }, getElementById(id) { return els[id] || null; } }, K, arr: k => records[k] || [], walletTxEntries: () => wtx,
   customerName: id => id, deviceName: id => id, dayKeyLocal: key, console: { error(e) { throw e; } }, setTimeout, URL, Blob: function () {}, alert() {},
+  location: { search: '?only=all' },
   window: { requestAnimationFrame(f) { frames.push(f); } } };
 ctx.window.dayKeyLocal = key;
 vm.runInNewContext(src, ctx, { filename: 'reports.js' });
@@ -92,4 +93,14 @@ assert(sec('report-areas').includes('ربحية كل منطقة') && sec('report
 // (9) الضمان: W1 اتفتح على جهاز d2 لسه في ضمان P1، وA1 مرتجع جوه مدة المرتجع
 const war = sec('report-warranty');
 assert(war.includes('W1') && war.includes('أمر جديد جوه ضمان') && war.includes('A1'), 'warranty work detected');
+// وضع الأقسام: الصفحة الرئيسية = ملخص + سطر لكل قسم، وonly=customers = قسم العملاء لوحده
+ctx.location.search = '';
+els.repApply.listeners = els.repApply.listeners || {};
+function rerender() { ev.DOMContentLoaded(); frames.shift()(); return els.reportsHost.innerHTML; }
+const home = rerender();
+assert(home.includes('id="report-menu"') && home.includes('reports.html?only=customers') && !home.includes('id="report-customers"'), 'home shows one row per section, not the sections');
+assert(home.includes('href="reports.html?only=finance'), 'summary cards link to the section pages');
+ctx.location.search = '?only=customers,areas&t=' + encodeURIComponent('العملاء');
+const one = rerender();
+assert(one.includes('id="report-customers"') && one.includes('id="report-areas"') && !one.includes('id="report-finance"') && one.includes('📊 إحصائيات العملاء') && one.includes('← كل الإحصائيات'), 'only=… renders just those sections with a back link');
 console.log('reports-insights-tests: PASS (comparison, collections, techs, returns, inventory, areas, target, losing orders, faults, run-out, response, inspections, LTV, area profit, warranty)');
