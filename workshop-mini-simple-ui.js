@@ -122,13 +122,20 @@
       if (!allPartsById.has(p.id)) allPartsById.set(p.id, p);
       if (!p.archived && !activePartsById.has(p.id)) activePartsById.set(p.id, p);
     }
+    // الأكثر سحبًا = الاستهلاك الفعلي (خروج لأوامر أو بيع مباشر − الإرجاع). التوريد والجرد مش استهلاك
+    // (قبل كده كانوا بيتحسبوا، فصنف اتورّد منه 50 كان بيطلع "الأكثر حركة" وهو ماتسحبش منه حاجة).
     const usage = {};
     movesInPeriod(period).forEach(m => {
+      if (!m || !m.partId) return;
+      const t = String(m.type || ""), q = Math.abs(+m.qty || 0);
+      const sign = /خروج/.test(t) ? 1 : /إرجاع|ارجاع/.test(t) ? -1 : 0;
+      if (!sign) return;
       const e = (usage[m.partId] ||= { qty: 0, count: 0 });
-      e.qty += (+m.qty || 0);
-      e.count += 1;
+      e.qty += sign * q;
+      if (sign > 0) e.count += 1;
     });
     return Object.entries(usage)
+      .filter(([, u]) => u.qty > 0)
       .sort((a, b) => b[1].qty - a[1].qty)
       .map(([pid, u]) => ({ p: activePartsById.get(pid) || allPartsById.get(pid), ...u }));
   }
@@ -570,7 +577,7 @@
       });
       const lowParts = all.filter(p => (+p.qty || 0) <= (+p.min || 0))
         .slice().sort((a, b) => ((+a.qty || 0) - (+a.min || 0)) - ((+b.qty || 0) - (+b.min || 0)));
-      const low = lowParts.length;
+      const low = lowParts.length, outOfStock = lowParts.filter(p => (+p.qty || 0) <= 0).length;
       const stockValueBuy = all.reduce((a, p) => a + (+p.qty || 0) * (+p.buy || 0), 0);
       const stockValueUse = all.reduce((a, p) => a + (+p.qty || 0) * (+p.use || 0), 0);
 
@@ -582,8 +589,9 @@
         `<button type="button" class="secondary small-btn ${period === p ? "active-track" : ""}" data-wf-event="click" data-wf-code="setInventoryStatsPeriod('${p}')">${INVENTORY_PERIOD_LABELS[p]}</button>`
       ).join("");
 
-      const cards = Object.entries(cats).slice(0, 6).map(([k,n]) =>
-        `<div class="simple-stat ${categoryColorClass(k)}" data-wf-event="click" data-wf-code="showPartsCategory('${k.replace(/'/g,"\\'")}')" role="button" tabindex="0"><span>${categoryIcon(k)}</span><b>${esc2(k)}</b><strong>${n}</strong><small>قطعة</small></div>`
+      // كل التصنيفات (الأكبر الأول) — قبل كده كان بيعرض أول 6 بس، والباقي مالوش طريق يتفتح منه
+      const cards = Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([k,n]) =>
+        `<div class="simple-stat ${categoryColorClass(k)}" data-wf-event="click" data-wf-code="showPartsCategory(${esc2(JSON.stringify(k))})" role="button" tabindex="0"><span>${categoryIcon(k)}</span><b>${esc2(k)}</b><strong>${n}</strong><small>قطعة</small></div>`
       ).join("");
 
       el.innerHTML = `
@@ -599,9 +607,9 @@
           </div>
           <div class="bucket-group-label">فترة إحصائية الحركة</div>
           <div class="report-mode-toggle">${periodButtons}</div>
-          <div class="simple-line-bar" data-wf-event="click" data-wf-code="showTopMovedParts()" role="button" tabindex="0"><span>🔥 الأكثر حركة ${esc2(periodLabel)}</span><b>${topMoved.length} صنف ›</b></div>
+          <div class="simple-line-bar" data-wf-event="click" data-wf-code="showTopMovedParts()" role="button" tabindex="0"><span>🔥 الأكثر سحبًا ${esc2(periodLabel)}</span><b>${topMoved.length} صنف ›</b></div>
           ${low > 0
-            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showLowStockParts()" role="button" tabindex="0"><span>⚠️ ${low} أصناف عند الحد الأدنى أو أقل</span><b>عرض ›</b></div>`
+            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showLowStockParts()" role="button" tabindex="0"><span>⚠️ ${low} أصناف عند الحد الأدنى أو أقل${outOfStock ? ` (منهم ${outOfStock} خلصان)` : ""}</span><b>عرض ›</b></div>`
             : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أصناف منخفضة حاليًا</span></div>`}
           ${cards ? `<div class="bucket-group-label">حسب التصنيف</div><div id="categoryGrid" class="simple-stat-grid">${cards}</div>` : `<div class="simple-empty">لا توجد قطع مسجلة.</div>`}
           <div class="bucket-group-label">عرض الكل</div>
@@ -620,7 +628,7 @@
     const topMovedData = bucket === "topmoved" ? computeTopMoved(period) : null;
     const topMovedIds = topMovedData ? new Set(topMovedData.filter(u => u.p?.id).map(u => u.p.id)) : null;
     let filtered = all.filter(p => {
-      const ok = [p.name,p.code,p.location,p.category].filter(Boolean).join(" ").toLowerCase().includes(q);
+      const ok = typeof partMatchesQuery === "function" ? partMatchesQuery(p, q) : [p.name,p.code,p.location,p.category].filter(Boolean).join(" ").toLowerCase().includes(q);
       if (bucket === "low" && (+p.qty || 0) > (+p.min || 0)) return false;
       if (bucket === "topmoved" && !topMovedIds.has(p.id)) return false;
       if (cat && (p.category || "أخرى") !== cat) return false;
@@ -635,7 +643,7 @@
       filtered = filtered.slice().sort((a, b) => (orderIndex[a.id] ?? 999) - (orderIndex[b.id] ?? 999));
     }
 
-    const listTitle = bucket === "low" ? "أصناف عند الحد الأدنى أو أقل" : bucket === "value" ? `قيمة المخزون ${valueMode === "use" ? "ببيع الاستخدام" : "بالتكلفة"} — ${filtered.reduce((a,p)=>a+(+p.qty||0)*(+p[valueMode]||0),0).toFixed(2)} ج` : bucket === "topmoved" ? `🔥 الأكثر حركة ${esc2(INVENTORY_PERIOD_LABELS[period] || INVENTORY_PERIOD_LABELS["30"])}` : cat ? esc2(cat) : "كل القطع";
+    const listTitle = bucket === "low" ? "أصناف عند الحد الأدنى أو أقل" : bucket === "value" ? `قيمة المخزون ${valueMode === "use" ? "ببيع الاستخدام" : "بالتكلفة"} — ${filtered.reduce((a,p)=>a+(+p.qty||0)*(+p[valueMode]||0),0).toFixed(2)} ج` : bucket === "topmoved" ? `🔥 الأكثر سحبًا ${esc2(INVENTORY_PERIOD_LABELS[period] || INVENTORY_PERIOD_LABELS["30"])}` : cat ? esc2(cat) : "كل القطع";
 
     const viewMode = state.partsViewMode === "table" ? "table" : "cards";
     const toggleBtn = `<button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="setInventoryViewMode('${viewMode === "table" ? "cards" : "table"}')">${viewMode === "table" ? "🗂️ عرض كبطاقات" : "📊 عرض كجدول"}</button>`;
@@ -676,7 +684,7 @@
             <small>💰 إجمالي الصنف: ${itemTotal.toFixed(2)} ج • 🔁 استُخدم ${partUsageCount(p.id)} مرة</small>
           </div>
           <span class="simple-qty ${qty <= (+p.min||0) ? "low" : ""}">${qty}</span>
-          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a><button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
+          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a>${qty > 0 && typeof window.openPartSale === "function" ? `<button type="button" class="primary small-btn" data-wf-event="click" data-wf-code="openPartSale('${p.id}')">🛒 بيع</button>` : ""}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
         </div>`;
       }, pgSig).html;
     }

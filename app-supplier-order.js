@@ -335,7 +335,7 @@
     }
     function resHtml() {
       var q = searchQ.trim().toLowerCase(), have = {}; d.lines.forEach(function (l) { if (l.partId) have[l.partId] = 1; });
-      var list = partsList().filter(function (p) { return !q || String(p.name || "").toLowerCase().indexOf(q) >= 0 || String(p.code || "").toLowerCase().indexOf(q) >= 0; }).slice(0, 40);
+      var list = partsList().filter(function (p) { return typeof partMatchesQuery === "function" ? partMatchesQuery(p, q) : (!q || String(p.name || "").toLowerCase().indexOf(q) >= 0 || String(p.code || "").toLowerCase().indexOf(q) >= 0); }).slice(0, 40);
       return '<div class="wf-po-res">' + list.map(function (p) { return '<button type="button" data-add="' + e(p.id) + '"><span>' + (have[p.id] ? "✅ " : "📦 ") + e(p.name) + (p.category ? ' <small>' + e(p.category) + '</small>' : "") + '</span><small>عندك ' + num(p.qty) + '</small></button>'; }).join("") +
         (q ? '<button type="button" data-addnew="1"><span>➕ «' + e(searchQ.trim()) + '» — صنف مش في المخزن</span></button>' : "") +
         (!list.length && !q ? '<div class="wf-po-empty">مفيش أصناف.</div>' : "") + '</div>';

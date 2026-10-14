@@ -22,9 +22,9 @@
 <div class="hint">دوّر على صنف موجود عشان تزوّد كميته بعد توريد جديد، أو اكتب اسم صنف مش موجود وسيبك تضيفه بأول كمية له مباشرة.</div>
 <div class="form-grid">
 <label class="wide">القطعة<div class="part-autocomplete"><input type="text" id="stkPartSearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم القطعة أو الكود..." autocomplete="off" data-wf-event="input" data-wf-code="filterRestockPartOptions(this.value)" data-wf-refocus-code="filterRestockPartOptions(this.value)" data-wf-blur="hideRestockPartResults"><input type="hidden" id="stkPart"><div id="stkPartResults" class="part-autocomplete-results hidden"></div></div></label>
-<label>الكمية الواردة<input id="stkQty" type="number" step="1" min="1" value="1"></label>
-<label>سعر الشراء الجديد <small>اختياري لو اتغير</small><input id="stkBuy" type="number" min="0" step=".01"></label>
-<label class="wide">ملاحظة <small>اختياري، مثلًا اسم المورد</small><input id="stkNote"></label>
+<label>الكمية الواردة<input id="stkQty" type="number" step="1" min="1" value="1" data-wf-event="input" data-wf-code="updateRestockPayHint()"></label>
+<label>سعر الشراء الجديد <small>اختياري لو اتغير</small><input id="stkBuy" type="number" min="0" step=".01" data-wf-event="input" data-wf-code="updateRestockPayHint()"></label>
+<label class="wide">ملاحظة <small>اختياري، مثلًا اسم المورد</small><input id="stkNote"></label><label class="wide">💳 دفعت تمن البضاعة من <small>اختياري — لو آجل سيبها</small><select id="stkWallet" data-wf-event="change" data-wf-code="updateRestockPayHint()"></select><span id="stkPayHint" class="hint"></span></label>
 <label class="wide">📷 صورة فاتورة التوريد <small>اختياري، للرجوع إليها لاحقًا</small><div class="dual-photo-picker" data-target="stkInvoice"><button type="button" class="secondary small-btn dual-photo-btn" data-mode="camera">📷 كاميرا</button><button type="button" class="secondary small-btn dual-photo-btn" data-mode="gallery">🖼️ من الصور</button><span class="dual-photo-filename">لم يتم اختيار ملف</span></div><input id="stkInvoice" type="file" accept="image/*" class="hidden"></label>
 <div id="stkInvoicePreview" class="wide"></div>
 </div>

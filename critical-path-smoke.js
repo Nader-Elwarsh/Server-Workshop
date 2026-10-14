@@ -4,7 +4,7 @@ const read=name=>fs.readFileSync(path.join(root,name),'utf8');
 const restock=read('app-restock.js'),requests=read('app-requests.js'),bulk=read('app-inventory-bulk.js');
 const backup=read('app-data-management.js');
 const compressor=read('app-compressor-codes.js');
-assert(restock.includes('commitStorageAsync(values)')&&restock.includes('commitStorageAsync({[K.p]:all,[K.m]:moves})'),'stock add/restock must await an atomic IndexedDB commit');
+assert(restock.includes('commitStorageAsync(values)')&&restock.includes('const values={[K.p]:all,[K.m]:moves};')&&/await commitStorageAsync\(values\)\)return;\s*invoiceCommitted=true/.test(restock),'stock add/restock must await an atomic IndexedDB commit (stock + moves + optional payment/invoice together)');
 assert.strictEqual((restock.match(/commitStorageAsync\(/g)||[]).length,2,'both stock write paths must be atomic');
 assert(requests.includes('async function confirmAddExternalPartToRequest')&&requests.includes('updateRequestRecordAsync(requestId'),'external parts must await and check the IndexedDB-backed request save');
 assert(bulk.includes('await putAsync(K.p,all)'),'bulk price update must await the IndexedDB save');
