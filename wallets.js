@@ -49,6 +49,33 @@ function addOrderPartialPaymentTx(order,amount,wallet){
     source:"order-part",createdAt:new Date().toISOString()
   }));
 }
+/* ردّ زيادة العربون للعميل (العربون طلع أكبر من إجمالي الأمر): حركة صرف من المحفظة مربوطة بالأمر
+   (بتتحذف/بترجع معاه زي الدفعات الجزئية) — والأمر بيتعلّم عليه depositRefunded عشان الإغلاق يتحسب صح. */
+function addOrderRefundTx(order,amount,wallet){
+  wallet=String(wallet||"").trim();amount=Math.round((+amount||0)*100)/100;
+  if(!wallet||amount<=0)return true;
+  return put(K.wtx,arr(K.wtx).concat({
+    id:id(),refKey:null,orderId:order.id,manualOverride:true,deleted:false,type:"out",amount,wallet,
+    category:"تحصيل عميل",reason:`↩️ ردّ زيادة عربون أمر الشغل ${order.no||""} للعميل`,note:"",
+    date:localDateKey(new Date()),time:new Date().toTimeString().slice(0,5),
+    source:"order-part",createdAt:new Date().toISOString()
+  }));
+}
+/* لو العربون (بعد أي ردّ سابق) أكبر من الإجمالي: بيسأل يسجّل ردّ الفرق للعميل من محفظة.
+   بيرجّع {ok:false} لو اتلغى، أو {ok:true, refund, wallet} (refund=0 لو مفيش زيادة). مابيحفظش حاجة — المستدعي بيحفظ. */
+function askDepositRefund(r,total,wallet){
+  const dep=(+r.deposit||0)-(+r.depositRefunded||0),extra=Math.round((dep-(+total||0))*100)/100;
+  if(!(extra>0.004))return{ok:true,refund:0,wallet:""};
+  const w=String(wallet||r.depositWallet||(typeof resolveDefaultWallet==="function"?resolveDefaultWallet(r):"")||"").trim();
+  if(!w){alert(`العربون (${dep.toFixed(2)} ج) أكبر من إجمالي الأمر (${(+total||0).toFixed(2)} ج) بـ ${extra.toFixed(2)} ج.\n\nاختار المحفظة اللي هترجّع منها الفلوس للعميل (خانة المحفظة) وجرّب تاني، أو صحّح الإجمالي.`);return{ok:false}}
+  if(!confirm(`العربون (${dep.toFixed(2)} ج) أكبر من إجمالي الأمر (${(+total||0).toFixed(2)} ج) بـ ${extra.toFixed(2)} ج.\n\nتسجّل إنك رجّعت ${extra.toFixed(2)} ج للعميل من محفظة «${w}» وتكمّل قفل الأمر؟\n\n(إلغاء = ترجع تصحّح الإجمالي، أو تغيّر المحفظة من خانة المحفظة)`))return{ok:false};
+  return{ok:true,refund:extra,wallet:w};
+}
+function applyDepositRefund(r,refund,wallet){
+  if(!(refund>0))return;
+  r.depositRefunded=Math.round(((+r.depositRefunded||0)+refund)*100)/100;
+  r.depositRefunds=(Array.isArray(r.depositRefunds)?r.depositRefunds:[]).concat({amount:refund,wallet,at:new Date().toISOString()});
+}
 // يزوّد عربون الأمر بمبلغ جديد (دفعة جزئية، أو فلوس مرتجع اتحوّلت لعربون) من غير ما ينقل فلوس العربون
 // السابق من محفظته. بيعدّل الأمر بس ويرجّع {separate}: لو true المستدعي لازم يسجّل الحركة بـ addOrderPartialPaymentTx.
 function applyAdditionalDeposit(r,amount,wallet){

@@ -327,16 +327,19 @@ function markPaidAndClose(i){
   let wallet=document.getElementById("rCloseWallet")?.value||"";
   const totalRaw=r.total==null||r.total===""?0:+r.total,depositRaw=r.deposit==null||r.deposit===""?0:+r.deposit;
   if(!Number.isFinite(totalRaw)||totalRaw<0||!Number.isFinite(depositRaw)||depositRaw<0){alert("إجمالي الأمر أو العربون غير صالح. صحّح القيم قبل الإغلاق.");return}
-  if(depositRaw>totalRaw+0.001){alert(`العربون (${depositRaw.toFixed(2)} ج) أكبر من إجمالي الأمر (${totalRaw.toFixed(2)} ج). صحّح الإجمالي أو سجّل ردّ الزيادة قبل الإغلاق.`);return}
-  let collected=Math.max(0,totalRaw-depositRaw);
+  // العربون أكبر من الإجمالي: نسجّل ردّ الفرق للعميل (حركة صرف من المحفظة) بدل ما نقفل الطريق
+  const rf=typeof askDepositRefund==="function"?askDepositRefund(r,totalRaw,wallet):(depositRaw>totalRaw+0.001?(alert(`العربون (${depositRaw.toFixed(2)} ج) أكبر من إجمالي الأمر (${totalRaw.toFixed(2)} ج). صحّح الإجمالي قبل الإغلاق.`),{ok:false}):{ok:true,refund:0});
+  if(!rf.ok)return;
+  let collected=Math.max(0,Math.round((totalRaw-(depositRaw-(+r.depositRefunded||0)-rf.refund))*100)/100);
   // لو فيه مبلغ محصّل ومحدد مفيش محفظة، لازم نلفت نظر المستخدم إن المبلغ
   // ده مش هيتسجل في أي محفظة (upsertWalletTxForRef بيتجاهل الحركة لو
   // مفيش محفظة، زي ما بالظبط بيحصل في تقفيل خط السير — نفس التحذير هنا
   // عشان المستخدم مش يفاجأ إن المبلغ "اختفى" من الحسابات).
   if(collected>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المُحصّل (${collected.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة الإغلاق من غير تسجيله في محفظة؟`))return;
   if(r.returnPayPending&&!confirm("🔄 حساب الفني على المرتجع ده لسه ما اتحددش (من «أجرة الفني على الأمر» تحت). تقفل الأمر وتحدده بعدين؟"))return;
-  if(!confirm("تأكيد استلام كامل قيمة الأمر وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
+  if(!rf.refund&&!confirm("تأكيد استلام كامل قيمة الأمر وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
   let now=new Date().toISOString();
+  if(rf.refund)applyDepositRefund(r,rf.refund,rf.wallet);
   r.paid=true;
   r.remain=0;
   r.paidAt=now;
@@ -358,9 +361,11 @@ function markPaidAndClose(i){
     if(!put(K.r,a))return{ok:false};
     if(typeof syncTreasuryForOrderClose==="function")syncTreasuryForOrderClose(r,collected);
     if(typeof syncWalletForOrderClose==="function"&&!syncWalletForOrderClose(r,collected,wallet))return{ok:false};
+    if(rf.refund&&!addOrderRefundTx(r,rf.refund,rf.wallet))return{ok:false};
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الإغلاق والحركة المالية معًا؛ لم يتم إغلاق أمر الشغل.");return}
+  if(rf.refund)window.auditLog?.("ردّ زيادة عربون", "أمر شغل", r.id, `${rf.refund.toFixed(2)} ج من «${rf.wallet}»`);
   // تحقق فعلي بعد الحفظ: الأمر اتقفل، وحركة التحصيل موجودة لو فيه محفظة ومبلغ.
   const chkR=arr(K.r).find(x=>String(x.id)===String(r.id)),chkTx=arr(K.wtx).some(x=>x&&x.refKey==="order-final-"+r.id&&!x.deleted);
   if(!chkR||!chkR.closed||(collected>0&&wallet&&!chkTx)){alert("⚠️ الإغلاق ماتأكدش بعد الحفظ (الأمر أو حركة المحفظة مش ظاهرين). حدّث الصفحة وراجع الأمر والمحفظة قبل ما تعيد المحاولة.")}

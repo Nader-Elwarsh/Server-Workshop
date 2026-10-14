@@ -61,8 +61,10 @@
     const techPay=closedOrders.reduce((a,x)=>a+(+x.techPay||0),0)+allOrders.reduce((a,x)=>a+sharesIn(x),0),net=gross-totalExp-techPay;
     const completed=os.filter(x=>x.closed?inRangeDate(x.closedAt||x.createdAt,r):x.status==='مكتمل').length;
     const created=allOrders.filter(x=>inRangeDate(x.createdAt,r));
-    const collectedTx=walletEntries().filter(x=>!x.deleted&&x.type==='in'&&x.category==='تحصيل عميل'&&inRangeDay(x.date,r));
-    const collected=collectedTx.reduce((a,x)=>a+(+x.amount||0),0);
+    // المحصّل = تحصيلات العملاء ناقص اللي اترد لهم (ردّ زيادة عربون/مرتجع)
+    const collectedTx=walletEntries().filter(x=>!x.deleted&&(x.type==='in'||x.type==='out')&&x.category==='تحصيل عميل'&&inRangeDay(x.date,r));
+    const sgn=x=>x.type==='out'?-(+x.amount||0):(+x.amount||0);
+    const collected=collectedTx.reduce((a,x)=>a+sgn(x),0);
     const durations=closedOrders.map(o=>{const s=cycleStart(o),e=o.closedAt?new Date(o.closedAt):null;return s&&e&&!Number.isNaN(e.getTime())&&e>=s?(e-s)/DAY:null}).filter(v=>v!==null);
     const avgDays=durations.length?durations.reduce((a,b)=>a+b,0)/durations.length:null;
     const returns=[];allOrders.forEach(o=>(Array.isArray(o.statusHistory)?o.statusHistory:[]).forEach(h=>{if(h&&/^مرتجع/.test(String(h.note||''))&&inRangeDate(h.at,r))returns.push({o,at:h.at,note:h.note})}));
@@ -75,8 +77,8 @@
     const open=os.filter(x=>!x.closed&&x.status!=='ملغي').length,activeOrders=allOrders.filter(x=>!x.closed&&x.status!=='مكتمل'&&x.status!=='ملغي'),waiting=activeOrders.filter(x=>x.partsWaiting===true||x.partsWaiting==='yes').length,currentWorkshop=activeOrders.filter(x=>x.workshopStatus!=='تم التسليم'&&(x.executionPlace==='الورشة'||(x.workshopStatus&&x.workshopStatus!=='غير مطلوب'))).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i),workshop=currentWorkshop.length;
     const custMap=new Map(cs.map(c=>[c.id,c])),devMap=new Map(ds.map(x=>[x.id,x]));
     // التحصيل: حسب المحفظة + المستحق على العملاء (مكتمل ولسه ماتقفلش/ماتدفعش) + عربون الأوامر المفتوحة
-    const byWallet=new Map();collectedTx.forEach(x=>{const k=x.wallet||'غير محدد';byWallet.set(k,(byWallet.get(k)||0)+(+x.amount||0))});
-    const receivables=allOrders.filter(o=>o.status==='مكتمل'&&!o.closed&&!o.paid).map(o=>({o,due:Math.max(0,Math.round(((+o.total||0)-(+o.deposit||0))*100)/100)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due);
+    const byWallet=new Map();collectedTx.forEach(x=>{const k=x.wallet||'غير محدد';byWallet.set(k,(byWallet.get(k)||0)+sgn(x))});
+    const receivables=allOrders.filter(o=>o.status==='مكتمل'&&!o.closed&&!o.paid).map(o=>({o,due:Math.max(0,Math.round(((+o.total||0)-((+o.deposit||0)-(+o.depositRefunded||0)))*100)/100)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due);
     const depositsHeld=activeOrders.reduce((a,o)=>a+(+o.deposit||0),0);
     // الفنيين
     const techs=new Map();

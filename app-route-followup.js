@@ -346,10 +346,13 @@ function confirmQuickClose(i){
   const wallet=document.getElementById(`qcWallet-${i}`)?.value||"";
   const partsTotal=Number.isFinite(+r.partsTotal)?+r.partsTotal:0,deposit=r.deposit==null||r.deposit===""?0:+r.deposit,estimatedTotal=partsTotal+labor;
   if(partsTotal<0||!Number.isFinite(deposit)||deposit<0||!Number.isFinite(estimatedTotal)){alert("إجمالي الأمر أو العربون غير صالح؛ صحّح البيانات قبل الإغلاق.");return}
-  if(deposit>estimatedTotal+0.001){alert(`العربون (${deposit.toFixed(2)} ج) أكبر من إجمالي الأمر (${estimatedTotal.toFixed(2)} ج). صحّح الإجمالي أو سجّل ردّ الزيادة قبل الإغلاق.`);return}
-  const collectedPreview=Math.max(0,estimatedTotal-deposit);
+  const rf=typeof askDepositRefund==="function"?askDepositRefund(r,estimatedTotal,wallet):(deposit>estimatedTotal+0.001?(alert(`العربون (${deposit.toFixed(2)} ج) أكبر من إجمالي الأمر (${estimatedTotal.toFixed(2)} ج). صحّح الإجمالي قبل الإغلاق.`),{ok:false}):{ok:true,refund:0});
+  if(!rf.ok)return;
+  const effDeposit=deposit-(+r.depositRefunded||0)-rf.refund;
+  const collectedPreview=Math.max(0,estimatedTotal-effDeposit);
   if(collectedPreview>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المتبقي المُحصّل (${collectedPreview.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة القفل من غير تسجيله في محفظة؟`))return;
-  if(!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
+  if(!rf.refund&&!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
+  if(rf.refund)applyDepositRefund(r,rf.refund,rf.wallet);
   r.labor=labor;
   r.partsTotal=+r.partsTotal||0;
   r.total=r.partsTotal+labor;
@@ -360,12 +363,13 @@ function confirmQuickClose(i){
   if(r.status==="جديد"){r.status="جاري التنفيذ";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);from=r.status;}
   if(r.status==="جاري التنفيذ"){r.status="مكتمل";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);}
   const now=new Date().toISOString();
-  const collected=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+  const collected=Math.max(0,Math.round(((+r.total||0)-((+r.deposit||0)-(+r.depositRefunded||0)))*100)/100);
   r.paid=true;r.remain=0;r.paidAt=now;r.closed=true;r.closedAt=now;r.closeWallet=wallet;
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncTreasuryForOrderClose==="function")syncTreasuryForOrderClose(r,collected);
     if(typeof syncWalletForOrderClose==="function"&&!syncWalletForOrderClose(r,collected,wallet))return{ok:false};
+    if(rf.refund&&!addOrderRefundTx(r,rf.refund,rf.wallet))return{ok:false};
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الإغلاق والحركة المالية معًا؛ لم يتم إغلاق أمر الشغل.");return}
