@@ -25,17 +25,28 @@
 
   /* ---------- الإعدادات ---------- */
   function loadSettings() {
-    var st = { primary: DEF.primary, accent: DEF.accent, light: DEF.light, applyHeader: false, hasLogo: false, hasIcon: false };
+    var st = { primary: DEF.primary, accent: DEF.accent, light: DEF.light, applyHeader: false, hasLogo: false, hasIcon: false, at: 0 };
     try {
       var o = JSON.parse(WFStorage.getItem(KEY) || "{}") || {};
       ["primary", "accent", "light"].forEach(function (k) { if (HEX.test(o[k] || "")) st[k] = String(o[k]).toUpperCase(); });
-      st.applyHeader = !!o.applyHeader; st.hasLogo = !!o.hasLogo; st.hasIcon = !!o.hasIcon;
+      st.applyHeader = !!o.applyHeader; st.hasLogo = !!o.hasLogo; st.hasIcon = !!o.hasIcon; st.at = Number(o.at) > 0 ? Number(o.at) : 0;
     } catch (e) {}
     return st;
   }
   var st = loadSettings();
-  function saveSettings() { try { WFStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
-  function colorsDefault() { return st.primary === DEF.primary && st.accent === DEF.accent && st.light === DEF.light; }
+  function saveSettings() { st.at = Date.now(); try { WFStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
+  /* الألوان الفعلية للشعار/الأيقونة الافتراضيين: لون واحد للنظام كله. لو اتحدد «اللون الأساسي/المميز» من لوحة
+     هوية النظام (white-label) بياخدهم، وإلا بيفضل على ألوانه القديمة (توافق مع الإعدادات اللي اتحفظت قبل كده). */
+  function eff() {
+    var o = { primary: st.primary, accent: st.accent, light: st.light };
+    try {
+      var c = window.WL && window.WL.cfg ? (window.WL.cfg().colors || {}).light || {} : {};
+      if (HEX.test(c.primary || "")) o.primary = String(c.primary).toUpperCase();
+      if (HEX.test(c.accent || "")) o.accent = String(c.accent).toUpperCase();
+    } catch (e) {}
+    return o;
+  }
+  function colorsDefault() { var c = eff(); return c.primary === DEF.primary && c.accent === DEF.accent && c.light === DEF.light; }
   function customized() { return !colorsDefault() || st.hasLogo || st.hasIcon || st.applyHeader; }
 
   /* ---------- ألوان ---------- */
@@ -45,7 +56,8 @@
 
   /* ---------- هيدر التطبيق + theme-color (بيتطبقوا فورًا) ---------- */
   function headerCss() {
-    var base = "img.brand-logo,img.wf-logo{object-fit:contain}"; // صور مرفوعة بأبعاد مختلفة ماتتمطش
+    var base = "img.brand-logo,img.wf-logo{object-fit:contain}" + // صور مرفوعة بأبعاد مختلفة ماتتمطش
+      (st.hasIcon && iconFull ? "img.brand-logo,img.wf-logo{object-fit:cover}" : ""); // صورة بروفايل مربعة: تملا مكانها
     if (!st.applyHeader) return base;
     var g1 = st.primary, g2 = mix(st.primary, "#FFFFFF", 0.16);
     var d1 = mix(st.primary, "#000000", 0.55), d2 = mix(st.primary, "#000000", 0.38);
@@ -96,11 +108,12 @@
     return srcCache[url];
   }
   function recolor(svg) {
+    var c = eff();
     return svg.replace(/fill="#([0-9A-Fa-f]{6})"/g, function (m, h) {
       h = h.toUpperCase();
-      if (h === "082A54") return 'fill="' + st.primary + '"';
-      if (h === "FAA822") return 'fill="' + st.accent + '"';
-      if (h === "FFFFFF") return 'fill="' + st.light + '"';
+      if (h === "082A54") return 'fill="' + c.primary + '"';
+      if (h === "FAA822") return 'fill="' + c.accent + '"';
+      if (h === "FFFFFF") return 'fill="' + c.light + '"';
       return m;
     });
   }
@@ -154,9 +167,21 @@
       }
     });
   }
+  /* الرجوع للأيقونة الأصلية: نشيل أيقونة التبويب/آيفون المتولّدة ونرجّع ملفات المشروع */
+  function resetLinks() {
+    if (!document.head || customized()) { setLinks(); return; }
+    var olds = document.querySelectorAll('link[rel~="icon"]');
+    for (var i = 0; i < olds.length; i++) if (/^data:/.test(olds[i].getAttribute("href") || "")) olds[i].setAttribute("href", SRC.icon);
+    var a = document.querySelector('link[rel="apple-touch-icon"]');
+    if (a && /^data:/.test(a.getAttribute("href") || "")) a.setAttribute("href", "apple-touch-icon-v13.png");
+  }
+  function emit() { try { window.dispatchEvent(new CustomEvent("wfbrand:change")); } catch (e) {} }
   function refresh() {
     applyHeaderAndTheme();
-    return ensureUrls().then(function (u) { applyImages(); document.documentElement.classList.remove("wfb-pending"); return u; });
+    return ensureUrls().then(function (u) {
+      if (st.hasIcon) return loadImg(u.icon).then(function (im) { iconFull = opaqueCorners(im); }, function () { iconFull = false; }).then(function () { return u; });
+      iconFull = false; return u;
+    }).then(function (u) { applyHeaderAndTheme(); applyImages(); document.documentElement.classList.remove("wfb-pending"); return u; });
   }
 
   /* ---------- رسم أيقونات PNG (للتبويب وآيفون وللتنزيل) ---------- */
@@ -168,6 +193,17 @@
       im.src = url;
     });
   }
+  /* أيقونة مرفوعة «مليانة» (أركانها مش شفافة، زي صورة بروفايل) بتترسم على المساحة كلها حتى في الأيقونة الدايرية،
+     والشفافة (لوجو على خلفية فاضية) بتتحط على خلفية بلون النظام بهامش أمان. */
+  var iconFull = false;
+  function opaqueCorners(im) {
+    try {
+      var c = document.createElement("canvas"); c.width = c.height = 16;
+      var x = c.getContext("2d"); x.drawImage(im, 0, 0, 16, 16);
+      var d = x.getImageData(0, 0, 16, 16).data, px = [0, 15, 240, 255];
+      return px.every(function (i) { return d[i * 4 + 3] > 245; });
+    } catch (e) { return false; }
+  }
   function iconPng(size, mode) { // mode: any | maskable | apple
     return ensureUrls().then(function (u) {
       return loadImg(u.icon).then(function (im) {
@@ -175,8 +211,9 @@
         var x = c.getContext("2d");
         x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
         var iw = im.naturalWidth || im.width || 512, ih = im.naturalHeight || im.height || 512;
-        var k = 1;
-        if (mode !== "any") { x.fillStyle = st.primary; x.fillRect(0, 0, size, size); k = mode === "maskable" ? 0.8 : 0.92; }
+        var k = 1, full = st.hasIcon && opaqueCorners(im);
+        if (mode !== "any" && !full) { x.fillStyle = eff().primary; x.fillRect(0, 0, size, size); k = mode === "maskable" ? 0.8 : 0.92; }
+        if (full) { var sc = Math.max(size / iw, size / ih); x.drawImage(im, (size - iw * sc) / 2, (size - ih * sc) / 2, iw * sc, ih * sc); return c; }
         var box = size * k, s = Math.min(box / iw, box / ih), w = iw * s, h = ih * s;
         x.drawImage(im, (size - w) / 2, (size - h) / 2, w, h);
         return c;
@@ -234,11 +271,11 @@
   }
   function setCustom(kind, dataUrl) {
     var flag = kind === "logo" ? "hasLogo" : "hasIcon";
-    return idbSet(kind, dataUrl).then(function () { st[flag] = true; saveSettings(); invalidate(); return refresh().then(function () { setLinks(); }); });
+    return idbSet(kind, dataUrl).then(function () { st[flag] = true; saveSettings(); invalidate(); return refresh().then(function () { setLinks(); emit(); }); });
   }
   function clearCustom(kind) {
     var flag = kind === "logo" ? "hasLogo" : "hasIcon";
-    return idbDel(kind)["catch"](function () {}).then(function () { st[flag] = false; saveSettings(); invalidate(); return refresh(); });
+    return idbDel(kind)["catch"](function () {}).then(function () { st[flag] = false; saveSettings(); invalidate(); return refresh().then(function (u) { resetLinks(); emit(); return u; }); });
   }
 
   /* ---------- واجهة API ---------- */
@@ -246,18 +283,18 @@
     ["primary", "accent", "light"].forEach(function (k) { if (p && HEX.test(p[k] || "")) st[k] = String(p[k]).toUpperCase(); });
     if (p && typeof p.applyHeader === "boolean") st.applyHeader = p.applyHeader;
     saveSettings(); invalidate();
-    return refresh().then(function () { setLinks(); });
+    return refresh().then(function () { setLinks(); emit(); });
   }
   function resetColors() {
     st.primary = DEF.primary; st.accent = DEF.accent; st.light = DEF.light; st.applyHeader = false;
     saveSettings(); invalidate();
-    return refresh();
+    return refresh().then(function (u) { resetLinks(); emit(); return u; });
   }
   function resetAll() {
     return Promise.all([idbDel("logo")["catch"](function () {}), idbDel("icon")["catch"](function () {})]).then(function () {
       st = { primary: DEF.primary, accent: DEF.accent, light: DEF.light, applyHeader: false, hasLogo: false, hasIcon: false };
       try { WFStorage.removeItem(KEY); } catch (e) {}
-      invalidate(); return refresh();
+      invalidate(); return refresh().then(function (u) { resetLinks(); emit(); return u; });
     });
   }
   function exportData() {
@@ -273,33 +310,174 @@
     var okData = function (v) { return typeof v === "string" && /^data:image\/(png|jpeg|webp|svg\+xml)[;,]/.test(v); };
     if (okData(o.logo)) { ops.push(idbSet("logo", o.logo)); st.hasLogo = true; } else { ops.push(idbDel("logo")["catch"](function () {})); st.hasLogo = false; }
     if (okData(o.icon)) { ops.push(idbSet("icon", o.icon)); st.hasIcon = true; } else { ops.push(idbDel("icon")["catch"](function () {})); st.hasIcon = false; }
-    return Promise.all(ops).then(function () { saveSettings(); invalidate(); return refresh().then(function () { setLinks(); }); });
+    return Promise.all(ops).then(function () { saveSettings(); invalidate(); return refresh().then(function () { setLinks(); emit(); }); });
   }
 
-  /* ---------- قسم الإعدادات ---------- */
+  /* ---------- قص الصورة (زي صورة البروفايل) ----------
+     بتفتح نافذة فيها الصورة جوه إطار الأيقونة: اسحب بصباعك تحركها، وقرّب/بعّد بصباعين أو بالشريط،
+     ولف 90°، واختار لون الخلفية لو الصورة صغيرة أو شفافة. الدايرة المنقطة = اللي بيظهر في الأيقونات الدايرية. */
+  function cropImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) return reject(new Error("مفيش ملف"));
+      if (file.size > 15 * 1024 * 1024) return reject(new Error("حجم الصورة كبير (الحد الأقصى 15 ميجا)"));
+      if (/svg/i.test(file.type) || /\.svg$/i.test(file.name)) return readImage(file, "icon").then(resolve, reject); // SVG بيتاخد زي ما هو
+      var fr = new FileReader();
+      fr.onerror = function () { reject(new Error("تعذر قراءة الملف")); };
+      fr.onload = function () { loadImg(fr.result).then(open, function () { reject(new Error("مش قادر أقرأ الصورة دي — جرّب PNG أو JPG")); }); };
+      fr.readAsDataURL(file);
+
+      function open(im) {
+        var iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+        var V = Math.max(200, Math.min(300, (window.innerWidth || 360) - 64));
+        var dpr = Math.min(3, window.devicePixelRatio || 1);
+        var rot = 0, bg = "#FFFFFF", ox = 0, oy = 0;
+        function dims() { return rot % 180 ? [ih, iw] : [iw, ih]; }
+        function fitScale() { var d = dims(); return V / Math.min(d[0], d[1]); } // تملا الإطار
+        function minScale() { var d = dims(); return V / Math.max(d[0], d[1]) * 0.6; }
+        var sc = fitScale();
+
+        var ov = document.createElement("div");
+        ov.className = "wfb-crop"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-label", "ظبط الصورة");
+        ov.innerHTML =
+          '<div class="wfb-crop-card"><b class="wfb-crop-t">ظبّط الصورة</b>' +
+          '<p class="wfb-crop-h">اسحب الصورة عشان تحركها، وقرّب أو بعّد بصباعين أو بالشريط.</p>' +
+          '<canvas class="wfb-crop-cv" width="' + Math.round(V * dpr) + '" height="' + Math.round(V * dpr) + '" style="width:' + V + 'px;height:' + V + 'px"></canvas>' +
+          '<div class="wfb-crop-row"><span aria-hidden="true">➖</span><input type="range" class="wfb-crop-z" min="0" max="1000" step="1" aria-label="التكبير"><span aria-hidden="true">➕</span>' +
+          '<button type="button" class="secondary wfb-crop-rot" aria-label="لف الصورة" title="لف">⟳</button></div>' +
+          '<div class="wfb-crop-row wfb-crop-bgs"><span class="wfb-crop-l">الخلفية:</span>' +
+          [["#FFFFFF", "أبيض"], ["primary", "لون النظام"], ["#111111", "أسود"], ["", "شفافة"]].map(function (b2, i) {
+            return '<button type="button" class="wfb-crop-bg' + (i === 0 ? " on" : "") + '" data-bg="' + b2[0] + '" title="' + b2[1] + '" aria-label="خلفية ' + b2[1] + '"><i style="background:' + (b2[0] === "primary" ? eff().primary : (b2[0] || "repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/10px 10px")) + '"></i></button>';
+          }).join("") + "</div>" +
+          '<div class="wfb-crop-row wfb-crop-acts"><button type="button" class="primary wfb-crop-ok">✔️ تمام</button><button type="button" class="secondary wfb-crop-no">إلغاء</button></div></div>';
+        document.body.appendChild(ov);
+        var cv = ov.querySelector("canvas"), cx = cv.getContext("2d"), zr = ov.querySelector(".wfb-crop-z");
+        var prevFocus = document.activeElement;
+
+        function bgColor() { return bg === "primary" ? eff().primary : bg; }
+        function paint(ctx, size, guides) {
+          var k = size / V;
+          ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, size, size);
+          if (bgColor()) { ctx.fillStyle = bgColor(); ctx.fillRect(0, 0, size, size); }
+          else if (guides) { for (var yy = 0; yy < size; yy += 10 * k) for (var xx = 0; xx < size; xx += 10 * k) { ctx.fillStyle = ((xx + yy) / (10 * k)) % 2 ? "#ddd" : "#fff"; ctx.fillRect(xx, yy, 10 * k, 10 * k); } }
+          ctx.save();
+          ctx.translate(size / 2 + ox * k, size / 2 + oy * k); ctx.rotate(rot * Math.PI / 180);
+          ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(im, -iw * sc * k / 2, -ih * sc * k / 2, iw * sc * k, ih * sc * k);
+          ctx.restore();
+          if (guides) {
+            ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 2 * k; ctx.setLineDash([6 * k, 5 * k]);
+            ctx.beginPath(); ctx.arc(size / 2, size / 2, size * 0.4, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineDashOffset = 5 * k; ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        }
+        function draw() { paint(cx, cv.width, true); }
+        function setZoomUi() { var lo = minScale(), hi = fitScale() * 4; zr.value = String(Math.round((Math.log(sc / lo) / Math.log(hi / lo)) * 1000)); }
+        function zoomTo(nsc, px, py) { // px,py: نقطة ثابتة بالنسبة لمركز الإطار
+          var lo = minScale(), hi = fitScale() * 4; nsc = Math.max(lo, Math.min(hi, nsc));
+          px = px || 0; py = py || 0;
+          ox = px - (px - ox) * (nsc / sc); oy = py - (py - oy) * (nsc / sc); sc = nsc; draw();
+        }
+        zr.addEventListener("input", function () { var lo = minScale(), hi = fitScale() * 4; zoomTo(lo * Math.pow(hi / lo, Number(zr.value) / 1000)); });
+        var pts = {}, last = null;
+        function rel(e) { var r = cv.getBoundingClientRect(); return [e.clientX - r.left - V / 2, e.clientY - r.top - V / 2]; }
+        cv.style.touchAction = "none";
+        cv.addEventListener("pointerdown", function (e) { cv.setPointerCapture(e.pointerId); pts[e.pointerId] = rel(e); last = null; });
+        cv.addEventListener("pointermove", function (e) {
+          if (!pts[e.pointerId]) return;
+          var prev = pts[e.pointerId], cur = rel(e); pts[e.pointerId] = cur;
+          var ids = Object.keys(pts);
+          if (ids.length === 1) { ox += cur[0] - prev[0]; oy += cur[1] - prev[1]; draw(); }
+          else if (ids.length === 2) {
+            var a = pts[ids[0]], b2 = pts[ids[1]], d = Math.hypot(a[0] - b2[0], a[1] - b2[1]), m = [(a[0] + b2[0]) / 2, (a[1] + b2[1]) / 2];
+            if (last) { ox += m[0] - last.m[0]; oy += m[1] - last.m[1]; zoomTo(sc * d / (last.d || d), m[0], m[1]); setZoomUi(); }
+            last = { d: d, m: m };
+          }
+        });
+        function up(e) { delete pts[e.pointerId]; last = null; }
+        cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+        cv.addEventListener("wheel", function (e) { e.preventDefault(); var p = rel(e); zoomTo(sc * (e.deltaY < 0 ? 1.08 : 1 / 1.08), p[0], p[1]); setZoomUi(); }, { passive: false });
+        function close(v, err) { document.removeEventListener("keydown", onKey); if (ov.parentNode) ov.parentNode.removeChild(ov); try { prevFocus && prevFocus.focus(); } catch (e2) {} if (err) reject(err); else resolve(v); }
+        function onKey(e) { if (e.key === "Escape") close(null, new Error("cancel")); }
+        document.addEventListener("keydown", onKey);
+        ov.addEventListener("click", function (e) {
+          var t = e.target.closest ? e.target.closest("button") : null;
+          if (e.target === ov) return close(null, new Error("cancel"));
+          if (!t) return;
+          if (t.classList.contains("wfb-crop-no")) return close(null, new Error("cancel"));
+          if (t.classList.contains("wfb-crop-rot")) { rot = (rot + 90) % 360; sc = Math.max(sc, minScale()); ox = 0; oy = 0; setZoomUi(); draw(); return; }
+          if (t.classList.contains("wfb-crop-bg")) {
+            bg = t.getAttribute("data-bg"); var all = ov.querySelectorAll(".wfb-crop-bg");
+            for (var i = 0; i < all.length; i++) all[i].classList.toggle("on", all[i] === t);
+            draw(); return;
+          }
+          if (t.classList.contains("wfb-crop-ok")) {
+            var out = document.createElement("canvas"); out.width = out.height = 512;
+            paint(out.getContext("2d"), 512, false);
+            close(out.toDataURL("image/png"));
+          }
+        });
+        setZoomUi(); draw();
+        setTimeout(function () { var ok = ov.querySelector(".wfb-crop-ok"); if (ok) ok.focus(); }, 30);
+      }
+    });
+  }
+  /* اختيار صورة الأيقونة (من المعرض/الكاميرا) ← قص ← حفظ. نفس الخطوات من أي مكان في النظام. */
+  var pickInput = null;
+  function pickIcon() {
+    return new Promise(function (resolve, reject) {
+      if (!pickInput) {
+        pickInput = document.createElement("input"); pickInput.type = "file"; pickInput.accept = "image/*"; pickInput.hidden = true;
+        document.body.appendChild(pickInput);
+      }
+      pickInput.value = "";
+      pickInput.onchange = function () {
+        var f = pickInput.files && pickInput.files[0]; if (!f) return reject(new Error("cancel"));
+        cropImage(f).then(function (d) { return setCustom("icon", d); }).then(resolve, reject);
+      };
+      pickInput.click();
+    });
+  }
+  function pickLogo() {
+    return new Promise(function (resolve, reject) {
+      var i = document.createElement("input"); i.type = "file"; i.accept = "image/png,image/jpeg,image/webp,image/svg+xml"; i.hidden = true;
+      document.body.appendChild(i);
+      i.onchange = function () {
+        var f = i.files && i.files[0]; i.parentNode.removeChild(i); if (!f) return reject(new Error("cancel"));
+        readImage(f, "logo").then(function (d) { return setCustom("logo", d); }).then(resolve, reject);
+      };
+      i.click();
+    });
+  }
+
+  /* ---------- قسم الشعار والأيقونة (في لوحة هوية النظام) ---------- */
   function injectPanelCss() {
     if (document.getElementById("wfb-panel-css")) return;
     var s = document.createElement("style"); s.id = "wfb-panel-css";
     s.textContent =
-      ".wfb h3{margin:16px 0 6px;font-size:16px}" +
-      ".wfb-prev{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:10px 0}" +
-      ".wfb-logo-box{background:#fff;border:1px solid var(--border,#ddd);border-radius:12px;padding:10px 14px}" +
-      ".wfb-logo-box img{display:block;height:64px;width:auto;max-width:220px}" +
-      ".wfb-icon-box img{display:block;width:72px;height:72px;border-radius:22%;object-fit:contain}" +
-      ".wfb-row{display:flex;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap}" +
-      ".wfb-row>span{flex:1 1 150px;font-weight:700}" +
-      ".wfb .wfb-color{width:56px;height:40px;padding:2px;margin:0;border-radius:8px;cursor:pointer}" +
-      ".wfb .wfb-hex{width:104px;margin:0;direction:ltr;text-align:center;font-family:monospace}" +
-      ".wfb .wfb-btns{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}" +
-      ".wfb label.wfb-chk{display:flex;gap:8px;align-items:center;margin:10px 0;font-weight:700}" +
-      ".wfb label.wfb-chk input{width:auto;margin:0}" +
-      ".wfb .wfb-msg{min-height:20px;font-size:13px;color:var(--success-text,#18794e)}";
+      ".wfb-imgs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}" +
+      ".wfb-imgs>div{border:1px solid var(--border,#ddd);border-radius:14px;padding:12px;text-align:center;background:var(--bg-elevated,#fff)}" +
+      ".wfb-imgs b{display:block;margin-bottom:8px}" +
+      ".wfb-tap{display:block;margin:0 auto 8px;padding:0;border:0;background:none;cursor:pointer;position:relative}" +
+      ".wfb-tap img{display:block;margin:auto;object-fit:contain}" +
+      ".wfb-tap.icon img{width:88px;height:88px;border-radius:22%;box-shadow:0 2px 10px rgba(0,0,0,.18)}" +
+      ".wfb-tap.logo img{height:70px;width:auto;max-width:100%;background:#fff;border-radius:10px;padding:6px}" +
+      ".wfb-tap::after{content:'📷';position:absolute;bottom:-6px;inset-inline-start:calc(50% + 30px);width:30px;height:30px;line-height:30px;border-radius:50%;background:var(--wl-primary,#17324d);color:#fff;font-size:15px;box-shadow:0 1px 4px rgba(0,0,0,.3)}" +
+      ".wfb-tap.logo::after{inset-inline-start:auto;inset-inline-end:-4px}" +
+      ".wfb-imgs .wfb-btns{display:flex;flex-direction:column;gap:6px}" +
+      ".wfb .wfb-msg{min-height:20px;font-size:13px;color:var(--success-text,#18794e)}" +
+      ".wfb-crop{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px}" +
+      ".wfb-crop-card{background:var(--bg-elevated,#fff);color:var(--text,#111);border-radius:18px;padding:16px;max-width:360px;width:100%;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}" +
+      ".wfb-crop-t{font-size:18px}.wfb-crop-h{font-size:13px;color:var(--text-muted,#666);margin:4px 0 10px}" +
+      ".wfb-crop-cv{display:block;margin:0 auto;border-radius:22%;box-shadow:0 2px 12px rgba(0,0,0,.25);cursor:grab}" +
+      ".wfb-crop-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:12px 0 0}" +
+      ".wfb-crop-row input[type=range]{flex:1;margin:0}" +
+      ".wfb-crop-l{font-size:13px;font-weight:700}" +
+      ".wfb-crop-bg{width:38px;height:38px;padding:3px;border-radius:50%;border:2px solid transparent;background:none;cursor:pointer}" +
+      ".wfb-crop-bg.on{border-color:var(--wl-primary,#17324d)}" +
+      ".wfb-crop-bg i{display:block;width:100%;height:100%;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.2)}" +
+      ".wfb-crop-acts button{flex:1;min-height:46px}";
     document.head.appendChild(s);
-  }
-  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-  function colorRow(k, label) {
-    return '<div class="wfb-row"><span>' + label + '</span><input type="color" class="wfb-color" data-k="' + k + '" value="' + esc(st[k].toLowerCase()) + '" aria-label="' + label + '">' +
-      '<input type="text" class="wfb-hex" data-h="' + k + '" value="' + esc(st[k]) + '" maxlength="7" aria-label="كود ' + label + '"></div>';
   }
   var box = null;
   function msg(t, bad) {
@@ -312,81 +490,28 @@
     injectPanelCss();
     box.className = "wfb";
     box.innerHTML =
-      '<p class="hint">تحكّم كامل في شعار الورشة وأيقونة التطبيق: غيّر الألوان أو ارفع صورك بنفسك من غير ما تلمس الكود. التغييرات بتتحفظ على الجهاز ده وبتظهر في كل صفحات النظام فورًا.</p>' +
-      '<div class="wfb-prev"><div class="wfb-logo-box"><img data-wf-brand="logo" src="' + SRC.logo + '" alt="معاينة شعار الورشة"></div>' +
-      '<div class="wfb-icon-box"><img data-wf-brand="icon" src="' + SRC.icon + '" alt="معاينة أيقونة التطبيق"></div></div>' +
-      '<h3>🎨 ألوان الشعار والأيقونة</h3>' +
-      colorRow("primary", "اللون الأساسي (الكحلي)") + colorRow("accent", "اللون المميز (الأصفر)") + colorRow("light", "اللون الفاتح (الأبيض)") +
-      '<label class="wfb-chk"><input type="checkbox" id="wfbHeader"' + (st.applyHeader ? " checked" : "") + '> طبّق اللون الأساسي على شريط العنوان (الهيدر) في التطبيق</label>' +
-      '<div class="wfb-btns"><button type="button" class="secondary" data-a="reset-colors">↩️ رجوع للألوان الأصلية</button></div>' +
-      '<h3>🖼️ الصور</h3>' +
-      '<p class="hint">ارفع شعار أو أيقونة تانية (PNG أو JPG أو SVG). الصورة المرفوعة بتظهر زي ما هي، وألوان القسم اللي فوق مابتأثرش عليها.</p>' +
-      '<div class="wfb-btns"><button type="button" data-a="pick-logo">📁 تغيير شعار الورشة</button><button type="button" class="secondary" data-a="clear-logo"' + (st.hasLogo ? "" : " disabled") + '>↩️ الشعار الأصلي</button></div>' +
-      '<div class="wfb-btns"><button type="button" data-a="pick-icon">📁 تغيير أيقونة التطبيق</button><button type="button" class="secondary" data-a="clear-icon"' + (st.hasIcon ? "" : " disabled") + '>↩️ الأيقونة الأصلية</button></div>' +
-      '<input type="file" id="wfbFileLogo" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>' +
-      '<input type="file" id="wfbFileIcon" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>' +
-      '<h3>📲 أيقونة التثبيت على الموبايل</h3>' +
-      '<p class="hint">أيقونة التطبيق على شاشة الموبايل بتتاخد من ملفات الأيقونات وقت التثبيت، فمش بتتغير لوحدها. نزّل الأيقونات بالألوان الحالية، وانسخها فوق ملفات المشروع (نفس الأسماء)، ثم ثبّت التطبيق من جديد.</p>' +
-      '<div class="wfb-btns"><button type="button" data-a="dl-icons">⬇️ تنزيل ملفات الأيقونات</button></div>' +
-      '<h3>💾 نسخة الهوية</h3>' +
-      '<p class="hint">احفظ الألوان والصور في ملف تقدر ترجّعه على أي جهاز تاني.</p>' +
-      '<div class="wfb-btns"><button type="button" class="secondary" data-a="export">⬇️ تصدير الهوية</button><button type="button" class="secondary" data-a="import">⬆️ استيراد هوية</button><button type="button" class="secondary" data-a="reset-all">🗑️ رجوع للهوية الأصلية بالكامل</button></div>' +
-      '<input type="file" id="wfbFileImport" accept="application/json,.json" hidden>' +
+      '<div class="wfb-imgs">' +
+      '<div><b>📱 صورة التطبيق</b><button type="button" class="wfb-tap icon" data-a="pick-icon" aria-label="تغيير صورة التطبيق"><img data-wf-brand="icon" src="' + SRC.icon + '" alt=""></button>' +
+      '<div class="wfb-btns"><button type="button" class="secondary" data-a="pick-icon">📷 تغيير</button>' + (st.hasIcon ? '<button type="button" class="secondary" data-a="clear-icon">↩️ الأصلية</button>' : "") + "</div></div>" +
+      '<div><b>🏷️ شعار الورشة</b><button type="button" class="wfb-tap logo" data-a="pick-logo" aria-label="تغيير شعار الورشة"><img data-wf-brand="logo" src="' + SRC.logo + '" alt=""></button>' +
+      '<div class="wfb-btns"><button type="button" class="secondary" data-a="pick-logo">📷 تغيير</button>' + (st.hasLogo ? '<button type="button" class="secondary" data-a="clear-logo">↩️ الأصلي</button>' : "") + "</div></div>" +
+      "</div>" +
+      '<p class="hint">صورة التطبيق = الأيقونة اللي على شاشة الموبايل وفي الهيدر والتبويب. شعار الورشة = اللي بيطلع في الإيصالات والطباعة. ' +
+      "لو مارفعتش صور، الشعار والأيقونة الأصليين بيتلوّنوا لوحدهم بلون النظام.</p>" +
       '<div class="wfb-msg" role="status" aria-live="polite"></div>';
     ensureUrls().then(function () { applyImages(box); });
     if (box._wfbBound) return;
     box._wfbBound = true;
-
-    var colorTimer = null;
-    function pushColors(p) { clearTimeout(colorTimer); colorTimer = setTimeout(function () { setColors(p); }, 80); }
-    box.addEventListener("input", function (e) {
-      var t = e.target;
-      if (t.classList && t.classList.contains("wfb-color")) {
-        var k = t.getAttribute("data-k"), h = box.querySelector('[data-h="' + k + '"]');
-        if (h) h.value = t.value.toUpperCase();
-        var p = {}; p[k] = t.value; pushColors(p);
-      }
-    });
-    box.addEventListener("change", function (e) {
-      var t = e.target;
-      if (t.classList && t.classList.contains("wfb-hex")) {
-        var k = t.getAttribute("data-h"), v = ("#" + t.value.replace(/[^0-9a-f]/gi, "")).slice(0, 7);
-        if (!HEX.test(v)) { t.value = st[k]; return msg("اكتب كود لون صحيح من 6 خانات، مثال: #082A54", true); }
-        t.value = v.toUpperCase();
-        var c = box.querySelector('[data-k="' + k + '"]'); if (c) c.value = v.toLowerCase();
-        var p = {}; p[k] = v; pushColors(p); return;
-      }
-      if (t.id === "wfbHeader") { setColors({ applyHeader: t.checked }); return; }
-      var file = t.files && t.files[0];
-      if (!file) return;
-      if (t.id === "wfbFileLogo" || t.id === "wfbFileIcon") {
-        var kind = t.id === "wfbFileLogo" ? "logo" : "icon";
-        readImage(file, kind).then(function (d) { return setCustom(kind, d); })
-          .then(function () { renderPanel(); msg("✅ تم تغيير " + (kind === "logo" ? "شعار الورشة" : "أيقونة التطبيق")); })
-          ["catch"](function (er) { msg("❌ " + (er && er.message ? er.message : "تعذر رفع الصورة"), true); });
-      } else if (t.id === "wfbFileImport") {
-        var fr = new FileReader();
-        fr.onload = function () {
-          var o; try { o = JSON.parse(String(fr.result)); } catch (er) { return msg("❌ الملف ده مش JSON صالح", true); }
-          importData(o).then(function () { renderPanel(); msg("✅ تم استيراد الهوية"); })["catch"](function (er) { msg("❌ " + er.message, true); });
-        };
-        fr.readAsText(file);
-      }
-      t.value = "";
-    });
     box.addEventListener("click", function (e) {
       var b = e.target.closest ? e.target.closest("[data-a]") : null;
       if (!b || b.disabled) return;
       var a = b.getAttribute("data-a");
-      if (a === "pick-logo") box.querySelector("#wfbFileLogo").click();
-      else if (a === "pick-icon") box.querySelector("#wfbFileIcon").click();
-      else if (a === "import") box.querySelector("#wfbFileImport").click();
-      else if (a === "clear-logo") clearCustom("logo").then(function () { renderPanel(); msg("تم الرجوع للشعار الأصلي"); });
-      else if (a === "clear-icon") clearCustom("icon").then(function () { renderPanel(); msg("تم الرجوع للأيقونة الأصلية"); });
-      else if (a === "reset-colors") resetColors().then(function () { renderPanel(); msg("تم الرجوع للألوان الأصلية"); });
-      else if (a === "reset-all") { if (confirm("الرجوع للهوية الأصلية بالكامل (الألوان والصور)؟")) resetAll().then(function () { renderPanel(); msg("تم الرجوع للهوية الأصلية"); }); }
-      else if (a === "dl-icons") { msg("جاري تجهيز الملفات… لو المتصفح سأل عن تنزيل ملفات متعددة اسمح بيه."); downloadIcons().then(function () { msg("✅ تم تنزيل الأيقونات"); })["catch"](function () { msg("❌ تعذر تجهيز الأيقونات", true); }); }
-      else if (a === "export") exportData().then(function (o) { download("workshop-branding.json", new Blob([JSON.stringify(o)], { type: "application/json" })); msg("✅ تم تصدير الهوية"); });
+      var pub = function () { try { if (window.WL && window.WL.schedulePublish) window.WL.schedulePublish(); } catch (e2) {} };
+      var fail = function (er) { if (er && er.message === "cancel") return; msg("❌ " + (er && er.message ? er.message : "تعذر رفع الصورة"), true); };
+      if (a === "pick-icon") pickIcon().then(function () { renderPanel(); pub(); msg("✅ اتغيرت صورة التطبيق"); }, fail);
+      else if (a === "pick-logo") pickLogo().then(function () { renderPanel(); pub(); msg("✅ اتغير شعار الورشة"); }, fail);
+      else if (a === "clear-logo") clearCustom("logo").then(function () { renderPanel(); pub(); msg("تم الرجوع للشعار الأصلي"); });
+      else if (a === "clear-icon") clearCustom("icon").then(function () { renderPanel(); pub(); msg("تم الرجوع للأيقونة الأصلية"); });
     });
   }
 
@@ -402,8 +527,16 @@
         return fetchText(u.logo).then(svgUrl);
       });
     },
-    refresh: refresh, exportData: exportData, importData: importData, downloadIcons: downloadIcons
+    refresh: refresh, exportData: exportData, importData: importData, downloadIcons: downloadIcons,
+    pickIcon: pickIcon, pickLogo: pickLogo, cropImage: cropImage, clearIcon: function () { return clearCustom("icon"); }, clearLogo: function () { return clearCustom("logo"); },
+    iconPng: iconPng, iconUrl: function () { return ensureUrls().then(function (u) { return u.icon; }); },
+    colors: eff, isIconCustom: function () { return st.hasIcon; }, isLogoCustom: function () { return st.hasLogo; },
+    iconChanged: function () { return st.hasIcon || !colorsDefault(); }, stamp: function () { return st.at || 0; }
   };
+  /* لون النظام اتغير من لوحة الهوية ← الشعار والأيقونة الافتراضيين يتلوّنوا بيه فورًا */
+  var effKey = JSON.stringify(eff());
+  function onWl() { var k = JSON.stringify(eff()); if (k === effKey) return; effKey = k; invalidate(); refresh().then(function () { setLinks(); emit(); }); }
+  if (window.WL && window.WL.onChange) window.WL.onChange(onWl);
 
   applyHeaderAndTheme();
   if (customized() && (st.hasLogo || st.hasIcon || !colorsDefault())) {

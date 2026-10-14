@@ -49,7 +49,7 @@ var WFStorage = window.WFStorage;
     // تصنيف حركة المحفظة (شخصي / تشغيل / تحصيل عميل...). "تحصيل عميل" مستخدم
     // تلقائيًا لما تُنشأ الحركة من عربون أو تحصيل نهائي لأمر شغل، فيُفضّل عدم
     // حذفه، لكنه قابل لإعادة التسمية زي أي عنصر تاني.
-    walletCategories: ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "سلفة / تحويل", "أخرى"]
+    walletCategories: ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "مشتريات قطع غيار", "سلفة / تحويل", "أخرى"]
   };
 
   let storageErrorSeq = 0;
@@ -182,6 +182,10 @@ var WFStorage = window.WFStorage;
         try { WFStorage.setItem(key, JSON.stringify(value)); }
         finally { writingThroughDataApi = false; }
       }
+      // نفس اللي put بيعمله: نسخة القراءة الفورية بتتحدث دلوقتي (ورقم نسختها بيزيد). من غيرها، لو كتابة سابقة لنفس
+      // المجموعة لسه بتخلص في IndexedDB، كانت بتلاقي رقم النسخة زي ما هو فتكتب بياناتها القديمة فوق الحفظ ده،
+      // والحفظ ده نفسه بيتخطّى تحديث النسخة → السجل الجديد بيختفي (مثلًا put ثم حفظ أمر في نفس اللحظة).
+      if (typeof window.WorkshopDB.setSnapshot === "function") Object.entries(operational).forEach(([key, value]) => window.WorkshopDB.setSnapshot(key, value));
       invalidateReadCache(entries.map(([key]) => key));
       await window.WorkshopDB.replaceMany(operational);
       const taskEntry = entries.find(([key]) => key === K.tasks);
@@ -193,6 +197,7 @@ var WFStorage = window.WFStorage;
       try {
         for (const [key, raw] of Object.entries(previous)) {
           try { if (raw === null) WFStorage.removeItem(key); else WFStorage.setItem(key, raw); } catch (_) {}
+          try { if (OPERATIONAL_KEYS.has(key) && typeof window.WorkshopDB.setSnapshot === "function") window.WorkshopDB.setSnapshot(key, raw === null ? [] : JSON.parse(raw)); } catch (_) {}
         }
       } finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([key]) => key));
@@ -307,7 +312,26 @@ var WFStorage = window.WFStorage;
     }
   }
 
+  /* الإعدادات بتتقرا آلاف المرات في القوايم (لون عمر كل أمر مثلًا). كانت كل قراءة بتعمل تحليل + تطبيع + تحويل لنص.
+     دلوقتي لو النص المحفوظ ماتغيّرش بنرجّع نسخة جديدة من النتيجة المحفوظة (نسخة عشان أي تعديل عليها مايبوّظش الكاش). */
+  let settingsMemo = null;
   function settings() {
+    let stored0 = null;
+    try { stored0 = WFStorage.getItem(K.s); } catch (_) {}
+    if (settingsMemo && settingsMemo.raw === stored0) return JSON.parse(settingsMemo.norm);
+    const out = settingsCompute();
+    try { const now = WFStorage.getItem(K.s); settingsMemo = { raw: now, norm: JSON.stringify(out), ro: null }; } catch (_) { settingsMemo = null; }
+    return out;
+  }
+  // للقراءة بس (من غير نسخ): للحسابات اللي بتتكرر لكل سجل. ممنوع التعديل على الناتج.
+  function settingsRO() {
+    let raw = null; try { raw = WFStorage.getItem(K.s); } catch (_) {}
+    if (!settingsMemo || settingsMemo.raw !== raw) settings();
+    if (!settingsMemo) return settings();
+    if (!settingsMemo.ro) settingsMemo.ro = JSON.parse(settingsMemo.norm);
+    return settingsMemo.ro;
+  }
+  function settingsCompute() {
     let stored = null;
     try { stored = WFStorage.getItem(K.s); } catch (_) {}
     let s = get(K.s, null); if (!s) s = {};
@@ -557,6 +581,7 @@ var WFStorage = window.WFStorage;
     }
   } catch (_) {}
   window.settings = settings;
+  window.settingsRO = settingsRO;
   window.duplicateCustomerByPhone = duplicateCustomerByPhone;
   window.customerName = customerName;
   window.deviceName = deviceName;
@@ -574,7 +599,21 @@ var WFStorage = window.WFStorage;
     return Promise.race([Promise.all(jobs).then(() => true, () => false), new Promise(r => setTimeout(() => r(false), ms || 4000))]);
   }
   window.wfFlushWrites = wfFlushWrites;
-  window.wfNavigate = async function (url) { await wfFlushWrites(); window.location.href = url; };
+  window.wfNavigate = async function (url) { try { window.WFNavState && window.WFNavState.save(); } catch (_) {} await wfFlushWrites(); window.location.href = url; };
+  /* wfLeaveTo(url, exact): بعد حفظ تعديل أو حذف سجل. لو الصفحة اللي قبلها في التاريخ هي نفس
+     الوجهة (رجعنا لصفحة الأمر بعد تعديله / للقايمة بعد الحذف) نرجع لها بـ history.back() — فالقايمة
+     ترجع بنفس الفلتر والسكرول، وزر الرجوع مايرجّعكش لفورم التعديل أو لسجل اتحذف. غير كده
+     بنستبدل الصفحة الحالية (location.replace) بدل ما نزود خطوة في التاريخ.
+     exact=true: لازم الرابط كله يتطابق (نفس السجل)، false: نفس الصفحة بأي فلتر. */
+  window.wfLeaveTo = async function (url, exact) {
+    try { window.WFNavState && window.WFNavState.save(); } catch (_) {}
+    await wfFlushWrites();
+    try {
+      const t = new URL(url, location.href), ref = document.referrer ? new URL(document.referrer) : null;
+      if (ref && ref.origin === location.origin && ref.pathname === t.pathname && (!exact || ref.search === t.search) && history.length > 1) { history.back(); return; }
+      location.replace(t.href);
+    } catch (_) { location.href = url; }
+  };
   window.wfReload = async function () { await wfFlushWrites(); window.location.reload(); };
   window.withRollback = withRollback;
   window.withRollbackAsync = withRollbackAsync;
@@ -593,7 +632,7 @@ var WFStorage = window.WFStorage;
    --------------------------------------------------------------------- */
 (function (w) {
   "use strict";
-  var DEFAULT_STEP = 30, CONFIRM_ALL_OVER = 300, S = {};
+  var DEFAULT_STEP = 30, CONFIRM_ALL_OVER = 300, S = {}, PRIMED = {}, PRIMED_UNTIL = 0;
   function num(n) { try { return Number(n).toLocaleString("ar-EG"); } catch (_) { return String(n); } }
   function safeKey(k) { return String(k == null ? "" : k).replace(/[^\w-]/g, ""); }
   function rowHtml(st, i) {
@@ -625,6 +664,9 @@ var WFStorage = window.WFStorage;
     items = Array.isArray(items) ? items : [];
     var step = opts.step > 0 ? opts.step : DEFAULT_STEP, prev = S[key];
     var shown = prev && prev.sig === sig ? Math.max(prev.shown, step) : step;
+    // رجوع للصفحة بزر الرجوع: نرجّع نفس عدد الصفوف اللي كانت معروضة (عشان السكرول يرجع لنفس السجل).
+    var pr = PRIMED[key];
+    if (pr && String(pr.sig) === String(sig) && pr.shown > shown && Date.now() < PRIMED_UNTIL) shown = pr.shown;
     var hi = hashIndex(items, opts);
     if (hi >= shown) shown = Math.ceil((hi + 1) / step) * step;
     shown = Math.min(shown, items.length);
@@ -668,7 +710,13 @@ var WFStorage = window.WFStorage;
     return added;
   }
   function reset(key) { if (key === undefined) S = {}; else delete S[safeKey(key)]; }
-  w.WFPager = { render: render, more: more, expandAll: expandAll, reset: reset, DEFAULT_STEP: DEFAULT_STEP };
+  function snapshot() {
+    var out = {};
+    Object.keys(S).forEach(function (k) { var st = S[k]; if (st && st.shown > st.step) out[k] = { shown: st.shown, sig: String(st.sig) }; });
+    return out;
+  }
+  function prime(map, ms) { PRIMED = map && typeof map === "object" ? map : {}; PRIMED_UNTIL = Date.now() + (ms || 15000); }
+  w.WFPager = { render: render, more: more, expandAll: expandAll, reset: reset, snapshot: snapshot, prime: prime, DEFAULT_STEP: DEFAULT_STEP };
   // طباعة الصفحة بالكامل (Ctrl+P أو printWorkshopPage): نعرض كل السجلات. طباعة عنصر واحد بتوسّعه print-share.js بنفسه.
   try {
     if (typeof window !== "undefined" && window.addEventListener) {
@@ -684,6 +732,169 @@ var WFStorage = window.WFStorage;
   }
 })(typeof window !== "undefined" ? window : globalThis);
 /* WFPAGER:END */
+
+/* WFNAVSTATE:BEGIN */
+/* ---------------------------------------------------------------------
+   زر الرجوع يرجّعك لنفس المكان: لما تفتح سجل من قائمة وترجع بزر الرجوع
+   (في الموبايل أو المتصفح) الصفحة بتترسم من الأول، فكانت بترجع لأولها
+   وبالقائمة الافتراضية. هنا بنحفظ في history.state (خاص بالخطوة دي من
+   التاريخ بس) مكان السكرول وعدد الصفوف المعروضة في كل قائمة، ولما نرجع
+   بالرجوع/إعادة التحميل بنرجّعهم بعد ما الصفحة تترسم.
+   وكل صفحة فيها فلاتر/تبويبات بتكتب اختيارها في الرابط بـ WFNavState.setParams
+   (replaceState من غير خطوة جديدة في التاريخ)، فالرجوع بيفتحها بنفس الاختيار.
+   --------------------------------------------------------------------- */
+(function (w) {
+  "use strict";
+  if (typeof window === "undefined" || !w.history || typeof w.history.replaceState !== "function") {
+    w.WFNavState = { setParams: function () {}, getParam: function () { return null; }, keep: function () {}, save: function () {}, isReturn: false };
+    return;
+  }
+  var H = w.history, saveTimer = 0, lastSaveAt = 0;
+  function cur() { var s = H.state; return s && typeof s === "object" ? s : {}; }
+  function replace(state, url) { try { H.replaceState(state, "", url || location.href); return true; } catch (_) { return false; } }
+  function navType() {
+    try { var e = performance.getEntriesByType("navigation")[0]; if (e && e.type) return e.type; } catch (_) {}
+    try { var t = performance.navigation && performance.navigation.type; return t === 2 ? "back_forward" : t === 1 ? "reload" : "navigate"; } catch (_) {}
+    return "navigate";
+  }
+  var nt = navType();
+  var isReturn = nt === "back_forward" || nt === "reload";
+  function save() {
+    clearTimeout(saveTimer); saveTimer = 0; lastSaveAt = Date.now();
+    var s = Object.assign({}, cur());
+    s.wfY = Math.max(0, Math.round(w.scrollY || w.pageYOffset || 0));
+    try { if (w.WFPager && w.WFPager.snapshot) s.wfPg = w.WFPager.snapshot(); } catch (_) {}
+    replace(s);
+  }
+  function scheduleSave() {
+    if (restoring) return;
+    clearTimeout(saveTimer);
+    // Safari بيحدد عدد مرات replaceState، فبنحفظ بعد ما السكرول يهدى بس.
+    saveTimer = setTimeout(save, Date.now() - lastSaveAt > 1000 ? 250 : 700);
+  }
+  function setParams(obj) {
+    try {
+      var u = new URL(location.href);
+      Object.keys(obj || {}).forEach(function (k) {
+        var v = obj[k];
+        if (v === null || v === undefined || v === "" || v === false) u.searchParams.delete(k);
+        else u.searchParams.set(k, String(v));
+      });
+      var next = u.pathname + (u.searchParams.toString() ? "?" + u.searchParams.toString() : "") + u.hash;
+      if (next !== location.pathname + location.search + location.hash) replace(cur(), next);
+    } catch (_) {}
+  }
+  function getParam(k) { try { return new URLSearchParams(location.search).get(k); } catch (_) { return null; } }
+  /* keep({q:"routeSearch", c:"routeCenterFilter"}): بيرجّع قيمة كل خانة من الرابط (لو موجودة)
+     وبيكتب أي تغيير فيها في الرابط. تتنادى بعد ملء اختيارات الـselect وقبل أول رسم. */
+  function keep(map) {
+    Object.keys(map || {}).forEach(function (k) {
+      var el = document.getElementById(map[k]); if (!el || el.__wfKeep) return;
+      el.__wfKeep = 1;
+      var v = getParam(k);
+      if (v !== null) { try { el.value = v; } catch (_) {} }
+      var h = function () { var o = {}; o[k] = el.value || null; setParams(o); };
+      el.addEventListener("input", h); el.addEventListener("change", h);
+    });
+  }
+
+  /* ---- الاسترجاع ---- */
+  var restoring = false;
+  try { if ("scrollRestoration" in H) H.scrollRestoration = "manual"; } catch (_) {}
+  var st0 = cur();
+  if (isReturn && st0.wfPg && w.WFPager && w.WFPager.prime) w.WFPager.prime(st0.wfPg);
+  function restoreScroll(y) {
+    if (!(y > 0) || location.hash) return;
+    restoring = true;
+    var start = Date.now(), reachedAt = 0, stop = false;
+    function cancel() { stop = true; }
+    ["touchstart", "wheel", "keydown", "mousedown"].forEach(function (ev) { w.addEventListener(ev, cancel, { passive: true, once: true }); });
+    (function tick() {
+      if (stop) { restoring = false; return; }
+      var max = Math.max(0, (document.documentElement.scrollHeight || 0) - (w.innerHeight || 0));
+      var target = Math.min(y, max);
+      if (Math.abs((w.scrollY || 0) - target) > 2) w.scrollTo(0, target);
+      if (target >= y - 2) { if (!reachedAt) reachedAt = Date.now(); }
+      // بنستنى الرندر المتأخر (مزامنة/بيانات) ونفضل ثابتين شوية بعد ما نوصل.
+      if ((reachedAt && Date.now() - reachedAt > 700) || Date.now() - start > 4000) { restoring = false; return; }
+      setTimeout(tick, 60);
+    })();
+  }
+  if (isReturn && st0.wfY > 0) {
+    var go = function () { setTimeout(function () { restoreScroll(st0.wfY); }, 0); };
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go();
+  }
+
+  w.addEventListener("scroll", scheduleSave, { passive: true });
+  w.addEventListener("pagehide", save);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") save(); });
+  // قبل ما نسيب الصفحة بلينك نحفظ فورًا (pagehide ممكن يبقى متأخر على بعض الموبايلات).
+  document.addEventListener("click", function (e) {
+    var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+    if (a && !a.target && !/^(tel:|mailto:|#|javascript:)/i.test(a.getAttribute("href") || "")) save();
+  }, true);
+  document.addEventListener("wf-pager-more", scheduleSave);
+  /* bfcache: الموبايل ساعات بيرجّع الصفحة من الذاكرة زي ما هي من غير ما يشغّلها تاني. لو البيانات
+     اتغيرت وإنت في صفحة تانية (قفلت الأمر/غيرت حالته)، القايمة هتبان قديمة — فنعيد تحميلها
+     (الرابط والسكرول وعدد الصفوف بيرجعوا زي ما هما). */
+  var REV = "wf_data_rev", hideRev = null;
+  function rev() { try { return sessionStorage.getItem(REV) || ""; } catch (_) { return ""; } }
+  var bumpAt = 0;
+  function bump() { var n = Date.now(); if (n - bumpAt < 50) return; bumpAt = n; try { sessionStorage.setItem(REV, String(n)); } catch (_) {} }
+  w.wfBumpDataRev = bump;
+  try { if (w.WFStorage && typeof w.WFStorage.subscribe === "function") w.WFStorage.subscribe(function (key) { if (key !== REV) bump(); }); } catch (_) {}
+  w.addEventListener("pagehide", function () { hideRev = rev(); });
+  w.addEventListener("pageshow", function (e) {
+    if (e && e.persisted && hideRev !== null && rev() !== hideRev) { try { location.reload(); } catch (_) {} }
+  });
+  w.WFNavState = { setParams: setParams, getParam: getParam, keep: keep, save: save, isReturn: isReturn };
+})(typeof window !== "undefined" ? window : globalThis);
+/* WFNAVSTATE:END */
+
+/* WFSTATSENTRY:BEGIN */
+/* ---------------------------------------------------------------------
+   سطر «📊 إحصائيات القسم» تحت عنوان كل صفحة رئيسية: بيفتح صفحة التقارير على أقسام الصفحة دي بس
+   (reports.html?only=...). بيختفي لوحده عن اللي مالوش صلاحية «التقارير» (data-perm).
+   --------------------------------------------------------------------- */
+(function (w) {
+  "use strict";
+  if (typeof document === "undefined" || !document.addEventListener) return;
+  var MAP = {
+    "requests.html": ["orders,response,returns,collect", "أوامر الشغل"],
+    "customers.html": ["customers,areas", "العملاء"],
+    "devices.html": ["devices", "الأجهزة والأعطال"],
+    "inventory.html": ["inventory", "المخزن"],
+    "wallets.html": ["finance,collect", "الحسابات"],
+    "treasury.html": ["treasury", "الخزنة"],
+    "route.html": ["response,areas", "خط السير والمواعيد"],
+    "tasks.html": ["tasks", "المهام"],
+    "warranty.html": ["warranty,returns", "الضمان والمرتجعات"],
+    "dispatch.html": ["techs,response", "الفنيين"],
+    "custody.html": ["techs", "الفنيين"],
+    "followup.html": ["customers", "العملاء"]
+  };
+  function add() {
+    if (typeof location === "undefined" || !document.querySelector || !document.createElement) return;
+    var page = (String(location.pathname || "").split("/").pop() || "index.html").toLowerCase(), m = MAP[page];
+    if (!m || document.querySelector(".wf-stats-entry")) return;
+    var h1 = document.querySelector("main h1"); if (!h1) return;
+    var after = (h1.closest && h1.closest(".page-head")) || h1;
+    if (!document.getElementById("wf-stats-entry-css")) {
+      var st = document.createElement("style"); st.id = "wf-stats-entry-css";
+      st.textContent = ".wf-stats-entry{display:flex;align-items:center;gap:10px;margin:6px 0 12px;padding:11px 14px;border:1px solid var(--border);border-radius:14px;background:var(--bg-elevated);color:var(--text);text-decoration:none;font-weight:700}" +
+        ".wf-stats-entry:active{opacity:.75}.wf-stats-entry i{font-style:normal;font-size:20px}.wf-stats-entry span{flex:1}.wf-stats-entry small{display:block;font-weight:400;font-size:12px;color:var(--text-muted)}.wf-stats-entry em{font-style:normal;font-size:20px;color:var(--text-muted)}@media print{.wf-stats-entry{display:none}}";
+      document.head.appendChild(st);
+    }
+    var a = document.createElement("a");
+    a.className = "wf-stats-entry no-print"; a.setAttribute("data-perm", "reports.view");
+    a.href = "reports.html?only=" + encodeURIComponent(m[0]) + "&t=" + encodeURIComponent(m[1]);
+    a.innerHTML = '<i aria-hidden="true">📊</i><span>إحصائيات ' + m[1].replace(/[<>&]/g, "") + "<small>أرقام وتحليلات القسم ده — اضغط للتفاصيل</small></span><em aria-hidden=\"true\">›</em>";
+    after.insertAdjacentElement("afterend", a);
+  }
+  function safeAdd() { try { add(); } catch (e) {} }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", safeAdd); else safeAdd();
+})(typeof window !== "undefined" ? window : globalThis);
+/* WFSTATSENTRY:END */
 
 /* ---------------------------------------------------------------------
    دعم الروابط اللي بتوجّه لسجل معيّن جوه صفحة (زي فحص سلامة البيانات في

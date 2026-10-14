@@ -51,6 +51,9 @@
     }
   } catch (_) {}
   function walPut(key, value, remove) {
+    // القيم الضخمة (آلاف الأوامر) ما بتتسجلش في سجل الأمان المتزامن: الكتابة دي بتبطّأ كل حفظ،
+    // وأصلًا بتفشل لأن مساحة التخزين القديم حوالي 5 ميجا.
+    if (!remove && value && String(value).length > 1500000) return 0;
     try {
       const seq = (walSeq.get(key) || 0) + 1; walSeq.set(key, seq);
       window.localStorage.setItem(WAL_PREFIX + key, JSON.stringify({ t: Date.now(), s: seq, r: remove ? 1 : 0, v: remove ? null : String(value) }));
@@ -62,6 +65,12 @@
     try { window.localStorage.removeItem(WAL_PREFIX + key); } catch (_) {}
   }
 
+  const persisted = new Map(); // آخر محتوى اتكتب في مخزن كل مجموعة (بصمته + نص كل سجل) عشان الحفظ يكتب الفرق بس
+  function hashText(text) {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36) + ":" + text.length;
+  }
   function fingerprint(value) {
     const text = JSON.stringify(value);
     let h = 2166136261;
@@ -357,13 +366,30 @@
       return new Promise((resolve, reject) => {
         const names = entries.map(([key]) => STORES[key].name).concat([META, KV_STORE]);
         const tx = db.transaction(names, "readwrite"), meta = tx.objectStore(META), kv = tx.objectStore(KV_STORE);
+        const fresh = {};
         entries.forEach(([key, value]) => {
           const records = validRecords(value), store = tx.objectStore(STORES[key].name);
-          store.clear(); records.forEach(record => store.put(record));
-          meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
-          kv.put({ key, value: JSON.stringify(records), at: Date.now() });
+          const rows = records.map(r => JSON.stringify(r)), text = "[" + rows.join(",") + "]", fp = hashText(text), prev = persisted.get(key);
+          fresh[key] = { fp, rows: new Map(records.map((r, i) => [String(r.id), { id: r.id, json: rows[i] }])) };
+          const putAll = () => { store.clear(); records.forEach(record => store.put(record)); };
+          if (!prev) putAll();
+          else {
+            // كتابة اللي اتغيّر بس: قبل كده كل حفظ (تغيير حالة أمر واحد مثلًا) كان بيمسح ويكتب كل الأوامر من الأول،
+            // ومع آلاف الأوامر ده كان بياخد ثواني. بنتأكد الأول إن المخزن لسه زي آخر مرة كتبناه (تاب تاني ماغيّرهوش).
+            const getMeta = meta.get(key);
+            getMeta.onsuccess = () => {
+              const prior = getMeta.result;
+              if (!prior || prior.fingerprint !== prev.fp) return putAll();
+              const seen = new Set();
+              records.forEach((r, i) => { const k = String(r.id); seen.add(k); const old = prev.rows.get(k); if (!old || old.json !== rows[i]) store.put(r); });
+              prev.rows.forEach((old, k) => { if (!seen.has(k)) store.delete(old.id); });
+            };
+          }
+          meta.put({ key, version: 1, count: records.length, fingerprint: fp, updatedAt: Date.now() });
+          kv.put({ key, value: text, at: Date.now() });
         });
         tx.oncomplete = () => {
+          Object.keys(fresh).forEach(key => persisted.set(key, fresh[key]));
           entries.forEach(([key, value]) => {
             if ((snapshotVersions.get(key) || 0) !== expectedVersions.get(key)) return;
             setSnapshot(key, value);
@@ -422,12 +448,14 @@
         let records = [];
         try { records = validRecords(JSON.parse(WFStorage.getItem(key) || "[]")); } catch (_) {}
         const store = tx.objectStore(STORES[key].name), getMeta = meta.get(key);
+        const rows = records.map(r => JSON.stringify(r)), fp = hashText("[" + rows.join(",") + "]");
         getMeta.onsuccess = () => {
           const prior = getMeta.result;
-          if (!prior || prior.fingerprint !== fingerprint(records)) {
+          if (!prior || prior.fingerprint !== fp) {
             store.clear(); records.forEach(record => store.put(record));
-            meta.put({ key, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now(), migratedFrom: "keyValues" });
+            meta.put({ key, version: 1, count: records.length, fingerprint: fp, updatedAt: Date.now(), migratedFrom: "keyValues" });
           }
+          persisted.set(key, { fp, rows: new Map(records.map((r, i) => [String(r.id), { id: r.id, json: rows[i] }])) });
         };
         getMeta.onerror = () => { try { tx.abort(); } catch (_) {} };
       });

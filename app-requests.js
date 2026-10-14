@@ -1,7 +1,47 @@
 /* app-requests.js — قسم أوامر الشغل: النموذج، الحفظ، العرض، البروفايل، دورة الحالة والانتقالات، متابعة الورشة، قطع الغيار داخل الأمر. */
-function initRequests(){let f=document.getElementById("requestForm");if(!f)return;let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.r).find(x=>String(x.id)===String(editId)):null;if(existing?.closed){alert("أمر الشغل مغلق نهائيًا ولا يمكن تعديله.");location.href=`request.html?id=${existing.id}`;return}currentParts=existing?.parts?existing.parts.map(x=>({...x})):[];fillCustomerAutocomplete("rCustomer",existing?.customerId||q.get("customer")||"");fillAddress(rAddress,rCustomer.value,existing?.addressKey||"main");fillDevice(rDevice,rCustomer.value,existing?.deviceId||q.get("device")||"");let s=settings(),defPlace=existing?.executionPlace||(s.executionPlaces||[])[0]||"عند العميل",defWs=existing?.workshopStatus||(s.workshopStatuses||[])[0]||"غير مطلوب",defStatus=existing?.status||"جديد";fillList(rExecutionPlace,"executionPlaces",defPlace,"اختر مكان التنفيذ");fillList(rWorkshopStatus,"workshopStatuses",defWs,"اختر حالة الورشة");if(document.getElementById("rDepositWallet"))fillList(rDepositWallet,"wallets",existing?.depositWallet||((+existing?.deposit||0)>0?"":resolveDefaultWallet()),"بدون تحديد");rStatus.innerHTML=nextStatusOptions(defStatus).map(x=>`<option ${x===defStatus?"selected":""}>${esc(x)}</option>`).join("");if(document.getElementById("rTag"))fillListSearch("rTag","orderTag",existing?.tag||"");rCustomer.onchange=()=>{fillAddress(rAddress,rCustomer.value,"main");fillDevice(rDevice,rCustomer.value,"")};rLabor.oninput=calc;rDeposit.oninput=calc;if(existing){rVisit.value=existing.visit||"";rFault.value=existing.fault||"";rWork.value=existing.work||"";rLabor.value=(+existing.labor||0).toFixed(2);rDeposit.value=existing.deposit||0;renderOrderParts();f.classList.remove("hidden");f.querySelector("#requestSubmitBtn").textContent="💾 حفظ التعديلات وفتح أمر الشغل"}else if(q.get("customer")||q.get("device")||q.get("add")){f.classList.remove("hidden")}f.onsubmit=e=>saveRequest(e,existing);renderRequests();calc()}
+function initRequests(){let f=document.getElementById("requestForm");if(!f)return;let q=new URLSearchParams(location.search),editId=q.get("edit"),existing=editId?arr(K.r).find(x=>String(x.id)===String(editId)):null;if(existing?.closed){alert("أمر الشغل مغلق نهائيًا ولا يمكن تعديله.");location.href=`request.html?id=${existing.id}`;return}currentParts=existing?.parts?existing.parts.map(x=>({...x})):[];{const ep=document.getElementById("rExtPay");if(ep)ep.outerHTML=extPaySelectHtml("rExtPay",existing)}fillCustomerAutocomplete("rCustomer",existing?.customerId||q.get("customer")||"");fillAddress(rAddress,rCustomer.value,existing?.addressKey||"main");fillDevice(rDevice,rCustomer.value,existing?.deviceId||q.get("device")||"");let s=settings(),defPlace=existing?.executionPlace||(s.executionPlaces||[])[0]||"عند العميل",defWs=existing?.workshopStatus||(s.workshopStatuses||[])[0]||"غير مطلوب",defStatus=existing?.status||"جديد";fillList(rExecutionPlace,"executionPlaces",defPlace,"اختر مكان التنفيذ");fillList(rWorkshopStatus,"workshopStatuses",defWs,"اختر حالة الورشة");if(document.getElementById("rDepositWallet"))fillList(rDepositWallet,"wallets",existing?.depositWallet||((+existing?.deposit||0)>0?"":resolveDefaultWallet()),"بدون تحديد");rStatus.innerHTML=nextStatusOptions(defStatus).map(x=>`<option ${x===defStatus?"selected":""}>${esc(x)}</option>`).join("");if(document.getElementById("rTag"))fillListSearch("rTag","orderTag",existing?.tag||"");rCustomer.onchange=()=>{fillAddress(rAddress,rCustomer.value,"main");fillDevice(rDevice,rCustomer.value,"")};rLabor.oninput=calc;rDeposit.oninput=calc;if(existing){rVisit.value=existing.visit||"";rFault.value=existing.fault||"";rWork.value=existing.work||"";rLabor.value=(+existing.labor||0).toFixed(2);rDeposit.value=existing.deposit||0;renderOrderParts();f.classList.remove("hidden");f.querySelector("#requestSubmitBtn").textContent="💾 حفظ التعديلات وفتح أمر الشغل"}else if(q.get("customer")||q.get("device")||q.get("add")){f.classList.remove("hidden")}f.onsubmit=e=>saveRequest(e,existing);renderRequests();calc()}
 function fillDevice(el,cid,selected=""){el.innerHTML='<option value="">اختر الجهاز</option>'+arr(K.d).filter(d=>d.customerId===cid).map(d=>`<option value="${d.id}" ${d.id===selected?"selected":""}>${esc(d.type)} — ${esc(d.brand)}</option>`).join("")}
 let currentParts=[];
+/* ---------- تمن القطعة اللي من بره المخزن اتدفع منين؟ (من الإدارة: صفحة الأمر / خط السير / نموذج الأمر) ----------
+   «w:<محفظة>» → حركة صرف من المحفظة دي فورًا (لو هي عهدة فني الأمر بتتحسب عليه) • «own» → الفني دفعها من جيبه: بتتضاف لمستحقاته
+   «none» → من غير أي حساب. الحركات مربوطة بالقطعة (payKey) فشيل القطعة/إلغاء الأمر بيشيلها وتعديل الكمية بيعدّلها. */
+function extPayLabel(p){if(!p||!p.external||!p.paidBy)return"";const w=p.payWallet?` (${p.payWallet})`:"";return({custody:"💼 من عهدة الفني"+w,own:"👛 الفني دفعها من جيبه (تتردّ له)",workshop:"🏢 دفعتها الإدارة"+w,none:"🚫 من غير مصروف"})[p.paidBy]||""}
+function extPaySelectHtml(selId,order){const ws=(settings().wallets||[]).map(String),tw=String(order?.techWallet||"").trim();let o=`<option value="">💵 تمنها اتدفع منين؟</option>`;ws.forEach(w=>{o+=`<option value="w:${escAttr(w)}">${w===tw?"💼 من عهدة الفني":"🏢 من محفظة"}: ${esc(w)}</option>`});if(order?.techId)o+=`<option value="own">👛 الفني دفعها من جيبه — تتردّ له مع مستحقاته</option>`;o+=`<option value="none">🚫 مفيش مصروف (العميل جابها / اتسجلت قبل كده)</option>`;return`<select id="${selId}" class="ext-pay-select">${o}</select>`}
+function extPayPick(val,order,cost){val=String(val||"");if(!(+cost>0))return{paidBy:"none"};if(!val)return null;if(val==="none")return{paidBy:"none"};if(val==="own")return order?.techId?{paidBy:"own"}:null;if(val.startsWith("w:")){const w=val.slice(2);return{paidBy:w===String(order?.techWallet||"").trim()?"custody":"workshop",payWallet:w}}return null}
+function extPartAmount(p){return Math.round((+p.cost||0)*(+p.qty||0)*100)/100}
+function syncExtPartPayments(order,oldParts){
+  if(!order)return true;
+  // إلغاء الأمر مابيلغيش مصروف القطعة: الفلوس اتصرفت فعلًا (لو القطعة رجعت للمورد امسح الحركة من المحفظة)
+  const live=(order.parts||[]).filter(p=>p&&p.external&&p.payKey);
+  const want={};live.forEach(p=>{if((p.paidBy==="workshop"||p.paidBy==="custody")&&p.payWallet&&extPartAmount(p)>0)want["extpart-"+p.payKey]=p});
+  let a=arr(K.wtx),changed=false;const seen={},now=new Date();
+  a=a.map(x=>{
+    if(!x||x.source!=="ext-part"||String(x.orderId)!==String(order.id))return x;
+    const p=want[x.refKey];
+    if(x.deleted){if(p&&!x.userDeleted&&!seen[x.refKey]){seen[x.refKey]=1;changed=true;return{...x,deleted:false,amount:extPartAmount(p),wallet:p.payWallet}}if(p)seen[x.refKey]=1;return x}
+    seen[x.refKey]=1;
+    if(!p){changed=true;return{...x,deleted:true}}
+    if(x.manualOverride)return x;
+    if(Math.abs((+x.amount||0)-extPartAmount(p))>0.004||x.wallet!==p.payWallet){changed=true;return{...x,amount:extPartAmount(p),wallet:p.payWallet}}
+    return x;
+  });
+  Object.keys(want).forEach(k=>{if(seen[k])return;const p=want[k];changed=true;a.push({id:k,refKey:k,manualOverride:false,deleted:false,type:"out",amount:extPartAmount(p),wallet:p.payWallet,category:"مشتريات قطع غيار",reason:`🧳 قطعة: ${p.name||""} × ${p.qty} (أمر ${order.no||""})`+(p.paidBy==="custody"?` — من عهدة ${order.techName||"الفني"}`:""),note:"",date:localDateKey(now),time:now.toTimeString().slice(0,5),source:"ext-part",orderId:order.id,createdAt:now.toISOString()})});
+  const ok=changed?put(K.wtx,a):true;
+  // «من جيبه»: مصروف معتمد باسم الفني (بيتضاف لمستحقاته). مفتاح ثابت = ما يتكررش.
+  try{
+    const fs=window.firebase&&window.firebase.firestore?window.firebase.firestore():null;
+    if(fs){
+      const prev={};(oldParts||[]).forEach(p=>{if(p&&p.external&&p.payKey&&p.paidBy==="own")prev[p.payKey]=p});
+      const cur={};live.forEach(p=>{if(p.paidBy==="own"&&order.techId&&extPartAmount(p)>0)cur[p.payKey]=p});
+      Object.keys(cur).forEach(k=>{const p=cur[k],o=prev[k];if(o&&extPartAmount(o)===extPartAmount(p)&&o.qty===p.qty)return;const at=new Date().toISOString();fs.collection("techExpenses").doc("extpart-"+k).set({techId:String(order.techId),techName:order.techName||"",wallet:order.techWallet||"",amount:extPartAmount(p),note:`قطعة: ${p.name||""} × ${p.qty}`,orderId:String(order.id),orderNo:String(order.no||""),status:"approved",pay:"own",category:"part",at,decidedAt:at,decidedBy:(window.firebase.auth().currentUser||{}).uid||"",decisionNote:"سجّلتها الإدارة مع الأمر",source:"admin-part"}).catch(e=>console.warn("ext part own",e))});
+      Object.keys(prev).forEach(k=>{if(!cur[k])fs.collection("techExpenses").doc("extpart-"+k).delete().catch(()=>{})});
+      // قطعة ضافها الفني وشالتها الإدارة: مصروفها لو لسه معلّق يتلغي
+      (oldParts||[]).forEach(p=>{if(p&&p.external&&p.expenseId&&!(order.parts||[]).some(n=>n&&n.expenseId===p.expenseId)){const ref=fs.collection("techExpenses").doc(p.expenseId);ref.get().then(d=>{if(d.exists&&(d.data()||{}).status==="pending")return ref.delete()}).catch(()=>{})}});
+    }
+  }catch(e){console.warn("ext part sync",e)}
+  return ok;
+}
+
 let _requestSaving=false;
 const _requestMutationLocks=new Set();
 async function withRequestMutationLock(requestId,work){const key=String(requestId||"");if(!key||_requestMutationLocks.has(key))return false;_requestMutationLocks.add(key);try{return await work()}finally{_requestMutationLocks.delete(key)}}
@@ -34,10 +74,10 @@ function selectOrderPart(pid){
 }
 function hideOrderPartResults(){setTimeout(()=>document.getElementById("rPartResults")?.classList.add("hidden"),150)}
 function addPartToOrder(){let hidden=document.getElementById("rPart"),pid=hidden?.value||"",q=+(document.getElementById("rPartQty")?.value||1),p=arr(K.p).find(x=>x.id===pid);if(!pid||!p)return alert("اكتب اسم القطعة واختر واحدة من نتائج البحث أولًا.");if(!Number.isInteger(q)||q<1)return alert("اكتب كمية صحيحة كعدد صحيح.");let existing=currentParts.find(x=>!x.external&&x.partId===pid&&+x.sell===+p.use&&+x.cost===+p.buy),already=existing?(+existing.qty||0):0,available=+(p.qty||0),editing=!!new URLSearchParams(location.search).get("edit"),required=editing?q:q+already;if(required>available)return alert(`الكمية المطلوبة ${required} أكبر من المتاح ${available}.`);if(existing)existing.qty=already+q;else currentParts.push({partId:pid,qty:q,sell:+p.use||0,cost:+p.buy||0});renderOrderParts();calc();if(hidden)hidden.value="";const search=document.getElementById("rPartSearch");if(search)search.value="";if(document.getElementById("rPartQty"))document.getElementById("rPartQty").value=1}
-function addExternalPartToOrder(){let nameEl=document.getElementById("rExtName"),buyEl=document.getElementById("rExtBuy"),sellEl=document.getElementById("rExtSell"),qtyEl=document.getElementById("rExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");currentParts.push({external:true,name,qty:q,sell,cost});renderOrderParts();calc();if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1}
+function addExternalPartToOrder(){let nameEl=document.getElementById("rExtName"),buyEl=document.getElementById("rExtBuy"),sellEl=document.getElementById("rExtSell"),qtyEl=document.getElementById("rExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");const formOrder=arr(K.r).find(x=>String(x.id)===String(new URLSearchParams(location.search).get("edit")))||null,pick=extPayPick(document.getElementById("rExtPay")?.value,formOrder,cost*q);if(!pick)return alert("اختار تمن القطعة اتدفع منين (محفظة، عهدة الفني، من جيب الفني، أو مفيش مصروف).");currentParts.push({external:true,name,qty:q,sell,cost,payKey:id(),addedBy:"admin",...pick});renderOrderParts();calc();if(document.getElementById("rExtPay"))document.getElementById("rExtPay").value="";if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1}
 function updateOrderPartQty(i,value){let q=+value;if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!currentParts[i])return;currentParts[i].qty=q;calc();renderOrderParts()}
 function removeOrderPart(i){if(!currentParts[i])return;currentParts.splice(i,1);renderOrderParts();calc()}
-function renderOrderParts(){let el=document.getElementById("orderParts");el.innerHTML=currentParts.map((x,i)=>{let p=x.external?null:arr(K.p).find(z=>z.id===x.partId);let nm=x.external?(x.name||"قطعة خارجية"):(p?.name||"قطعة محذوفة");let amount=x.qty*x.sell;let amountLabel=`${amount.toFixed(2)} ج`;return `<div class="part-row${x.external?" part-row-external":""}"><span>${x.external?"🧳 ":""}${esc(nm)}${x.external?` <small class="ext-badge">خارج المخزن</small>`:""}</span><input type="number" min="1" value="${x.qty}" data-wf-event="change" data-wf-code="updateOrderPartQty(${i},this.value)"><span title="${x.external?`سعر الشراء ${(+x.cost||0).toFixed(2)} ج`:""}">${amountLabel}</span><button type="button" class="secondary" data-wf-event="click" data-wf-code="removeOrderPart(${i})">🗑️</button></div>`}).join("")}
+function renderOrderParts(){let el=document.getElementById("orderParts");el.innerHTML=currentParts.map((x,i)=>{let p=x.external?null:arr(K.p).find(z=>z.id===x.partId);let nm=x.external?(x.name||"قطعة خارجية"):(p?.name||"قطعة محذوفة");let amount=x.qty*x.sell;let amountLabel=`${amount.toFixed(2)} ج`;return `<div class="part-row${x.external?" part-row-external":""}"><span>${x.external?"🧳 ":""}${esc(nm)}${x.external?` <small class="ext-badge">خارج المخزن</small>`:""}${extPayLabel(x)?`<small class="ext-cost-note"> ${esc(extPayLabel(x))}</small>`:""}</span><input type="number" min="1" value="${x.qty}" data-wf-event="change" data-wf-code="updateOrderPartQty(${i},this.value)"><span title="${x.external?`سعر الشراء ${(+x.cost||0).toFixed(2)} ج`:""}">${amountLabel}</span><button type="button" class="secondary" data-wf-event="click" data-wf-code="removeOrderPart(${i})">🗑️</button></div>`}).join("")}
 function calc(){let ps=partsStockTotal(currentParts),t=ps+(+rLabor.value||0),dep=+rDeposit.value||0;rPartsTotal.value=ps.toFixed(2);rTotal.value=t.toFixed(2);remainBox.classList.toggle("hidden",dep<=0);rRemain.value=Math.max(0,t-dep).toFixed(2)}
 function adjustStockForOrder(oldParts,newParts,requestId,stock=arr(K.p),moves=arr(K.m)){let delta={};oldParts.filter(x=>x.partId&&!x.external).forEach(x=>delta[x.partId]=(delta[x.partId]||0)+x.qty);newParts.filter(x=>x.partId&&!x.external).forEach(x=>delta[x.partId]=(delta[x.partId]||0)-x.qty);for(let [pid,d] of Object.entries(delta)){if(!d)continue;let p=stock.find(z=>z.id===pid);if(!p)return false;if(d>0)p.qty=(+p.qty||0)+d;else{let need=-d;if(need>(+p.qty||0))return false;p.qty=(+p.qty||0)-need}moves.push({id:id(),partId:pid,type:d>0?"إرجاع بسبب تعديل أمر":"خروج بسبب تعديل أمر",qty:Math.abs(d),requestId,at:new Date().toISOString()})}return {stock,moves}}
 // saveRequest() كانت بتخلط بين قراءة الفورم من الـ DOM ومنطق الحفظ والمخزون في
@@ -63,6 +103,7 @@ async function persistRequestRecord(formData,existing){
       // الأمر الملغي لا تكون قطعه محجوزة من المخزن؛ نحسب فرق المخزون
       // بين الحالة السابقة والجديدة مرة واحدة فقط، حتى لا تتكرر الإعادة
       // أو الخصم عند تعديل أمر ملغي أو إعادة فتحه.
+      const prevParts=(existing.parts||[]).map(x=>({...x}));
       let oldParts=existing.status==="ملغي"?[]:(existing.parts||[]);
       let newParts=formData.status==="ملغي"?[]:formData.parts;
       let stock=arr(K.p),moves=arr(K.m),adjusted=adjustStockForOrder(oldParts,newParts,existing.id,stock,moves);
@@ -84,6 +125,7 @@ async function persistRequestRecord(formData,existing){
       if(!saved)return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
       syncTreasuryForOrderDeposit(existing);
       if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(existing))return{ok:false,error:"تعذر حفظ حركة العربون. تم التراجع عن العملية."};
+      if(!syncExtPartPayments(existing,prevParts))return{ok:false,error:"تعذر حفظ مصروف القطع اللي من بره المخزن. تم التراجع عن العملية."};
       return{ok:true,request:existing}
     }
     let r={id:id(),no:orderNo(),customerId:formData.customerId,deviceId:formData.deviceId,addressKey:formData.addressKey,visit:formData.visit,status:formData.status,executionPlace:formData.executionPlace,workshopStatus:formData.workshopStatus,partsWaiting:formData.partsWaiting,tag:formData.tag,fault:formData.fault,work:formData.work,labor:formData.labor,parts:formData.parts,partsTotal:formData.partsTotal,partsCost,total:formData.total,deposit:formData.deposit,depositWallet:formData.depositWallet,remain:Math.max(0,formData.total-formData.deposit),closed:false,createdAt:new Date().toISOString()};
@@ -94,6 +136,7 @@ async function persistRequestRecord(formData,existing){
     if(!await commitStorageAsync({[K.p]:stock,[K.m]:moves,[K.r]:arr(K.r).concat(r)}))return{ok:false,error:"تعذر حفظ الأمر والمخزون. لم يتم تغيير البيانات."};
     syncTreasuryForOrderDeposit(r);
     if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false,error:"تعذر حفظ حركة العربون. تم التراجع عن العملية."};
+    if(!syncExtPartPayments(r,[]))return{ok:false,error:"تعذر حفظ مصروف القطع اللي من بره المخزن. تم التراجع عن العملية."};
     return{ok:true,request:r}
   })
 }
@@ -119,9 +162,8 @@ async function saveRequest(e,existing=null){
   if(existing&&existing.status!==formData.status){
     if(!canTransitionStatus(existing.status,formData.status)){alert(`لا يمكن الانتقال من حالة «${existing.status}» إلى «${formData.status}» مباشرة.`);return}
     if(formData.status==="ملغي"){
-      let reason=prompt("سبب إلغاء أمر الشغل (مطلوب):","");
+      let reason=askCancelReason();
       if(reason===null)return;
-      reason=reason.trim();
       if(!reason){alert("سبب الإلغاء مطلوب لإلغاء أمر الشغل.");return}
       formData.cancelReason=reason;
     }
@@ -132,7 +174,9 @@ async function saveRequest(e,existing=null){
   try{
     let result=await persistRequestRecord(formData,existing);
     if(!result.ok)return alert(result.error);
-    if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${result.request.id}`);else location.href=`request.html?id=${result.request.id}`
+    // تعديل أمر موجود: نرجع لصفحة الأمر نفسها (مش خطوة جديدة) عشان زر الرجوع مايفتحش فورم التعديل تاني.
+    if(existing&&typeof wfLeaveTo==="function")await wfLeaveTo(`request.html?id=${result.request.id}`,true);
+    else if(typeof wfNavigate==="function")await wfNavigate(`request.html?id=${result.request.id}`);else location.href=`request.html?id=${result.request.id}`
   }finally{_requestSaving=false}
 }
 // renderRequests: كانت هنا نسخة "أساسية" بتفلتر بعناصر statusFilter/workshopFilter
@@ -147,7 +191,7 @@ async function saveRequest(e,existing=null){
 // بس بأقل شكل ممكن (تخرج فورًا لو #requestList مش موجود، وهو الحال دايمًا هنا).
 function renderRequests(){if(!document.getElementById("requestList"))return}
 
-async function requestProfile(){let el=document.getElementById("requestProfile");if(!el)return;let r=arr(K.r).find(x=>String(x.id)===String(new URLSearchParams(location.search).get("id")));if(!r){el.innerHTML="<div class='item'>الأمر غير موجود.</div>";return}let parts=(r.parts||[]).map(x=>{let p=x.external?null:arr(K.p).find(z=>z.id===x.partId);let nm=x.external?(x.name||"قطعة خارجية"):(p?.name||"قطعة محذوفة");let amount=(x.qty||0)*(x.sell||0);let amountLabel=`${amount.toFixed(2)} ج`;let extCost=x.external?`<div class="ext-cost-note">💵 سعر الشراء: ${(+x.cost||0).toFixed(2)} ج × ${x.qty} = ${((+x.cost||0)*(x.qty||0)).toFixed(2)} ج</div>`:"";return `<div class="part-row compact-part${x.external?" part-row-external":""}"><span>${x.external?"🧳":"🔧"} ${esc(nm)}${x.external?' <small class="ext-badge">خارج المخزن</small>':""}${extCost}</span><span>× ${x.qty}</span><strong>${amountLabel}</strong></div>`}).join("");let canEdit=!r.closed&&!r.paid;let cust=arr(K.c).find(c=>c.id===r.customerId)||{};let custPhone=(cust.phone||"").trim();let paid=!!r.paid;let ws=r.workshopStatus||"غير مطلوب";let workshopTrack=ws!=="غير مطلوب"?`<div class="workshop-track"><h3>🏭 متابعة الجهاز داخل الورشة</h3><div class="workshop-state"><b>${esc(ws)}</b>${r.workshopAt?`<small>آخر تحديث: ${new Date(r.workshopAt).toLocaleString("ar-EG")}</small>`:""}${r.pulledAt?`<small>📦 تم سحب الجهاز: ${new Date(r.pulledAt).toLocaleString("ar-EG")}</small>`:""}</div><div class="workshop-actions">${["تم السحب","تم التسليم"].map(x=>`<button type="button" class="secondary mini-action ${ws===x?"active-track":""}" data-wf-event="click" data-wf-code="setWorkshopStatus('${r.id}','${x}')">${x}</button>`).join("")}</div></div>`:`<div class="workshop-track"><h3>🏭 سحب الجهاز للورشة</h3><div class="hint">لو الجهاز يحتاج إصلاح داخل الورشة، سجّل سحبه هنا وسيظهر في أوامر الورشة ويمكن متابعة حالته حتى التسليم.</div><button type="button" class="secondary mini-action workshop-pull" data-wf-event="click" data-wf-code="requestWorkshopPull('${r.id}')">📦 سحب الجهاز للورشة</button></div>`;el.innerHTML=`<div class="profile request-one-page ps-context-target" data-ps-title="أمر الشغل ${esc(r.no)}"><div class="request-top"><div><h1 class="profile-title request-title">🛠️ ${esc(r.no)}</h1>${psActions("أمر الشغل "+r.no)}<span class="badge">${paid?"مدفوع بالكامل":esc(r.status)}${r.closed?" 🔒":""}</span>${canReturnRequest(r)?`<button type="button" class="secondary mini-action return-btn" data-wf-event="click" data-wf-code="markRequestReturned('${r.id}')">🔄 مرتجع${r.closed?` (متبقي ${Math.max(0,returnWindowDaysLeft(r))} يوم)`:""}</button>`:(r.closed&&r.status==="مكتمل"?`<span class="badge">⏹️ انتهت مهلة المرتجع</span>`:"")}</div><div class="compact-actions">${canEdit?`<button class='secondary mini-action' data-wf-event="click" data-wf-code="editRequest('${r.id}')">✏️ تعديل</button>`:""}<button class='danger-btn mini-action' data-wf-event="click" data-wf-code="deleteRequestRecord('${r.id}')">🗑️ حذف</button></div></div>${requestCommActionsHtml(r,custPhone)}<div class="request-grid"><div class="kv"><b>👤 العميل</b><a href="customer.html?id=${r.customerId}">${esc(customerName(r.customerId))}</a></div><div class="kv"><b>📞 التليفون</b>${contactLinksHtml(custPhone)}</div><div class="kv"><b>🔧 الجهاز</b><a href="device.html?id=${r.deviceId}">${esc(deviceName(r.deviceId))}</a></div><div class="kv"><b>📍 العنوان</b>${esc(addressText((arr(K.c).find(c=>c.id===r.customerId)||{}).mainAddress||{}))}</div><div class="kv"><b>🏷️ التصنيف اليدوي</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestTag('${r.id}',this.value)"><option value="" ${!r.tag?"selected":""}>بدون تصنيف</option>${(settings().orderTags||[]).concat(r.tag&&!(settings().orderTags||[]).includes(r.tag)?[r.tag]:[]).map(x=>`<option value="${esc(x)}" ${r.tag===x?"selected":""}>${esc(x)}${r.tag===x&&!(settings().orderTags||[]).includes(x)?" (قديم/متوقف)":""}</option>`).join("")}<option value="__add__">➕ إضافة تصنيف جديد…</option></select>`:(esc(r.tag)||"بدون تصنيف")}</div><div class="kv"><b>📅 موعد الزيارة</b>${canEdit?`<input type="datetime-local" class="inline-status" value="${r.visit||""}" data-wf-event="change" data-wf-code="changeRequestVisit('${r.id}',this.value)">`:(r.visit?esc(new Date(r.visit).toLocaleString("ar-EG")) : "—")}</div><div class="kv"><b>🏠 التنفيذ</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestExecutionPlace('${r.id}',this.value)">${(settings().executionPlaces||["عند العميل","الورشة"]).map(x=>`<option ${r.executionPlace===x?"selected":""}>${esc(x)}</option>`).join("")}</select>`:(r.executionPlace==="الورشة"?"🏭 الورشة":"🏠 عند العميل")}</div><div class="kv"><b>🧾 الحالة</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestStatus('${r.id}',this.value)">${nextStatusOptions(r.status).map(x=>`<option ${r.status===x?"selected":""}>${esc(x)}</option>`).join("")}</select>`:esc(r.status)}</div>${r.status==="ملغي"&&r.cancelReason?`<div class="kv request-wide"><b>❌ سبب الإلغاء</b>${esc(r.cancelReason)}</div>`:""}${r.status==="مجمد"?`<div class="kv request-wide"><b>❄️ ملاحظة التجميد</b>${esc(r.freezeNote)||"—"}</div>`:""}<div class="kv"><b>🕐 تسجيل البلاغ</b>${requestCreatedDate(r)?esc(requestCreatedDate(r).toLocaleString("ar-EG")):"—"}</div><div class="kv"><b>▶️ بدء التنفيذ</b>${requestStartedDate(r)?esc(requestStartedDate(r).toLocaleString("ar-EG")):"—"}</div><div class="kv"><b>✅ تاريخ الوصول لمكتمل</b>${requestCompletedDate(r)?esc(requestCompletedDate(r).toLocaleString("ar-EG")):"—"}</div><div class="kv"><b>⏱️ مدة الإكمال</b>${formatDuration(requestTotalCompletionMs(r))}</div><div class="kv"><b>🏭 مدة تنفيذ الورشة</b>${r.executionPlace==="الورشة"?formatDuration(requestWorkshopExecutionMs(r)):"غير منطبق"}</div><div class="kv"><b>🏭 مدة بقاء الجهاز بالورشة</b>${r.executionPlace==="الورشة"?formatDuration(requestWorkshopStayMs(r)):"غير منطبق"}</div><div class="kv"><b>🏭 حالة الورشة</b>${esc(ws)}</div><div class="kv request-wide"><b>📝 العطل</b>${canEdit?`<input type="text" class="inline-status-wide" value="${esc(r.fault||"")}" data-wf-event="change" data-wf-code="changeRequestFault('${r.id}',this.value)">`:(esc(r.fault)||"—")}</div><div class="kv request-wide"><b>🔨 الأعمال</b>${canEdit?`<textarea class="inline-status-wide" rows="2" data-wf-event="change" data-wf-code="changeRequestWork('${r.id}',this.value)">${esc(r.work||"")}</textarea>`:(esc(r.work)||"—")}</div><div class="request-account"><h3>💰 الحساب</h3><table class="month-table compact-money"><tr><td>🔨 المصنعية</td><td>${(+r.labor||0).toFixed(2)} ج</td></tr><tr><td>🔧 قطع الغيار</td><td>${(+r.partsTotal||0).toFixed(2)} ج</td></tr><tr class="total-row"><td>💰 الإجمالي</td><td>${(+r.total||0).toFixed(2)} ج</td></tr><tr><td>💵 العربون</td><td>${(+r.deposit||0).toFixed(2)} ج${r.depositWallet?` <small>(💳 ${esc(r.depositWallet)})</small>`:""}</td></tr><tr><td>💳 حالة الدفع</td><td>${paid?"تم الدفع بالكامل":"غير مكتمل"}${paid&&r.closeWallet?` <small>(💳 ${esc(r.closeWallet)})</small>`:""}</td></tr></table><div class="kv" style="margin-top:8px"><b>🛡️ الضمان</b><input type="number" min="0" class="inline-status" id="warrantyDaysInput-${r.id}" value="${+r.warrantyDays||0}"> يوم <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="confirmRequestWarrantyDays('${r.id}')">✅ تأكيد</button> ${warrantyStatusHtml(r)}</div>${!r.closed&&r.status==="مكتمل"&&!paid?`<div class="form-grid"><label class="wide">💳 المتبقي هيتحصل في محفظة إيه؟ <small>اختياري — لو سايبها فاضية، المبلغ مش هيتسجل في أي محفظة</small><select id="rCloseWallet"><option value="">بدون تحديد</option>${(settings().wallets||[]).map(w=>`<option ${resolveDefaultWallet()===w?"selected":""}>${esc(w)}</option>`).join("")}</select></label></div><button type="button" class="primary pay-close-btn" data-wf-event="click" data-wf-code="markPaidAndClose('${r.id}')">💳 تم الدفع بالكامل وإغلاق الأمر</button>`:""}</div><div class="request-parts"><h3>🔧 قطع الغيار المستخدمة</h3>${parts||"<div class='empty-inline'>لا توجد قطع غيار مضافة.</div>"}${canEdit?`<div class="part-add request-part-add part-autocomplete-row"><div class="part-autocomplete"><input type="text" id="rpPartSearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم القطعة (مثال: ثرموستات)..." autocomplete="off" data-wf-event="input" data-wf-code="filterRequestPartOptions(this.value)" data-wf-refocus-code="filterRequestPartOptions(this.value)" data-wf-blur="hideRequestPartResults"><input type="hidden" id="rpPart"><div id="rpPartResults" class="part-autocomplete-results hidden"></div></div><input id="rpQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="confirmAddPartToRequest('${r.id}')">➕ إضافة من المخزن</button></div><div id="rpStockHint" class="hint">اختر قطعة لمعرفة الكمية المتاحة.</div><div class="part-add request-part-add part-add-external"><input id="rpExtName" type="text" placeholder="اسم القطعة (خارج المخزن)"><input id="rpExtBuy" type="number" min="0" step=".01" placeholder="سعر الشراء"><input id="rpExtSell" type="number" min="0" step=".01" placeholder="سعر البيع"><input id="rpExtQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="confirmAddExternalPartToRequest('${r.id}')">🧳 إضافة قطعة خارج المخزن</button></div><div class="hint">قطعة خارج المخزن: بتتسجل بسعر البيع بالكامل ضمن "قطع الغيار" واحتساب الإجمالي زي أي قطعة عادية بالظبط، وسعر الشراء بيظهر كملاحظة بس للمرجعية. مالهاش أي علاقة بكمية المخزن أو رصيده أو بند "المصنعية".</div>`:""}</div><div id="requestProfileRecordings"></div>${workshopTrack}${statusHistoryHtml(r)}</div></div>`;
+async function requestProfile(){let el=document.getElementById("requestProfile");if(!el)return;let r=arr(K.r).find(x=>String(x.id)===String(new URLSearchParams(location.search).get("id")));if(!r){el.innerHTML="<div class='item'>الأمر غير موجود.</div>";return}let parts=(r.parts||[]).map(x=>{let p=x.external?null:arr(K.p).find(z=>z.id===x.partId);let nm=x.external?(x.name||"قطعة خارجية"):(p?.name||"قطعة محذوفة");let amount=(x.qty||0)*(x.sell||0);let amountLabel=`${amount.toFixed(2)} ج`;let extCost=x.external?`<div class="ext-cost-note">💵 سعر الشراء: ${(+x.cost||0).toFixed(2)} ج × ${x.qty} = ${((+x.cost||0)*(x.qty||0)).toFixed(2)} ج${extPayLabel(x)?` • ${esc(extPayLabel(x))}`:""}</div>`:"";return `<div class="part-row compact-part${x.external?" part-row-external":""}"><span>${x.external?"🧳":"🔧"} ${esc(nm)}${x.external?' <small class="ext-badge">خارج المخزن</small>':""}${extCost}</span><span>× ${x.qty}</span><strong>${amountLabel}</strong></div>`}).join("");let canEdit=!r.closed&&!r.paid;let cust=arr(K.c).find(c=>c.id===r.customerId)||{};let custPhone=(cust.phone||"").trim();let paid=!!r.paid;let ws=r.workshopStatus||"غير مطلوب";let workshopTrack=ws!=="غير مطلوب"?`<div class="workshop-track"><h3>🏭 متابعة الجهاز داخل الورشة</h3><div class="workshop-state"><b>${esc(ws)}</b>${r.workshopAt?`<small>آخر تحديث: ${new Date(r.workshopAt).toLocaleString("ar-EG")}</small>`:""}${r.pulledAt?`<small>📦 تم سحب الجهاز: ${new Date(r.pulledAt).toLocaleString("ar-EG")}</small>`:""}</div><div class="workshop-actions">${["تم السحب","تم التسليم"].map(x=>`<button type="button" class="secondary mini-action ${ws===x?"active-track":""}" data-wf-event="click" data-wf-code="setWorkshopStatus('${r.id}','${x}')">${x}</button>`).join("")}</div></div>`:`<div class="workshop-track"><h3>🏭 سحب الجهاز للورشة</h3><div class="hint">لو الجهاز يحتاج إصلاح داخل الورشة، سجّل سحبه هنا وسيظهر في أوامر الورشة ويمكن متابعة حالته حتى التسليم.</div><button type="button" class="secondary mini-action workshop-pull" data-wf-event="click" data-wf-code="requestWorkshopPull('${r.id}')">📦 سحب الجهاز للورشة</button></div>`;el.innerHTML=`<div class="profile request-one-page ps-context-target" data-ps-title="أمر الشغل ${esc(r.no)}"><div class="request-top"><div><h1 class="profile-title request-title">🛠️ ${esc(r.no)}</h1>${psActions("أمر الشغل "+r.no)}<span class="badge">${paid?"مدفوع بالكامل":esc(r.status)}${r.closed?" 🔒":""}</span>${canReturnRequest(r)?`<button type="button" class="secondary mini-action return-btn" data-wf-event="click" data-wf-code="markRequestReturned('${r.id}')">🔄 مرتجع${r.closed?` (متبقي ${Math.max(0,returnWindowDaysLeft(r))} يوم)`:""}</button>`:(r.closed&&r.status==="مكتمل"?`<span class="badge">⏹️ انتهت مهلة المرتجع</span>`:"")}</div><div class="compact-actions">${canEdit?`<button class='secondary mini-action' data-wf-event="click" data-wf-code="editRequest('${r.id}')">✏️ تعديل</button>`:""}<button class='danger-btn mini-action' data-wf-event="click" data-wf-code="deleteRequestRecord('${r.id}')">🗑️ حذف</button></div></div>${requestCommActionsHtml(r,custPhone)}<div class="request-grid"><div class="kv"><b>👤 العميل</b><a href="customer.html?id=${r.customerId}">${esc(customerName(r.customerId))}</a></div><div class="kv"><b>📞 التليفون</b>${contactLinksHtml(custPhone)}</div><div class="kv"><b>🔧 الجهاز</b><a href="device.html?id=${r.deviceId}">${esc(deviceName(r.deviceId))}</a></div><div class="kv"><b>📍 العنوان</b>${esc(addressText((arr(K.c).find(c=>c.id===r.customerId)||{}).mainAddress||{}))}</div><div class="kv"><b>🏷️ التصنيف اليدوي</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestTag('${r.id}',this.value)"><option value="" ${!r.tag?"selected":""}>بدون تصنيف</option>${(settings().orderTags||[]).concat(r.tag&&!(settings().orderTags||[]).includes(r.tag)?[r.tag]:[]).map(x=>`<option value="${esc(x)}" ${r.tag===x?"selected":""}>${esc(x)}${r.tag===x&&!(settings().orderTags||[]).includes(x)?" (قديم/متوقف)":""}</option>`).join("")}<option value="__add__">➕ إضافة تصنيف جديد…</option></select>`:(esc(r.tag)||"بدون تصنيف")}</div><div class="kv"><b>📅 موعد الزيارة</b>${canEdit?`<input type="datetime-local" class="inline-status" value="${r.visit||""}" data-wf-event="change" data-wf-code="changeRequestVisit('${r.id}',this.value)">`:(r.visit?esc(new Date(r.visit).toLocaleString("ar-EG")) : "—")}</div><div class="kv"><b>🏠 التنفيذ</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestExecutionPlace('${r.id}',this.value)">${(settings().executionPlaces||["عند العميل","الورشة"]).map(x=>`<option ${r.executionPlace===x?"selected":""}>${esc(x)}</option>`).join("")}</select>`:(r.executionPlace==="الورشة"?"🏭 الورشة":"🏠 عند العميل")}</div><div class="kv"><b>🧾 الحالة</b>${canEdit?`<select class="inline-status" data-wf-event="change" data-wf-code="changeRequestStatus('${r.id}',this.value)">${nextStatusOptions(r.status).map(x=>`<option ${r.status===x?"selected":""}>${esc(x)}</option>`).join("")}</select>`:esc(r.status)}</div>${r.status==="ملغي"&&r.cancelReason?`<div class="kv request-wide"><b>❌ سبب الإلغاء</b>${esc(r.cancelReason)}</div>`:""}${r.status==="مجمد"?`<div class="kv request-wide"><b>❄️ ملاحظة التجميد</b>${esc(r.freezeNote)||"—"}</div>`:""}<div class="kv"><b>🕐 تسجيل البلاغ</b>${requestCreatedDate(r)?esc(requestCreatedDate(r).toLocaleString("ar-EG")):"—"}${r.restartedAt?`<small style="display:block;color:var(--warn-text)">🔄 المدة بتتحسب من المرتجع: ${esc(new Date(r.restartedAt).toLocaleString("ar-EG"))}</small>`:""}</div><div class="kv"><b>▶️ بدء التنفيذ</b>${requestStartedDate(r)?esc(requestStartedDate(r).toLocaleString("ar-EG")):"—"}</div><div class="kv"><b>✅ تاريخ الوصول لمكتمل</b>${requestCompletedDate(r)?esc(requestCompletedDate(r).toLocaleString("ar-EG")):"—"}</div><div class="kv"><b>⏱️ مدة الإكمال</b>${formatDuration(requestTotalCompletionMs(r))}</div><div class="kv"><b>🏭 مدة تنفيذ الورشة</b>${r.executionPlace==="الورشة"?formatDuration(requestWorkshopExecutionMs(r)):"غير منطبق"}</div><div class="kv"><b>🏭 مدة بقاء الجهاز بالورشة</b>${r.executionPlace==="الورشة"?formatDuration(requestWorkshopStayMs(r)):"غير منطبق"}</div><div class="kv"><b>🏭 حالة الورشة</b>${esc(ws)}</div><div class="kv request-wide"><b>📝 العطل</b>${canEdit?`<input type="text" class="inline-status-wide" value="${esc(r.fault||"")}" data-wf-event="change" data-wf-code="changeRequestFault('${r.id}',this.value)">`:(esc(r.fault)||"—")}</div><div class="kv request-wide"><b>🔨 الأعمال</b>${canEdit?`<textarea class="inline-status-wide" rows="2" data-wf-event="change" data-wf-code="changeRequestWork('${r.id}',this.value)">${esc(r.work||"")}</textarea>`:(esc(r.work)||"—")}</div><div class="request-account"><h3>💰 الحساب</h3><table class="month-table compact-money"><tr><td>🔨 المصنعية</td><td>${(+r.labor||0).toFixed(2)} ج</td></tr><tr><td>🔧 قطع الغيار</td><td>${(+r.partsTotal||0).toFixed(2)} ج</td></tr><tr class="total-row"><td>💰 الإجمالي</td><td>${(+r.total||0).toFixed(2)} ج</td></tr><tr><td>💵 العربون</td><td>${(+r.deposit||0).toFixed(2)} ج${r.depositWallet?` <small>(💳 ${esc(r.depositWallet)})</small>`:""}</td></tr>${(+r.depositRefunded||0)>0?`<tr><td>↩️ اترد للعميل</td><td>${(+r.depositRefunded).toFixed(2)} ج <small>(زيادة العربون عن الإجمالي)</small></td></tr>`:""}<tr><td>💳 حالة الدفع</td><td>${paid?"تم الدفع بالكامل":"غير مكتمل"}${paid&&r.closeWallet?` <small>(💳 ${esc(r.closeWallet)})</small>`:""}</td></tr></table><div class="kv" style="margin-top:8px"><b>🛡️ الضمان</b><input type="number" min="0" class="inline-status" id="warrantyDaysInput-${r.id}" value="${+r.warrantyDays||0}"> يوم <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="confirmRequestWarrantyDays('${r.id}')">✅ تأكيد</button> ${warrantyStatusHtml(r)}</div>${!r.closed&&r.status==="مكتمل"&&!paid?`<div class="form-grid"><label class="wide">💳 المتبقي هيتحصل في محفظة إيه؟ <small>اختياري — لو سايبها فاضية، المبلغ مش هيتسجل في أي محفظة</small><select id="rCloseWallet"><option value="">بدون تحديد</option>${(settings().wallets||[]).map(w=>`<option ${resolveDefaultWallet(r)===w?"selected":""}>${esc(w)}</option>`).join("")}</select></label></div><button type="button" class="primary pay-close-btn" data-wf-event="click" data-wf-code="markPaidAndClose('${r.id}')">💳 تم الدفع بالكامل وإغلاق الأمر</button>`:""}</div><div class="request-parts"><h3>🔧 قطع الغيار المستخدمة</h3>${parts||"<div class='empty-inline'>لا توجد قطع غيار مضافة.</div>"}${canEdit&&window.wfSyncMode==="scoped"?`<a class="secondary mini-action" style="display:inline-block;margin-top:8px;text-decoration:none" href="tech.html?id=${encodeURIComponent(r.id)}">➕ إضافة قطعة (من المخزن أو من بره) من بوابة الفني</a>`:""}${canEdit&&window.wfSyncMode!=="scoped"?`<div class="part-add request-part-add part-autocomplete-row"><div class="part-autocomplete"><input type="text" id="rpPartSearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم القطعة (مثال: ثرموستات)..." autocomplete="off" data-wf-event="input" data-wf-code="filterRequestPartOptions(this.value)" data-wf-refocus-code="filterRequestPartOptions(this.value)" data-wf-blur="hideRequestPartResults"><input type="hidden" id="rpPart"><div id="rpPartResults" class="part-autocomplete-results hidden"></div></div><input id="rpQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="confirmAddPartToRequest('${r.id}')">➕ إضافة من المخزن</button></div><div id="rpStockHint" class="hint">اختر قطعة لمعرفة الكمية المتاحة.</div><div class="part-add request-part-add part-add-external"><input id="rpExtName" type="text" placeholder="اسم القطعة (خارج المخزن)"><input id="rpExtBuy" type="number" min="0" step=".01" placeholder="سعر الشراء"><input id="rpExtSell" type="number" min="0" step=".01" placeholder="سعر البيع"><input id="rpExtQty" type="number" min="1" value="1" inputmode="numeric">${extPaySelectHtml("rpExtPay",r)}<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="confirmAddExternalPartToRequest('${r.id}')">🧳 إضافة قطعة خارج المخزن</button></div><div class="hint">قطعة خارج المخزن: بتتسجل بسعر البيع بالكامل ضمن "قطع الغيار" واحتساب الإجمالي زي أي قطعة عادية بالظبط، وسعر الشراء بيتسجل مصروف من المكان اللي تختاره (محفظة ورشة، عهدة الفني، أو يتردّ للفني لو دفعها من جيبه). مالهاش علاقة بكمية المخزن أو بند "المصنعية".</div>`:""}</div><div id="requestProfileRecordings"></div>${workshopTrack}${statusHistoryHtml(r)}</div></div>`;
   // تسجيلات مكالمات مرفقة (لو الأمر اتعمل أو اتضاف له تسجيل من صفحة
   // مشاركة مكالمة — راجع share-target.html). كل عنصر بيتخزن في
   // IndexedDB بنفس طريقة الصور بالظبط (ImageStore بيتعامل مع أي
@@ -198,7 +242,7 @@ function selectRequestPart(pid){
 function hideRequestPartResults(){setTimeout(()=>document.getElementById("rpPartResults")?.classList.add("hidden"),150)}
 function syncRequestPartQty(){let hiddenEl=document.getElementById("rpPart"),q=document.getElementById("rpQty"),h=document.getElementById("rpStockHint"),selectedId=hiddenEl?.value||"",available=+(arr(K.p).find(x=>x.id===selectedId)?.qty||0);if(q&&selectedId){q.max=Math.max(1,available);q.value=Math.min(Math.max(1,+q.value||1),Math.max(1,available));if(available<1)q.value=0}if(h)h.textContent=selectedId?`المتاح في المخزن: ${available} قطعة — سيتم استخدام الكمية المكتوبة فقط.`:"اكتب اسم القطعة واختر من نتائج البحث لمعرفة الكمية المتاحة."}
 async function confirmAddPartToRequest(requestId){return withRequestMutationLock(requestId,async()=>{let rs=arr(K.r),r=rs.find(x=>String(x.id)===String(requestId));if(!r)return alert("أمر الشغل غير موجود.");if(r.closed||r.paid)return alert("الأمر مغلق أو مدفوع بالكامل ولا يمكن إضافة قطع غيار.");let pid=document.getElementById("rpPart")?.value||"";if(!pid)return alert("اكتب اسم القطعة واختر واحدة من نتائج البحث أولًا ثم اضغط تأكيد إضافة القطعة.");let q=+(document.getElementById("rpQty")?.value||1),stock=arr(K.p),p=stock.find(x=>x.id===pid),available=+(p?.qty||0);if(!p)return alert("قطعة الغيار المختارة غير موجودة في المخزن.");if(!Number.isInteger(q)||q<1)return alert("اكتب كمية صحيحة كعدد صحيح.");let updatedParts=(r.parts||[]).map(x=>({...x})),existing=updatedParts.find(x=>!x.external&&x.partId===pid&&+x.sell===+p.use&&+x.cost===+p.buy),already=existing?(+existing.qty||0):0;if(available<q)return alert(`الكمية المطلوبة ${q} أكبر من المتاح ${available}.`);if(existing)existing.qty=already+q;else updatedParts.push({partId:pid,qty:q,sell:+p.use||0,cost:+p.buy||0});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;let newStock=stock.map(x=>x.id===pid?{...x,qty:(+x.qty||0)-q}:x),moves=arr(K.m);moves.push({id:id(),partId:pid,type:"خروج بسبب إضافة قطعة لأمر شغل",qty:q,requestId:r.id,at:new Date().toISOString()});let updated={...r,parts:updatedParts,partsTotal,partsCost,total,remain:Math.max(0,total-(+r.deposit||0))};if(!await commitStorageAsync({[K.p]:newStock,[K.m]:moves,[K.r]:rs.map(x=>x.id===r.id?updated:x)}))return;requestProfile();return true})}
-async function confirmAddExternalPartToRequest(requestId){let nameEl=document.getElementById("rpExtName"),buyEl=document.getElementById("rpExtBuy"),sellEl=document.getElementById("rpExtSell"),qtyEl=document.getElementById("rpExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");const saved=await updateRequestRecordAsync(requestId,(_,r)=>{if(r.closed||r.paid)return false;let updatedParts=(r.parts||[]).map(x=>({...x}));updatedParts.push({external:true,name,qty:q,sell,cost});let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;r.parts=updatedParts;r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=total;r.remain=Math.max(0,total-(+r.deposit||0));return true});if(!saved){alert("تعذر حفظ إضافة القطعة. لم يتم تغيير أمر الشغل.");return}if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1;requestProfile()}
+async function confirmAddExternalPartToRequest(requestId){let nameEl=document.getElementById("rpExtName"),buyEl=document.getElementById("rpExtBuy"),sellEl=document.getElementById("rpExtSell"),qtyEl=document.getElementById("rpExtQty");let name=(nameEl?.value||"").trim();if(!name)return alert("اكتب اسم القطعة.");let cost=+(buyEl?.value||0),sell=+(sellEl?.value||0),q=+(qtyEl?.value||1);if(!Number.isInteger(q)||q<1){alert("اكتب كمية صحيحة كعدد صحيح.");return}if(!Number.isFinite(cost)||cost<0||!Number.isFinite(sell)||sell<0)return alert("اكتب أسعار صحيحة.");const ord0=arr(K.r).find(x=>String(x.id)===String(requestId)),pick=extPayPick(document.getElementById("rpExtPay")?.value,ord0,cost*q);if(!pick)return alert("اختار تمن القطعة اتدفع منين (محفظة، عهدة الفني، من جيب الفني، أو مفيش مصروف).");const newPart={external:true,name,qty:q,sell,cost,payKey:id(),addedBy:"admin",...pick};let oldParts=[];const saved=await updateRequestRecordAsync(requestId,(_,r)=>{if(r.closed||r.paid)return false;oldParts=(r.parts||[]).map(x=>({...x}));let updatedParts=(r.parts||[]).map(x=>({...x}));updatedParts.push(newPart);let partsTotal=partsStockTotal(updatedParts),partsCost=partsStockCost(updatedParts),total=(+r.labor||0)+partsTotal;r.parts=updatedParts;r.partsTotal=partsTotal;r.partsCost=partsCost;r.total=total;r.remain=Math.max(0,total-(+r.deposit||0));return true});if(!saved){alert("تعذر حفظ إضافة القطعة. لم يتم تغيير أمر الشغل.");return}syncExtPartPayments(arr(K.r).find(x=>String(x.id)===String(requestId)),oldParts);if(nameEl)nameEl.value="";if(buyEl)buyEl.value="";if(sellEl)sellEl.value="";if(qtyEl)qtyEl.value=1;requestProfile()}
 // markPaidAndClose / closeOrder: اتنقلوا لنسخة واحدة موحّدة في app-shared.js
 // (بيتحمّل قبل الملف ده في كل صفحة) بدل ما يتكرروا هنا وفي
 // workshop-mini-simple-ui.js بنفس المنطق بالظبط.
@@ -229,9 +273,8 @@ async function changeRequestStatus(i,status){
     if(!canTransitionStatus(r.status,status)){alert(`لا يمكن الانتقال من حالة «${r.status}» إلى «${status}» مباشرة.`);renderRequests();requestProfile();return}
     let from=r.status,reason="",freezeNote="";
     if(status==="ملغي"){
-      reason=prompt("سبب إلغاء أمر الشغل (مطلوب):","");
+      reason=askCancelReason();
       if(reason===null){renderRequests();requestProfile();return}
-      reason=reason.trim();
       if(!reason){alert("سبب الإلغاء مطلوب لإلغاء أمر الشغل.");renderRequests();requestProfile();return}
       if((+r.deposit||0)>0&&String(r.depositWallet||"").trim()&&!confirm(`الأمر عليه عربون ${(+r.deposit).toFixed(2)} ج في محفظة «${r.depositWallet}» وهيفضل محسوب في رصيدها بعد الإلغاء. لو هترجّعه للعميل سجّل صرف يدوي من المحفظة. تكمّل الإلغاء؟`)){renderRequests();requestProfile();return}
     }
@@ -264,6 +307,15 @@ async function changeRequestStatus(i,status){
     window.auditLog?.("تغيير حالة", "أمر شغل", r.id, `${from} ← ${status}`);renderRequests();renderDash();requestProfile();return true;
   });
 }
+/* سبب الإلغاء: أسباب جاهزة برقم (عشان تقرير «المعاينات اللي ماتحولتش لشغل» يجمّعها صح) أو تكتب سبب من عندك. */
+const CANCEL_REASONS=["السعر عالي على العميل","العميل اتراجع / مش عايز يصلّح","القطعة مش متوفرة","الجهاز مايستاهلش التصليح","العميل مابيردّش","أمر مكرر / اتسجل بالغلط"];
+function askCancelReason(){
+  let v=prompt("سبب إلغاء أمر الشغل (مطلوب) — اكتب رقم أو سبب من عندك:\n"+CANCEL_REASONS.map((x,i)=>(i+1)+") "+x).join("\n"),"");
+  if(v===null)return null;
+  v=String(v).trim().replace(/[\u0660-\u0669]/g,c=>String(c.charCodeAt(0)-1632));
+  if(/^\d+$/.test(v)&&CANCEL_REASONS[+v-1])return CANCEL_REASONS[+v-1];
+  return v;
+}
 // إعادة فتح أمر شغل "مكتمل" كمرتجع: بيرجّعه لحالة "جاري التنفيذ" (نفس الانتقال
 // المعتمد في دورة الحالة) عشان تقدر تفعّله أو تعدّل عليه، مع تسجيل سبب/ملاحظة
 // المرتجع في سجل تغييرات الحالة. مفيش حالة جديدة اتضافت والدورة المعتمدة
@@ -294,10 +346,12 @@ async function markRequestReturned(i){
         choice="refund";refund=Math.min(n,collected);
       }else if(!confirm(`مفيش تحويل لعربون ولا تسجيل رد: التحصيل (${collected.toFixed(2)} ج) هيتشال من الرصيد تلقائيًا.\n\nلو الفلوس لسه معاك فالرصيد في التطبيق هيبقى أقل من الفعلي لحد ما تقفل الأمر تاني.\n\nمتابعة؟`))return;
     }
-    let reason=prompt("سبب/ملاحظة المرتجع (مطلوب):","");
-    if(reason===null)return;
-    reason=reason.trim();
-    if(!reason){alert("سبب/ملاحظة المرتجع مطلوبة.");return}
+    const opts=await returnOptionsDialog(r);
+    if(!opts)return;
+    let reason=opts.reason;
+    // الحوار بياخد وقت: نقرا الأوامر من جديد عشان مانكتبش فوق أي تعديل حصل في الوقت ده (مزامنة/جهاز تاني)
+    a=arr(K.r);r=a.find(x=>String(x.id)===String(i));
+    if(!r||r.status!=="مكتمل"){alert("الأمر اتغيّر في الوقت ده — حدّث الصفحة وجرّب تاني.");return}
     let from=r.status,wasClosed=!!r.closed;
     r.status="جاري التنفيذ";
     let depAmount=0,separate=false;
@@ -311,9 +365,10 @@ async function markRequestReturned(i){
       r.remain=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
       if(choice!=="none")r.returnMoney={choice,collected,refund,at:r.reopenedAt};
     }
+    applyReturnOptions(r,opts);
     applyStatusTimestamp(r,r.status);
     const moneyNote=choice==="deposit"?` — التحصيل ${collected.toFixed(2)} ج اتحوّل لعربون`:(choice==="refund"?` — اتردّ ${refund.toFixed(2)} ج للعميل${depAmount>0?` والباقي ${depAmount.toFixed(2)} ج اتحوّل لعربون`:""}`:"");
-    recordStatusHistory(r,from,r.status,`مرتجع${wasClosed?" (كان مغلقًا)":""}: ${reason}${moneyNote}`);
+    recordStatusHistory(r,from,r.status,`مرتجع${wasClosed?" (كان مغلقًا)":""}: ${reason}${moneyNote}${opts.note?" — "+opts.note:""}`);
     const values={[K.r]:a};
     if(wasClosed){
       if(typeof walletTxEntriesForOrderReturn!=="function"){alert("تعذر تجهيز حركة المحفظة للمرتجع؛ لم يتم تغيير الأمر.");return}
@@ -324,6 +379,127 @@ async function markRequestReturned(i){
   });
 }
 
+
+/* ---------- اختيارات المرتجع: الفني، موعد الزيارة، وبداية حساب مدة الأمر ---------- */
+function returnOptionsDialog(r){
+  const D=typeof document!=="undefined"?document:null;
+  // بيئة من غير واجهة (اختبارات/صفحة قديمة): السبب بس، والباقي زي ما هو
+  if(!D||!D.body||typeof D.createElement!=="function"||typeof D.body.appendChild!=="function"){
+    let reason=prompt("سبب/ملاحظة المرتجع (مطلوب):","");if(reason===null)return Promise.resolve(null);reason=reason.trim();
+    if(!reason){alert("سبب/ملاحظة المرتجع مطلوبة.");return Promise.resolve(null)}
+    return Promise.resolve({reason,tech:"keep",visit:"keep",restart:false});
+  }
+  const dirP=window.WFTech&&typeof window.WFTech.directory==="function"?window.WFTech.directory().catch(()=>[]):Promise.resolve([]);
+  return dirP.then(users=>new Promise(resolve=>{
+    const techs=(users||[]).filter(u=>u&&u.uid&&(u.scope==="assigned"||u.wallet||u.uid===r.techId));
+    const visitTxt=r.visit?new Date(r.visit).toLocaleString("ar-EG",{weekday:"long",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"مفيش موعد";
+    const started=r.startedAt?new Date(r.startedAt).toLocaleDateString("ar-EG"):"";
+    // حساب الفني: للي عنده صلاحية أجور الفنيين، ولو الأمر عليه فني أو أجرة
+    const TP=window.WFTechPay,canPay=!!(TP&&TP.canPay&&TP.canPay()),curPay=+r.techPay||0,types=canPay?(TP.config().types||[]):[];
+    const payBoxHtml=canPay&&(r.techId||curPay)?`<div class="rd-g" id="rdPayBox"><b>💰 حساب الفني على الأمر</b><small class="hint">الأجرة الحالية: ${curPay.toFixed(2)} ج${r.techName?" — "+esc(r.techName):""}</small>
+        <label><input type="radio" name="rdPay" value="later" checked><span><b style="display:inline">قرّر بعدين</b> — بعد ما الفني يكشف وتعرف غلط مين أو عطل تاني (الأجرة بتتعلّق لحد ما تحددها من صفحة الأمر)</span></label>
+        <label><input type="radio" name="rdPay" value="same"><span><b style="display:inline">نفس الحساب</b> — الأجرة تفضل زي ما هي وتتحسب مرة واحدة لما الأمر يتقفل تاني (ضمان من غير زيادة)</span></label>
+        <label><input type="radio" name="rdPay" value="split"><span><b style="display:inline">حساب جديد للمرتجع</b> — الشغل الأول يتحسب لوحده دلوقتي، وزيارة المرتجع ليها أجرة لوحدها</span></label>
+        <div class="rd-sub" id="rdSplit">
+          ${r.techId?`<label><span>أجرة الشغل الأول لـ ${esc(r.techName||"الفني")}:</span><select id="rdFirst"><option value="full">كاملة (${curPay.toFixed(2)} ج)</option><option value="deduct">يتخصم منها مبلغ…</option><option value="none">تتلغي (الغلط من الفني)</option></select><input type="number" id="rdFirstAmt" min="0" step="any" inputmode="decimal" placeholder="مبلغ الخصم" style="display:none"></label>`:""}
+          <label><span>أجرة شغل المرتجع (للفني اللي هيكمل):</span><select id="rdNew"><option value="zero">من غير أجرة (ضمان)</option><option value="amount">مبلغ محدد…</option>${types.length?`<option value="type">حسب نوع الشغل…</option>`:""}</select><input type="number" id="rdNewAmt" min="0" step="any" inputmode="decimal" placeholder="المبلغ" style="display:none">${types.length?`<select id="rdNewType" style="display:none">${types.map(t=>`<option value="${escAttr(t.id)}">${esc(t.name)}</option>`).join("")}</select>`:""}</label>
+          <small class="hint">الخصم ممكن يزيد عن الأجرة: الزيادة بتتخصم من مستحقاته.</small>
+        </div></div>`:"";
+    const m=D.createElement("div");m.className="txd-modal";m.id="returnDialog";
+    m.innerHTML=`<div class="txd-sheet rd-sheet" role="dialog" aria-label="مرتجع أمر الشغل"><div class="txd-title">🔄 مرتجع أمر ${esc(r.no||"")}</div>
+      <label class="rd-l">سبب/ملاحظة المرتجع (مطلوب)<textarea id="rdReason" rows="2" placeholder="مثلًا: العطل رجع تاني بعد يومين"></textarea></label>
+      <div class="rd-g"><b>👷 الفني</b>
+        ${r.techId?`<label><input type="radio" name="rdTech" value="keep" checked><span>يفضل مع ${esc(r.techName||"نفس الفني")}</span></label>`:""}
+        ${techs.filter(u=>u.uid!==r.techId).length?`<label><input type="radio" name="rdTech" value="other" ${r.techId?"":"checked"}> فني تاني: <select id="rdTechSel">${techs.filter(u=>u.uid!==r.techId).map(u=>`<option value="${escAttr(u.uid)}">${esc(u.name||u.uid)}</option>`).join("")}</select></label>`:""}
+        <label><input type="radio" name="rdTech" value="none" ${!r.techId&&!techs.length?"checked":""}><span>من غير فني (يتحدد بعدين من «التوزيع»)</span></label></div>
+      <div class="rd-g"><b>📅 موعد الزيارة</b>
+        <label><input type="radio" name="rdVisit" value="keep" ${r.visit?"checked":""}><span>يفضل زي ما هو (${esc(visitTxt)})</span></label>
+        <label><input type="radio" name="rdVisit" value="new"> موعد جديد: <input type="datetime-local" id="rdVisitVal"></label>
+        <label><input type="radio" name="rdVisit" value="clear" ${r.visit?"":"checked"}><span>من غير موعد (يظهر في «بدون موعد» لحد ما تحدده)</span></label></div>
+      ${payBoxHtml}
+      <div class="rd-g"><b>⏱️ مدة الأمر</b>
+        <label><input type="radio" name="rdStart" value="keep" checked><span>تكمّل من بداية الأمر الأصلية${started?` (بدأ ${esc(started)})`:""}</span></label>
+        <label><input type="radio" name="rdStart" value="restart"><span>تبدأ من جديد من النهارده (عمر الأمر ومدد التنفيذ تتحسب من المرتجع)</span></label></div>
+      <p class="hint" id="rdMsg" style="color:var(--danger-text)"></p>
+      <div class="txd-actions"><button type="button" class="primary" id="rdOk">✅ تأكيد المرتجع</button><button type="button" class="secondary" id="rdCancel">إلغاء</button></div></div>`;
+    const done=v=>{m.remove();resolve(v)};
+    D.body.appendChild(m);
+    const q=s=>m.querySelector(s),val=n=>(m.querySelector(`input[name="${n}"]:checked`)||{}).value;
+    if(!m.querySelector('input[name="rdTech"]:checked')){const f=m.querySelector('input[name="rdTech"]');if(f)f.checked=true}
+    q("#rdVisitVal").addEventListener("input",()=>{q('input[name="rdVisit"][value="new"]').checked=true});
+    if(q("#rdTechSel"))q("#rdTechSel").addEventListener("change",()=>{q('input[name="rdTech"][value="other"]').checked=true});
+    const syncPay=()=>{const box=q("#rdSplit");if(!box)return;const on=val("rdPay")==="split";box.style.display=on?"":"none";
+      const f=q("#rdFirst"),fa=q("#rdFirstAmt");if(f&&fa)fa.style.display=f.value==="deduct"?"":"none";
+      const nw=q("#rdNew"),na=q("#rdNewAmt"),nt=q("#rdNewType");if(nw){if(na)na.style.display=nw.value==="amount"?"":"none";if(nt)nt.style.display=nw.value==="type"?"":"none"}};
+    m.querySelectorAll('input[name="rdPay"],#rdFirst,#rdNew').forEach(e=>e.addEventListener("change",syncPay));
+    // تغيير الفني مع «نفس الحساب» يخلّي أجرة الشغل الأول تروح للفني الجديد: بنحوّلها لحساب جديد تلقائي
+    m.querySelectorAll('input[name="rdTech"]').forEach(e=>e.addEventListener("change",()=>{const sp=q('input[name="rdPay"][value="same"]'),lt=q('input[name="rdPay"][value="later"]');if(sp&&sp.checked&&val("rdTech")!=="keep"&&lt){lt.checked=true;syncPay()}}));
+    syncPay();
+    q("#rdCancel").onclick=()=>done(null);
+    m.addEventListener("click",e=>{if(e.target===m)done(null)});
+    q("#rdOk").onclick=()=>{
+      const reason=q("#rdReason").value.trim();if(!reason){q("#rdMsg").textContent="اكتب سبب المرتجع.";q("#rdReason").focus();return}
+      const tech=val("rdTech")||"keep",visit=val("rdVisit")||"keep",restart=val("rdStart")==="restart";
+      const visitVal=q("#rdVisitVal").value;if(visit==="new"&&!visitVal){q("#rdMsg").textContent="اختار الموعد الجديد.";return}
+      const sel=tech==="other"?techs.find(u=>u.uid===(q("#rdTechSel")||{}).value):null;
+      if(tech==="other"&&!sel){q("#rdMsg").textContent="اختار الفني.";return}
+      let pay=q("#rdPayBox")&&val("rdPay")==="later"?{mode:"later"}:null;
+      if(q("#rdPayBox")&&val("rdPay")==="split"){
+        const first=q("#rdFirst")?q("#rdFirst").value:"none",firstAmt=+((q("#rdFirstAmt")||{}).value||0),nw=q("#rdNew").value,newAmt=+((q("#rdNewAmt")||{}).value||0),newType=(q("#rdNewType")||{}).value||"";
+        if(first==="deduct"&&!(firstAmt>0)){q("#rdMsg").textContent="اكتب مبلغ الخصم.";return}
+        if(nw==="amount"&&!(newAmt>=0&&(q("#rdNewAmt")||{}).value!=="")){q("#rdMsg").textContent="اكتب أجرة شغل المرتجع.";return}
+        pay={mode:"split",first,firstAmt,nw,newAmt,newType};
+      }
+      done({reason,tech,techUser:sel,visit,visitVal,restart,pay});
+    };
+    setTimeout(()=>{try{q("#rdReason").focus()}catch(_){}},50);
+  }));
+}
+/* قرار حساب الفني في المرتجع (وقت المرتجع أو بعد الكشف):
+   الشغل الأول → حصة ثابتة للفني الأولاني (كاملة/بخصم/تتلغي)، وشغل المرتجع → أجرة الأمر الحالية (ضمان/مبلغ/نوع شغل) */
+function applyReturnPayDecision(r,p,oldTech,oldPay){
+  const now=new Date().toISOString(),r2=n=>Math.round((+n||0)*100)/100,shares=Array.isArray(r.payShares)?r.payShares.slice():[];
+  let idx=-1;for(let k=shares.length-1;k>=0;k--){if(shares[k]&&shares[k].pending){idx=k;break}}
+  const tech=idx>=0?{uid:shares[idx].uid,name:shares[idx].name}:(oldTech||{}),base=idx>=0?(+shares[idx].base||0):(+oldPay||0),notes=[];
+  if(tech.uid){
+    const amt=p.first==="full"?base:(p.first==="deduct"?r2(base-p.firstAmt):0);
+    const label=p.first==="full"?"أجرة الشغل الأول (قبل المرتجع)":(p.first==="deduct"?`أجرة الشغل الأول بعد خصم ${r2(p.firstAmt)} ج (مرتجع)`:"أجرة الشغل الأول اتلغت (مرتجع)");
+    const sh={uid:tech.uid,name:tech.name,amount:amt,base,note:label,at:idx>=0?shares[idx].at:now,decidedAt:now};
+    if(idx>=0)shares[idx]=sh;else shares.push(sh);
+    r.payShares=shares;r.payShareUids=Array.from(new Set((r.payShareUids||[]).concat(tech.uid)));
+    notes.push(`${tech.name||"الفني"}: ${label} = ${amt.toFixed(2)} ج`);
+  }
+  if(p.nw==="type"&&p.newType&&window.WFTechPay){r.jobType=p.newType;r.jobTypeName=window.WFTechPay.typeName(p.newType);r.techPayManual=false;r.techPay=r.techId?window.WFTechPay.payFor(p.newType,r.techId):0}
+  else{r.techPay=p.nw==="amount"?r2(p.newAmt):0;r.techPayManual=true}
+  r.techPayAt=now;r.returnPayPending=false;
+  notes.push(`أجرة شغل المرتجع: ${(+r.techPay||0).toFixed(2)} ج`);
+  return notes.join("، ");
+}
+function applyReturnOptions(r,o){
+  const now=new Date().toISOString(),notes=[],oldTech={uid:r.techId||"",name:r.techName||""},oldPay=+r.techPay||0;
+  if(o.tech==="other"&&o.techUser){
+    const u=o.techUser;notes.push(`الفني اتغيّر من ${r.techName||"—"} لـ ${u.name||u.uid}`);
+    r.techId=u.uid;r.techName=u.name||"";r.techWallet=u.wallet||"";r.assignedAt=now;r.assignedBy=(window.firebase&&window.firebase.auth&&window.firebase.auth().currentUser||{}).uid||"";
+    if(r.jobType&&!r.techPayManual&&window.WFTechPay)r.techPay=window.WFTechPay.payFor(r.jobType,u.uid);
+  }else if(o.tech==="none"&&r.techId){
+    notes.push(`اتشال تعيين ${r.techName||"الفني"}`);r.techId="";r.techName="";r.techWallet="";r.assignedAt=now;
+  }
+  if(o.pay&&o.pay.mode==="later"&&oldTech.uid&&oldPay!==0){ // الأجرة بتتعلّق: الشغل الأول محفوظ لحساب الفني الأولاني لحد القرار
+    r.payShares=(Array.isArray(r.payShares)?r.payShares:[]).concat({uid:oldTech.uid,name:oldTech.name,amount:0,base:oldPay,pending:true,note:"أجرة الشغل الأول — مستنية قرار المرتجع",at:now});
+    r.payShareUids=Array.from(new Set((r.payShareUids||[]).concat(oldTech.uid)));
+    r.techPay=0;r.techPayManual=true;r.returnPayPending=true;r.techPayAt=now;
+    notes.push("حساب الفني: هيتحدد بعد الكشف");
+  }else if(o.pay&&o.pay.mode==="split"){notes.push(applyReturnPayDecision(r,o.pay,oldTech,oldPay))}
+  if(o.visit==="new"){r.visit=o.visitVal;notes.push("موعد جديد")}
+  else if(o.visit==="clear"){r.visit="";notes.push("من غير موعد")}
+  if(o.restart){
+    r.restartedAt=now;r.startedAt=now;r.completedAt=null;r.frozenMs=0;r.frozenAt=null;
+    if(r.executionPlace==="الورشة")r.workshopStartedAt=now;else delete r.workshopStartedAt;
+    notes.push("المدة بدأت من جديد");
+  }
+  o.note=notes.join("، ");
+  return r;
+}
 async function changeRequestVisit(i,val){if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.visit=val;return true})){requestProfile();renderRequests()}}
 // تعديل مكان التنفيذ/العطل/الأعمال المنفذة كانوا نص ثابت مالهوش أي تحكم في
 // صفحة عرض الأمر — أي تغيير كان لازم يدخل على وضع التعديل الكامل من فوق.
@@ -366,7 +542,7 @@ function warrantyStatusHtml(r){
   return `<span class="hint">⏹️ انتهى في ${dateLabel}</span>`;
 }
 async function changeRequestTag(i,val){if(val==="__add__"){let s=settings(),v=prompt("اكتب اسم التصنيف الجديد:");if(!v||!v.trim()){requestProfile();return}v=v.trim();s.orderTags=s.orderTags||[];if(!s.orderTags.includes(v))s.orderTags.push(v);if(!saveJSONSafe(K.s,s))return;val=v}if(await updateRequestRecordAsync(i,(_,r)=>{if(r.closed||r.paid)return false;r.tag=val;return true})){requestProfile();renderRequests()}}
-function editRequest(i){location.href="requests.html?edit="+encodeURIComponent(i)}
+function editRequest(i){location.href=window.wfSyncMode==="scoped"?"tech.html?id="+encodeURIComponent(i):"requests.html?edit="+encodeURIComponent(i)} // الفني بيعدّل من بوابته (الحقول المسموحة له بس)
 
 // ===== رسائل واتساب جاهزة من صفحة أمر الشغل =====
 function fillWaTemplate(text,r){

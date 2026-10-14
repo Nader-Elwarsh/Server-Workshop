@@ -79,6 +79,7 @@ const reportContext = {
   Blob: function Blob() {},
   alert() {},
   setTimeout,
+  location: { search: '?only=all' },
   window: { requestAnimationFrame(fn) { reportFrames.push(fn); } }
 };
 reportContext.window.dayKeyLocal = key;

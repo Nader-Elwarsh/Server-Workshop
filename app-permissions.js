@@ -43,8 +43,17 @@
     var pv = previewRole();
     var perms = R.effectivePerms(state.config, pv ? { role: pv, acl: 1 } : state.profile), set = {};
     perms.forEach(function (k) { set[k] = 1; });
+    // حساب «أوامره المعيّنة فقط»: الجهاز عنده أوامره وعملاؤها وأجهزتها بس، والسيرفر بيقبل منه تعديل شغل أوامره بس.
+    // فأي صلاحية تانية (إضافة عميل، مخزن، محافظ…) بتتقفل في الواجهة بدل ما الشغل يضيع لما السيرفر يرفضه.
+    if (scopedDevice()) {
+      Object.keys(set).forEach(function (k) { if (!SCOPED_OK[k]) delete set[k]; });
+      // بياناته هو بس على الجهاز، فعرض أوامره وعملائها وأجهزتها دايمًا مسموح (من غيرها لينك العميل في الأمر كان بيقول «مش مصرّح»)
+      ["requests.view", "customers.view", "devices.view"].forEach(function (k) { set[k] = 1; });
+    }
     state.set = set;
   }
+  var SCOPED_OK = { "requests.view": 1, "requests.edit": 1, "requests.close": 1, "customers.view": 1, "devices.view": 1, "route.view": 1 };
+  function scopedDevice() { try { return w.wfSyncMode === "scoped" || (w.WFStorage && w.WFStorage.getItem("wf_sync_mode") === "scoped"); } catch (e) { return false; } }
   function can(key) { return state.set === null ? true : R.satisfies(state.set, key); }
   function isOwner() { return previewRole() ? false : realOwner(); }
   function denyLabel(rule) {
@@ -88,6 +97,7 @@
     var file = (q < 0 ? clean : clean.slice(0, q)).split("/").pop().toLowerCase();
     var search = q < 0 ? "" : clean.slice(q + 1);
     if (OWNER_PAGES[file]) return { owner: true };
+    if (file === "tech.html") return { wallet: true }; // بوابة الفني: لأي حد ليه محفظة عهدة (أو حساب فني)
     var need = R.PAGES[file];
     if (!need) return null;
     var rules = [need];
@@ -95,7 +105,7 @@
     Object.keys(R.FORMS).forEach(function (id) { if (R.FORMS[id].page === file) spec = R.FORMS[id]; });
     if (spec) {
       if (/(^|&)edit=/.test(search)) rules.push(spec.edit);
-      else if (/(^|&)add=/.test(search)) rules.push(spec.add);
+      else if (/(^|&)(add|customer|device)=/.test(search)) rules.push(spec.add); // «➕ جهاز/أمر» لعميل معيّن = إضافة
     }
     return { all: rules };
   }
@@ -109,9 +119,11 @@
     for (var i = 0; i < list.length; i++) {
       var a = list[i];
       if (a.__wfPv === state.version) continue;
+      if (a.closest && a.closest("#bottomNav")) continue; // الشريط السفلي بيدير إظهار أزراره بنفسه
       a.__wfPv = state.version;
       var need = linkNeed(a);
       if (!need) { setHidden(a, false); continue; }
+      if (need.wallet) { setHidden(a, !!state.profile && !state.profile.wallet && !scopedDevice()); continue; }
       setHidden(a, need.owner ? !isOwner() : !can(need));
     }
     var titles = (root || w.document).querySelectorAll(".nav-section-title");
@@ -134,6 +146,32 @@
       if (rule) hide = hide || !can({ any: rule.split(",").map(function (s) { return s.trim(); }).filter(Boolean) });
       setHidden(el, hide);
     }
+    // أي زرار بينادي دالة محمية (حذف، حذف عام، إضافة…) بيستخبى لو المستخدم مالوش صلاحيتها،
+    // بدل ما يظهر وأول ما يضغطه يطلع له «ليس لديك صلاحية».
+    if (state.set === null) return;
+    var acts = w.document.querySelectorAll("[data-wf-code],[data-wf-click],button[onclick],a[onclick]");
+    for (var j = 0; j < acts.length; j++) {
+      var a = acts[j];
+      if (a.__wfAv === state.version) continue;
+      a.__wfAv = state.version;
+      if (a.hasAttribute("data-perm") || a.hasAttribute("data-owner-only")) continue;
+      var need = actionNeed(a);
+      if (need) setHidden(a, !can(need));
+    }
+  }
+
+  // أزرار بتفتح نماذج أو أدوات (مش دوال محمية في الكتالوج) — صلاحيتها المطلوبة
+  var UI_ACTIONS = { editCustomer: "customers.edit", editDevice: "devices.edit", editRequest: "requests.edit", wfInviteCustomer: "portal.manage",
+    toggleQuickAdd: "requests.add", toggleRestockBox: "inventory.add" };
+  var TOGGLE_BOX = { bulkPriceBox: "inventory.edit", bulkFaultBox: "faultcodes.add" };
+  function actionNeed(a) {
+    var click = a.getAttribute("data-wf-click"), name = "", args = null;
+    if (click) { name = click; try { args = JSON.parse(a.getAttribute("data-wf-args") || "null"); } catch (e) {} }
+    else { var m = /^\s*(?:return\s+)?([A-Za-z_$][\w$]*)\s*\(/.exec(a.getAttribute("data-wf-code") || a.getAttribute("onclick") || ""); name = m ? m[1] : ""; }
+    if (!name) return null;
+    if (name === "toggle" && args && args[0]) { if (a.closest && a.closest("form")) return null; // زرار «إلغاء» جوه النموذج نفسه
+      var box = String(args[0]); return R.FORMS[box] ? R.FORMS[box].add : (TOGGLE_BOX[box] || null); }
+    return R.ACTIONS[name] || UI_ACTIONS[name] || null;
   }
 
   /* ---------- 3) النماذج ---------- */
@@ -301,7 +339,7 @@
     });
   }
   function acceptProfile(p, cfg) {
-    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "" };
+    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "", scope: R.cleanScope ? R.cleanScope(p.scope) : "", wallet: p.wallet || "" };
     if (cfg) state.config = R.normalizeConfig(cfg);
     writeJSON(K_PROFILE, state.profile); writeJSON(K_CONFIG, state.config);
     recompute(); applyAll(); notify();
@@ -326,11 +364,12 @@
     if (!force && Date.now() - last < SYNC_EVERY) return Promise.resolve(false);
     return authedCall("staffSync", {}).then(function (res) {
       try { store().setItem(K_SYNC, String(Date.now())); } catch (e) {}
-      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled, acl: res.acl, createdBy: res.createdBy }, res.config);
+      if (res && res.config) acceptProfile({ name: res.name, role: res.role, allow: res.allow, deny: res.deny, disabled: res.disabled, acl: res.acl, createdBy: res.createdBy, scope: res.scope, wallet: res.wallet }, res.config);
       return true;
     }).catch(function () { return false; });
   }
 
+  function loadHelper(src) { try { var t = w.document.createElement("script"); t.src = src; t.defer = true; w.document.head.appendChild(t); } catch (e) {} }
   var started = false;
   function start() {
     if (started) return; started = true;
@@ -338,6 +377,7 @@
     if (cp) { state.profile = cp; state.config = cc ? R.normalizeConfig(cc) : R.defaultConfig(); recompute(); }
     applyAll();
     w.document.addEventListener("submit", onSubmit, true);
+    if (FILE === "request.html" || FILE === "requests.html") loadHelper("app-tech-assign.js");
     wrapActions();
     w.addEventListener("load", function () { wrapActions(); applyAll(); });
     setTimeout(function () { wrapActions(); applyAll(); }, 1200);
@@ -354,6 +394,6 @@
     profile: function () { return state.profile; }, config: function () { return state.config || R.defaultConfig(); },
     perms: function () { return state.set ? Object.keys(state.set) : R.KEYS.slice(); },
     onChange: function (fn) { state.listeners.push(fn); },
-    preview: previewRole, _applyAll: applyAll, _wrapActions: wrapActions, _state: state
+    scope: function () { return state.profile && !previewRole() ? R.scopeOf(state.config, state.profile) : "all"; }, wallet: function () { return (state.profile && state.profile.wallet) || ""; }, preview: previewRole, _applyAll: applyAll, _wrapActions: wrapActions, _state: state
   };
 })(window);

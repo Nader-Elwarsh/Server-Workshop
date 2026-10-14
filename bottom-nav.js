@@ -28,8 +28,12 @@
     { key: "devices", icon: "🔧", label: "أجهزة", href: "devices.html", pages: ["devices.html", "device.html"] },
     { key: "requests", icon: "🛠️", label: "أوامر", href: "requests.html", pages: ["requests.html", "request.html"] },
     { key: "route", icon: "🗺️", label: "خط سير", href: "route.html", pages: ["route.html"] },
-    { key: "wallets", icon: "💳", label: "حسابات", href: "wallets.html", pages: ["wallets.html", "wallet.html"] }
+    { key: "wallets", icon: "💳", label: "حسابات", href: "wallets.html", pages: ["wallets.html", "wallet.html"] },
+    // بوابة الفني: بتظهر بس للي ليه محفظة عهدة (فني بيشتغل على أوامر). وساعتها «أجهزة» بتستخبى عشان الشريط مايزحمش.
+    { key: "tech", icon: "👷", label: "بوابتي", href: "tech.html", pages: ["tech.html"], onlyWallet: true }
   ];
+  /* حساب الفني المحدود (أوامره المعيّنة بس) ليه شريط بوابته الخاص جوه tech.html. */
+  function scopedMode() { try { return window.wfSyncMode === "scoped" || (window.WFStorage && window.WFStorage.getItem("wf_sync_mode") === "scoped"); } catch (e) { return false; } }
 
   function currentPage() {
     var parts = location.pathname.split("/");
@@ -60,6 +64,7 @@
 
   function injectUI() {
     if (document.getElementById("bottomNav")) return;
+    if (currentPage() === "tech.html") return; // البوابة بترسم شريطها (وفيه زرار الرئيسية)
     injectStyles();
 
     var page = currentPage();
@@ -68,7 +73,7 @@
 
     nav.innerHTML = TABS.map(function (t) {
       var active = t.pages.indexOf(page) !== -1;
-      return '<a href="' + t.href + '" class="' + (active ? "active" : "") + '"><i>' + t.icon + "</i><small>" + t.label + "</small></a>";
+      return '<a href="' + t.href + '" data-key="' + t.key + '" class="' + (active ? "active" : "") + '"' + (t.onlyWallet ? ' style="display:none"' : "") + '><i>' + t.icon + "</i><small>" + t.label + "</small></a>";
     }).join("") + '<button type="button" id="bottomNavSearch"><i>🔍</i><small>بحث</small></button>';
 
     document.body.appendChild(nav);
@@ -77,8 +82,43 @@
     var searchBtn = document.getElementById("bottomNavSearch");
     searchBtn.addEventListener("click", function () {
       var gsBtn = document.getElementById("gsBtn");
-      if (gsBtn) gsBtn.click();
+      if (gsBtn) gsBtn.click(); else location.href = "index.html";
     });
+    applyCached();
+    applyPerms();
+    waitPerms(0);
+  }
+
+  /* آخر شكل للشريط بيتحفظ على الجهاز، فالصفحة الجاية بتفتح بيه على طول من غير ما الأزرار تتنطط لحد ما الصلاحيات تحمّل. */
+  var NAV_KEY = "wf_nav_hidden";
+  function applyCached() {
+    var nav = document.getElementById("bottomNav"), hidden = null;
+    try { hidden = JSON.parse((window.WFStorage && window.WFStorage.getItem(NAV_KEY)) || "null"); } catch (e) {}
+    if (!nav || !Array.isArray(hidden)) return;
+    Array.prototype.forEach.call(nav.querySelectorAll("a[data-key]"), function (a) { a.style.display = hidden.indexOf(a.getAttribute("data-key")) > -1 ? "none" : ""; });
+  }
+  /* الأقسام اللي المستخدم مالوش صلاحية يفتحها بتستخبى من الشريط (الصلاحيات بتتحمّل بعد الصفحة بشوية). */
+  function applyPerms() {
+    var nav = document.getElementById("bottomNav"), P = window.WFPerm, R = window.WFRoles;
+    if (!nav || !P || !R || !R.PAGES || typeof P.can !== "function") return false;
+    try { if (typeof P.profile === "function" && !P.profile()) return false; } catch (e) {} // لسه الصلاحيات ماحمّلتش: سيب الشكل المحفوظ
+    var wallet = "", hidden = []; try { wallet = (P.wallet && P.wallet()) || ""; } catch (e) {}
+    Array.prototype.forEach.call(nav.querySelectorAll("a[href]"), function (a) {
+      var key = a.getAttribute("data-key"), need = R.PAGES[String(a.getAttribute("href") || "").split("?")[0]];
+      var ok = true; try { ok = !need || P.can(need) !== false; } catch (e) {}
+      if (key === "tech") ok = !!wallet;
+      if (key === "devices" && wallet) ok = false;
+      if (key === "home") ok = true; // الرئيسية دايمًا
+      a.style.display = ok ? "" : "none";
+      if (!ok) hidden.push(key);
+    });
+    try { if (window.WFStorage) window.WFStorage.setItem(NAV_KEY, JSON.stringify(hidden)); } catch (e) {}
+    return true;
+  }
+  var hooked = false;
+  function waitPerms(n) {
+    if (applyPerms() && !hooked && window.WFPerm && typeof window.WFPerm.onChange === "function") { hooked = true; window.WFPerm.onChange(applyPerms); return; }
+    if (n < 60) setTimeout(function () { waitPerms(n + 1); }, 250);
   }
 
   ready(injectUI);

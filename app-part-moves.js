@@ -7,6 +7,12 @@
   "use strict";
 
   const state = { limit: 20, type: "", from: "", to: "" };
+  // زر الرجوع بعد فتح أمر شغل من السجل: نرجّع نفس الفلتر وعدد الحركات المعروضة.
+  try {
+    const sp = new URLSearchParams(location.search);
+    state.type = sp.get("mt") || ""; state.from = sp.get("from") || ""; state.to = sp.get("to") || "";
+    const lim = parseInt(sp.get("lim"), 10); if (lim > 20 && lim < 5000) state.limit = lim;
+  } catch (_) {}
 
   function isOutType(t) { return /خروج/.test(t || ""); }
   function isInType(t) { return /إرجاع|دخول/.test(t || ""); }
@@ -32,6 +38,7 @@
     if (!el) return;
 
     const pid = new URLSearchParams(location.search).get("id");
+    window.WFNavState?.setParams({ mt: state.type || null, from: state.from || null, to: state.to || null, lim: state.limit > 20 ? state.limit : null });
     const p = arr(K.p).find(x => x.id === pid);
     if (!p) {
       el.innerHTML = "<div class='item'>القطعة غير موجودة أو تم حذفها.</div>";

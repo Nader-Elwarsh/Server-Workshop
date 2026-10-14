@@ -1,5 +1,5 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v18-firebase-config";
+const CACHE = "portal-v19-identity";
 const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./firebase-config.js", "./app-check.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
 self.addEventListener("install", e => {
   e.waitUntil((async () => {
@@ -34,6 +34,12 @@ self.addEventListener("fetch", e => {
   // مكتبات Firebase: من الكاش لو مفيش نت
   if (u.hostname === "www.gstatic.com" && u.pathname.startsWith("/firebasejs/")) {
     e.respondWith(caches.open(CACHE).then(c => c.match(r).then(hit => { const net = fetch(r).then(x => { if (x && x.ok) c.put(r, x.clone()); return x; }).catch(() => null); return hit || net.then(x => x || Response.error()); })));
+    return;
+  }
+  // هوية النظام: ملف التثبيت والأيقونات المتولّدة (نفس كاش wf-brand-v1 اللي بيستخدمه تطبيق الموظفين)
+  const bm = u.origin === location.origin && !u.searchParams.has("wl-src") && /\/(portal-manifest\.json|icon-192-v13\.png|icon-512-v13\.png|icon-maskable-512-v13\.png|apple-touch-icon-v13\.png)$/.exec(u.pathname);
+  if (bm) {
+    e.respondWith(caches.open("wf-brand-v1").then(c => c.match(new URL(bm[1], self.registration.scope).href)).then(hit => hit || caches.open(CACHE).then(c => c.match("./" + bm[1])).then(h => fetch(r).then(x => x, () => h || Response.error()))));
     return;
   }
   // صفحة البوابة: الشبكة أولًا ثم الكاش

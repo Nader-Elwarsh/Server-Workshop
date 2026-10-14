@@ -58,7 +58,7 @@ async function savePart(e,existing=null){
     if(!result.ok){if(result.error)alert(result.error);if(formData.photo&&formData.photo!==previousPhoto)await discardUncommittedImage(formData.photo);return}
     recordSaved=true;
     if(previousPhoto&&previousPhoto!==formData.photo)await discardUncommittedImage(previousPhoto);
-    location.href=`part.html?id=${result.part.id}`;
+    if(existing&&typeof wfLeaveTo==="function")await wfLeaveTo(`part.html?id=${result.part.id}`,true);else location.href=`part.html?id=${result.part.id}`;
   }catch(err){
     if(!recordSaved&&formData?.photo&&formData.photo!==previousPhoto)await discardUncommittedImage(formData.photo);
     alert("تعذر حفظ صورة القطعة. جرّب صورة أخرى أصغر.");

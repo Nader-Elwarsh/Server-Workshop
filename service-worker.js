@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v54-order-layout";
+const CACHE_NAME = "workshop-v71-deposit-refund";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -47,6 +47,7 @@ const CORE_FILES = [
   "./portal-admin.html",
   "./portal-ticker.js",
   "./pw-eye.js",
+  "./theme-mini.js",
   "./wf-session.js",
   "./audit-log.js",
   "./global-search.js",
@@ -216,6 +217,14 @@ self.addEventListener("fetch", event => {
   }
   if (url.origin !== self.location.origin) return;
 
+  // هوية النظام: ملف التثبيت والأيقونات المتولّدة من لوحة «هوية النظام» (white-label.js بيحطها في wf-brand-v1).
+  // ده اللي بيخلّي أيقونة واسم التطبيق على شاشة الموبايل يتغيروا من غير تعديل ملفات المشروع.
+  const brandName = brandFile(url);
+  if (brandName) {
+    event.respondWith(caches.open(BRAND_CACHE).then(c => c.match(new URL(brandName, self.registration.scope).href)).then(hit => hit || staticResponse(event, request)));
+    return;
+  }
+
   // HTML pages: cache by pathname, not by query string.
   // This makes customer.html?id=..., device.html?id=... and request.html?id=...
   // open correctly while offline; the app-*.js files read the ID from the URL.
@@ -251,7 +260,20 @@ self.addEventListener("fetch", event => {
   // Static files (JS/CSS/صور): نفس منطق Stale-While-Revalidate — عرض فوري
   // من الكاش، وتحديث صامت في الخلفية عشان أي نسخة جديدة تتنزل تظهر في
   // الزيارة اللي بعدها من غير ما تبطّئ الزيارة الحالية.
-  event.respondWith(
+  event.respondWith(staticResponse(event, request));
+});
+
+const BRAND_CACHE = "wf-brand-v1";
+const BRAND_FILES = ["manifest.json", "portal-manifest.json", "icon-192-v13.png", "icon-512-v13.png", "icon-maskable-512-v13.png", "apple-touch-icon-v13.png"];
+function brandFile(url) {
+  if (url.searchParams.has("wl-src")) return ""; // الصفحة بتطلب الملف الأصلي عشان تبني منه
+  const scope = new URL(self.registration.scope).pathname;
+  if (!url.pathname.startsWith(scope)) return "";
+  const name = url.pathname.slice(scope.length);
+  return BRAND_FILES.includes(name) ? name : "";
+}
+function staticResponse(event, request) {
+  return (
     caches.open(CACHE_NAME).then(cache =>
       cache.match(request).then(cached => {
         if (cached && !shouldRevalidate(request.url)) return cached; // من الكاش مباشرة
@@ -269,7 +291,7 @@ self.addEventListener("fetch", event => {
       })
     )
   );
-});
+}
 
 /* ---------------------------------------------------------------------
    إشعارات في الخلفية (Periodic Background Sync) — دعم أفضل مجهود:

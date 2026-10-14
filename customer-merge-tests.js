@@ -20,9 +20,9 @@ function mk(opts={}){
   const firebase={apps:[fbApp&&{name:'sec',...fbApp}],app:()=>({options:{}}),initializeApp:()=>fbApp,firestore:{FieldValue:{serverTimestamp:()=>'ts'}}};
   firebase.apps[0].auth=fbApp.auth;firebase.apps[0].firestore=fbApp.firestore;
   const online=opts.offline?()=>false:()=>true;
-  const fn=new Function('window','online','ready','withTimeout','db','firebase','ls','origSet','byCreated','banner','projectOrders','hydrateFull',
+  const fn=new Function('window','online','ready','withTimeout','db','firebase','ls','origSet','byCreated','banner','projectOrders','hydrateFull','SCOPED','hydrateDelta',
     block+'\nreturn {mergePortalDuplicates,mergeCustomers,resolveInvite,nph};');
-  const api=fn(W,online,true,p=>p,db,firebase,ls,origSet,(x,y)=>Date.parse(x.createdAt||0)-Date.parse(y.createdAt||0),()=>{},()=>{},()=>Promise.resolve());
+  const api=fn(W,online,true,p=>p,db,firebase,ls,origSet,(x,y)=>Date.parse(x.createdAt||0)-Date.parse(y.createdAt||0),()=>{},()=>{},()=>Promise.resolve(),false,()=>Promise.resolve());
   return {store,ops,links,idx,created,pwds,api};
 }
 (async()=>{

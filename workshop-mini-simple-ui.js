@@ -277,13 +277,13 @@
 
   /* ---------- العملاء ---------- */
   window.showAllCustomers = function () {
-    state.customers = true;
+    state.customers = true; state.customerBucket = "";
     $("customerSearch")?.classList.remove("hidden");
     renderCustomers();
   };
 
   window.hideAllCustomers = function () {
-    state.customers = false;
+    state.customers = false; state.customerBucket = "";
     if ($("customerSearch")) $("customerSearch").classList.add("hidden");
     renderCustomers();
   };
@@ -316,6 +316,7 @@
   }
 
   defineOverride("renderCustomers", "workshop-mini-simple-ui.js", function () {
+    Promise.resolve().then(syncListUrl);
     const el = $("customerList");
     if (!el) return;
     const all = customerRows();
@@ -326,7 +327,7 @@
       const unpaidCount = cnt("unpaid");
       el.innerHTML = `
         <section class="simple-home ps-context-target" data-ps-title="ملخص العملاء">
-          <div class="simple-summary-title"><b>👤 العملاء</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
+          <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
           ${dupGroupsBar()}
           ${unpaidCount > 0
             ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showCustomerBucket('unpaid')" role="button" tabindex="0"><span>💰 ${unpaidCount} عميل عليه متبقي غير محصل</span><b>عرض ›</b></div>`
@@ -434,6 +435,7 @@
   }
 
   defineOverride("renderDevices", "workshop-mini-simple-ui.js", function () {
+    Promise.resolve().then(syncListUrl);
     const el = $("deviceList");
     if (!el) return;
     const all = deviceRows();
@@ -442,7 +444,7 @@
       const cnt = (b) => all.filter(d => deviceBucketMatch(d, b)).length;
       const types = [...new Set(all.map(d => d.type).filter(Boolean))];
       const recurringCount = cnt("recurring");
-      el.innerHTML = `<section class="simple-home ps-context-target" data-ps-title="ملخص الأجهزة"><div class="simple-summary-title"><b>🔧 الأجهزة</b><span>${all.length} إجمالي ${psActions("ملخص الأجهزة")}</span></div>
+      el.innerHTML = `<section class="simple-home ps-context-target" data-ps-title="ملخص الأجهزة"><div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص الأجهزة")}</span></div>
         ${recurringCount > 0
           ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showDeviceBucket('recurring')" role="button" tabindex="0"><span>🔁 ${recurringCount} جهاز يتكرر عطله</span><b>عرض ›</b></div>`
           : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أجهزة متكررة العطل حاليًا</span></div>`}
@@ -553,6 +555,7 @@
   /* النسخة دي بتستبدل نسخة app-parts.js الأساسية على نفس الصفحات. أي تعديل
      في بيانات القطعة المعروضة لازم يترجم للنسختين. */
   window.renderParts = function () {
+    Promise.resolve().then(syncListUrl);
     const el = $("partList");
     if (!el) return;
     const all = partRows().filter(p => !p.archived);
@@ -585,7 +588,7 @@
 
       el.innerHTML = `
         <section class="simple-home ps-context-target" data-ps-title="ملخص المخزن">
-          <div class="simple-summary-title"><b>📦 المخزن</b><span>${all.length} صنف ${psActions("ملخص المخزن")}</span></div>
+          <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} صنف ${psActions("ملخص المخزن")}</span></div>
           <div class="report-cards report-cards-summary">
             <div class="report-card report-card-btn report-card-value" data-wf-event="click" data-wf-code="showPartsValueBreakdown('buy')" role="button" tabindex="0"><span>💰 قيمة المخزون بالتكلفة</span><b>${stockValueBuy.toFixed(2)} ج</b></div>
             <div class="report-card report-card-btn report-card-value" data-wf-event="click" data-wf-code="showPartsValueBreakdown('use')" role="button" tabindex="0"><span>💵 قيمة المخزون ببيع الاستخدام</span><b>${stockValueUse.toFixed(2)} ج</b></div>
@@ -796,7 +799,7 @@
 
     el.innerHTML = `
       <section class="simple-home request-simple-home ps-context-target" data-ps-title="ملخص أوامر الشغل">
-        <div class="simple-summary-title"><b>🛠️ أوامر الشغل</b><span>${all.length} إجمالي ${psActions("ملخص أوامر الشغل")}</span></div>
+        <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص أوامر الشغل")}</span></div>
         ${counts.overdue > 0
           ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showRequestBucket('overdue')" role="button" tabindex="0"><span>⚠️ ${counts.overdue} أمر متأخر عن موعده</span><b>عرض ›</b></div>`
           : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أوامر متأخرة حاليًا</span></div>`}
@@ -817,6 +820,7 @@
   }
 
   defineOverride("renderRequests", "workshop-mini-simple-ui.js", function () {
+    Promise.resolve().then(syncListUrl);
     const el = $("requestList");
     if (!el) return;
     const all = requestRows();
@@ -831,7 +835,8 @@
     const sf = $("requestOpsStatus")?.value || state.requestStatus || "";
     const wf = $("requestOpsWorkshop")?.value || state.requestLocation || "";
     const focus = $("requestOpsFocus")?.value || state.requestBucket || "";
-    const sort = $("requestOpsSort")?.value || "oldest";
+    const sort = $("requestOpsSort")?.value || state.requestSort || "oldest";
+    state.requestSort = sort;
 
     let filtered = all.filter(r => {
       const text = [r.no, customerName(r.customerId), r.fault, orderLocationLabel(r), r.tag].filter(Boolean).join(" ").toLowerCase();
@@ -906,7 +911,7 @@
             <a href="request.html?id=${r.id}"><b>${esc2(r.no || "أمر شغل")}</b></a>
             <span>${r.customerId ? `<a href="customer.html?id=${r.customerId}" data-wf-event="click" data-wf-code="event.stopPropagation()">👤 ${esc2(customerName(r.customerId))}</a>` : "عميل غير محدد"} • ${r.deviceId ? `<a href="device.html?id=${r.deviceId}" data-wf-event="click" data-wf-code="event.stopPropagation()">🔧 ${esc2(deviceName(r.deviceId))}</a>` : "جهاز غير محدد"}</span>
             ${cust.phone ? `<small><a class="tel-link" href="tel:${esc2(cust.phone)}" target="_blank" rel="noopener" data-wf-event="click" data-wf-code="event.stopPropagation()">📞 ${esc2(cust.phone)}</a></small>` : ""}
-            <small>📍 ${esc2(loc.center)}${loc.village ? " • " + esc2(loc.village) : ""} • ${r.visit ? new Date(r.visit).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "بدون موعد"}${r.tag ? " • 🏷️ " + esc2(r.tag) : ""}</small>
+            <small>📍 ${esc2(loc.center)}${loc.village ? " • " + esc2(loc.village) : ""} • ${r.visit ? new Date(r.visit).toLocaleString("ar-EG",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "بدون موعد"}${r.tag ? " • 🏷️ " + esc2(r.tag) : ""}${r.techName ? " • 👷 " + esc2(r.techName) : ""}</small>
             ${r.fault ? `<small>📝 ${esc2(r.fault)}</small>` : ""}
             <div class="request-timing">
               ${ageInfo ? `<span class="request-age age-badge ${ageInfo.cls}" title="⏱️ عمر الأمر: ${esc2(ageInfo.range)}">${ageInfo.dot} عمر الأمر: ${esc2(age)}</span>` : ""}
@@ -927,24 +932,89 @@
   /* markPaidAndClose / closeOrder: بقوا نسخة واحدة موحّدة في app-shared.js
      (بيتحمّل قبل الملف ده في كل صفحة)، فمفيش داعي نستبدلهم هنا تاني. */
 
+
+  /* ---------- حفظ اختيار القائمة في الرابط (عشان زر الرجوع يرجّعك لنفس القائمة) ---------- */
+  function syncListUrl() {
+    if (!window.WFNavState || applyingDeepLink || !deepLinkDone) return;
+    const qv = (id) => ($(id) && !$(id).classList.contains("hidden") ? $(id).value.trim() : "");
+    const P = { bucket: null, list: null, f: null, st: null, loc: null, sort: null, q: null, cat: null, vm: null, pp: null, pv: null };
+    if ($("requestList")) {
+      if (state.requests) {
+        Object.assign(P, { list: 1, f: $("requestOpsFocus")?.value || state.requestBucket, st: $("requestOpsStatus")?.value || state.requestStatus,
+          loc: $("requestOpsWorkshop")?.value || state.requestLocation, sort: state.requestSort && state.requestSort !== "oldest" ? state.requestSort : null, q: qv("requestSearch") });
+      }
+    } else if ($("customerList")) {
+      if (state.customers) Object.assign(P, { list: 1, f: state.customerBucket, q: qv("customerSearch") });
+    } else if ($("deviceList")) {
+      if (state.devices) Object.assign(P, { list: 1, f: state.deviceBucket, q: qv("deviceSearch") });
+    } else if ($("partList")) {
+      if (state.parts) Object.assign(P, { list: 1, f: state.partBucket, cat: state.partCategory, vm: state.partBucket === "value" ? state.partValueMode : null, q: qv("partSearch") });
+      Object.assign(P, { pp: state.partsStatsPeriod !== "30" ? state.partsStatsPeriod : null, pv: state.partsViewMode !== "cards" ? state.partsViewMode : null });
+    } else return;
+    window.WFNavState.setParams(P);
+  }
+  var applyingDeepLink = false, deepLinkDone = false;
+
   /* ---------- الدخول المباشر من إحصائيات الصفحة الرئيسية (?bucket=...) ---------- */
   function applyDeepLinkBucket() {
-    const bucket = new URLSearchParams(location.search).get("bucket");
-    if (!bucket) return;
-    if ($("requestList")) {
-      if (bucket === "all") window.showAllRequests();
-      else if (bucket === "workshop") window.showRequestByLocation("workshop");
-      else window.showRequestBucket(bucket);
-    } else if ($("customerList")) {
-      if (bucket === "all") window.showAllCustomers();
-      else window.showCustomerBucket(bucket);
-    } else if ($("deviceList")) {
-      if (bucket === "all") window.showAllDevices();
-      else window.showDeviceBucket(bucket);
-    } else if ($("partList")) {
-      if (bucket === "low") window.showLowStockParts();
-      else if (bucket === "all") window.showAllParts();
-      else window.showPartsCategory(decodeURIComponent(bucket));
+    const sp = new URLSearchParams(location.search);
+    const g = (k) => sp.get(k) || "";
+    applyingDeepLink = true;
+    try {
+      // الشكل الجديد (?list=1&f=...&q=...) بيتكتب تلقائيًا وإنت بتتنقل في القوائم.
+      if (sp.get("list") === "1") {
+        const setQ = (id) => { if ($(id) && g("q")) $(id).value = g("q"); };
+        if ($("requestList")) {
+          setQ("requestSearch");
+          state.requestSort = g("sort") || "oldest";
+          state.requests = true; state.requestBucket = g("f"); state.requestStatus = g("st"); state.requestLocation = g("loc");
+          $("requestSearch")?.classList.remove("hidden");
+          renderRequests();
+        } else if ($("customerList")) {
+          setQ("customerSearch");
+          if (g("f")) window.showCustomerBucket(g("f")); else window.showAllCustomers();
+        } else if ($("deviceList")) {
+          setQ("deviceSearch");
+          if (g("f")) window.showDeviceBucket(g("f")); else window.showAllDevices();
+        } else if ($("partList")) {
+          if (g("pp")) state.partsStatsPeriod = g("pp");
+          if (g("pv")) state.partsViewMode = g("pv") === "table" ? "table" : "cards";
+          setQ("partSearch");
+          const f = g("f");
+          if (f === "low") window.showLowStockParts();
+          else if (f === "topmoved") window.showTopMovedParts();
+          else if (f === "value") window.showPartsValueBreakdown(g("vm"));
+          else if (g("cat")) window.showPartsCategory(g("cat"));
+          else window.showAllParts();
+        }
+        return;
+      }
+      if ($("partList") && (g("pp") || g("pv"))) {
+        if (g("pp")) state.partsStatsPeriod = g("pp");
+        if (g("pv")) state.partsViewMode = g("pv") === "table" ? "table" : "cards";
+        renderParts();
+      }
+      // الشكل القديم من إحصائيات الصفحة الرئيسية (?bucket=...)
+      const bucket = sp.get("bucket");
+      if (!bucket) return;
+      if ($("requestList")) {
+        if (bucket === "all") window.showAllRequests();
+        else if (bucket === "workshop") window.showRequestByLocation("workshop");
+        else window.showRequestBucket(bucket);
+      } else if ($("customerList")) {
+        if (bucket === "all") window.showAllCustomers();
+        else window.showCustomerBucket(bucket);
+      } else if ($("deviceList")) {
+        if (bucket === "all") window.showAllDevices();
+        else window.showDeviceBucket(bucket);
+      } else if ($("partList")) {
+        if (bucket === "low") window.showLowStockParts();
+        else if (bucket === "all") window.showAllParts();
+        else window.showPartsCategory(decodeURIComponent(bucket));
+      }
+    } finally {
+      applyingDeepLink = false; deepLinkDone = true;
+      syncListUrl();
     }
   }
 

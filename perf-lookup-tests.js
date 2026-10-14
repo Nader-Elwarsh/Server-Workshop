@@ -43,7 +43,7 @@ function makeEnv(){
   e.reads[K.r]=0;e.reads[K.followupLog]=0;
   e.context.renderFollowup();
   const html=e.els.followupList.innerHTML;
-  assert.strictEqual((html.match(/class="item record-card"/g)||[]).length,N,'every customer with an old order is listed');
+  assert.strictEqual((html.match(/class="item followup-card"/g)||[]).length,N,'every customer with an old order is listed');
   assert.ok(e.reads[K.r]<=3,'orders must not be re-read per customer (reads='+e.reads[K.r]+')');
   assert.ok(e.reads[K.followupLog]<=3,'follow-up log must not be re-read per row (reads='+e.reads[K.followupLog]+')');
   assert.ok(html.includes('قالب'),'last send info still shown for the customer who has one');

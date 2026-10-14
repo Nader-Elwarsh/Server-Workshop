@@ -7,8 +7,9 @@ function walletEntriesAfterRemovingRequests(requestIds){
   return arr(K.wtx).map(x=>{
     const ref=String(x.refKey||"");
     // دفعة جزئية منفصلة (من خط السير) بتتحذف مع أمرها، وبنعلّمها عشان تتسترجع لو الأمر رجع من السلة.
-    if(x.source==="order-part"&&!x.deleted&&ids.has(String(x.orderId)))return{...x,deleted:true,deletedWithOrder:true};
-    return (ref.startsWith("order-deposit-")||ref.startsWith("order-final-"))&&ids.has(ref.replace(/^order-(?:deposit|final)-/,""))?{...x,deleted:true}:x;
+    if((x.source==="order-part"||x.source==="ext-part")&&!x.deleted&&ids.has(String(x.orderId)))return{...x,deleted:true,deletedWithOrder:true};
+    // بنعلّم اللي اتحذف مع الأمر بس: حركة كانت محذوفة قبلها (زي تحصيل اتشال بمرتجع) ماترجعش لو الأمر رجع من السلة
+    return (ref.startsWith("order-deposit-")||ref.startsWith("order-final-"))&&ids.has(ref.replace(/^order-(?:deposit|final)-/,""))&&!x.deleted?{...x,deleted:true,deletedWithOrder:true}:x;
   });
 }
 function restorePartsIntoStock(stock,requests){
@@ -62,7 +63,8 @@ async function deleteRequestRecord(rid){
   if(!ok)return;
   window.auditLog?.("حذف", "أمر شغل", r.id, r.no||"");
   renderRequests();
-  if(document.getElementById("requestProfile"))location.href="requests.html";
+  // من صفحة الأمر نفسه: نرجع للقايمة اللي جينا منها (بنفس الفلتر) ومن غير ما الأمر المحذوف يفضل في التاريخ.
+  if(document.getElementById("requestProfile")){if(typeof wfLeaveTo==="function")await wfLeaveTo("requests.html",false);else location.href="requests.html"}
 }
 async function deleteAllCustomers(){
   const c=arr(K.c);if(!c.length)return alert("لا توجد بيانات عملاء للحذف.");

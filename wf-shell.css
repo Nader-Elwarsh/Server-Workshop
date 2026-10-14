@@ -141,3 +141,6 @@ button:disabled { opacity: .6; cursor: progress; }
 .wf-logo-band .wf-hero-logo { margin-bottom: 0; border: 1px solid var(--bd); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+/* زرار المظهر في ترويسة الصفحات العامة (جنب «خروج») */
+.wf-head-actions { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.wf-head button.wf-theme-mini { min-width: 42px; min-height: 40px; padding: 6px 10px; font-size: 18px; line-height: 1; border-radius: 12px; background: rgba(255, 255, 255, .12); }

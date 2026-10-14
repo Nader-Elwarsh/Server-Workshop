@@ -702,3 +702,92 @@ input,select,textarea{min-height:40px;box-sizing:border-box}
 .report-shortcuts a:focus-visible{outline:2px solid var(--accent-text);outline-offset:2px}
 
 input[type="date"],input[type="time"],input[type="datetime-local"],input[type="month"]{cursor:pointer}
+/* مربعات الاختيار: القاعدة العامة للحقول (width:100% + padding) كانت بتكبّرها وتزق النص بتاعها. */
+input[type="checkbox"],input[type="radio"]{width:22px;height:22px;min-width:22px;min-height:0;padding:0;margin:0;flex:0 0 22px;accent-color:var(--wl-primary,#2563eb);cursor:pointer;vertical-align:middle}
+label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:flex;align-items:center;gap:10px}
+.ext-pay-select{flex:1 1 100%;min-width:0;max-width:100%}
+/* إضافة القطع (صفحة الأمر، خط السير، نموذج الأمر): كل الخانات بعرض مكانها بدل ما تبقى صغيرة ومتلزقة في جنب.
+   الاسم سطر لوحده، سعر الشراء/البيع/الكمية جنب بعض، و«اتدفعت منين» والزرار بعرض كامل. */
+.request-part-add input,.request-part-add select,.part-add-external input,.part-add-external select{max-width:none!important;width:100%;min-width:0;box-sizing:border-box}
+.part-autocomplete-row{display:grid!important;grid-template-columns:minmax(0,1fr) 72px!important;gap:8px;align-items:stretch}
+.part-autocomplete-row .part-autocomplete{min-width:0}
+.part-autocomplete-row button{grid-column:1/-1;width:100%}
+.part-add-external,.route-quickclose-parts .part-add-external{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:8px;align-items:stretch}
+.part-add-external input[id$="ExtName"],.part-add-external select,.part-add-external button{grid-column:1/-1;width:100%}
+[data-theme="dark"] .part-add-external{background:rgba(224,166,60,.10);border-color:#b7822c;color:var(--text)}
+
+/* =========================================================
+   مراجعة الوضعين (فاتح/داكن): متغيرات كانت بتتستخدم من الصفحات ومش متعرّفة (فكانت بترجع لأبيض ثابت)
+   + الأسطح الملوّنة الفاتحة الثابتة بقت درجات شفافة فوق الخلفية الداكنة بدل مربعات بيضا/وردي فاقع.
+   ========================================================= */
+:root{--panel:var(--bg-elevated);--bg-soft:var(--bg-sunken);--accent:var(--accent-text);--danger:var(--danger-text);--primary:#0b57d0;--link:#0b57d0}
+[data-theme="dark"]{--primary:#5fb0ff;--link:#8ec9ff}
+[data-theme="dark"] .back{color:var(--link)}
+[data-theme="dark"] #wfSyncStatusPanel,[data-theme="dark"] #wfSyncStatusPanel summary,[data-theme="dark"] #wfSyncDetails>div{border-color:var(--border)!important}
+[data-theme="dark"] .notice,[data-theme="dark"] .backup-reminder-banner{background:rgba(224,179,74,.12);border:1px solid rgba(224,179,74,.45);color:var(--text)}
+[data-theme="dark"] .quick-add{background:rgba(95,176,255,.08);border-color:#2f5c86;color:var(--text)}
+[data-theme="dark"] .quick-add-btn.quick-add-open{background:rgba(255,107,107,.15);color:var(--danger-text)}
+[data-theme="dark"] .part-row-external{background:rgba(224,166,60,.10);color:var(--text)}
+[data-theme="dark"] .simple-value-stat{background:rgba(95,176,255,.08);border-color:#2f5c86;color:var(--text)}
+[data-theme="dark"] .simple-value-stat b{color:var(--text-muted)}
+[data-theme="dark"] .report-card{background:var(--bg-sunken)}
+[data-theme="dark"] .report-card-warn{background:rgba(224,179,74,.12);border-color:rgba(224,179,74,.45);color:var(--text)}
+[data-theme="dark"] .report-card-warn b{color:var(--warn-text)}
+[data-theme="dark"] .simple-line-warn,[data-theme="dark"] .report-list-row.report-danger{background:rgba(255,107,107,.12);border-color:rgba(255,107,107,.4);color:var(--danger-text)}
+[data-theme="dark"] .simple-line-warn b,[data-theme="dark"] .report-list-row.report-danger b{color:var(--danger-text)}
+[data-theme="dark"] .report-section h3,[data-theme="dark"] .report-table-full th{color:var(--text-muted)}
+[data-theme="dark"] .route-contact-unavailable{background:rgba(255,107,107,.14)!important;color:#ff9d9d!important;border-color:rgba(255,107,107,.45)!important}
+[data-theme="dark"] .route-contact-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important;border-color:rgba(224,179,74,.45)!important}
+[data-theme="dark"] .route-contact-needspart{background:rgba(74,222,128,.12)!important;color:#7ee2a6!important;border-color:rgba(74,222,128,.4)!important}
+[data-theme="dark"] .route-badge-done,[data-theme="dark"] .route-badge-needspart{background:rgba(74,222,128,.14)!important;color:#7ee2a6!important}
+[data-theme="dark"] .route-badge-visited{background:rgba(95,176,255,.14)!important;color:#8ec9ff!important}
+[data-theme="dark"] .route-badge-pending,[data-theme="dark"] .route-badge-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important}
+[data-theme="dark"] .route-badge-offsched{background:rgba(251,146,60,.14)!important;color:#fdba74!important}
+[data-theme="dark"] .route-badge-workshop{background:rgba(167,139,250,.16)!important;color:#c4b5fd!important}
+[data-theme="dark"] .route-badge-unavailable{background:rgba(255,107,107,.14)!important;color:#ff9d9d!important}
+/* كشف حساب العميل: الخلايا كانت بتتزنق وتركب على بعض في الموبايل (التاريخ فوق رقم الأمر) — سطر واحد لكل خلية والجدول يتمرر أفقيًا */
+.statement-table th,.statement-table td{white-space:nowrap;padding:7px 8px;font-size:12px;border-bottom:1px solid var(--border);text-align:right}
+.statement-table thead th{background:var(--bg-sunken);color:var(--text-muted);font-weight:700}
+.statement-table tfoot td,.statement-table tr:last-child td{font-weight:700}
+/* الأزرار الثانوية كانت بنفس لون خلفية الصناديق اللي جواها (قطع الغيار/الحساب) فبتبان كنص عادي مش زرار */
+.secondary,.icon-btn{border:1px solid var(--border)}
+.parts-box .secondary,.request-parts .secondary,.request-account .secondary,.route-quickclose-parts .secondary,.part-add-external .secondary{background:var(--bg-elevated)}
+[data-theme="dark"] .report-card span{color:var(--text-muted)}
+/* متابعة العملاء الساكتين: كارت عادي (كان بياخد تنسيق كروت القوائم بعمودين فالاسم بيتزنق في عمود ضيق) */
+.followup-card{display:block;border-top:4px solid #e0b029}
+.followup-card .item-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.followup-card .followup-line{margin-top:6px;font-size:14px;line-height:1.6}
+.followup-card .actions{margin-top:10px}
+/* منطقة الحذف الجماعي: في آخر الصفحة ومقفولة لحد ما تفتحها */
+.danger-zone{margin:18px 0 8px;border:1px dashed rgba(185,28,28,.45);border-radius:12px;padding:10px 12px;background:var(--bg-elevated)}
+.danger-zone summary{cursor:pointer;font-weight:700;color:var(--danger-text)}
+.danger-zone-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+/* مربعات الملخص بتظهر حسب الموجود (اللي بصفر بيستخبى)، فلما العدد يبقى فردي آخر مربع كان بيسيب خانة فاضية جنبه — بياخد السطر كله */
+.compact-stats>.stat:last-child:nth-child(odd){grid-column:1/-1}
+@media(max-width:650px){.report-cards>.report-card:last-child:nth-child(odd){grid-column:1/-1}}
+/* لوحة السحابة في الإعدادات: الأزرار كانت بشكل المتصفح الافتراضي */
+.cloud-panel>button,.cloud-panel>a{display:inline-flex;align-items:center;gap:6px;margin:4px 0 4px 6px;text-decoration:none}
+.cloud-panel>.danger-btn{padding:11px 14px;border-radius:9px}
+/* تفاصيل حركة المحفظة */
+.tx-clickable{cursor:pointer}
+.txd-modal{position:fixed;inset:0;z-index:99990;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}
+.txd-sheet{background:var(--bg-elevated);color:var(--text);width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px 22px;box-shadow:0 -6px 24px rgba(0,0,0,.25)}
+@media(min-width:700px){.txd-modal{align-items:center}.txd-sheet{border-radius:16px}}
+.txd-amount{font-size:28px;font-weight:800;text-align:center}.txd-amount.in{color:var(--success-text)}.txd-amount.out{color:var(--danger-text)}
+.txd-title{text-align:center;font-weight:700;margin:4px 0 12px}
+.txd-sheet h4{margin:14px 0 6px;font-size:14px}
+.txd-box{background:var(--bg-sunken);border:1px solid var(--border);border-radius:12px;padding:6px 10px}
+.txd-row{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.txd-row:last-child{border-bottom:0}.txd-row span{color:var(--text-muted);min-width:0}.txd-row b{text-align:left;white-space:nowrap}
+.txd-row b.in{color:var(--success-text)}.txd-row b.out{color:var(--danger-text)}.txd-row small{color:var(--text-muted)}
+.txd-open{display:block;text-align:center;margin-top:12px;text-decoration:none}
+.txd-actions{display:flex;gap:8px;margin-top:14px}.txd-actions button{flex:1}
+/* حوار المرتجع */
+.rd-sheet .rd-l{display:block;font-weight:700;font-size:13px;margin:6px 0 10px}.rd-sheet .rd-l textarea{width:100%;margin-top:6px;box-sizing:border-box}
+.rd-g{background:var(--bg-sunken);border:1px solid var(--border);border-radius:12px;padding:8px 10px;margin:8px 0}
+.rd-g b{display:block;margin-bottom:4px;font-size:14px}
+.rd-g label{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0;font-size:13px;line-height:1.5}
+.rd-g label input[type=radio]{width:auto;flex:none}.rd-g select,.rd-g input[type=datetime-local]{flex:1;min-width:150px;padding:6px;border-radius:8px}
+.rd-g label>span{flex:1;min-width:0}
+.rd-sub{margin:6px 0 2px;padding:8px;border-radius:10px;border:1px dashed var(--border);background:var(--bg-elevated)}
+.rd-sub label{display:flex;flex-wrap:wrap;gap:6px}.rd-sub label>span{flex:1 1 100%}.rd-sub select,.rd-sub input{flex:1;min-width:120px;padding:6px;border-radius:8px}

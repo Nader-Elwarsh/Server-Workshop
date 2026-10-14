@@ -134,6 +134,7 @@ function renderRoute(){
   let today=dayKeyLocal(new Date()), cf=document.getElementById("routeCenterFilter")?.value||"", summaryEl=document.getElementById("routeSummary");
   let sq=(document.getElementById("routeSearch")?.value||"").trim().toLowerCase();
   if(!routeViewState.day)routeViewState.day=today;
+  window.WFNavState?.setParams({day:routeViewState.day!==today?routeViewState.day:null,od:routeViewState.overdueView?1:null});
   const allRequests=arr(K.r), customers=byIdCached(K.c);
   let list,headTitle;
   if(routeViewState.overdueView){
@@ -243,20 +244,20 @@ function routeQuickCloseFormHtml(x){
   const partsTotal=+x.partsTotal||0, deposit=+x.deposit||0;
   const draft=(routeViewState.quickCloseDraft&&routeViewState.quickCloseDraft.id===x.id)?routeViewState.quickCloseDraft:null;
   const labor=draft?draft.labor:(+x.labor||0), newDeposit=draft?draft.newDeposit:0;
-  const wallets=settings().wallets||[], defaultWallet=(typeof resolveDefaultWallet==="function"?resolveDefaultWallet():(settings().defaultWallet||""));
+  const wallets=settings().wallets||[], defaultWallet=(typeof resolveDefaultWallet==="function"?resolveDefaultWallet(x):(settings().defaultWallet||""));
   const partsRows=(x.parts||[]).map(p=>{
     const stockPart=p.external?null:byIdCached(K.p).get(p.partId);
     const nm=p.external?(p.name||"قطعة خارجية"):(stockPart?.name||"قطعة محذوفة");
     const amount=(p.qty||0)*(p.sell||0);
-    return `<div class="part-row compact-part${p.external?" part-row-external":""}"><span>${p.external?"🧳":"🔧"} ${esc(nm)}</span><span>× ${p.qty}</span><strong>${amount.toFixed(2)} ج</strong></div>`;
+    return `<div class="part-row compact-part${p.external?" part-row-external":""}"><span>${p.external?"🧳":"🔧"} ${esc(nm)}${p.external&&typeof extPayLabel==="function"&&extPayLabel(p)?`<small class="ext-cost-note"> ${esc(extPayLabel(p))}</small>`:""}</span><span>× ${p.qty}</span><strong>${amount.toFixed(2)} ج</strong></div>`;
   }).join("");
   return `<div class="route-quickclose-form" data-wf-event="click" data-wf-code="event.stopPropagation()">
     <div class="route-quickclose-parts">
       <b>🔧 قطع الغيار المضافة</b>
       ${partsRows||'<div class="hint">لا توجد قطع غيار مضافة.</div>'}
-      <div class="part-add request-part-add part-autocomplete-row"><div class="part-autocomplete"><input type="text" id="rpPartSearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم القطعة..." autocomplete="off" data-wf-event="input" data-wf-code="filterRequestPartOptions(this.value)" data-wf-refocus-code="filterRequestPartOptions(this.value)" data-wf-blur="hideRequestPartResults"><input type="hidden" id="rpPart"><div id="rpPartResults" class="part-autocomplete-results hidden"></div></div><input id="rpQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="routeConfirmAddPart('${x.id}')">➕ من المخزن</button></div>
+      ${window.wfSyncMode==="scoped"?`<a class="secondary mini-action" style="display:inline-block;margin-top:8px;text-decoration:none" href="tech.html?id=${encodeURIComponent(x.id)}">➕ إضافة قطعة من بوابة الفني</a>`:`<div class="part-add request-part-add part-autocomplete-row"><div class="part-autocomplete"><input type="text" id="rpPartSearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم القطعة..." autocomplete="off" data-wf-event="input" data-wf-code="filterRequestPartOptions(this.value)" data-wf-refocus-code="filterRequestPartOptions(this.value)" data-wf-blur="hideRequestPartResults"><input type="hidden" id="rpPart"><div id="rpPartResults" class="part-autocomplete-results hidden"></div></div><input id="rpQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="routeConfirmAddPart('${x.id}')">➕ من المخزن</button></div>
       <div id="rpStockHint" class="hint">اختر قطعة لمعرفة الكمية المتاحة.</div>
-      <div class="part-add request-part-add part-add-external"><input id="rpExtName" type="text" placeholder="اسم القطعة (خارج المخزن)"><input id="rpExtBuy" type="number" min="0" step=".01" placeholder="سعر الشراء"><input id="rpExtSell" type="number" min="0" step=".01" placeholder="سعر البيع"><input id="rpExtQty" type="number" min="1" value="1" inputmode="numeric"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="routeConfirmAddExternalPart('${x.id}')">🧳 قطعة خارج المخزن</button></div>
+      <div class="part-add request-part-add part-add-external"><input id="rpExtName" type="text" placeholder="اسم القطعة (خارج المخزن)"><input id="rpExtBuy" type="number" min="0" step=".01" placeholder="سعر الشراء"><input id="rpExtSell" type="number" min="0" step=".01" placeholder="سعر البيع"><input id="rpExtQty" type="number" min="1" value="1" inputmode="numeric">${typeof extPaySelectHtml==="function"?extPaySelectHtml("rpExtPay",x):""}<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="routeConfirmAddExternalPart('${x.id}')">🧳 قطعة خارج المخزن</button></div>`}
     </div>
     <div class="route-quickclose-row"><label>🔨 المصنعية<input type="number" min="0" step=".01" id="qcLabor-${x.id}" value="${labor.toFixed(2)}" data-wf-event="input" data-wf-code="updateQuickCloseTotal('${x.id}')"></label><label>🔧 قطع الغيار<input type="text" value="${partsTotal.toFixed(2)} ج" disabled></label></div>
     <div class="route-quickclose-row"><label>💰 الإجمالي<input type="text" id="qcTotal-${x.id}" value="${(partsTotal+labor).toFixed(2)} ج" disabled></label><label>💵 العربون المسجّل قبل كده<input type="text" value="${deposit.toFixed(2)} ج" disabled></label></div>
@@ -345,10 +346,13 @@ function confirmQuickClose(i){
   const wallet=document.getElementById(`qcWallet-${i}`)?.value||"";
   const partsTotal=Number.isFinite(+r.partsTotal)?+r.partsTotal:0,deposit=r.deposit==null||r.deposit===""?0:+r.deposit,estimatedTotal=partsTotal+labor;
   if(partsTotal<0||!Number.isFinite(deposit)||deposit<0||!Number.isFinite(estimatedTotal)){alert("إجمالي الأمر أو العربون غير صالح؛ صحّح البيانات قبل الإغلاق.");return}
-  if(deposit>estimatedTotal+0.001){alert(`العربون (${deposit.toFixed(2)} ج) أكبر من إجمالي الأمر (${estimatedTotal.toFixed(2)} ج). صحّح الإجمالي أو سجّل ردّ الزيادة قبل الإغلاق.`);return}
-  const collectedPreview=Math.max(0,estimatedTotal-deposit);
+  const rf=typeof askDepositRefund==="function"?askDepositRefund(r,estimatedTotal,wallet):(deposit>estimatedTotal+0.001?(alert(`العربون (${deposit.toFixed(2)} ج) أكبر من إجمالي الأمر (${estimatedTotal.toFixed(2)} ج). صحّح الإجمالي قبل الإغلاق.`),{ok:false}):{ok:true,refund:0});
+  if(!rf.ok)return;
+  const effDeposit=deposit-(+r.depositRefunded||0)-rf.refund;
+  const collectedPreview=Math.max(0,estimatedTotal-effDeposit);
   if(collectedPreview>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المتبقي المُحصّل (${collectedPreview.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة القفل من غير تسجيله في محفظة؟`))return;
-  if(!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
+  if(!rf.refund&&!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
+  if(rf.refund)applyDepositRefund(r,rf.refund,rf.wallet);
   r.labor=labor;
   r.partsTotal=+r.partsTotal||0;
   r.total=r.partsTotal+labor;
@@ -359,12 +363,13 @@ function confirmQuickClose(i){
   if(r.status==="جديد"){r.status="جاري التنفيذ";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);from=r.status;}
   if(r.status==="جاري التنفيذ"){r.status="مكتمل";applyStatusTimestamp(r,r.status);recordStatusHistory(r,from,r.status);}
   const now=new Date().toISOString();
-  const collected=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+  const collected=Math.max(0,Math.round(((+r.total||0)-((+r.deposit||0)-(+r.depositRefunded||0)))*100)/100);
   r.paid=true;r.remain=0;r.paidAt=now;r.closed=true;r.closedAt=now;r.closeWallet=wallet;
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncTreasuryForOrderClose==="function")syncTreasuryForOrderClose(r,collected);
     if(typeof syncWalletForOrderClose==="function"&&!syncWalletForOrderClose(r,collected,wallet))return{ok:false};
+    if(rf.refund&&!addOrderRefundTx(r,rf.refund,rf.wallet))return{ok:false};
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الإغلاق والحركة المالية معًا؛ لم يتم إغلاق أمر الشغل.");return}
@@ -379,6 +384,12 @@ function initRoutePage(){
   cfEl.onchange=renderRoute;
   routeViewState.day=dayKeyLocal(new Date());
   routeViewState.overdueView=false;
+  // زر الرجوع: نرجع لنفس اليوم/البحث/المركز اللي كنت عليه قبل ما تفتح الأمر.
+  if(window.WFNavState){
+    WFNavState.keep({q:"routeSearch",c:"routeCenterFilter"});
+    const d=WFNavState.getParam("day");if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d))routeViewState.day=d;
+    if(WFNavState.getParam("od")==="1")routeViewState.overdueView=true;
+  }
   renderRouteDayStrip();
   renderRoute();
 }
@@ -455,12 +466,13 @@ function renderFollowup(){
     // وتاريخ الإرسال، مع إمكانية فتح نفس النص تاني في واتساب وعرضه كامل.
     let lastSend=lastSendByCustomer.get(x.c.id)||null;
     let lastSendHtml=lastSend?`<div class="setting-row" style="margin-top:4px"><details><summary>📨 آخر رسالة اتبعتت: ${esc(lastSend.templateName)} — ${esc(new Date(lastSend.sentAt).toLocaleString("ar-EG"))}</summary><div class="hint" style="white-space:pre-wrap">${esc(lastSend.text)}</div><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="reopenFollowupSend('${x.c.id}','${lastSend.id}')">↩️ فتحها تاني في واتساب</button></details></div>`:"";
-    return `<div class="item record-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span></div><div>${contactLinksHtml(x.c.phone)}</div><div>📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div>🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${x.latest ? `<a href="request.html?id=${x.latest.id}">${esc(x.latest.no||"فتح الأمر")}</a> — ` : ""}${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
+    return `<div class="item followup-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span></div><div class="followup-line">${contactLinksHtml(x.c.phone)}</div><div class="followup-line">📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div class="followup-line">🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${x.latest ? `<a href="request.html?id=${x.latest.id}">${esc(x.latest.no||"فتح الأمر")}</a> — ` : ""}${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
   }).join(""):'<div class="item">لا يوجد عملاء ساكتين ضمن المدة المختارة 🎉</div>';
 }
 function initFollowupPage(){
   let dEl=document.getElementById("followupDays");if(!dEl)return;
   dEl.onchange=renderFollowup;
+  window.WFNavState?.keep({days:"followupDays"});
   renderFollowup();
   // إعدادات رسائل واتساب الجاهزة لمتابعة العملاء بقت هنا جوه صفحة
   // "متابعة العملاء" نفسها (مش في الإعدادات العامة)، عشان تتحكم فيها من

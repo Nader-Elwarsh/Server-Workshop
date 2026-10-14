@@ -57,6 +57,7 @@ const context = {
   Blob: function Blob() {},
   alert() {},
   setTimeout,
+  location: { search: '?only=all' },
   window: { requestAnimationFrame(fn) { frames.push(fn); } }
 };
 context.window.dayKeyLocal = context.dayKeyLocal;

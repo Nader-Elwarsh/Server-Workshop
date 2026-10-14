@@ -8,7 +8,7 @@
 <script src="image-store.js" defer></script>
 <script src="firebase-config.js" defer></script><script src="app-check.js" defer></script>
 <script src="firebase-sync.js" defer></script>
-<script src="theme.js" defer></script>
+<script src="event-delegation.js" defer></script><script src="theme.js" defer></script>
 <script src="portal-ticker.js" defer></script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>بوابة العملاء | الورشة الفنية</title>
@@ -41,7 +41,7 @@
 <body>
 <script src="app-lock.js"></script>
 <main class="page">
-<div class="page-topbar"><a class="back" href="index.html">← الرئيسية</a></div>
+<div class="page-topbar"><a class="back" href="index.html">← الرئيسية</a><button class="theme-toggle-btn no-print" type="button" data-wf-click="toggleTheme" aria-label="تبديل المظهر" title="الوضع الداكن">🌙</button></div>
 <div class="page-head"><div>
 <h1>🌐 بوابة العملاء</h1>
 <p class="hint">كل اللي يخص بوابة العملاء في مكان واحد: العملاء المسجّلين، أوامرهم، أسئلتهم، شكاويهم، والمقالات.</p>
@@ -177,7 +177,7 @@ function $(i){return document.getElementById(i)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function ms(v){if(!v)return 0;if(v.toDate)return v.toDate().getTime();if(typeof v.seconds==="number")return v.seconds*1000;return Date.parse(v)||0}
 function fdt(v){var t=ms(v);return t?new Date(t).toLocaleDateString("ar-EG",{day:"numeric",month:"short",year:"numeric"}):""}
-function money(n){return(+n||0).toLocaleString("ar-EG")}
+function money(n){return(+n||0).toLocaleString("en-US",{maximumFractionDigits:2})}
 function byNew(a,b){return ms(b.createdAt)-ms(a.createdAt)}
 /* ترتيب المقالات (نفس ترتيب بوابة العميل بالظبط): المثبّت الأول، وبعدين الجديد اللي لسه ماتحددلوش ترتيب، وبعدين اللي ليه ترتيب يدوي (order) تصاعديًا. */
 function postCmp(a,b){var pa=a.pinned?1:0,pb=b.pinned?1:0;if(pa!==pb)return pb-pa;var oa=typeof a.order==="number",ob=typeof b.order==="number";if(oa&&ob&&a.order!==b.order)return a.order-b.order;if(oa!==ob)return oa?1:-1;return ms(b.createdAt)-ms(a.createdAt)}
@@ -190,7 +190,7 @@ function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id=
 /* ---- الأرقام والتبويبات ---- */
 function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
 rq:RQ.length,gu:GR.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
-function go(k){tab=k;rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
+function go(k){if(!TABS.some(function(t){return t[0]===k}))k="ov";tab=k;if(window.WFNavState)WFNavState.setParams({tab:k==="ov"?null:k});rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
 function rTabs(){var c=counts(),bd={or:c.rq,gu:c.gu,q:c.qn,cp:c.cp,sg:c.sg};
 $("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
 function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
@@ -412,7 +412,7 @@ document.addEventListener("change",function(e){var t=e.target;if(!TKD||!t.datase
 window.addEventListener("beforeunload",function(e){if(tkDirty){e.preventDefault();e.returnValue=""}});
 function rAll(){rTabs();rStats();rOv();rCl();rRq();rGu();rPo();rQs();rCp();rSg();rPt();rAc()}
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
-go("ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
+if(window.WFNavState)WFNavState.keep({cq:"cs",of:"of",qf:"qf",aq:"acs"});go((window.WFNavState&&WFNavState.getParam("tab"))||"ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
@@ -435,5 +435,6 @@ ready();
     try { el.showPicker(); } catch (_) { /* مفتوح بالفعل أو المتصفح مش بيسمح */ }
   }, true);
 })();</script>
+<script src="bottom-nav.js" defer></script>
 </body>
 </html>

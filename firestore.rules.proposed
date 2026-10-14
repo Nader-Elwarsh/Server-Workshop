@@ -5,10 +5,38 @@ service cloud.firestore {
 
     // وجود مستند العضوية هو مصدر التفويض الوحيد؛ لا تمنح القواعد أي عميل حق إنشاء هذا المستند.
     // مستند الموظف الموقوف (disabled == true) لا يمنح أي صلاحية؛ والإيقاف نفسه بتكتبه دالة المالك فقط.
-    function isStaff() {
+    function anyStaff() {
       return signedIn()
         && exists(/databases/$(database)/documents/staff/$(request.auth.uid))
         && get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.get('disabled', false) != true;
+    }
+
+    // نطاق الموظف: 'a' = «أوامره المعيّنة فقط» (فني). القيمة بتتكتب في مستند الموظف من دالة السيرفر (staff-admin)
+    // وبتتقدّم على claim الـ token (عشان التغيير يسري فورًا مش بعد ساعة). مستند قديم من غير الحقل = نطاق كامل.
+    function scopeOfStaff() {
+      return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data
+        .get('sc', request.auth.token.get('sc', 'w'));
+    }
+    function scopedStaff() { return anyStaff() && scopeOfStaff() == 'a'; }
+
+    // isStaff = موظف بنطاق كامل. كل القواعد القديمة تحت بتستخدمه، فالموظف المحدود النطاق ما بياخدش منها حاجة.
+    function isStaff() { return anyStaff() && scopeOfStaff() != 'a'; }
+
+    // الفني يقدر يعدّل أي حاجة في أمره المعيّن له ما عدا: الهوية (رقم الأمر/العميل/الجهاز/تاريخ الإنشاء/المصدر)،
+    // التعيين (الفني/محفظته/من عيّنه)، والعربون وبيانات البوابة. (قايمة منع مش قايمة سماح: عشان أي حقل جديد يضيفه التطبيق لشغل الأمر ما يتوقفش.)
+    function techOrderPatch() {
+      return resource.data.techId == request.auth.uid
+        && resource.data.get('closed', false) != true
+        && request.resource.data.techId == resource.data.techId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'techId', 'techName', 'techWallet', 'assignedAt', 'assignedBy',
+          'customerId', 'deviceId', 'addressKey', 'no', 'createdAt', 'source', 'portalRequestId', 'portalVis', 'portal',
+          'deposit', 'depositWallet', 'depositExtra',
+          'closed', 'paid', 'paidAt', 'closedAt', 'closeWallet', 'closedByTech',
+          'jobType', 'jobTypeName', 'techPay', 'techPayManual', 'techPayAt', 'techPayBy', 'payShares', 'payShareUids', 'returnPayPending'
+        ])
+        // الإلغاء للإدارة بس. القفل والتحصيل بيتعملوا من السيرفر (دالة techCloseOrder) عشان الأمر وحركة المحفظة يتسجلوا مع بعض.
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) || request.resource.data.status != 'ملغي');
     }
 
     function linkRef() {
@@ -54,7 +82,7 @@ service cloud.firestore {
 
     // إعداد الأدوار وسجل المراجعة: القراءة للموظفين (السجل للمالك فقط)، والكتابة من دوال السيرفر فقط.
     match /accessConfig/{doc} {
-      allow read: if isStaff();
+      allow read: if anyStaff();
     }
     match /staffAudit/{doc} {
       allow read: if isStaff() && request.auth.token.get('role', 'owner') == 'owner';
@@ -184,6 +212,45 @@ service cloud.firestore {
     match /portalPosts/{id} {
       allow read: if resource.data.published == true;
       allow read, write: if isStaff();
+    }
+
+    // ---- الموظف المحدود النطاق (فني): يشوف ويعدّل أوامره المعيّنة له وهي مفتوحة بس ----
+    // الاستعلام لازم يكون: where techId == uid و where closed == false (القواعد مش فلتر).
+    match /requests/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.closed == false;
+      allow update: if scopedStaff() && techOrderPatch();
+    }
+
+    // نسخة عرض (من أجهزة الإدارة) فيها العميل والجهاز بتوع كل أمر معيّن: الفني يقرأ بتاعته بس ويمسحها لما يقفل الأمر.
+    match /techOrders/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
+      allow delete: if scopedStaff() && resource.data.techId == request.auth.uid;
+    }
+
+    // نسخة قديمة من حساب عهدة الفني (قبل دالة techAccount على السيرفر). القراءة بس، ومحدش بيكتبها من الأجهزة دلوقتي.
+    match /techWallets/{uid} {
+      allow get: if scopedStaff() && uid == request.auth.uid;
+    }
+
+    // مصروفات الفني: بينشئها «معلّقة» وبيشوف بتاعته بس وبيلغي المعلّقة منها. الاعتماد/الرفض من أجهزة الإدارة (قاعدة الموظف الكامل).
+    match /techExpenses/{id} {
+      allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
+      allow create: if scopedStaff()
+        && request.resource.data.techId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['techId', 'techName', 'wallet', 'amount', 'note', 'category', 'orderId', 'orderNo', 'status', 'at', 'pay'])
+        && (!('pay' in request.resource.data) || request.resource.data.pay in ['custody', 'own', 'workshop'])
+        && request.resource.data.keys().hasAll(['techId', 'amount', 'note', 'status', 'at'])
+        && request.resource.data.amount is number && request.resource.data.amount > 0 && request.resource.data.amount <= 1000000
+        && request.resource.data.note is string && request.resource.data.note.size() >= 2 && request.resource.data.note.size() <= 300;
+      allow delete: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.status == 'pending';
+    }
+
+    // الإعدادات: المحدود يقرأ الإعدادات العامة وعلامة التحديث بس (مفيش أي wfkv_* = مصروفات/سلة/…)، ويكتب علامة التحديث.
+    match /settings/{doc} {
+      allow get: if scopedStaff() && (doc == 'global' || doc == 'wf_meta');
+      allow create, update: if scopedStaff() && doc == 'wf_meta'
+        && request.resource.data.keys().hasOnly(['ts', 'dev']);
     }
 
     // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من

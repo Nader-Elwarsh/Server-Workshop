@@ -5,9 +5,10 @@ const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https")
 const { defineString, defineSecret, defineBoolean } = require("firebase-functions/params");
 const { createPhoneHandlers, PhoneError } = require("./phone-lookup");
 const { createStaffAdmin, AdminError } = require("./staff-admin");
+const { createTechLedger } = require("./tech-ledger");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 
 initializeApp();
 const cloudName = defineString("CLOUDINARY_CLOUD_NAME");
@@ -145,7 +146,24 @@ function adminCallable(name, handler) {
 }
 exports.staffSync = adminCallable("staffSync", (uid) => staffAdmin.sync(uid));
 exports.staffList = adminCallable("staffList", (uid) => staffAdmin.list(uid));
+exports.staffDirectory = adminCallable("staffDirectory", (uid) => staffAdmin.directory(uid));
 exports.staffCreate = adminCallable("staffCreate", (uid, d) => staffAdmin.create(uid, d));
 exports.staffUpdate = adminCallable("staffUpdate", (uid, d) => staffAdmin.update(uid, d));
 exports.staffResetPassword = adminCallable("staffResetPassword", (uid, d) => staffAdmin.resetPassword(uid, d));
 exports.rolesSave = adminCallable("rolesSave", (uid, d) => staffAdmin.saveRoles(uid, d));
+
+/* ---------------------------------------------------------------------
+   حساب الفني على السيرفر: قفل أمره (الأمر + حركة التحصيل في معاملة واحدة) وقراءة عهدته وسجل أوامره.
+   --------------------------------------------------------------------- */
+const techLedger = createTechLedger({
+  db: getFirestore(),
+  ts: (d) => Timestamp.fromDate(d),
+  stamp: () => FieldValue.serverTimestamp(),
+  log: (...a) => console.log("[tech-ledger]", ...a)
+});
+exports.techCloseOrder = adminCallable("techCloseOrder", (uid, d) => techLedger.closeOrder(uid, d));
+exports.techAccount = adminCallable("techAccount", (uid, d) => techLedger.account(uid, d));
+exports.techCollectDeposit = adminCallable("techCollectDeposit", (uid, d) => techLedger.collectDeposit(uid, d));
+exports.techPartsCatalog = adminCallable("techPartsCatalog", (uid) => techLedger.partsCatalog(uid));
+exports.techUsePart = adminCallable("techUsePart", (uid, d) => techLedger.usePart(uid, d));
+exports.techReturnPart = adminCallable("techReturnPart", (uid, d) => techLedger.returnPart(uid, d));

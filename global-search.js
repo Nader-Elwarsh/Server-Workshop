@@ -158,7 +158,7 @@
       results.push({
         cat: "treasury", icon: e.type === "in" ? "⬅️💵" : "➡️💵",
         title: e.reason || "حركة خزنة",
-        sub: [e.category, e.amount ? (+e.amount).toLocaleString("ar-EG") + " ج" : ""].filter(Boolean).join(" • "),
+        sub: [e.category, e.amount ? (+e.amount).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " ج" : ""].filter(Boolean).join(" • "),
         href: "treasury.html"
       });
     });
@@ -172,7 +172,7 @@
       results.push({
         cat: "wallet", icon: w.type === "in" ? "⬅️💳" : "➡️💳",
         title: w.reason || w.category || "حركة حساب",
-        sub: [w.wallet, w.amount ? (+w.amount).toLocaleString("ar-EG") + " ج" : ""].filter(Boolean).join(" • "),
+        sub: [w.wallet, w.amount ? (+w.amount).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " ج" : ""].filter(Boolean).join(" • "),
         href: (function(){
           var ref=String(w.refKey||""), match=ref.match(/^order-(?:deposit|final)-(.+)$/);
           var order=match ? (requestById.get(match[1]) || null) : null;

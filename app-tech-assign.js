@@ -154,13 +154,43 @@
   }
   /* أجرة الفني على الأمر: نوع الشغل (من الإعداد) والمبلغ المحسوب، أو مبلغ يدوي. للمالك/المدير بصلاحية techpay.manage. */
   function payBlock(box, r) {
-    if (!canPay() && !(r.techPay > 0)) return;
+    if (!canPay() && !(r.techPay > 0) && !(r.payShares && r.payShares.length)) return;
     var wrap = mk("div", "margin-top:12px;padding-top:10px;border-top:1px dashed var(--border,#cbd5e1)");
     wrap.appendChild(mk("b", "", "💰 أجرة الفني على الأمر"));
     var cur = r.techPay > 0 ? (+r.techPay).toFixed(2) + " ج" + (r.jobType ? " — " + (payTypeName(r.jobType) || "نوع محذوف") : "") + (r.techPayManual ? " (مبلغ يدوي)" : "") : (r.jobType ? "0 ج" : "لسه ما اتحددش نوع الشغل");
     wrap.appendChild(mk("div", "margin-top:4px", cur));
+    (Array.isArray(r.payShares) ? r.payShares : []).forEach(function (sh) { if (sh) wrap.appendChild(mk("div", "font-size:13px;margin-top:4px;color:var(--text-muted)", "🔄 " + (sh.name || "") + ": " + (sh.pending ? "معلّقة (" + (+sh.base || 0).toFixed(2) + " ج) لحد قرار المرتجع" : (+sh.amount || 0).toFixed(2) + " ج — " + (sh.note || "")))); });
     if (!canPay()) { box.appendChild(wrap); return; }
     var cfg = payConfig();
+    if (r.returnPayPending && typeof w.applyReturnPayDecision === "function") { // مرتجع حسابه اتعلّق لحد الكشف
+      var pend = (r.payShares || []).filter(function (x) { return x && x.pending; }).slice(-1)[0] || {};
+      var rb = mk("div", "margin:8px 0;padding:10px;border-radius:10px;border:1px dashed var(--warn-text,#b45309);background:var(--bg-elevated,#fff)");
+      rb.appendChild(mk("b", "", "🔄 حساب المرتجع لسه ما اتحددش"));
+      rb.appendChild(mk("div", "font-size:13px;opacity:.85;margin:4px 0 8px", "بعد ما اتكشف: حدّد أجرة الشغل الأول لـ " + (pend.name || "الفني") + " (كانت " + (+pend.base || 0).toFixed(2) + " ج)، وأجرة شغل المرتجع."));
+      var SS = "width:100%;box-sizing:border-box;padding:8px;border-radius:10px;margin-top:6px";
+      var f1 = mk("select", SS); [["full", "الشغل الأول: كاملة (" + (+pend.base || 0).toFixed(2) + " ج)"], ["deduct", "الشغل الأول: يتخصم منها مبلغ…"], ["none", "الشغل الأول: تتلغي (الغلط من الفني)"]].forEach(function (o) { var op = mk("option", "", o[1]); op.value = o[0]; f1.appendChild(op); });
+      var f1a = mk("input", SS + ";display:none"); f1a.type = "number"; f1a.min = "0"; f1a.step = "any"; f1a.placeholder = "مبلغ الخصم (ممكن يزيد عن الأجرة = جزاء)";
+      var f2 = mk("select", SS); [["zero", "شغل المرتجع: من غير أجرة (ضمان / نفس العطل)"], ["amount", "شغل المرتجع: مبلغ محدد (عطل تاني)…"]].concat(cfg.types.length ? [["type", "شغل المرتجع: حسب نوع الشغل…"]] : []).forEach(function (o) { var op = mk("option", "", o[1]); op.value = o[0]; f2.appendChild(op); });
+      var f2a = mk("input", SS + ";display:none"); f2a.type = "number"; f2a.min = "0"; f2a.step = "any"; f2a.placeholder = "أجرة شغل المرتجع";
+      var f2t = mk("select", SS + ";display:none"); cfg.types.forEach(function (t) { var op = mk("option", "", t.name + " — " + payFor(t.id, r.techId) + " ج"); op.value = t.id; f2t.appendChild(op); });
+      f1.onchange = function () { f1a.style.display = f1.value === "deduct" ? "" : "none"; };
+      f2.onchange = function () { f2a.style.display = f2.value === "amount" ? "" : "none"; f2t.style.display = f2.value === "type" ? "" : "none"; };
+      var rmsg = mk("div", "font-size:13px;margin-top:6px", "");
+      var rbtn = mk("button", "margin-top:8px", "✅ تثبيت حساب المرتجع"); rbtn.type = "button"; rbtn.className = "primary small-btn";
+      rbtn.onclick = function () {
+        if (f1.value === "deduct" && !(+f1a.value > 0)) { rmsg.textContent = "اكتب مبلغ الخصم."; return; }
+        if (f2.value === "amount" && (f2a.value === "" || +f2a.value < 0)) { rmsg.textContent = "اكتب أجرة شغل المرتجع."; return; }
+        var dec = { first: f1.value, firstAmt: +f1a.value || 0, nw: f2.value, newAmt: +f2a.value || 0, newType: f2t.value };
+        rbtn.disabled = true;
+        w.updateRequestRecordAsync(r.id, function (_, x) {
+          var note = w.applyReturnPayDecision(x, dec, null, 0);
+          if (typeof w.recordStatusHistory === "function") w.recordStatusHistory(x, x.status, x.status, "قرار حساب المرتجع: " + note);
+          return true;
+        }).then(function (ok) { try { w.auditLog && w.auditLog("حساب مرتجع", "أمر شغل", r.id, ""); } catch (e) {} rmsg.textContent = ok ? "✅ اتثبت." : "تعذّر الحفظ."; rbtn.disabled = false; rendering = false; render(); });
+      };
+      rb.appendChild(f1); rb.appendChild(f1a); rb.appendChild(f2); rb.appendChild(f2a); rb.appendChild(f2t); rb.appendChild(rbtn); rb.appendChild(rmsg);
+      wrap.appendChild(rb); box.appendChild(wrap); return;
+    }
     if (!cfg.types.length) { wrap.appendChild(mk("div", "font-size:13px;opacity:.8;margin-top:4px", "حدّد أنواع الشغل وأسعارها الأول من «الفنيين والعهدة» ← ⚙️ أجور الفنيين.")); box.appendChild(wrap); return; }
     var sel = mk("select", "margin-top:8px;width:100%;box-sizing:border-box;padding:9px;border-radius:10px");
     var o0 = mk("option", "", "— نوع الشغل —"); o0.value = ""; sel.appendChild(o0);
