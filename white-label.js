@@ -342,10 +342,96 @@
   /* ================= 3) manifest ديناميكي (اسم/لون التطبيق المثبّت) ================= */
   var mfCache = {};
   function abs(u, base) { try { return new URL(u, base).href; } catch (e) { return u; } }
+  /* ---- أيقونة واسم التطبيق على شاشة الموبايل ----
+     الموبايل بيقرا ملف التثبيت (manifest.json) وملفات الأيقونات بأسمائها الثابتة. بدل ما تنزّل الأيقونات وتستبدلها
+     في المشروع، الصفحة بتولّدها بالصورة/الاسم/اللون الحاليين وبتحطها في كاش اسمه wf-brand-v1، والـ Service Worker
+     بيرد بيها مكان الملفات الأصلية (manifest.json / portal-manifest.json / icon-*.png). كروم على أندرويد بيلاحظ
+     التغيير ويحدّث الأيقونة اللي على الشاشة (أحيانًا بيسأل الأول). لو مفيش أي تخصيص الكاش بيتمسح وترجع الأصلية. */
+  var BRAND_CACHE = "wf-brand-v1";
+  var ICON_FILES = [["icon-192-v13.png", 192, "any"], ["icon-512-v13.png", 512, "any"], ["icon-maskable-512-v13.png", 512, "maskable"], ["apple-touch-icon-v13.png", 180, "apple"]];
+  var syncing = null, syncAgain = false;
+  function scopeBase() {
+    try { var c = navigator.serviceWorker && navigator.serviceWorker.controller; if (c && c.scriptURL) return new URL("./", c.scriptURL).href; } catch (e) {}
+    return new URL("./", location.href).href;
+  }
+  function brandSnapshot() {
+    var B = window.WFBrand;
+    return {
+      name: eff.name || "", tag: eff.tagline || "", short: eff.shortName || "", primary: eff.colors.light.primary || "",
+      icon: B && B.iconChanged && B.iconChanged() ? (B.stamp() + "|" + JSON.stringify(B.colors())) : ""
+    };
+  }
+  function buildManifest(m, base, stamp, portal) {
+    m = JSON.parse(JSON.stringify(m));
+    var named = eff.name && eff.name !== DEF_NAME;
+    if (portal) {
+      if (named) m.name = eff.name + " — العملاء";
+      if (named || eff.shortName) m.short_name = eff.shortName || eff.name.slice(0, 12);
+    } else {
+      m.name = named ? eff.name + (eff.tagline ? " - " + eff.tagline : "") : apply(m.name);
+      m.short_name = eff.shortName || (named ? eff.name.slice(0, 12) : apply(m.short_name));
+    }
+    if (m.description) m.description = apply(m.description);
+    if (eff.colors.light.primary) { m.theme_color = eff.colors.light.primary; m.background_color = eff.colors.light.primary; }
+    if (Array.isArray(m.icons) && stamp) m.icons.forEach(function (i) { if (i.src) i.src = i.src.split("?")[0] + "?b=" + stamp; });
+    return m;
+  }
+  function syncInstallAssets() {
+    if (!window.caches || !window.fetch || !window.Promise) return Promise.resolve(false);
+    if (syncing) { syncAgain = true; return syncing; }
+    syncing = waitFor(brandReady, 12000).then(function () {
+      var snap = brandSnapshot(), key = JSON.stringify(snap), base = scopeBase();
+      var custom = snap.name || snap.tag || snap.short || snap.primary || snap.icon;
+      return caches.open(BRAND_CACHE).then(function (cache) {
+        return cache.match(base + "__brand_key").then(function (r) { return r ? r.text() : ""; }).then(function (old) {
+          if (old === key) return false;
+          if (!custom) return caches["delete"](BRAND_CACHE).then(function () { return true; });
+          var stamp = snap.icon ? String(window.WFBrand.stamp() || Date.now()) : "";
+          var jobs = [];
+          if (snap.icon) ICON_FILES.forEach(function (f) {
+            jobs.push(window.WFBrand.iconPng(f[1], f[2]).then(function (c) {
+              return new Promise(function (res) { c.toBlob(function (b) { res(b); }, "image/png"); });
+            }).then(function (b) { if (b) return cache.put(base + f[0], new Response(b, { headers: { "Content-Type": "image/png", "Cache-Control": "no-cache" } })); }));
+          });
+          else ICON_FILES.forEach(function (f) { jobs.push(cache["delete"](base + f[0])); });
+          [["manifest.json", false], ["portal-manifest.json", true]].forEach(function (mf) {
+            // الأصل من الشبكة (أو كاش التطبيق) — مش من كاش الهوية نفسه
+            jobs.push(fetch(base + mf[0] + "?wl-src=1", { cache: "no-cache" }).then(function (r) { if (!r.ok) throw new Error("mf"); return r.json(); }).then(function (m) {
+              var out = buildManifest(m, base, stamp, mf[1]);
+              return cache.put(base + mf[0], new Response(JSON.stringify(out), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache" } }));
+            })["catch"](function () {}));
+          });
+          return Promise.all(jobs).then(function () { return cache.put(base + "__brand_key", new Response(key)); }).then(function () { return true; });
+        });
+      });
+    }).then(function (changed) {
+      if (changed) { // نخلي المتصفح يقرا ملف التثبيت الجديد دلوقتي
+        var link = document.querySelector('link[rel="manifest"]');
+        if (link && navigator.serviceWorker && navigator.serviceWorker.controller) {
+          var h = (link._wlOrig || link.getAttribute("href") || "").replace(/[?&]b=\d+/, "");
+          link.setAttribute("href", h + (h.indexOf("?") > -1 ? "&" : "?") + "b=" + Date.now());
+        }
+      }
+      return changed;
+    })["catch"](function () { return false; }).then(function (r) {
+      syncing = null;
+      if (syncAgain) { syncAgain = false; return syncInstallAssets(); }
+      return r;
+    });
+    return syncing;
+  }
   function applyManifest() {
     var link = document.querySelector('link[rel="manifest"]');
     if (!link || !window.fetch || !window.URL || !window.Blob) return;
     if (!link._wlOrig) link._wlOrig = link.getAttribute("href");
+    // فيه Service Worker: الملفات الحقيقية بتتبدّل من الكاش (ده اللي بيخلّي أيقونة الشاشة تتغير). من غيره: نسخة مؤقتة للصفحة بس.
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      var t0 = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (!t0 && document.head) { t0 = document.createElement("meta"); t0.name = "apple-mobile-web-app-title"; document.head.appendChild(t0); }
+      if (t0) t0.setAttribute("content", eff.shortName || eff.name || DEF_NAME);
+      syncInstallAssets();
+      return;
+    }
     var custom = (eff.name && eff.name !== DEF_NAME) || eff.shortName || eff.colors.light.primary || (eff.tagline && eff.tagline !== DEF_TAG);
     if (!custom) { if (link._wlOrig && link.getAttribute("href") !== link._wlOrig) link.setAttribute("href", link._wlOrig); return; }
     var src = abs(link._wlOrig, location.href);
@@ -384,19 +470,62 @@
   }
   function ref() { return firebase.firestore().collection("portal").doc("branding"); }
   function brandReady() { return !!window.WFBrand; }
+  /* adopting>0: التغيير جاي من السحابة/من النشر نفسه (مش من المستخدم) — النشر التلقائي مايتعملش عليه */
+  var adopting = 0;
+  function quietly(p) { adopting++; return Promise.resolve(p).then(function (v) { adopting--; return v; }, function (e) { adopting--; throw e; }); }
   function adoptBrand(json, stamp) {
     if (!json) return Promise.resolve(false);
     var o; try { o = JSON.parse(json); } catch (e) { return Promise.resolve(false); }
     return waitFor(brandReady, 12000).then(function (ok) {
       if (!ok || !window.WFBrand.importData) return false;
-      return window.WFBrand.importData(o).then(function () { try { WFStorage.setItem(APPLIED, String(stamp)); } catch (e) {} return true; });
+      return quietly(window.WFBrand.importData(o)).then(function () { try { WFStorage.setItem(APPLIED, String(stamp)); } catch (e) {} return true; });
     });
   }
   function adoptRemote(r) {
     var cfg = {}; try { cfg = JSON.parse(r.cfg || "{}"); } catch (e) {}
-    local = clean(cfg); local.updatedAt = Number(r.updatedAt) || Date.now();
-    saveLocal(); recompute(); render();
+    adopting++;
+    try { local = clean(cfg); local.updatedAt = Number(r.updatedAt) || Date.now(); saveLocal(); recompute(); render(); } finally { adopting--; }
     return r.brand ? adoptBrand(r.brand, r.updatedAt) : Promise.resolve(false);
+  }
+  /* ---- العروض المجدولة ----
+     مستند السحابة portal/branding فيه الهوية العادية (cfg/brand) + schedule: قائمة عروض كل واحد له من/لحد (تواريخ
+     محلية YYYY-MM-DD) ونسخة كاملة من الهوية بتاعته. كل جهاز (موظف أو عميل، حتى من غير نت بعد أول مرة) بيحسب
+     لوحده: لو النهارده جوه فترة عرض ← يطبّقه، ولما الفترة تخلص ← يرجع للهوية العادية. مفيش حد محتاج يدوس حاجة. */
+  var REMOTE = "wf_wl_remote", EFF_KEY = "wf_wl_eff_key", ACTIVE_SCHED = "wf_wl_active_sched";
+  function todayKey(d) { d = d || new Date(); return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2) + "-" + ("0" + d.getDate()).slice(-2); }
+  function parseSched(v) {
+    var a = []; try { a = typeof v === "string" ? JSON.parse(v || "[]") : (Array.isArray(v) ? v : []); } catch (e) { a = []; }
+    return a.filter(function (e) { return e && e.id && /^\d{4}-\d{2}-\d{2}$/.test(e.from || "") && /^\d{4}-\d{2}-\d{2}$/.test(e.to || "") && e.cfg; });
+  }
+  function activeEntry(r, day) {
+    day = day || todayKey();
+    var on = parseSched(r && r.schedule).filter(function (e) { return e.from <= day && day <= e.to; });
+    on.sort(function (x, y) { return x.from < y.from ? 1 : x.from > y.from ? -1 : (Number(y.at) || 0) - (Number(x.at) || 0); }); // الأحدث بدايةً يغلب
+    return on[0] || null;
+  }
+  function keyOf(r) { var e = activeEntry(r); return (Number(r.updatedAt) || 0) + "|" + (e ? e.id + ":" + (Number(e.at) || 0) : "base"); }
+  function saveRemote(r) { try { WFStorage.setItem(REMOTE, JSON.stringify({ cfg: r.cfg || "", brand: r.brand || "", schedule: r.schedule || "[]", updatedAt: Number(r.updatedAt) || 0 })); } catch (e) {} }
+  function loadRemote() { try { var v = WFStorage.getItem(REMOTE); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  function getS(k) { try { return WFStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  function setS(k, v) { try { if (v) WFStorage.setItem(k, v); else WFStorage.removeItem(k); } catch (e) {} }
+  /* بيطبّق الهوية الفعّالة (العرض الشغال النهارده أو العادية) لو اتغيّرت عن آخر مرة. */
+  function applyEffective(r, force) {
+    if (!r) return Promise.resolve(false);
+    var e = activeEntry(r), key = keyOf(r), prev = getS(EFF_KEY);
+    if (!force && key === prev) return Promise.resolve(false);
+    var wasSched = (prev.split("|")[1] || "base") !== "base", isSched = !!e;
+    if (!force && getS(PENDING)) return Promise.resolve(false); // تعديلات على الجهاز ده لسه ماتنشرتش: ماندوسش عليها
+    // نفس الحالة (عادية ← عادية) والجهاز ده عنده نسخة أحدث (اتعدّلت هنا): نسيبها
+    if (!force && !isSched && !wasSched && (local.updatedAt || 0) > (Number(r.updatedAt) || 0)) { setS(EFF_KEY, key); return Promise.resolve(false); }
+    var cfgStr = e ? e.cfg : r.cfg, brandStr = e ? (e.brand || "") : (r.brand || "");
+    var cfg = {}; try { cfg = typeof cfgStr === "string" ? JSON.parse(cfgStr || "{}") : (cfgStr || {}); } catch (er) {}
+    adopting++;
+    try { local = clean(cfg); local.updatedAt = Number(r.updatedAt) || Date.now(); saveLocal(); recompute(); render(); } finally { adopting--; }
+    setS(EFF_KEY, key); setS(ACTIVE_SCHED, e ? e.id : "");
+    var bs = typeof brandStr === "string" ? brandStr : JSON.stringify(brandStr);
+    // هوية من غير صور (عرض خلص ورجعنا لهوية عادية ماتنشرتش صورها): نرجّع الصور الأصلية بدل ما صور العرض تفضل
+    var noImgs = !bs && wasSched !== isSched ? waitFor(brandReady, 12000).then(function (ok) { return ok && window.WFBrand.resetAll ? quietly(window.WFBrand.resetAll()) : false; }) : Promise.resolve(false);
+    return (bs ? adoptBrand(bs, Number(r.updatedAt) || Date.now()) : noImgs).then(function () { return true; });
   }
   function cloudPull(opts) {
     opts = opts || {};
@@ -406,15 +535,14 @@
     }).then(function (d) {
       try { WFStorage.setItem(LAST_PULL, String(Date.now())); } catch (e) {}
       if (!d.exists) return { exists: false, changed: false };
-      var r = d.data() || {}, cur = local.updatedAt || 0;
-      var brandApplied = 0; try { brandApplied = Number(WFStorage.getItem(APPLIED) || 0); } catch (e) {}
-      if (!opts.force && !(Number(r.updatedAt) > cur)) {
-        if (r.brand && Number(r.updatedAt) > brandApplied && Number(r.updatedAt) >= cur) return adoptBrand(r.brand, r.updatedAt).then(function () { return { exists: true, changed: true }; });
-        return { exists: true, changed: false };
-      }
-      return adoptRemote(r).then(function () { return { exists: true, changed: true }; });
+      var r = d.data() || {};
+      saveRemote(r);
+      return applyEffective(r, !!opts.force).then(function (ch) { return { exists: true, changed: ch }; });
     });
   }
+  /* من غير نت: نعيد الحساب من آخر نسخة نزلت (عشان العرض يبدأ/يخلص في معاده حتى أوفلاين) */
+  function recheckSchedule() { var r = loadRemote(); if (r) applyEffective(r, false)["catch"](function () {}); }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") recheckSchedule(); });
   /* تصغير الصور النقطية (PNG/JPG) قبل رفعها للسحابة: WebP بحد أقصى ~200KB عشان مستند Firestore يفضل خفيف */
   function shrinkImage(dataUrl) {
     return new Promise(function (res) {
@@ -452,14 +580,86 @@
         brand.logo = null; brand.icon = null; bj = JSON.stringify(brand);
         warn = "الصور كبيرة على السحابة (أكتر من 850KB) فاتنشرت الألوان والنصوص بس — صغّر الشعار/الأيقونة وجرّب تاني.";
       }
-      var ts = Date.now();
-      local.updatedAt = ts; saveLocal(); recompute();
-      return ref().set({ cfg: JSON.stringify(clean(local)), brand: bj, updatedAt: ts }).then(function () {
-        try { WFStorage.setItem(APPLIED, String(ts)); } catch (e) {}
-        return { warn: warn };
+      var ts = Date.now(), cfgStr = JSON.stringify(clean(local));
+      return ref().get().then(function (d) {
+        var r = d.exists ? (d.data() || {}) : {}, sched = parseSched(r.schedule), act = activeEntry({ schedule: sched });
+        var doc;
+        if (act && getS(ACTIVE_SCHED) === act.id) {
+          // الجهاز ده شغال على عرض: التعديل بيتحفظ على العرض نفسه، والهوية العادية تفضل زي ما هي
+          act.cfg = cfgStr; act.brand = bj; act.at = ts;
+          doc = { cfg: r.cfg || "", brand: r.brand || "", schedule: JSON.stringify(sched), updatedAt: ts };
+        } else doc = { cfg: cfgStr, brand: bj, schedule: JSON.stringify(sched), updatedAt: ts };
+        if (doc.cfg.length + doc.brand.length + doc.schedule.length > 950000) throw new Error("الهوية مع العروض المجدولة كبيرة على السحابة — احذف عرض أو صغّر الصور");
+        adopting++; try { local.updatedAt = ts; saveLocal(); recompute(); } finally { adopting--; }
+        return ref().set(doc).then(function () {
+          saveRemote(doc); setS(EFF_KEY, keyOf(doc));
+          try { WFStorage.setItem(APPLIED, String(ts)); WFStorage.removeItem(PENDING); } catch (e) {}
+          return { warn: warn };
+        });
       });
     });
   }
+  /* إضافة/تعديل عرض مجدول: entry = {id, name, from, to, cfg (JSON string), brand (JSON string)} */
+  function scheduleSave(entry) {
+    return waitFor(fbReady, 8000).then(function (ok) {
+      if (!ok) throw new Error("لازم تكون أونلاين");
+      return ref().get();
+    }).then(function (d) {
+      var r = d.exists ? (d.data() || {}) : {}, day = todayKey(), ts = Date.now();
+      if (!d.exists) { // أول مرة: الهوية العادية = الحالية على الجهاز ده
+        r.cfg = JSON.stringify(clean(local)); r.brand = "";
+      }
+      var sched = parseSched(r.schedule).filter(function (e) { return e.to >= day && e.id !== entry.id; }); // العروض اللي خلصت بتتشال
+      sched.push({ id: entry.id, name: String(entry.name || "").slice(0, 60), from: entry.from, to: entry.to, cfg: entry.cfg, brand: entry.brand || "", at: ts });
+      if (sched.length > 6) throw new Error("أقصى حد 6 عروض مجدولة في نفس الوقت");
+      var doc = { cfg: r.cfg || "", brand: r.brand || "", schedule: JSON.stringify(sched), updatedAt: ts };
+      if (doc.cfg.length + doc.brand.length + doc.schedule.length > 950000) throw new Error("العروض المجدولة كبيرة على السحابة — احذف عرض أو صغّر صور الهوية");
+      return ref().set(doc).then(function () { saveRemote(doc); return applyEffective(doc, true); }).then(function () { return doc; });
+    });
+  }
+  function scheduleRemove(id) {
+    return waitFor(fbReady, 8000).then(function (ok) {
+      if (!ok) throw new Error("لازم تكون أونلاين");
+      return ref().get();
+    }).then(function (d) {
+      if (!d.exists) return null;
+      var r = d.data() || {}, day = todayKey();
+      var sched = parseSched(r.schedule).filter(function (e) { return e.id !== id && e.to >= day; });
+      var doc = { cfg: r.cfg || "", brand: r.brand || "", schedule: JSON.stringify(sched), updatedAt: Date.now() };
+      return ref().set(doc).then(function () { saveRemote(doc); return applyEffective(doc, true); }).then(function () { return doc; });
+    });
+  }
+  function schedules() {
+    var r = loadRemote(), act = r ? activeEntry(r) : null;
+    return parseSched(r && r.schedule).map(function (e) { return { id: e.id, name: e.name, from: e.from, to: e.to, active: !!(act && act.id === e.id) }; })
+      .sort(function (x, y) { return x.from < y.from ? -1 : 1; });
+  }
+  function activeSchedule() { var r = loadRemote(), e = r ? activeEntry(r) : null; return e && getS(ACTIVE_SCHED) === e.id ? { id: e.id, name: e.name, from: e.from, to: e.to } : null; }
+
+  /* ---- النشر التلقائي: أي تعديل من لوحة الهوية بيتنشر لوحده على كل الأجهزة (بعد ثانيتين من آخر تعديل).
+     لو مفيش نت بيتعلّم «لسه ماتنشرش» ويتنشر أول ما النت يرجع أو الصفحة تتفتح تاني. ---- */
+  var PENDING = "wf_wl_push_pending", pushT = null, pushState = "", pushListeners = [];
+  function setPushState(s2, info) { pushState = s2; pushListeners.forEach(function (f) { try { f(s2, info); } catch (e) {} }); }
+  function canPublish() { try { return !!(window.WFPerm && window.WFPerm.can && window.WFPerm.can("branding.manage")); } catch (e) { return false; } }
+  function publishNow() {
+    clearTimeout(pushT); pushT = null;
+    try { WFStorage.setItem(PENDING, "1"); } catch (e) {}
+    if (navigator.onLine === false) { setPushState("offline"); return Promise.resolve(false); }
+    setPushState("busy");
+    return cloudPush().then(function (r) { setPushState(r && r.warn ? "warn" : "ok", r && r.warn); return true; },
+      function (er) { setPushState(navigator.onLine === false ? "offline" : "fail", er && er.code === "permission-denied" ? "الحساب ده مش مصرّح له بنشر الهوية" : (er && er.message) || ""); return false; });
+  }
+  function schedulePublish() {
+    if (adopting) return;
+    try { WFStorage.setItem(PENDING, "1"); } catch (e) {}
+    setPushState("pending");
+    clearTimeout(pushT); pushT = setTimeout(publishNow, 2000);
+  }
+  function retryPending() {
+    var p = ""; try { p = WFStorage.getItem(PENDING) || ""; } catch (e) {}
+    if (p && canPublish() && navigator.onLine !== false) publishNow();
+  }
+  window.addEventListener("online", function () { setTimeout(retryPending, 1500); });
   function autoPull() {
     if (!window.firebase) return; // الصفحة دي مفيهاش Firebase
     var last = 0; try { last = Number(WFStorage.getItem(LAST_PULL) || 0); } catch (e) {}
@@ -467,7 +667,7 @@
     cloudPull({ wait: 25000 })["catch"](function () {});
     waitFor(fbReady, 25000).then(function (ok) {
       if (!ok) return;
-      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { try { WFStorage.removeItem(LAST_PULL); } catch (e) {} cloudPull({ wait: 3000 })["catch"](function () {}); } }); } catch (e) {}
+      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { try { WFStorage.removeItem(LAST_PULL); } catch (e) {} setTimeout(retryPending, 4000); cloudPull({ wait: 3000 })["catch"](function () {}); } }); } catch (e) {}
     });
   }
 
@@ -607,6 +807,7 @@
     fn(local);
     local = clean(local); local.updatedAt = Date.now();
     var ok = saveLocal(); recompute(); render();
+    schedulePublish();
     return ok;
   }
   function exportConfigFile() {
@@ -625,7 +826,7 @@
   function importJson(o) {
     if (!o || o.app !== "workshop-whitelabel" || !o.cfg) return Promise.reject(new Error("الملف ده مش ملف هوية صالح"));
     local = clean(o.cfg); local.updatedAt = Date.now(); saveLocal(); recompute(); render();
-    return o.brand ? adoptBrand(JSON.stringify(o.brand), Date.now()) : Promise.resolve(true);
+    return (o.brand ? adoptBrand(JSON.stringify(o.brand), Date.now()) : Promise.resolve(true)).then(function (v) { schedulePublish(); return v; });
   }
 
   window.WL = {
@@ -648,15 +849,20 @@
     mutate: mutate,
     onChange: function (fn) { listeners.push(fn); },
     mix: mix, contrast: contrast, onColor: onColor,
-    reset: function () { local = clean({}); try { WFStorage.removeItem(KEY); } catch (e) {} recompute(); render(); },
-    cloudPull: cloudPull, cloudPush: cloudPush,
+    reset: function () { local = clean({}); local.updatedAt = Date.now(); saveLocal(); recompute(); render(); schedulePublish(); },
+    cloudPull: cloudPull, cloudPush: cloudPush, syncInstallAssets: syncInstallAssets,
+    shrinkImage: shrinkImage, todayKey: todayKey, scheduleSave: scheduleSave, scheduleRemove: scheduleRemove, schedules: schedules, activeSchedule: activeSchedule, refreshRemote: function () { return cloudPull({ wait: 6000 }); }, db: function (ms) { return waitFor(fbReady, ms || 8000).then(function (ok) { if (!ok) throw new Error("لازم تكون أونلاين"); if (!firebase.auth().currentUser) throw new Error("سجّل الدخول الأول"); return firebase.firestore(); }); },
+    schedulePublish: schedulePublish, publishNow: publishNow, isAdopting: function () { return adopting > 0; },
+    pushState: function () { return pushState; }, onPushState: function (f) { pushListeners.push(f); },
+    hasPending: function () { try { return !!WFStorage.getItem(PENDING); } catch (e) { return false; } },
     exportConfigFile: exportConfigFile, exportJson: exportJson, importJson: importJson
   };
 
   /* ---------- تشغيل ---------- */
   applyTheme();            // فورًا قبل رسم الصفحة (مفيش وميض)
   P = pairs(); pKey = JSON.stringify(P);
-  function ready() { Promise.resolve(window.WFStorageReady).then(function () { local = loadLocal(); recompute(); applyTheme(); refreshText(true); applyContent(); applyManifest(); applyStaticBrand(); autoPull(); }); }
+  function ready() { Promise.resolve(window.WFStorageReady).then(function () { local = loadLocal(); recompute(); applyTheme(); refreshText(true); applyContent(); applyManifest(); applyStaticBrand(); recheckSchedule(); autoPull(); }); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ready); else ready();
   if (window.WFStorage && window.WFStorage.subscribe) window.WFStorage.subscribe(function (key) { if (key === KEY) { local = loadLocal(); recompute(); render(); } });
+  window.addEventListener("wfbrand:change", function () { if (navigator.serviceWorker && navigator.serviceWorker.controller) syncInstallAssets(); });
 })();
