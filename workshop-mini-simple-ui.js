@@ -960,9 +960,27 @@
       if (state.parts) Object.assign(P, { list: 1, f: state.partBucket, cat: state.partCategory, vm: state.partBucket === "value" ? state.partValueMode : null, q: qv("partSearch") });
       Object.assign(P, { pp: state.partsStatsPeriod !== "30" ? state.partsStatsPeriod : null, pv: state.partsViewMode !== "cards" ? state.partsViewMode : null });
     } else return;
+    // زر الرجوع: الدخول من الملخص لقايمة = خطوة في السجل (الرجوع يرجّع للملخص)، والخروج منها بزرار «رجوع للملخص» = رجوع فعلي
+    const wasList = window.WFNavState.getParam("list") === "1";
+    if (P.list && !wasList && !popping && window.WFNavState.pushParams) { pushedList = true; window.WFNavState.pushParams(P); return; }
+    if (!P.list && wasList && pushedList && !popping) { pushedList = false; try { history.back(); return; } catch (_) {} }
     window.WFNavState.setParams(P);
   }
-  var applyingDeepLink = false, deepLinkDone = false;
+  var applyingDeepLink = false, deepLinkDone = false, popping = false, pushedList = false;
+  // زر الرجوع في الموبايل جوه نفس الصفحة: نرجّع القايمة/الملخص حسب الرابط
+  window.addEventListener("popstate", function () {
+    if (!deepLinkDone) return;
+    popping = true;
+    try {
+      const sp = new URLSearchParams(location.search);
+      if (sp.get("list") === "1") applyDeepLinkBucket();
+      else if ($("requestList")) window.hideAllRequests && window.hideAllRequests();
+      else if ($("customerList")) window.hideAllCustomers && window.hideAllCustomers();
+      else if ($("deviceList")) window.hideAllDevices && window.hideAllDevices();
+      else if ($("partList")) window.hideAllParts && window.hideAllParts();
+      try { window.scrollTo(0, (history.state && history.state.wfY) || 0); } catch (_) {}
+    } finally { popping = false; pushedList = false; }
+  });
 
   /* ---------- الدخول المباشر من إحصائيات الصفحة الرئيسية (?bucket=...) ---------- */
   function applyDeepLinkBucket() {

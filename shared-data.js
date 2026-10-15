@@ -784,6 +784,20 @@ var WFStorage = window.WFStorage;
       if (next !== location.pathname + location.search + location.hash) replace(cur(), next);
     } catch (_) {}
   }
+  /* زي setParams بس كخطوة جديدة في السجل (زر الرجوع بيرجّع للي قبلها): الدخول من الملخص لقايمة، أو تبويب جديد */
+  function pushParams(obj) {
+    try {
+      save();
+      var u = new URL(location.href);
+      Object.keys(obj || {}).forEach(function (k) {
+        var v = obj[k];
+        if (v === null || v === undefined || v === "" || v === false) u.searchParams.delete(k);
+        else u.searchParams.set(k, String(v));
+      });
+      var next = u.pathname + (u.searchParams.toString() ? "?" + u.searchParams.toString() : "") + u.hash;
+      if (next !== location.pathname + location.search + location.hash) H.pushState({ wfY: 0 }, "", next);
+    } catch (_) {}
+  }
   function getParam(k) { try { return new URLSearchParams(location.search).get(k); } catch (_) { return null; } }
   /* keep({q:"routeSearch", c:"routeCenterFilter"}): بيرجّع قيمة كل خانة من الرابط (لو موجودة)
      وبيكتب أي تغيير فيها في الرابط. تتنادى بعد ملء اختيارات الـselect وقبل أول رسم. */
@@ -847,7 +861,7 @@ var WFStorage = window.WFStorage;
   w.addEventListener("pageshow", function (e) {
     if (e && e.persisted && hideRev !== null && rev() !== hideRev) { try { location.reload(); } catch (_) {} }
   });
-  w.WFNavState = { setParams: setParams, getParam: getParam, keep: keep, save: save, isReturn: isReturn };
+  w.WFNavState = { setParams: setParams, pushParams: pushParams, getParam: getParam, keep: keep, save: save, isReturn: isReturn };
 })(typeof window !== "undefined" ? window : globalThis);
 /* WFNAVSTATE:END */
 

@@ -1,3 +1,92 @@
+/* WFBACK — زر الرجوع في الموبايل يقفل اللي مفتوح فوق الصفحة الأول (نافذة، قايمة، نموذج، قسم إعدادات...)
+   بدل ما يخرج من الصفحة كلها. أي نافذة بتغطي الشاشة (position:fixed) أو نموذج بيتفتح بإزالة class="hidden"
+   بيتسجل لوحده كخطوة في سجل الرجوع؛ والقفل من زرار الواجهة بيشيل الخطوة دي من غير ما الصفحة تتحرك. */
+(function (w) {
+  "use strict";
+  if (!w.document || w.WFBack) return;
+  var d = w.document, H = w.history, stack = [], seq = 0, ignore = 0, ready = false;
+  function idx(id) { for (var i = 0; i < stack.length; i++) if (stack[i].id === id) return i; return -1; }
+  function open(close, el) {
+    var e = { id: ++seq, close: close, el: el || null };
+    stack.push(e);
+    try { var s = H.state && typeof H.state === "object" ? Object.assign({}, H.state) : {}; s.wfBk = e.id; H.pushState(s, "", location.href); } catch (x) {}
+    return e.id;
+  }
+  /* اتقفلت من الواجهة: نشيل خطوتها (وأي خطوة اتفتحت بعدها) من السجل */
+  function close(id) {
+    var i = idx(id); if (i < 0) return;
+    var n = stack.length - i; stack.splice(i, n);
+    ignore++;
+    try { if (n === 1) H.back(); else H.go(-n); } catch (x) { ignore--; }
+  }
+  /* بنسيب الصفحة (فتح رابط): نشيلها من غير ما نرجع في السجل */
+  function drop(id) { var i = idx(id); if (i > -1) stack.splice(i, 1); }
+  w.addEventListener("popstate", function (ev) {
+    if (ignore > 0) { ignore--; ev.stopImmediatePropagation(); return; }
+    if (!stack.length) return;
+    var e = stack.pop(); ev.stopImmediatePropagation();
+    try { e.close(); } catch (x) {}
+  }, true);
+
+  /* ---------- الاكتشاف التلقائي ---------- */
+  var tracked = new Map(); // element → id
+  var FORM_SEL = "section.quick-add, .form, #invoicesBox, #restockBox, #bulkPriceBox, #partForm, #quickAddPartBox, [data-wf-back]";
+  function isOverlay(el) {
+    if (!el || el.nodeType !== 1 || /^(SCRIPT|STYLE|LINK|NAV)$/.test(el.tagName) || el.id === "wfEnvBanner" || el.classList.contains("wf-nc-toasts") || el.classList.contains("wf-sh")) return false;
+    var cs = w.getComputedStyle(el); if (cs.position !== "fixed" || cs.display === "none" || cs.visibility === "hidden") return false;
+    var r = el.getBoundingClientRect();
+    return r.width >= (w.innerWidth || 0) * 0.85 && r.height >= (w.innerHeight || 0) * 0.6;
+  }
+  function isOpenForm(el) { return el && el.matches && el.matches(FORM_SEL) && !el.classList.contains("hidden") && el.getClientRects().length > 0; }
+  function closeBtn(el) {
+    var bs = el.querySelectorAll("button, [role=button]");
+    for (var i = 0; i < bs.length; i++) {
+      var b = bs[i], t = (b.textContent || "").replace(/\s+/g, " ").trim(), al = b.getAttribute("aria-label") || "";
+      if (/^(✕|×|✖|❌)?\s*(إلغاء|إغلاق|قفل|رجوع|✕|×|✖)$/.test(t) || /إغلاق|قفل/.test(al) || b.getAttribute("data-a") === "x") return b;
+    }
+    return null;
+  }
+  function autoClose(el, isForm) {
+    return function () {
+      tracked.delete(el);
+      if (typeof el.__wfBackClose === "function") { el.__wfBackClose(); return; }
+      var b = closeBtn(el); if (b) { b.click(); return; }
+      if (isForm || el.id === "gsOverlay") el.classList.add("hidden"); else el.remove();
+    };
+  }
+  function check(el, isForm) {
+    var open = isForm ? isOpenForm(el) : (el.isConnected && isOverlay(el));
+    var id = tracked.get(el);
+    if (open && !id) tracked.set(el, open && open !== false ? WFBack.open(autoClose(el, isForm), el) : 0);
+    else if (!open && id) { tracked.delete(el); close(id); }
+  }
+  function scan() {
+    if (!ready) return;
+    for (var i = 0; i < d.body.children.length; i++) { var c = d.body.children[i]; if (tracked.has(c) || isOverlay(c)) check(c, false); }
+    tracked.forEach(function (id, el) { if (!el.isConnected) { tracked.delete(el); close(id); } });
+  }
+  var pend = false;
+  function soon() { if (pend) return; pend = true; setTimeout(function () { pend = false; scan(); }, 30); }
+  function start() {
+    ready = true;
+    new MutationObserver(function (list) {
+      list.forEach(function (m) {
+        if (m.type === "childList" && m.target === d.body) { soon(); return; }
+        if (m.type === "attributes") {
+          var t = m.target;
+          if (t.parentNode === d.body) soon();
+          if (t.matches && t.matches(FORM_SEL)) setTimeout(function () { check(t, true); }, 0);
+        }
+      });
+    }).observe(d.body, { childList: true, attributes: true, attributeFilter: ["class", "style", "hidden"], subtree: true });
+  }
+  /* العنصر ده هيتقفل عشان هنفتح صفحة تانية: نشيل خطوته (وخطوات اللي جواه) من غير رجوع */
+  function forget(el) { var id = tracked.get(el); if (!id) return; tracked.delete(el); var i = idx(id); if (i > -1) stack.splice(i); }
+  w.WFBack = { open: open, close: close, drop: drop, forget: forget, size: function () { return stack.length; } };
+  // بعد ما الصفحة تخلص تحميل (النماذج اللي بتتفتح مع التحميل زي «تعديل» مش خطوة رجوع)
+  w.addEventListener("load", function () { setTimeout(start, 600); });
+})(window);
+
 /* notif-center.js — مركز الإشعارات (🔔) في كل صفحات النظام: الإدارة، بوابة الفني، وبوابة العملاء.
    - الإشعارات بتتولّد على السيرفر (functions/notify.js) وبتتحط في صندوق المستخدم inbox/{uid}/items.
    - هنا: جرس عليه عدد غير المقروء، قايمة الإشعارات، تنبيه فوري لما يوصل جديد والتطبيق مفتوح،
@@ -134,6 +223,7 @@
     var ov = d.createElement("div"); ov.className = "wf-nc-ov"; ov.setAttribute("role", "dialog"); ov.setAttribute("aria-modal", "true"); ov.setAttribute("aria-label", "الإشعارات");
     ov.innerHTML = '<div class="wf-nc-card"><div class="wf-nc-head"></div><div class="wf-nc-body"></div></div>';
     ov.addEventListener("click", function (e) { if (e.target === ov) closePanel(); });
+    ov.__wfBackClose = closePanel; st.vstack = [];
     d.body.appendChild(ov); st.panel = ov;
     d.addEventListener("keydown", escKey);
     renderPanel();
@@ -147,7 +237,7 @@
       head.innerHTML = '<button type="button" data-a="back">→ رجوع</button><b>⚙️ إعدادات الإشعارات</b>';
       body.innerHTML = settingsHtml(); wireSettings(body);
     } else if (st.view === "owner") {
-      head.innerHTML = '<button type="button" data-a="set">→ رجوع</button><b>🛠️ إشعارات النظام كله</b>';
+      head.innerHTML = '<button type="button" data-a="back">→ رجوع</button><b>🛠️ إشعارات النظام كله</b>';
       body.innerHTML = ownerHtml(); wireOwner(body);
     } else if (st.view === "msg") {
       head.innerHTML = '<button type="button" data-a="back">→ رجوع</button><b>✉️ رسالة للفنيين</b>';
@@ -167,10 +257,23 @@
     }
     head.querySelectorAll("[data-a]").forEach(bindAct); body.querySelectorAll("button[data-a]").forEach(bindAct);
   }
+  /* الشاشات جوه النافذة (إعدادات/تحكم المالك/رسالة): كل واحدة خطوة رجوع لوحدها */
+  function viewFwd(v) {
+    if (!st.panel || st.view === v) return;
+    var e = { prev: st.view };
+    e.id = w.WFBack ? w.WFBack.open(function () { st.vstack = (st.vstack || []).filter(function (x) { return x !== e; }); st.view = e.prev; renderPanel(); }) : 0;
+    (st.vstack = st.vstack || []).push(e); st.view = v; renderPanel();
+  }
+  function viewBack() {
+    var e = (st.vstack || []).pop();
+    if (!e) { st.view = "list"; renderPanel(); return; }
+    st.view = e.prev; renderPanel();
+    if (w.WFBack && e.id) w.WFBack.close(e.id);
+  }
   function bindAct(el) {
     el.addEventListener("click", function () {
       var a = el.getAttribute("data-a");
-      if (a === "x") closePanel(); else if (a === "set") { st.view = "settings"; renderPanel(); } else if (a === "back") { st.view = "list"; renderPanel(); } else if (a === "all") markAll(); else if (a === "owner") { st.view = "owner"; renderPanel(); } else if (a === "msg") { st.view = "msg"; renderPanel(); }
+      if (a === "x") closePanel(); else if (a === "set") viewFwd("settings"); else if (a === "back") viewBack(); else if (a === "all") markAll(); else if (a === "owner") viewFwd("owner"); else if (a === "msg") viewFwd("msg");
     });
   }
   function markRead(x) {
@@ -198,7 +301,7 @@
     if (samePage && u.search === location.search && u.hash === location.hash) { location.reload(); return; }
     location.href = u.href;
   }
-  function openItem(x) { closePanel(); markRead(x).then(function () { go(x.link); }); }
+  function openItem(x) { if (x.link && st.panel && w.WFBack) w.WFBack.forget(st.panel); closePanel(); markRead(x).then(function () { go(x.link); }); }
 
   /* بوابة العملاء: ?o=رقم الأمر يفتح الأمر، #tips يفتح المقالات */
   function portalDeepLink(u) {

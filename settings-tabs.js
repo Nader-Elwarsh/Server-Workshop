@@ -46,9 +46,15 @@
     }).join("");
     if (nav._h !== html) { nav._h = html; nav.innerHTML = html; }
   }
+  var backId = 0; // زر الرجوع في الموبايل بيقفل القسم المفتوح ويرجّع لشبكة الأيقونات
   function toggle(id) {
+    var was = active;
     active = (active === id) ? "" : id;
     save(); layout();
+    if (window.WFBack) {
+      if (!was && active) backId = window.WFBack.open(function () { backId = 0; active = ""; save(); layout(); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {} });
+      else if (was && !active && backId) { var b0 = backId; backId = 0; window.WFBack.close(b0); }
+    }
     if (active) setTimeout(function () { var b = nav.querySelector('[data-st="' + active + '"]'); if (b && b.scrollIntoView) b.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
   }
   function refresh() {
