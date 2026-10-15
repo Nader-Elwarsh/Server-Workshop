@@ -22,7 +22,7 @@
       ".cu-grid{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}.cu-grid>*{min-width:0}@media(min-width:760px){.cu-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}.cu-card{border:1px solid var(--border,#d6dbe4);border-radius:14px;padding:12px 14px;background:var(--card,var(--bg-elevated,#fff))}.cu-card h3{margin:0 0 8px;font-size:16px}" +
       ".cu-m{margin:8px 0}.cu-m .cu-l{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:3px}.cu-bar{height:9px;border-radius:6px;background:rgba(127,127,127,.18);overflow:hidden}.cu-bar i{display:block;height:100%;border-radius:6px}" +
       ".cu-ok{background:#2e7d32}.cu-warn{background:#f59e0b}.cu-bad{background:#c62828}.cu-note{font-size:12.5px;opacity:.8;margin-top:6px;line-height:1.6}.cu-price{font-size:12.5px;margin-top:8px;padding:7px 9px;border-radius:9px;background:rgba(21,101,192,.08)}.cu-err{color:#c62828;font-size:13px}" +
-      ".cu-cmd{max-width:100%;box-sizing:border-box;direction:ltr;text-align:left;font:12px/1.5 monospace;background:rgba(127,127,127,.12);padding:8px;border-radius:8px;overflow-x:auto;white-space:pre;margin:6px 0}";
+      ".cu-cmd{max-width:100%;box-sizing:border-box;direction:ltr;text-align:left;font:12px/1.5 monospace;background:rgba(127,127,127,.12);padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:6px 0;user-select:all}";
     (d.head || d.documentElement).appendChild(s);
   }
   function meter(label, used, free, fmt, extra) {
@@ -88,7 +88,8 @@
       html += meter("📊 الكريدت الشهر ده", cl.credits, lim, function (v) { return (+v || 0).toFixed(2); }) +
         '<div class="cu-note">💾 المساحة: <b>' + gb(cl.storage) + '</b> • 📤 العرض/التحميل: <b>' + gb(cl.bandwidth) + '</b> • 🔄 تحويلات: <b>' + n(cl.transformations) + '</b> • 📦 ملفات: <b>' + n(cl.resources) + '</b>' + (cl.plan ? ' • الباقة: ' + esc(cl.plan) : "") + '</div>' +
         '<div class="cu-price">💵 الكريدت الواحد = 1 جيجا مساحة أو 1 جيجا عرض أو 1000 تحويل. الباقة المجانية (25 كريدت) <b>مش بتسحب فلوس</b> — لو عدّيتها بيبعتوا تحذيرات وبعدين ممكن يوقفوا الرفع والعرض. الباقة اللي بعدها Plus بـ $' + (P.cloudinaryPlus || 99) + ' في الشهر (' + (P.cloudinaryPlusCredits || 225) + ' كريدت). امسح المرفقات القديمة من تحت 👇</div>';
-    } else html += '<div class="cu-err">⚠️ تعذّر قراءة الاستهلاك من Cloudinary' + (E.cloudinary ? " (" + esc(E.cloudinary) + ")" : "") + '</div>';
+    } else if (/40[13]/.test(E.cloudinary || "")) html += '<div class="cu-err">🔑 Cloudinary رفض مفتاح السيرفر (API Key أو API Secret مش مطابقين لحساب ' + esc((r.cloudinaryCloud || "")) + '). ده نفس المفتاح اللي بيرفع الصور، فلو الرفع مش شغال كمان صحّح المفتاح من Cloud Shell.</div>';
+    else html += '<div class="cu-err">⚠️ تعذّر قراءة الاستهلاك من Cloudinary' + (E.cloudinary ? " (" + esc(E.cloudinary) + ")" : "") + '</div>';
     html += '</div>';
 
     // 3) Functions
