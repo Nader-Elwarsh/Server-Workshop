@@ -167,3 +167,103 @@ exports.techCollectDeposit = adminCallable("techCollectDeposit", (uid, d) => tec
 exports.techPartsCatalog = adminCallable("techPartsCatalog", (uid) => techLedger.partsCatalog(uid));
 exports.techUsePart = adminCallable("techUsePart", (uid, d) => techLedger.usePart(uid, d));
 exports.techReturnPart = adminCallable("techReturnPart", (uid, d) => techLedger.returnPart(uid, d));
+
+/* ---------------------------------------------------------------------
+   الإشعارات الداخلية (notify.js): بتتولّد هنا من التغيير نفسه في البيانات، لكل الأطراف (فني / إدارة / عميل).
+   + إشعارات الموبايل/الكمبيوتر (Web Push): مفاتيح VAPID بتتولّد لوحدها أول مرة وبتتحفظ في serverConfig/push
+     (محدش يقرأها من المتصفح)، والمتصفح بياخد المفتاح العام من pushKey ويسجّل اشتراكه بـ pushSubscribe.
+   منطقة الـ triggers لازم تبقى نفس منطقة قاعدة Firestore: لو قاعدتك مش us-central1/nam5 اكتب منطقتها في NOTIFY_REGION.
+   --------------------------------------------------------------------- */
+const { onDocumentWritten, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { createNotifier } = require("./notify");
+let webpush = null; try { webpush = require("web-push"); } catch (e) { console.warn("[notify] web-push غير متاح — الإشعارات هتفضل داخل التطبيق بس"); }
+const notifyRegion = defineString("NOTIFY_REGION", { default: "us-central1" });
+const fdb = getFirestore();
+let vapidCache = null;
+async function vapidKeys() {
+  if (vapidCache) return vapidCache;
+  if (!webpush) return null;
+  const ref = fdb.doc("serverConfig/push");
+  vapidCache = await fdb.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (s.exists && s.data().publicKey && s.data().privateKey) return s.data();
+    const k = webpush.generateVAPIDKeys();
+    const v = { publicKey: k.publicKey, privateKey: k.privateKey, createdAt: FieldValue.serverTimestamp() };
+    tx.set(ref, v);
+    return v;
+  });
+  return vapidCache;
+}
+async function sendPush(uid, payload) {
+  if (!webpush) return;
+  const subs = await fdb.collection("pushSubs").where("uid", "==", uid).get();
+  if (subs.empty) return;
+  const keys = await vapidKeys(); if (!keys) return;
+  const body = JSON.stringify(payload);
+  await Promise.all(subs.docs.map(async (d) => {
+    const sub = (d.data() || {}).sub;
+    try {
+      await webpush.sendNotification(sub, body, { TTL: 86400, urgency: "high", vapidDetails: { subject: "mailto:notifications@workshop.app", publicKey: keys.publicKey, privateKey: keys.privateKey } });
+    } catch (e) {
+      if (e && (e.statusCode === 404 || e.statusCode === 410)) await d.ref.delete().catch(() => {}); // الاشتراك انتهى (اتشال التطبيق أو اتقفلت الإشعارات)
+      else console.warn("[notify] push", e && (e.statusCode || e.message));
+    }
+  }));
+}
+const notifier = createNotifier({ db: fdb, push: sendPush, log: (...a) => console.log("[notify]", ...a) });
+const TRIG = { region: notifyRegion, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60, retry: false };
+function data(snap) { return snap && snap.exists ? snap.data() : null; }
+function guard(name, fn) { return async (event) => { try { await fn(event); } catch (e) { console.error(`[notify:${name}]`, e && e.message); } }; }
+exports.notifyRequests = onDocumentWritten(Object.assign({ document: "requests/{id}" }, TRIG), guard("requests", (ev) => {
+  const a = data(ev.data && ev.data.after), b = data(ev.data && ev.data.before);
+  return notifier.onRequestWrite(ev.params.id, b, a, (a && a._by) || "");
+}));
+exports.notifyExpenses = onDocumentWritten(Object.assign({ document: "techExpenses/{id}" }, TRIG), guard("expenses", (ev) => notifier.onExpenseWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
+exports.notifyWalletTx = onDocumentCreated(Object.assign({ document: "walletTx/{id}" }, TRIG), guard("walletTx", (ev) => notifier.onWalletTxCreate(ev.params.id, data(ev.data))));
+exports.notifyPartMoves = onDocumentCreated(Object.assign({ document: "partMoves/{id}" }, TRIG), guard("partMoves", (ev) => notifier.onPartMoveCreate(ev.params.id, data(ev.data))));
+exports.notifyParts = onDocumentUpdated(Object.assign({ document: "parts/{id}" }, TRIG), guard("parts", (ev) => notifier.onPartUpdate(ev.params.id, data(ev.data.before), data(ev.data.after))));
+exports.notifyPortalRequests = onDocumentCreated(Object.assign({ document: "portalRequests/{id}" }, TRIG), guard("portalRequests", (ev) => notifier.onPortalRequestCreate(ev.params.id, data(ev.data))));
+exports.notifyGuestRequests = onDocumentCreated(Object.assign({ document: "guestRequests/{id}" }, TRIG), guard("guestRequests", (ev) => notifier.onGuestRequestCreate(ev.params.id, data(ev.data))));
+exports.notifyComplaints = onDocumentWritten(Object.assign({ document: "portalComplaints/{id}" }, TRIG), guard("complaints", (ev) => notifier.onComplaintWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
+exports.notifyQuestions = onDocumentWritten(Object.assign({ document: "portalQuestions/{id}" }, TRIG), guard("questions", (ev) => notifier.onQuestionWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
+exports.notifyPosts = onDocumentWritten(Object.assign({ document: "portalPosts/{id}" }, TRIG), guard("posts", (ev) => notifier.onPostWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
+
+/* اشتراك الجهاز في إشعارات الموبايل/الكمبيوتر — لأي حد مسجّل دخول (موظف أو عميل). الاشتراك بيتربط بالمستخدم الحالي. */
+function cleanSub(sub) {
+  if (!sub || typeof sub !== "object") return null;
+  const endpoint = String(sub.endpoint || ""), keys = sub.keys || {};
+  if (!/^https:\/\/[^\s]{10,800}$/.test(endpoint) || typeof keys.p256dh !== "string" || typeof keys.auth !== "string" || keys.p256dh.length > 200 || keys.auth.length > 100) return null;
+  return { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } };
+}
+exports.pushKey = adminCallable("pushKey", async () => { const k = await vapidKeys(); return { publicKey: k ? k.publicKey : "" }; });
+exports.pushSubscribe = adminCallable("pushSubscribe", async (uid, d) => {
+  const sub = cleanSub(d && d.sub);
+  if (!sub) throw new AdminError("invalid-argument", "bad_subscription");
+  const id = crypto.createHash("sha256").update(sub.endpoint).digest("hex");
+  await fdb.doc(`pushSubs/${id}`).set({ uid, sub, ua: String((d && d.ua) || "").slice(0, 160), at: FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+exports.pushUnsubscribe = adminCallable("pushUnsubscribe", async (uid, d) => {
+  const endpoint = String((d && d.endpoint) || "");
+  if (!endpoint) return { ok: true };
+  const ref = fdb.doc(`pushSubs/${crypto.createHash("sha256").update(endpoint).digest("hex")}`);
+  const s = await ref.get();
+  if (s.exists && s.data().uid === uid) await ref.delete();
+  return { ok: true };
+});
+/* زرار «جرّب الإشعار»: بيبعت إشعار تجريبي لنفس المستخدم (داخل التطبيق + الموبايل) */
+exports.pushTest = adminCallable("pushTest", async (uid) => {
+  const sent = await notifier.deliver([uid], { kind: "test", key: `test-${uid}-${Date.now()}`, title: "🔔 تجربة الإشعارات", body: "لو شايف ده يبقى الإشعارات شغالة على الجهاز ده 👌", link: "" });
+  return { ok: sent.length > 0 };
+});
+
+/* المجدولة: كل ربع ساعة (تذكير قبل الزيارة، الأوامر المتأخرة، وفي الساعة اللي المالك حددها: ملخص الصبح + رأي العميل + الضمان) */
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+exports.notifyTick = onSchedule({ schedule: "every 15 minutes", timeZone: "Africa/Cairo", region: "us-central1", memory: "256MiB", timeoutSeconds: 120, retryCount: 0 }, async () => {
+  try { const r = await notifier.tick(); console.log("[notify:tick]", JSON.stringify(r)); } catch (e) { console.error("[notify:tick]", e && e.message); }
+});
+/* رسالة من الإدارة (لفني / لكل الفنيين / لكل الموظفين) — لصاحب صلاحية تعيين الفنيين أو المالك */
+exports.notifySend = adminCallable("notifySend", async (uid, d) => {
+  try { return await notifier.sendMessage(uid, d); }
+  catch (e) { if (e && e.code && /permission|invalid|not-found/.test(e.code)) throw new AdminError(e.code, e.message); throw e; }
+});
