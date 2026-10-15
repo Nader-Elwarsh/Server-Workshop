@@ -98,7 +98,7 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
     const c = cloudinary();
     const res = await fetchImpl(`https://api.cloudinary.com/v1_1/${encodeURIComponent(c.cloud)}/usage`, { headers: { Authorization: "Basic " + Buffer.from(`${c.apiKey}:${c.secret}`).toString("base64") } });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error("cloudinary " + res.status);
+    if (!res.ok) throw new Error("cloudinary " + res.status + ((j.error && j.error.message) ? ": " + String(j.error.message).slice(0, 80) : ""));
     return { plan: j.plan || "", storage: +(j.storage && j.storage.usage) || 0, bandwidth: +(j.bandwidth && j.bandwidth.usage) || 0, transformations: +(j.transformations && j.transformations.usage) || 0,
       credits: +(j.credits && j.credits.usage) || 0, creditsLimit: +(j.credits && j.credits.limit) || 0, creditsPct: +(j.credits && j.credits.used_percent) || 0, resources: +j.resources || 0, lastUpdated: j.last_updated || "" };
   }
