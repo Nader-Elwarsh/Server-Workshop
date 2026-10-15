@@ -226,20 +226,22 @@
   var ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:?\d\d)?$/;
   function stable(v) { if (typeof v === "string" && ISO.test(v)) { var t = Date.parse(v); if (!isNaN(t)) return JSON.stringify("~" + t); } if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
   function sameField(a, b, key) { var ah = Object.prototype.hasOwnProperty.call(a || {}, key), bh = Object.prototype.hasOwnProperty.call(b || {}, key); return ah === bh && (!ah || stable(a[key]) === stable(b[key])); }
-  function hr(r) { var o = Object.assign({}, r); delete o.id; return h(stable(o)); }
-  function fromDoc(d) { var o = clean(d.data()); delete o._ts; o.id = d.id; return o; }
+  function hr(r) { var o = Object.assign({}, r); delete o.id; delete o._by; return h(stable(o)); }
+  function fromDoc(d) { var o = clean(d.data()); delete o._ts; delete o._by; o.id = d.id; return o; }
   /* ---------- المزامنة بالتغييرات بس (بدل إعادة قراءة كل البيانات) ----------
      كل سجل بيترفع بيتختم بوقت السيرفر (_ts)، والحذف بيسيب «شاهد» في syncDeletes. الأجهزة التانية بتقرا بس
      اللي اتختم بعد آخر مرة قرت (cursor = أكبر _ts شافته، من ساعة السيرفر مش ساعة الجهاز). قراءة كاملة بتحصل
      أول مرة، أو لو آخر قراءة كاملة عدّى عليها 12 ساعة، أو لو جهاز رفع نسخة كاملة (استرجاع نسخة احتياطية). */
   var DELTA_KEY = "wf_sync_cursor", FULL_EVERY = 12 * 60 * 60 * 1000, DELTA_OVERLAP = 60 * 1000;
   function stampTs() { return firebase.firestore.FieldValue.serverTimestamp(); }
-  function stamp(o) { o._ts = stampTs(); return o; }
+  // _by = آخر مستخدم رفع السجل (السيرفر بيستخدمه في الإشعارات: مين غيّر حالة الأمر). مش بيتحفظ على الجهاز ومش داخل في المقارنة.
+  function myUidSafe() { try { var u = firebase.auth().currentUser; return u ? u.uid : ""; } catch (e) { return ""; } }
+  function stamp(o) { o._ts = stampTs(); var u = myUidSafe(); if (u) o._by = u; return o; }
   function tsMs(d) { try { var t = d.get ? d.get("_ts") : (d.data() || {})._ts; return t && typeof t.toMillis === "function" ? t.toMillis() : 0; } catch (e) { return 0; } }
   function tombRef(k, id) { return db.collection("syncDeletes").doc(COLS[k] + "__" + id); }
   function getCursor() { var v = ls.getItem(DELTA_KEY); return v === null || v === "" ? null : +v; }
   function setCursor(ms) { origSet.call(ls, DELTA_KEY, String(Math.max(0, +ms || 0))); }
-  function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; ["createdAt", "updatedAt", "at"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
+  function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; delete o._by; ["createdAt", "updatedAt", "at"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
   function byCreated(a, b) { return (Date.parse(a.createdAt || a.at) || 0) - (Date.parse(b.createdAt || b.at) || 0); }
   function local(k) { try { return JSON.parse(ls.getItem(k) || "null"); } catch (e) { return null; } }
   var SNAP_KEYS = { wf_c: 1, wf_d: 1, wf_r: 1, wf_p: 1, wf_m: 1, wf_wallet_tx: 1 };
@@ -318,7 +320,7 @@
               });
               if (patch.status === "ملغي") { delete patch.status; any = Object.keys(patch).length > 0; }
               job.patchKeys = Object.keys(patch);
-              if (any) { patch._ts = stampTs(); tx.update(job.ref, patch); }
+              if (any) { patch._ts = stampTs(); var pu = myUidSafe(); if (pu) patch._by = pu; tx.update(job.ref, patch); }
               return { state: "written", remote: remote, remoteHash: remoteHash };
             }
             var baselineMatches = job.baseHash === undefined ? !snap.exists : remoteHash === job.baseHash;
