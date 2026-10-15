@@ -6,6 +6,9 @@
 (function () {
   "use strict";
   var DRAFT_KEY = "wf_supplier_order_draft", HIST_KEY = "wf_supplier_order_history", SUP_KEY = "wf_supplier_contacts";
+  var CLOSE_KEY = "wf_supplier_order_closing", CLOSE_DEF = "برجاء تأكيد المتوفر والأسعار 🙏";
+  /* سطر الختام اللي في آخر الطلبية: بيتكتب مرة وبيتفتكر لكل الطلبيات الجاية (فاضي = مفيش سطر) */
+  function closingLine() { var v = load(CLOSE_KEY, null); return v === null ? CLOSE_DEF : String(v).slice(0, 120); }
   var MAX_LINES = 120, MAX_PHOTOS = 4, KIND_KEY = "wf_supplier_order_kinds";
 
   function load(k, f) { try { var v = JSON.parse(WFStorage.getItem(k)); return v == null ? f : v; } catch (e) { return f; } }
@@ -85,7 +88,7 @@
     });
     out.push("", "إجمالي: " + ls.length + " صنف • " + ls.reduce(function (a, l) { return a + Math.round(num(l.qty)); }, 0) + " قطعة");
     if (d.note) out.push("📝 " + d.note);
-    out.push("", "برجاء تأكيد المتوفر والأسعار 🙏");
+    if (closingLine()) out.push("", closingLine());
     return out.join("\n");
   }
   function photosWord(n) { return n === 1 ? "صورة" : n === 2 ? "صورتين" : n + " صور"; }
@@ -224,7 +227,7 @@
         var fy = y + 20; c.textAlign = "right";
         if (last) {
           if (d.note) { c.fillStyle = "#0f172a"; c.font = "500 28px " + font; wrap(c, "📝 " + d.note, W - PAD * 2 - 40, 4).forEach(function (t, k) { c.fillText(t, W - PAD - 10, fy + 20 + k * 40); }); fy += noteLines * 40 + 10; }
-          c.fillStyle = pri; c.font = "700 30px " + font; c.fillText("برجاء تأكيد المتوفر والأسعار 🙏", W - PAD - 10, fy + 40);
+          if (closingLine()) { c.fillStyle = pri; c.font = "700 30px " + font; c.fillText(wrap(c, closingLine(), W - PAD * 2 - 20, 1)[0], W - PAD - 10, fy + 40); }
         }
         c.fillStyle = "#94a3b8"; c.font = "500 20px " + font; c.textAlign = "center"; c.fillText(brandName(), W / 2, H - 28);
         return cv;
@@ -365,6 +368,7 @@
             '<button type="button" class="wf-po-bigtoggle' + (l.big ? " on" : "") + '" data-bigt="1">' + (l.big ? "🔍 صور كبيرة: شغّالة — اضغط ترجع صورة صغيرة" : "🔍 صور كبيرة للصنف ده (لحد " + MAX_PHOTOS + " صور)") + '</button>' +
             (l.big ? '<div class="wf-po-bigs" data-big="' + e(l.key) + '"></div>' : "") + '</div>';
         }).join("") : '<div class="wf-po-empty">الطلبية فاضية.<br>اضغط «➕ ضيف صنف» وابدأ، أو «⚠️ ضيف النواقص» لو عايز النظام يقترح عليك.</div>') +
+        '<label>سطر الختام <small>(بيظهر آخر الطلبية — بيتحفظ للطلبيات الجاية، وامسحه لو مش عايزه)</small></label><input data-close="1" maxlength="120" value="' + e(closingLine()) + '" placeholder="مفيش سطر ختام">' +
         '<label>ملاحظة عامة (اختياري)</label><textarea data-f="note" rows="2" maxlength="300" placeholder="مثلًا: محتاجها قبل الخميس، ابعت الأسعار الأول">' + e(d.note) + '</textarea>' +
         '<div class="wf-po-prev" data-po="prev"></div>';
       ls.forEach(thumb);
@@ -377,6 +381,7 @@
     body.addEventListener("input", function (ev) {
       var t = ev.target;
       if (t.matches('[data-po="q"]')) { searchQ = t.value; var rb = body.querySelector('[data-po="res"]'); if (rb) rb.innerHTML = resHtml(); return; }
+      if (t.hasAttribute("data-close")) { save(CLOSE_KEY, t.value.trim()); return; }
       if (t.hasAttribute("data-f")) {
         var f = t.getAttribute("data-f"); d[f] = t.value;
         if (f === "supplier") { var m = sups.find(function (s) { return s.name === t.value; }); if (m && m.phone && !d.phone) { d.phone = m.phone; var pi = body.querySelector('[data-f="phone"]'); if (pi) pi.value = m.phone; } }
