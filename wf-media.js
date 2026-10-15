@@ -153,9 +153,22 @@
   }
 
   /* ---------- الرفع ---------- */
+  /* أول ما الصفحة تفتح، تسجيل الدخول بيرجع بعد لحظة: بنستنى لحد 15 ثانية بدل ما نقول «لازم تسجّل دخول» على طول. */
+  function whenUser() {
+    var f = fb();
+    if (!f) return Promise.resolve(null);
+    var u = f.auth().currentUser;
+    if (u) return Promise.resolve(u);
+    return new Promise(function (resolve) {
+      var done = false, off = function () {};
+      var t = setTimeout(function () { if (!done) { done = true; off(); resolve(f.auth().currentUser); } }, 15000);
+      try { off = f.auth().onAuthStateChanged(function (x) { if (x && !done) { done = true; clearTimeout(t); setTimeout(function () { off(); }, 0); resolve(x); } }) || off; } catch (e) { clearTimeout(t); resolve(null); }
+    });
+  }
   function callFn(name, data) {
-    var f = fb(), u = f && f.auth().currentUser;
-    if (!u) return Promise.reject(new Error("لازم تكون مسجّل دخول عشان ترفع ملفات."));
+    return whenUser().then(function (u) {
+    var f = fb();
+    if (!u) throw new Error(name === "mediaSign" ? "لازم تكون مسجّل دخول عشان ترفع ملفات." : "لازم تكون مسجّل دخول.");
     var url = "https://us-central1-" + encodeURIComponent(f.app().options.projectId) + ".cloudfunctions.net/" + encodeURIComponent(name);
     return u.getIdToken().then(function (tok) {
       return (w.WFAppCheck && w.WFAppCheck.headers ? w.WFAppCheck.headers().catch(function () { return {}; }) : Promise.resolve({})).then(function (h) {
@@ -166,10 +179,12 @@
             if (r.ok && j && j.result !== undefined) return j.result;
             var m = (j && j.error && j.error.message) || ("HTTP " + r.status);
             var M = { media_rate_limited: "وصلت لأقصى عدد ملفات النهارده — جرّب بكره.", upload_not_authorized: "حسابك مش مسموح له يرفع ملفات.", owner_only: "الجزء ده للمالك بس.", not_allowed: "مش مسموح لك بالعملية دي." };
+            if (r.status === 404) throw new Error("الخدمة دي لسه ما اتنشرتش على السيرفر — انشر الدوال من Cloud Shell.");
             throw new Error(M[m] || (name === "mediaSign" ? "تعذّر تجهيز الرفع — جرّب تاني." : "تعذّر الاتصال بالسيرفر — جرّب تاني."));
           });
         });
       });
+    });
     });
   }
   function upload(file, kind, onProgress) {
