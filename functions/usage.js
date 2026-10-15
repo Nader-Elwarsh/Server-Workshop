@@ -128,7 +128,8 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
 
   async function report(force) {
     const ref = db.doc("serverConfig/usage"), snap = await ref.get(), cur = snap.exists ? snap.data() : null;
-    if (!force && cur && cur.at && now() - cur.at < 15 * 60000) return cur;
+    const hadErr = cur && cur.errors && Object.keys(cur.errors).length > 0; // تقرير فيه خطأ مابيتخزنش ربع ساعة
+    if (!force && cur && cur.at && now() - cur.at < (hadErr ? 60000 : 15 * 60000)) return cur;
     if (force && cur && cur.at && now() - cur.at < 60000) return cur; // ضغط متكرر: دقيقة على الأقل
     const r = await collect();
     await ref.set(JSON.parse(JSON.stringify(r)));
