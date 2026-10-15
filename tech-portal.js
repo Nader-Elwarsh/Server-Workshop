@@ -75,6 +75,13 @@
       var a = (r && r.addressKey === "extra" ? c.extraAddress : c.mainAddress) || c.mainAddress || {};
       return [a.center, a.village, a.address, a.street].filter(Boolean).join(" - ");
     }
+    // لوكيشن الأمر: اللي اتحدد على الأمر نفسه وإلا لوكيشن عنوان العميل (wf-media.js).
+    function locOf(c, r) {
+      if (!window.WFLoc) return null;
+      var a = (r && r.addressKey === "extra" ? c.extraAddress : c.mainAddress) || c.mainAddress || {};
+      return window.WFLoc.clean(r && r.loc) || window.WFLoc.clean(a.loc);
+    }
+    function mapHref(c, r, addr) { var l = locOf(c, r); return l ? window.WFLoc.navHref(l) : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr); }
     function dayOf(v) { try { return window.dayKeyLocal(v); } catch (e) { return ""; } }
     function timeOf(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
     function dateLabel(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" }); }
@@ -185,7 +192,8 @@
       var foot = el("div", "tp-row tp-wrap tp-foot");
       foot.appendChild(el("span", "tp-chip tp-st-" + statusClass(r.status), r.status || "جديد"));
       if (c.phone) { var a = el("a", "tp-btn2 tp-small", "📞 اتصال"); a.href = "tel:" + c.phone; a.onclick = function (e) { e.stopPropagation(); }; foot.appendChild(a); }
-      if (addr) { var m = el("a", "tp-btn2 tp-small", "🗺️ الخريطة"); m.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr); m.target = "_blank"; m.rel = "noopener"; m.onclick = function (e) { e.stopPropagation(); }; foot.appendChild(m); }
+      if (addr || locOf(c, r)) { var m = el("a", "tp-btn2 tp-small", locOf(c, r) ? "🧭 اللوكيشن" : "🗺️ الخريطة"); m.href = mapHref(c, r, addr); m.target = "_blank"; m.rel = "noopener"; m.onclick = function (e) { e.stopPropagation(); }; foot.appendChild(m); }
+      if (window.WFMedia && window.WFMedia.clean(r.media).length) foot.appendChild(el("span", "tp-chip", "📎 " + window.WFMedia.clean(r.media).length));
       card.appendChild(foot);
       return card;
     }
@@ -391,9 +399,20 @@
         var s = el("span", "tp-ltr", p); row.appendChild(s);
         var a = el("a", "tp-btn tp-small", "📞 اتصال"); a.href = "tel:" + p; row.appendChild(a); cc.appendChild(row);
       });
-      if (addr) {
-        var row2 = el("div", "tp-kv"); row2.appendChild(el("b", "", "العنوان")); row2.appendChild(el("span", "", addr));
-        var m = el("a", "tp-btn2 tp-small", "🗺️ الخريطة"); m.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr); m.target = "_blank"; m.rel = "noopener"; row2.appendChild(m); cc.appendChild(row2);
+      if (addr || locOf(c, r)) {
+        var row2 = el("div", "tp-kv"); row2.appendChild(el("b", "", "العنوان")); row2.appendChild(el("span", "", addr || "—"));
+        var m = el("a", "tp-btn2 tp-small", locOf(c, r) ? "🧭 الملاحة للوكيشن" : "🗺️ الخريطة"); m.href = mapHref(c, r, addr); m.target = "_blank"; m.rel = "noopener"; row2.appendChild(m); cc.appendChild(row2);
+      }
+      if (window.WFLoc && edit) {
+        // الفني عند العميل: يسجّل اللوكيشن بضغطة عشان الزيارات الجاية (بيتحفظ على الأمر والإدارة بتنقله لملف العميل).
+        var lr = el("div", "tp-row tp-wrap tp-gap"), ls2 = savedTag();
+        lr.appendChild(btn(locOf(c, r) ? "📍 تحديث اللوكيشن (أنا عند العميل)" : "📍 سجّل لوكيشن العميل (أنا عنده دلوقتي)", "tp-btn2", function () {
+          ls2.show("⏳ بنحدد موقعك…");
+          window.WFLoc.here().then(function (l) {
+            return mutate(r.id, function (x) { x.loc = l; }).then(function (ok) { if (ok) { r.loc = l; ls2.show("✓ اتحفظ"); say("✅ اتسجّل لوكيشن العميل على الأمر."); draw(); } else ls2.show(""); });
+          }, function (e) { ls2.show(""); say("⚠️ " + e.message); });
+        }));
+        lr.appendChild(ls2.el); cc.appendChild(lr);
       }
       if (c.notes) cc.appendChild(kv("ملاحظات", c.notes));
       box.appendChild(cc);
@@ -403,6 +422,17 @@
       if (d && (d.desc || d.notes)) dc.appendChild(kv("وصف", d.desc || d.notes));
       dc.appendChild(kv("العطل", r.fault || "—"));
       if (r.customerNote) dc.appendChild(kv("ملاحظة العميل", r.customerNote));
+      if (window.WFMedia) {
+        var mkey = "tp-" + r.id, ml = window.WFMedia.clean(r.media);
+        if (ml.length || edit) {
+          var mb = el("div", "tp-media");
+          mb.innerHTML = (ml.length ? "<b>📎 صور وفيديو وصوت العطل</b>" : "") + window.WFMedia.listHtml(ml, { removable: edit, key: mkey }) + (edit ? window.WFMedia.actsHtml(mkey) : "");
+          window.WFMedia.bind(mkey, { max: 20, count: function () { return window.WFMedia.clean(r.media).length; }, by: function () { return me() || "الفني"; },
+            onAdd: function (it) { var next = window.WFMedia.clean(r.media).concat(it); mutate(r.id, function (x) { x.media = window.WFMedia.clean(x.media).concat(it); }).then(function (ok) { if (ok) { r.media = next; draw(); } }); },
+            onRemove: function (i) { mutate(r.id, function (x) { var m2 = window.WFMedia.clean(x.media); m2.splice(i, 1); x.media = m2; }).then(function (ok) { if (ok) { var m3 = window.WFMedia.clean(r.media); m3.splice(i, 1); r.media = m3; draw(); } }); } });
+          dc.appendChild(mb);
+        }
+      }
       box.appendChild(dc);
 
       if (edit) {

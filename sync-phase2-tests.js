@@ -22,7 +22,9 @@ assert(!/position:fixed;bottom:8px;left:8px/.test(sync), "the global floating sy
 
 const fn = read("functions/index.js");
 assert(/verifyIdToken/.test(fn), "upload endpoint must verify Firebase ID tokens");
-assert(/staff\/\$\{decoded\.uid\}/.test(fn) && /portalLinks\/\$\{decoded\.uid\}/.test(fn), "upload endpoint must authorize staff or active linked portal users");
+assert(/staff\/\$\{uid\}/.test(fn) && /portalLinks\/\$\{uid\}/.test(fn) && /uploaderRole\(decoded\.uid\)/.test(fn), "upload endpoint must authorize staff or active linked portal users");
+const mediaFn = read("functions/media.js");
+assert(/exports\.mediaSign/.test(fn) && /uploaderRole\(uid\)/.test(fn) && /media_rate_limited/.test(mediaFn) && /allowed_formats/.test(mediaFn), "media signing must authorize, rate-limit and restrict formats");
 assert(/UPLOAD_ALLOWED_ORIGINS/.test(fn) && /MAX_BYTES/.test(fn) && /validMagic/.test(fn), "server-side origin, size and file signature checks must be present");
 assert(/CLOUDINARY_API_SECRET/.test(fn) && /createHash\("sha1"\)/.test(fn), "Cloudinary secret/signature must remain server-side");
 

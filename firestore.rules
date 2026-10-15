@@ -24,6 +24,14 @@ service cloud.firestore {
 
     // الفني يقدر يعدّل أي حاجة في أمره المعيّن له ما عدا: الهوية (رقم الأمر/العميل/الجهاز/تاريخ الإنشاء/المصدر)،
     // التعيين (الفني/محفظته/من عيّنه)، والعربون وبيانات البوابة. (قايمة منع مش قايمة سماح: عشان أي حقل جديد يضيفه التطبيق لشغل الأمر ما يتوقفش.)
+    // لوكيشن: إحداثيات (lat/lng أرقام) أو لينك خرائط قصير.
+    function locOk(l) {
+      return l is map && l.keys().hasOnly(['lat', 'lng', 'acc', 'at', 'url'])
+        && (!('lat' in l) || (l.lat is number && l.lat >= -90 && l.lat <= 90))
+        && (!('lng' in l) || (l.lng is number && l.lng >= -180 && l.lng <= 180))
+        && (!('url' in l) || (l.url is string && l.url.size() <= 300 && l.url.matches('^https://.*')));
+    }
+
     function techOrderPatch() {
       return resource.data.techId == request.auth.uid
         && resource.data.get('closed', false) != true
@@ -145,7 +153,10 @@ service cloud.firestore {
       allow create: if own(request.resource.data.customerId)
         && request.resource.data.handled == false && request.resource.data.portal == true
         && ownsDevice(request.resource.data.customerId, request.resource.data.get('deviceId', ''))
-        && request.resource.data.keys().hasOnly(['customerId', 'deviceId', 'fault', 'visit', 'executionPlace', 'note', 'handled', 'portal', 'createdAt']);
+        && request.resource.data.keys().hasOnly(['customerId', 'deviceId', 'fault', 'visit', 'executionPlace', 'note', 'handled', 'portal', 'createdAt', 'media', 'loc'])
+        // صور/فيديو/صوت العطل (لينكات Cloudinary — بتتفحص تاني وقت العرض) ولوكيشن مكان التنفيذ: اختياريين.
+        && (!('media' in request.resource.data) || (request.resource.data.media is list && request.resource.data.media.size() <= 6))
+        && (!('loc' in request.resource.data) || locOk(request.resource.data.loc));
     }
 
     match /portalOrders/{id} {
@@ -195,7 +206,8 @@ service cloud.firestore {
       allow read, update, delete: if isStaff();
       // رقم الطلب G-XXXXXX هو نفسه معرّف المستند (يتولّد عند الزائر)؛ لو اتكرر الإنشاء بيتحوّل لتعديل ويترفض.
       allow create: if id.matches('^G-[A-HJ-NP-Z2-9]{6}$')
-        && request.resource.data.keys().hasOnly(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt', 'loc'])
+        && (!('loc' in request.resource.data) || locOk(request.resource.data.loc))
         && request.resource.data.keys().hasAll(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
         && request.resource.data.ref == id
         && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
@@ -282,7 +294,7 @@ service cloud.firestore {
     // تصعيد صلاحياته أو إضافة موظف آخر عبر القاعدة العامة.
     match /{collection}/{document=**} {
       allow read, write: if isStaff() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit'
-        && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig';
+        && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig' && collection != 'mediaFiles' && collection != 'rateLimits';
     }
   }
 }

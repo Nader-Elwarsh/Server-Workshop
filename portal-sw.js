@@ -1,6 +1,6 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v22-back";
-const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./firebase-config.js", "./app-check.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./notif-center.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
+const CACHE = "portal-v24-media-img";
+const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./wf-session.js", "./firebase-config.js", "./app-check.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./notif-center.js", "./wf-media.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
 self.addEventListener("install", e => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -43,7 +43,7 @@ self.addEventListener("fetch", e => {
     return;
   }
   // صفحة البوابة: الشبكة أولًا ثم الكاش
-  const helper = u.origin === location.origin && /\/(portal-ticker\.js|pw-eye\.js|wf-session\.js|wf-shell\.css|app-icon\.svg|workshop-idb\.js|image-store\.js)$/.exec(u.pathname);
+  const helper = u.origin === location.origin && /\/(portal-ticker\.js|pw-eye\.js|wf-session\.js|wf-shell\.css|app-icon\.svg|workshop-idb\.js|image-store\.js|wf-media\.js)$/.exec(u.pathname);
   if (helper) { // ملفات مساعدة: الشبكة أولًا ثم الكاش (عشان التحديثات توصل)
     const key = "./" + helper[1];
     e.respondWith(netFirst(r, key, 4000));

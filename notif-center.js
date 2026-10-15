@@ -82,7 +82,10 @@
   }
   /* العنصر ده هيتقفل عشان هنفتح صفحة تانية: نشيل خطوته (وخطوات اللي جواه) من غير رجوع */
   function forget(el) { var id = tracked.get(el); if (!id) return; tracked.delete(el); var i = idx(id); if (i > -1) stack.splice(i); }
-  w.WFBack = { open: open, close: close, drop: drop, forget: forget, size: function () { return stack.length; } };
+  /* مستمعين popstate اتسجّلوا قبل الملف ده (زي سكريبت البوابة اللي جوه الصفحة) بيشتغلوا قبلنا مهما كان capture،
+     فبيسألوا owns() الأول: لو الرجوع ده بتاعنا (قفل نافذة) يسيبوه وما يغيّروش الصفحة. */
+  function owns() { return ignore > 0 || stack.length > 0; }
+  w.WFBack = { open: open, close: close, drop: drop, forget: forget, owns: owns, size: function () { return stack.length; } };
   // بعد ما الصفحة تخلص تحميل (النماذج اللي بتتفتح مع التحميل زي «تعديل» مش خطوة رجوع)
   w.addEventListener("load", function () { setTimeout(start, 600); });
 })(window);
@@ -108,7 +111,7 @@
     c_status: ["customer", "🔧", "حالة طلبك اتغيّرت"], c_visit: ["customer", "📅", "ميعاد الزيارة"], c_tech: ["customer", "👷", "الفني اللي هيتابع طلبك"],
     c_reply: ["customer", "💬", "رد على شكوتك"], c_answer: ["customer", "💬", "رد على سؤالك"], c_post: ["customer", "📰", "مقالات وعروض جديدة"],
     visit_reminder: ["tech", "⏰", "تذكير قبل ميعاد الزيارة"], visit_missed: ["tech", "⏳", "أمر بتاعك عدّى ميعاده ولسه مفتوح"], admin_msg: ["staff", "✉️", "رسالة من الإدارة"],
-    overdue_order: ["admin", "⏳", "أمر عدّى ميعاده ولسه ماتقفلش", "requests.assign"], morning_digest: ["admin", "☀️", "ملخص الصبح", "requests.view"], custody_high: ["admin", "💼", "عهدة فني عدّت الحد", "custody.settle"],
+    overdue_order: ["admin", "⏳", "أمر عدّى ميعاده ولسه ماتقفلش", "requests.assign"], morning_digest: ["admin", "☀️", "ملخص الصبح", "requests.view"], custody_high: ["admin", "💼", "عهدة فني عدّت الحد", "custody.settle"], usage_high: ["admin", "☁️", "الاستهلاك قرّب من الحد المجاني", "__owner__"],
     c_feedback: ["customer", "🙏", "رأيك بعد التصليح"], c_warranty: ["customer", "🛡️", "الضمان قرب يخلص"]
   };
   var AUD_LBL = { tech: "👷 للفنيين", admin: "🏢 للإدارة", customer: "👤 للعملاء (البوابة)", staff: "✉️ رسائل الإدارة" };
