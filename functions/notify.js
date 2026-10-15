@@ -206,7 +206,7 @@ function createNotifier(deps) {
       out.push(deliver(await admins(KINDS.tech_closed.perm, a.techId), { kind: "tech_closed", key: `closed-${id}`, refId: id, link: `request.html?id=${encodeURIComponent(id)}`,
         title: `✅ ${techName} قفل الأمر ${no}`, body: [await cname(), `الإجمالي ${money(a.total)}`, got ? `حصّل ${money(got)}${a.closeWallet ? " في «" + str(a.closeWallet, 40) + "»" : ""}` : ""].filter(Boolean).join(" • ") }));
       if ((+a.techPay || 0) > 0) {
-        out.push(deliver(await admins(KINDS.pay_due.perm, a.techId), { kind: "pay_due", key: `paydue-${id}`, refId: id, link: "custody.html",
+        out.push(deliver(await admins(KINDS.pay_due.perm, a.techId), { kind: "pay_due", key: `paydue-${id}`, refId: id, link: `custody.html#tech-${encodeURIComponent(a.techId)}`,
           title: `💰 ${techName} ليه ${money(a.techPay)} أجرة`, body: `على الأمر ${no}${(await cname()) ? " — " + cn : ""}` }));
       }
     } else if (!isNew && a.status !== b.status && a.status !== "ملغي" && a.techId && actor === a.techId) {
@@ -240,12 +240,12 @@ function createNotifier(deps) {
     if (!after) return [];
     const e = after, who = str(e.techName, 60) || "فني";
     if (!before) {
-      return deliver(await admins(KINDS.expense_new.perm, e.techId), { kind: "expense_new", key: `exp-${id}`, refId: id, link: "custody.html",
+      return deliver(await admins(KINDS.expense_new.perm, e.techId), { kind: "expense_new", key: `exp-${id}`, refId: id, link: `custody.html#exp-${encodeURIComponent(id)}`,
         title: `🧾 ${who} طلب اعتماد مصروف ${money(e.amount)}`, body: [str(e.note, 120), e.orderNo ? "أمر " + str(e.orderNo, 30) : ""].filter(Boolean).join(" • ") });
     }
     if (before.status === "pending" && (e.status === "approved" || e.status === "rejected") && e.techId) {
       const ok = e.status === "approved";
-      return deliver([e.techId], { kind: "expense_decided", key: `expd-${id}-${e.status}`, refId: id, link: "tech.html?tab=account",
+      return deliver([e.techId], { kind: "expense_decided", key: `expd-${id}-${e.status}`, refId: id, link: `tech.html?tab=account#exp-${encodeURIComponent(id)}`,
         title: ok ? `✅ مصروفك ${money(e.amount)} اتوافق عليه` : `❌ مصروفك ${money(e.amount)} اترفض`, body: [str(e.note, 100), e.decisionNote ? "📝 " + str(e.decisionNote, 120) : ""].filter(Boolean).join(" • ") });
     }
     return [];
@@ -268,7 +268,7 @@ function createNotifier(deps) {
     let bal = 0; snap.docs.forEach((d) => { const x = d.data() || {}; if (x.deleted === true) return; bal += (x.type === "out" ? -1 : 1) * (+x.amount || 0); });
     bal = r2(bal);
     if (bal <= cfg.custodyMax) return [];
-    return deliver(await admins(KINDS.custody_high.perm, tech.uid), { kind: "custody_high", key: `custodyhigh-${tech.uid}-${cairoLocal(now()).slice(0, 10)}`, refId: tech.uid, link: "custody.html",
+    return deliver(await admins(KINDS.custody_high.perm, tech.uid), { kind: "custody_high", key: `custodyhigh-${tech.uid}-${cairoLocal(now()).slice(0, 10)}`, refId: tech.uid, link: `custody.html#tech-${encodeURIComponent(tech.uid)}`,
       title: `💼 عهدة ${tech.name} وصلت ${money(bal)}`, body: `أكتر من الحد (${money(cfg.custodyMax)}). محتاجة تسوية.` });
   }
   async function walletTxMain(id, t) {
@@ -277,7 +277,7 @@ function createNotifier(deps) {
       const tech = await staffByWallet(t.wallet);
       if (!tech) return [];
       const inn = t.type === "in";
-      return deliver([tech.uid], { kind: "custody", key: `custody-${id}`, refId: id, link: "tech.html?tab=account",
+      return deliver([tech.uid], { kind: "custody", key: `custody-${id}`, refId: id, link: `tech.html?tab=account#tx-${encodeURIComponent(id)}`,
         title: inn ? `💵 اتسلّمت عهدة ${money(t.amount)}` : `🤝 تسوية عهدة: اتسلّم منك ${money(t.amount)} للورشة`, body: str(t.note, 120) || str(t.reason, 120) });
     }
     if (t.source === "techpay" && t.techPayFor) {
@@ -286,7 +286,7 @@ function createNotifier(deps) {
     }
     if (t.byTech && t.orderId && t.type === "in" && t.source === "order-part") {
       const tech = await staffByUid(t.byTech);
-      return deliver(await admins(KINDS.tech_deposit.perm, t.byTech), { kind: "tech_deposit", key: `dep-${id}`, refId: t.orderId, link: `request.html?id=${encodeURIComponent(t.orderId)}`,
+      return deliver(await admins(KINDS.tech_deposit.perm, t.byTech), { kind: "tech_deposit", key: `dep-${id}`, refId: t.orderId, link: t.wallet ? `wallet.html?type=wallet&name=${encodeURIComponent(t.wallet)}#tx-${encodeURIComponent(id)}` : `request.html?id=${encodeURIComponent(t.orderId)}`,
         title: `💵 ${(tech && tech.name) || "فني"} استلم ${money(t.amount)}`, body: str(t.reason, 140) + (t.wallet ? ` • في «${str(t.wallet, 40)}»` : "") });
     }
     return [];
