@@ -88,7 +88,7 @@
       html += meter("📊 الكريدت الشهر ده", cl.credits, lim, function (v) { return (+v || 0).toFixed(2); }) +
         '<div class="cu-note">💾 المساحة: <b>' + gb(cl.storage) + '</b> • 📤 العرض/التحميل: <b>' + gb(cl.bandwidth) + '</b> • 🔄 تحويلات: <b>' + n(cl.transformations) + '</b> • 📦 ملفات: <b>' + n(cl.resources) + '</b>' + (cl.plan ? ' • الباقة: ' + esc(cl.plan) : "") + '</div>' +
         '<div class="cu-price">💵 الكريدت الواحد = 1 جيجا مساحة أو 1 جيجا عرض أو 1000 تحويل. الباقة المجانية (25 كريدت) <b>مش بتسحب فلوس</b> — لو عدّيتها بيبعتوا تحذيرات وبعدين ممكن يوقفوا الرفع والعرض. الباقة اللي بعدها Plus بـ $' + (P.cloudinaryPlus || 99) + ' في الشهر (' + (P.cloudinaryPlusCredits || 225) + ' كريدت). امسح المرفقات القديمة من تحت 👇</div>';
-    } else if (/40[13]/.test(E.cloudinary || "")) html += '<div class="cu-err">🔑 Cloudinary رفض مفتاح السيرفر (API Key أو API Secret مش مطابقين لحساب ' + esc((r.cloudinaryCloud || "")) + '). ده نفس المفتاح اللي بيرفع الصور، فلو الرفع مش شغال كمان صحّح المفتاح من Cloud Shell.</div>';
+    } else if (/40[13]/.test(E.cloudinary || "")) html += '<div class="cu-err">🔑 Cloudinary رفض مفتاح السيرفر (API Key أو API Secret مش مطابقين). ده نفس المفتاح اللي بيرفع الصور، فلو الرفع مش شغال كمان صحّح المفتاح من Cloud Shell.<div class="cu-cmd">' + esc(E.cloudinary) + '</div></div>';
     else html += '<div class="cu-err">⚠️ تعذّر قراءة الاستهلاك من Cloudinary' + (E.cloudinary ? " (" + esc(E.cloudinary) + ")" : "") + '</div>';
     html += '</div>';
 
