@@ -118,7 +118,9 @@ const media = createMedia({
   log: (...a) => console.warn("[media]", ...a)
 });
 function mediaCallable(name, handler, opts) {
-  return onCall(Object.assign({ region: "us-central1", cors: true, maxInstances: 10, timeoutSeconds: 30, memory: "256MiB", secrets: [apiSecret] }, opts || {}), async (request) => {
+  // invoker: "public" = أي حد يقدر «يوصل» للدالة (زي باقي دوال Firebase)، والتحقق من الحساب والصلاحية جوه الدالة نفسها.
+  // من غيره Cloud Run بيرفض طلب الـ CORS اللي المتصفح بيبعته قبل الطلب الحقيقي، والموبايل يقول «Failed to fetch».
+  return onCall(Object.assign({ region: "us-central1", cors: true, invoker: "public", maxInstances: 10, timeoutSeconds: 30, memory: "256MiB", secrets: [apiSecret] }, opts || {}), async (request) => {
     if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "sign_in_required");
     try { return await handler(request.auth.uid, request.data || {}); }
     catch (e) {

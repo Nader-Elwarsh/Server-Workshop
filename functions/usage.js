@@ -102,7 +102,9 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
     return { plan: j.plan || "", storage: +(j.storage && j.storage.usage) || 0, bandwidth: +(j.bandwidth && j.bandwidth.usage) || 0, transformations: +(j.transformations && j.transformations.usage) || 0,
       credits: +(j.credits && j.credits.usage) || 0, creditsLimit: +(j.credits && j.credits.limit) || 0, creditsPct: +(j.credits && j.credits.used_percent) || 0, resources: +j.resources || 0, lastUpdated: j.last_updated || "" };
   }
-  async function safe(name, fn, errors) { try { return await fn(); } catch (e) { errors[name] = (e && e.status === 403) ? "denied" : String(e && e.message || e).slice(0, 120); log(name, e && e.message); return null; } }
+  // كل جزء ليه 20 ثانية بالكتير: لو حاجة علّقت باقي التقرير يرجع بدل ما الطلب كله يقف (ويطلع «Failed to fetch»).
+  function within(ms, p) { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error("timeout")), ms); })]).finally(() => clearTimeout(t)); }
+  async function safe(name, fn, errors) { try { return await within(20000, Promise.resolve().then(fn)); } catch (e) { errors[name] = (e && e.status === 403) ? "denied" : String(e && e.message || e).slice(0, 120); log(name, e && e.message); return null; } }
 
   async function dbLoc() {
     if (dbLocation) return dbLocation;
@@ -111,7 +113,7 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
   }
   async function collect() {
     const t = now(), errors = {};
-    await dbLoc();
+    await within(8000, dbLoc()).catch(() => "");
     const [fs, fn, art, cl, users] = await Promise.all([
       safe("firestore", () => firestoreUsage(t), errors),
       safe("functions", () => metricSum(METRICS.fn, monthStart(t), t), errors),
