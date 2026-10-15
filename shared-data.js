@@ -909,10 +909,10 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     function highlightHashTarget(attempt) {
       attempt = attempt || 0;
       var hash = ((typeof location !== "undefined" && location.hash) || "").slice(1);
-      if (!hash || (hash.indexOf("tx-") !== 0 && hash.indexOf("move-") !== 0)) return;
+      if (!hash || !/^(tx|move|exp|tech)-/.test(hash)) return;
       var el = document.getElementById(hash);
       if (!el) {
-        if (attempt < 12) setTimeout(function () { highlightHashTarget(attempt + 1); }, 150);
+        if (attempt < 40) setTimeout(function () { highlightHashTarget(attempt + 1); }, 200); // الصفحات اللي بتحمّل من السيرفر (حساب الفني/العهدة) بتاخد ثواني
         return;
       }
       el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -922,6 +922,8 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     document.addEventListener("DOMContentLoaded", function () {
       setTimeout(function () { highlightHashTarget(0); }, 200);
     });
+    // فتح إشعار بيودّي لعملية في نفس الصفحة (تغيير #tx-… من غير تحميل)
+    if (typeof window !== "undefined" && window.addEventListener) window.addEventListener("hashchange", function () { highlightHashTarget(0); });
   })();
 }
 

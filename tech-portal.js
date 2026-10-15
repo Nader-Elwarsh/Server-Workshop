@@ -673,7 +673,7 @@
       box.appendChild(el("h3", "tp-h3", "🧾 مصروفاتي (" + exps.length + ")"));
       exps.slice(0, 40).forEach(function (e) {
         var st = STAT[e.status] || [e.status, ""];
-        var row = el("div", "tp-card tp-row tp-gap");
+        var row = el("div", "tp-card tp-row tp-gap"); if (e.id) row.id = "exp-" + e.id;
         var main = el("div", "tp-grow");
         main.appendChild(el("b", "", e.note || "")); main.appendChild(el("div", "tp-small-t tp-muted", (PAY_SHORT[e.pay || "custody"] || "") + " • " + (e.orderNo ? "أمر " + e.orderNo + " • " : "") + (e.at ? new Date(e.at).toLocaleString("ar-EG", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "")));
         if (e.decisionNote) main.appendChild(el("div", "tp-small-t", "ملاحظة الإدارة: " + e.decisionNote));
@@ -690,7 +690,7 @@
       var rows = (a && a.entries) || [];
       box.appendChild(el("h3", "tp-h3", "📒 حركات المحفظة"));
       rows.slice(0, 80).forEach(function (e) {
-        var row = el("div", "tp-card tp-row tp-gap tp-tx");
+        var row = el("div", "tp-card tp-row tp-gap tp-tx"); if (e.id) row.id = "tx-" + e.id;
         var main = el("div", "tp-grow"); main.appendChild(el("div", "", e.reason || e.category || "")); main.appendChild(el("div", "tp-small-t tp-muted", (e.date || "") + " " + (e.time || "") + (e.category ? " • " + e.category : "")));
         row.appendChild(main);
         row.appendChild(el("b", "tp-nowrap " + (e.type === "in" ? "tp-green-t" : "tp-red"), (e.type === "in" ? "+" : "−") + money(e.amount)));

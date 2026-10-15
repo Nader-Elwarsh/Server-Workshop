@@ -264,7 +264,7 @@
 
     /* ---------- الرسم ---------- */
     function techCard(u) {
-      var card = mk("div", CARD), wal = u.wallet;
+      var card = mk("div", CARD), wal = u.wallet; card.id = "tech-" + u.uid;
       var head = mk("div", "display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap");
       head.appendChild(mk("b", "font-size:17px", "👷 " + (u.name || u.uid)));
       head.appendChild(mk("span", "font-size:13px;opacity:.8", u.roleName || ""));
@@ -343,7 +343,7 @@
       document.body.appendChild(modal);
     }
     function expenseRow(e) {
-      var row = mk("div", CARD + ";display:flex;gap:10px;align-items:center;flex-wrap:wrap");
+      var row = mk("div", CARD + ";display:flex;gap:10px;align-items:center;flex-wrap:wrap"); row.id = "exp-" + e.id;
       var main = mk("div", "flex:1;min-width:180px");
       main.appendChild(mk("b", "", "👷 " + (e.techName || e.techId) + " — " + money(e.amount)));
       main.appendChild(mk("div", "", e.note || ""));

@@ -115,6 +115,14 @@ const seed = {
   assert.ok(t1all.some((x) => x.kind === "pay_paid" && /250/.test(x.title)));
   await N.onWalletTxCreate("w4", { source: "order-part", type: "in", byTech: "t1", orderId: "r1", amount: 200, wallet: "عهدة حسن", reason: "عربون أمر A-15" });
   assert.ok(inbox(db, "own").some((x) => x.kind === "tech_deposit" && /حسن استلم 200/.test(x.title)));
+  // الضغط على الإشعار بيودّي لمكان العملية نفسها
+  const L = (u, k) => (inbox(db, u).find((x) => x.kind === k) || {}).link;
+  assert.strictEqual(L("own", "tech_deposit"), "wallet.html?type=wallet&name=" + encodeURIComponent("عهدة حسن") + "#tx-w4");
+  assert.strictEqual(L("own", "expense_new"), "custody.html#exp-e1");
+  assert.strictEqual(L("t1", "expense_decided"), "tech.html?tab=account#exp-e1");
+  assert.ok(/^tech\.html\?tab=account#tx-w[12]$/.test(L("t1", "custody")));
+  assert.strictEqual(L("own", "pay_due"), "custody.html#tech-t2");
+  assert.strictEqual(L("own", "tech_closed"), "request.html?id=r1");
 
   // 10) المخزن: الفني صرف قطعة (أمين المخزن قافل النوع ده) + الحد الأدنى
   db.data["parts/p1"] = { name: "مكثف", qty: 2, min: 2 };
