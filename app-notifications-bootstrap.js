@@ -50,24 +50,38 @@ async function disableNotifications(){
   try{let reg=await navigator.serviceWorker.ready;if(reg.periodicSync)await reg.periodicSync.unregister("workshop-check")}catch(e){}
   renderNotifSettings();
 }
+/* قسم «الإشعارات» في الإعدادات = نفس نظام الإشعارات الجديد (🔔 الجرس، notif-center.js).
+   التنبيه اليومي القديم من الجهاز (مواعيد/متأخر/ناقص) اتلغى لإن «ملخص الصبح» من السيرفر بيعمل نفس الشغل وبيوصل للكل؛
+   فبنقفله تلقائي هنا عشان التنبيهات ماتتكررش. */
 async function renderNotifSettings(){
   let el=document.getElementById("notifSettings");if(!el)return;
-  let supported="Notification" in window && "serviceWorker" in navigator;
-  let periodicSupported=false;
-  if(supported){try{let reg=await navigator.serviceWorker.ready;periodicSupported="periodicSync" in reg}catch(e){}}
-  let enabled=supported&&WFStorage.getItem("wf_notif_enabled")==="1"&&Notification.permission==="granted";
-  el.innerHTML=!supported
-    ?`<p class="hint">⚠️ المتصفح أو الجهاز ده مش بيدعم الإشعارات (شائع على آيفون Safari). هيشتغل النظام عادي من غيرها.</p>`
-    :`<p class="hint">${enabled?"🔔 الإشعارات مفعّلة على هذا الجهاز.":"🔕 الإشعارات غير مفعّلة حاليًا."}</p>
-      <p class="hint">${periodicSupported?"✅ هيحاول يبعتلك تنبيه حتى لو التطبيق مقفول (بشرط يكون مثبت على الشاشة الرئيسية)، بس التوقيت مش مضمون بالظبط — المتصفح هو اللي بيحدد الموعد المناسب حسب استخدامك للتطبيق.":"ℹ️ هيشتغل بس وانت فاتح التطبيق (هيبقى فيه تنبيه فوري أول ما تفتحه لو فيه مواعيد اليوم أو أوامر متأخرة أو قطع منخفضة)."}</p>
-      <button type="button" class="${enabled?"secondary":"primary"}" data-wf-event="click" data-wf-code="${enabled?"disableNotifications()":"enableNotifications()"}">${enabled?"🔕 إيقاف الإشعارات":"🔔 تفعيل الإشعارات"}</button>`;
+  if(WFStorage.getItem("wf_notif_enabled")==="1"){WFStorage.setItem("wf_notif_enabled","0");try{let reg=await navigator.serviceWorker.ready;if(reg.periodicSync)await reg.periodicSync.unregister("workshop-check")}catch(e){}}
+  const NC=window.WFNotifCenter;
+  if(!NC){el.innerHTML=`<p class="hint">⏳ بيحمّل...</p>`;setTimeout(renderNotifSettings,600);return}
+  let st=NC.state(),sup="serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window;
+  let on=sup&&Notification.permission==="granted"&&WFStorage.getItem("wf_push_on")===st.uid&&!!st.uid;
+  let owner=!!(window.WFPerm&&WFPerm.isOwner&&WFPerm.isOwner());
+  el.innerHTML=`<p class="hint">الإشعارات بتوصلك في 🔔 الجرس فوق في كل صفحة: أوامر اتعيّنت أو اتقفلت، العهدة، المصروفات، طلبات البوابة، ملخص الصبح... وتقدر تخلّيها توصلك على الموبايل حتى والتطبيق مقفول.</p>
+    <p class="hint"><b>${!sup?"⚠️ المتصفح ده مش بيدعم إشعارات الموبايل (على الآيفون لازم تضيف التطبيق للشاشة الرئيسية الأول).":Notification.permission==="denied"?"🚫 الإشعارات مقفولة للموقع ده من إعدادات المتصفح.":on?"✅ إشعارات الموبايل شغالة على الجهاز ده.":"🔕 إشعارات الموبايل مش متفعّلة على الجهاز ده لسه."}</b></p>
+    <div class="actions" style="flex-wrap:wrap">
+      ${sup&&!on&&Notification.permission!=="denied"?`<button type="button" class="primary" data-wf-event="click" data-wf-code="wfNotifEnablePush()">📲 فعّل إشعارات الموبايل</button>`:""}
+      <button type="button" class="secondary" data-wf-event="click" data-wf-code="wfNotifOpen('settings')">⚙️ اختار الإشعارات اللي توصلك</button>
+      ${owner?`<button type="button" class="secondary" data-wf-event="click" data-wf-code="wfNotifOpen('owner')">🛠️ تحكم المالك (للنظام كله)</button>`:""}
+      <button type="button" class="secondary" data-wf-event="click" data-wf-code="wfNotifOpen('list')">🔔 افتح الإشعارات</button>
+    </div><p class="hint" id="notifSettingsMsg"></p>`;
+}
+function wfNotifOpen(v){if(window.WFNotifCenter)WFNotifCenter.open(v||"list")}
+function wfNotifEnablePush(){
+  const m=document.getElementById("notifSettingsMsg");if(m)m.textContent="⏳ ...";
+  if(!window.WFNotifCenter)return;
+  WFNotifCenter.enablePush().then(t=>{if(m)m.textContent=t||"";renderNotifSettings()},e=>{if(m)m.textContent="❌ "+(e&&e.message?e.message:"تعذّر")});
 }
 if("serviceWorker" in navigator){
   navigator.serviceWorker.addEventListener("message",e=>{
     if(e.data&&e.data.type==="GO_TO"&&e.data.url)location.href=e.data.url;
   });
 }
-document.addEventListener("DOMContentLoaded",()=>{updateNotificationSnapshot().then(checkNotificationsNow);renderNotifSettings()});
+document.addEventListener("DOMContentLoaded",()=>{renderNotifSettings();setTimeout(renderNotifSettings,2500)});
 document.addEventListener('DOMContentLoaded',()=>setTimeout(setupQuickForms,0));
 
 

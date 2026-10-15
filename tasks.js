@@ -64,7 +64,7 @@ function renderTasks(){
       today=localDateKey(new Date());
   let rows=taskRows().filter(t=>{
     let text=(t.title+" "+t.note+" "+customerName(t.customerId)).toLowerCase();
-    if(q&&!text.includes(q))return false;
+    if(q&&!(typeof wfMatch==="function"?wfMatch([t.title,t.note,customerName(t.customerId)],q):text.includes(q)))return false;
     if(filter==="open"&&t.completed)return false;
     if(filter==="done"&&!t.completed)return false;
     if(filter==="today"&&t.date!==today)return false;

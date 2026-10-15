@@ -166,7 +166,7 @@
 </div>
 </section>
 </main>
-<script src="shared-data.js" defer></script><script src="brand-unify.js" defer></script>
+<script src="shared-data.js" defer></script><script src="notif-center.js" defer></script><script src="brand-unify.js" defer></script>
 <script>
 var KIND={center:"مركز",village:"قرية",brand:"ماركة",type:"نوع جهاز",category:"تصنيف جهاز"};
 var VG=[["💰 الفلوس",[["total","الإجمالي","المبلغ الكلي للأمر"],["deposit","العربون",""],["remain","المتبقي",""],["labor","أجرة اليد (المصنعية)","سعر المصنعية"],["partPrices","أسعار قطع الغيار","سعر كل قطعة"]]],["🔩 قطع الغيار",[["parts","أسماء القطع المستخدمة","تظهر من غير أسعار لو قفلت «أسعار قطع الغيار»"],["partQty","الكمية لكل قطعة",""]]],["🛠️ الشغل",[["work","وصف اللي اتعمل",""],["history","مراحل الأمر والتواريخ",""]]],["📅 الزيارة والورشة",[["visit","موعد الزيارة",""],["workshopStatus","حالة الورشة","سحب / تسليم"]]]];
@@ -190,7 +190,7 @@ function devLabel(id){var d=window.arr(window.K.d).find(function(x){return x.id=
 /* ---- الأرقام والتبويبات ---- */
 function counts(){var c=custs(),o=ordsAll();return{cl:c.length,or:o.length,open:o.filter(isOpen).length,done:o.filter(function(r){return r.status==="مكتمل"}).length,
 rq:RQ.length,gu:GR.length,qn:QS.filter(function(q){return q.status==="جديد"}).length,cp:CP.filter(function(x){return x.status==="جديد"}).length,sg:SG.length,pub:PT.filter(function(p){return p.published}).length}}
-function go(k){if(!TABS.some(function(t){return t[0]===k}))k="ov";tab=k;if(window.WFNavState)WFNavState.setParams({tab:k==="ov"?null:k});rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
+function go(k,mode){if(!TABS.some(function(t){return t[0]===k}))k="ov";var prevTab=tab;tab=k;if(window.WFNavState){if(mode==="push"&&prevTab!==k&&WFNavState.pushParams)WFNavState.pushParams({tab:k==="ov"?null:k});else if(mode!=="pop")WFNavState.setParams({tab:k==="ov"?null:k})}rTabs();TABS.forEach(function(t){$("t_"+t[0]).className="pa-sec"+(t[0]===k?" on":"")});if(k==="vs")rVis();if(k==="tk")rTk()}
 function rTabs(){var c=counts(),bd={or:c.rq,gu:c.gu,q:c.qn,cp:c.cp,sg:c.sg};
 $("tabs").innerHTML=TABS.map(function(t){return'<button type="button" class="'+(tab===t[0]?"":"off")+'" data-act="tab" data-k="'+t[0]+'">'+t[1]+(bd[t[0]]?'<em>'+bd[t[0]]+'</em>':"")+'</button>'}).join("")}
 function box(n,l,k,hot){return'<button type="button" class="pa-stat'+(hot&&n?" hot":"")+'" data-act="tab" data-k="'+k+'"><b>'+n+'</b><small>'+l+'</small></button>'}
@@ -207,7 +207,7 @@ $("ovBox").innerHTML='<div class="panel"><h2>📈 ملخص</h2><div class="pa-ro
 '<div class="panel"><h2>🧾 الأوامر حسب الحالة</h2>'+bars(st)+'</div><div class="panel"><h2>📍 العملاء حسب المنطقة</h2>'+bars(vl)+'</div><div class="panel"><h2>🆕 آخر المسجّلين</h2>'+last+'</div>'}
 /* ---- العملاء ---- */
 function rCl(){var q=($("cs").value||"").trim(),ds=window.arr(window.K.d),os=ordsAll(),h="";
-var l=custs().filter(function(c){var a=c.mainAddress||{};return!q||[c.name,c.phone,a.center,a.village].join(" ").indexOf(q)>-1}).sort(byNew);
+var l=custs().filter(function(c){var a=c.mainAddress||{};return!q||(window.wfMatch?window.wfMatch([c.name,c.phone,a.center,a.village],q):[c.name,c.phone,a.center,a.village].join(" ").indexOf(q)>-1)}).sort(byNew);
 h=l.map(function(c){var a=c.mainAddress||{},mo=os.filter(function(r){return r.customerId===c.id}),nd=ds.filter(function(d){return d.customerId===c.id}).length,tot=mo.filter(function(r){return r.status==="مكتمل"}).reduce(function(s,r){return s+(+r.total||0)},0);
 return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">سجّل '+esc(fdt(c.createdAt))+'</span></div><div class="hint">📞 <a href="tel:'+esc(c.phone)+'">'+esc(c.phone)+'</a> — 📍 '+esc([a.center,a.village,a.street].filter(Boolean).join(" - "))+'</div><div class="pa-row" style="margin-top:6px"><span>🔧 '+nd+' جهاز</span><span>🧾 '+mo.length+' أمر ('+mo.filter(isOpen).length+' مفتوح)</span><span>💰 '+money(tot)+' ج</span></div><div class="pa-actions"><a class="btn secondary" href="customer.html?id='+esc(c.id)+'">📂 ملف العميل 360°</a></div></div>'}).join("");
 $("cl").innerHTML=h||'<p class="hint">مفيش عملاء مطابقين.</p>'}
@@ -283,7 +283,7 @@ $("visSum").innerHTML="👁️ العميل هيشوف: "+(t.length?t.join(" •
 function vpre(i){var p=PRE[i][1];Object.keys(p).forEach(function(k){var e=$("v_"+k);if(e)e.checked=!!p[k]});vSum()}
 function saveVis(){var s=window.settings(),o={};VG.forEach(function(g){g[1].forEach(function(x){o[x[0]]=vOn(x[0])})});o.price=!!(o.total||o.deposit||o.remain||o.partPrices);s.portalVis=o;if(!window.put(window.K.s,s)){$("visMsg").textContent="⚠️ تعذّر الحفظ على الجهاز.";return}$("visMsg").textContent="✅ اتحفظ — هيتطبق على كل أوامر العملاء"}
 /* ---- ربط الأحداث ---- */
-var ACT={tab:function(b){go(b.dataset.k)},movePost:function(b){movePost(b.dataset.id,+b.dataset.d)},guConv:function(b){guConv(b.dataset.id,b)},guDone:function(b){guDone(b.dataset.id)},guDel:function(b){guDel(b.dataset.id)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
+var ACT={tab:function(b){go(b.dataset.k,"push")},movePost:function(b){movePost(b.dataset.id,+b.dataset.d)},guConv:function(b){guConv(b.dataset.id,b)},guDone:function(b){guDone(b.dataset.id)},guDel:function(b){guDel(b.dataset.id)},sgOk:function(b){sgOk(b.dataset.id)},sgEdit:function(b){sgEdit(b.dataset.id)},sgNo:function(b){sgNo(b.dataset.id)},cpReply:function(b){cpReply(b.dataset.id)},cpClose:function(b){cpClose(b.dataset.id)},qSave:function(b){qSave(b.dataset.id)},qPub:function(b){qPub(b.dataset.id)},qUnpub:function(b){qUnpub(b.dataset.id)},qDel:function(b){qDel(b.dataset.id)},editPost:function(b){editPost(b.dataset.id)},togPost:function(b){togPost(b.dataset.id,b.dataset.v==="1")},delPost:function(b){delPost(b.dataset.id)},savePost:savePost,clearPost:clearPost,saveVis:saveVis,vpre:function(b){vpre(+b.dataset.i)}};
 document.addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("[data-act]");if(b&&ACT[b.dataset.act])ACT[b.dataset.act](b)});
 document.addEventListener("change",function(e){var t=e.target;if(t.id&&t.id.indexOf("v_")===0&&$("visSum"))vSum();if(t.dataset&&t.dataset.ov)ov(t.dataset.ov,t.dataset.keys.split(","),t.checked)});
 document.addEventListener("input",function(e){var t=e.target;if(t.dataset&&t.dataset.dr){DR[t.dataset.dr]=DR[t.dataset.dr]||{};DR[t.dataset.dr][t.dataset.f]=t.value}});
@@ -337,7 +337,7 @@ function acStatus(c,dupe){var l=LK[c.id];if(l)return l.mustChange===false?["ok",
 function acRows(){var cs=window.arr(window.K.c).filter(function(c){return c&&c.id}),dupe={};cs.forEach(function(c){var p=normPhone(c.phone);if(p)dupe[p]=(dupe[p]||0)+1});return cs.map(function(c){return{c:c,s:acStatus(c,dupe)}})}
 function rAc(){if(!window.K)return;var rows=acRows(),n={ok:0,wait:0,bad:0,none:0},q=($("acs").value||"").trim();rows.forEach(function(r){n[r.s[0]]++});
 $("acSum").innerHTML='<span>✅ '+n.ok+' عندهم حساب</span><span>🟡 '+n.wait+' جاهزين</span><span>⚪ '+n.none+' بدون حساب</span><span>⚠️ '+n.bad+' محتاجين تصحيح رقم</span>';
-var ord={none:0,bad:1,wait:2,ok:3},l=rows.filter(function(r){return!q||[r.c.name,r.c.phone].join(" ").indexOf(q)>-1}).sort(function(a,b){return ord[a.s[0]]-ord[b.s[0]]});
+var ord={none:0,bad:1,wait:2,ok:3},l=rows.filter(function(r){return!q||(window.wfMatch?window.wfMatch([r.c.name,r.c.phone],q):[r.c.name,r.c.phone].join(" ").indexOf(q)>-1)}).sort(function(a,b){return ord[a.s[0]]-ord[b.s[0]]});
 $("acl").innerHTML=l.slice(0,80).map(function(r){var c=r.c,k=r.s[0],has=k==="wait"||k==="ok";return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">'+esc(r.s[1])+'</span></div><div class="hint">📞 '+esc(c.phone||"—")+'</div><div class="pa-actions">'+(k==="none"?'<button type="button" data-act="actC" data-id="'+esc(c.id)+'">⚡ تفعيل الحساب</button>':"")+(has&&normPhone(c.phone)?'<a class="btn secondary" target="_blank" rel="noopener" href="'+esc(waHref(c))+'">📲 ابعت دعوة واتساب</a>':"")+(has&&normPhone(c.phone)?'<button type="button" class="secondary" data-act="actReset" data-id="'+esc(c.id)+'">🔑 إعادة تعيين كلمة السر</button>':"")+'</div></div>'}).join("")+(l.length>80?'<p class="hint">معروض أول 80 — استخدم البحث.</p>':"")||'<p class="hint">مفيش عملاء.</p>'}
 function secApp(){if(!SEC)SEC=firebase.apps.filter(function(a){return a.name==="sec"})[0]||firebase.initializeApp(firebase.app().options,"sec");try{if(window.WFAppCheck)WFAppCheck.attach(SEC)}catch(e){}return SEC}
 function actOne(c){var p=normPhone(c.phone);if(!p)return Promise.resolve("bad");var em=p+"@phone.elwarsha.app",sa=secApp().auth();
@@ -412,7 +412,7 @@ document.addEventListener("change",function(e){var t=e.target;if(!TKD||!t.datase
 window.addEventListener("beforeunload",function(e){if(tkDirty){e.preventDefault();e.returnValue=""}});
 function rAll(){rTabs();rStats();rOv();rCl();rRq();rGu();rPo();rQs();rCp();rSg();rPt();rAc()}
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
-if(window.WFNavState)WFNavState.keep({cq:"cs",of:"of",qf:"qf",aq:"acs"});go((window.WFNavState&&WFNavState.getParam("tab"))||"ov");rAll();setTimeout(rAll,2500);window.addEventListener("focus",rAll);
+if(window.WFNavState)WFNavState.keep({cq:"cs",of:"of",qf:"qf",aq:"acs"});go((window.WFNavState&&WFNavState.getParam("tab"))||"ov");rAll();window.addEventListener("popstate",function(){go((window.WFNavState&&WFNavState.getParam("tab"))||"ov","pop");rAll()});setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
 db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});

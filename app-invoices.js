@@ -11,13 +11,13 @@ function toggleInvoicesBox() {
 function invoicePartOptionsHtml(filter) {
   filter = (filter || "").trim();
   const parts = arr(K.p).filter(p => !p.archived);
-  const list = filter ? parts.filter(p => (p.name || "").includes(filter) || (p.code || "").includes(filter)) : parts;
+  const list = filter ? parts.filter(p => typeof partMatchesQuery === "function" ? partMatchesQuery(p, filter) : ((p.name || "").includes(filter) || (p.code || "").includes(filter))) : parts;
   let html = list.length ? list.slice(0, 80).map(p => `<label class="inv-part-check"><input type="checkbox" value="${p.id}" class="inv-part-cb"> ${esc(p.name)}${p.code ? ` <small>(${esc(p.code)})</small>` : ""}</label>`).join("") : `<div class="hint">لا توجد أصناف مطابقة.</div>`;
   // لو الاسم المكتوب في البحث مش موجود بالظبط في المخزن، نسيب خيار
   // إضافته كصنف جديد مباشرة (بنفس نافذة "إضافة قطعة جديدة" المشتركة
   // المستخدمة في التوريد)، عشان تقدري تسجّليه وتكتبي تفاصيله من الفاتورة
   // نفسها من غير ما تخرجي من هنا وتدخلي لشاشة تانية.
-  if (filter && !parts.some(p => (p.name || "").trim().toLowerCase() === filter.toLowerCase())) {
+  if (filter && !(typeof findDuplicatePartName === "function" ? findDuplicatePartName(filter) : parts.some(p => (p.name || "").trim().toLowerCase() === filter.toLowerCase()))) {
     html += `<button type="button" class="secondary small-btn inv-add-new-part" data-newpart="${esc(filter)}">➕ "${esc(filter)}" صنف جديد — إضافته للمخزن</button>`;
   }
   return html;
@@ -84,7 +84,14 @@ async function editInvoiceLinks(invId) {
   const src = window.ImageStore ? await window.ImageStore.resolveSrc(inv.photo) : inv.photo;
   if (src) showInvoicePhotoPreview(src);
 }
+let _invoiceBusy = false;
 async function saveInvoice() {
+  // ضغطتين ورا بعض أثناء تجهيز الصورة كانوا بيسجّلوا الفاتورة مرتين
+  if (_invoiceBusy) return;
+  _invoiceBusy = true;
+  try { return await saveInvoiceInner(); } finally { _invoiceBusy = false; }
+}
+async function saveInvoiceInner() {
   const file = document.getElementById("invPhoto")?.files?.[0] || null;
   const note = (document.getElementById("invNote")?.value || "").trim();
   const partIds = Array.from(document.querySelectorAll("#invPartOptions .inv-part-cb:checked")).map(x => x.value);
@@ -99,7 +106,7 @@ async function saveInvoice() {
       const partsById = byIdCached(K.p);
       const removedNames = removedIds.map(pid => partsById.get(pid)?.name).filter(Boolean);
       const namesText = removedNames.length ? removedNames.join("، ") : `${removedIds.length} صنف`;
-      if (!confirm(`دا هيلغي ربط هذه الفاتورة بـ: ${namesText}.\nمتأكدة إنك عايزة تكمّلي الحفظ كده؟`)) return;
+      if (!confirm(`ده هيلغي ربط الفاتورة دي بـ: ${namesText}.\nمتأكد إنك عايز تكمّل الحفظ كده؟`)) return;
     }
     if (file) {
       const dataURL = await imageToDataURL(file, 1400, 0.72);
@@ -122,8 +129,9 @@ async function saveInvoice() {
 function deleteInvoiceRecord(invId) {
   const list = arr(K.inv), inv = list.find(x => x.id === invId); if (!inv) return;
   if (!confirm("حذف هذه الفاتورة نهائيًا؟ (مش هيأثر على الأصناف أو كمياتها، مجرد صورة الفاتورة وربطها هيتشال)")) return;
-  if (window.ImageStore?.delete && inv.photo) window.ImageStore.delete(inv.photo);
   if (!saveJSONSafe(K.inv, list.filter(x => x.id !== invId))) return;
+  // صورة فاتورة التوريد مستخدمة كمان في سجل حركات الصنف: مانمسحهاش طول ما فيه حركة شايلاها
+  if (window.ImageStore?.delete && inv.photo && !arr(K.m).some(m => m && m.invoice === inv.photo)) window.ImageStore.delete(inv.photo);
   if (_editingInvoiceId === invId) invoiceFormReset();
   renderInvoices();
   if (typeof partProfile === "function") partProfile();

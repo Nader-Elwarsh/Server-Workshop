@@ -72,6 +72,8 @@
 
   function buildResults(q) {
     var results = [];
+    // نفس قواعد البحث في كل النظام (wfMatch في shared-data.js): همزات، ة/ه، أرقام عربي، كلمات بأي ترتيب
+    function hit(parts) { return typeof window.wfMatch === "function" ? window.wfMatch(parts, q) : norm(parts.join(" ")).indexOf(q) !== -1; }
     var arr = window.arr, K = window.K;
     if (typeof arr !== "function" || !K) return results;
     // Use the raw-aware shared cache when available. Search input fires repeatedly,
@@ -92,8 +94,7 @@
     customers.forEach(function (c) {
       var main = c.mainAddress ? addressText(c.mainAddress) : "";
       var extra = c.extraAddress ? addressText(c.extraAddress) : "";
-      var hay = norm([c.name, c.phone, main, extra].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([c.name, c.phone, main, extra])) return;
       results.push({
         cat: "customer", icon: "👤",
         title: c.name || "بدون اسم",
@@ -104,8 +105,7 @@
 
     devices.forEach(function (d) {
       var cust = customerName(d.customerId);
-      var hay = norm([d.type, d.brand, d.model, d.desc, cust].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([d.type, d.brand, d.model, d.desc, cust])) return;
       results.push({
         cat: "device", icon: "🔧",
         title: [d.type, d.brand].filter(Boolean).join(" - ") || "جهاز",
@@ -117,8 +117,7 @@
     requests.forEach(function (r) {
       var cust = customerName(r.customerId);
       var dev = deviceName(r.deviceId);
-      var hay = norm([r.no, r.fault, r.work, r.status, r.tag, cust, dev].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([r.no, r.fault, r.work, r.status, r.tag, cust, dev])) return;
       results.push({
         cat: "request", icon: "🛠️",
         title: r.no ? "أمر " + r.no : "أمر شغل",
@@ -129,8 +128,7 @@
 
     parts.forEach(function (p) {
       if (p.archived) return;
-      var hay = norm([p.name, p.code, p.category, p.location].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([p.name, p.code, p.category, p.location])) return;
       results.push({
         cat: "part", icon: "📦",
         title: p.name || "قطعة",
@@ -141,8 +139,7 @@
 
     tasks.forEach(function (t) {
       if (t.deleted) return;
-      var hay = norm([t.title, t.note].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([t.title, t.note])) return;
       results.push({
         cat: "task", icon: t.completed ? "✅" : "📋",
         title: t.title || "مهمة",
@@ -153,8 +150,7 @@
 
     treasuryEntries.forEach(function (e) {
       if (e.deleted) return;
-      var hay = norm([e.reason, e.note, e.category].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([e.reason, e.note, e.category])) return;
       results.push({
         cat: "treasury", icon: e.type === "in" ? "⬅️💵" : "➡️💵",
         title: e.reason || "حركة خزنة",
@@ -167,8 +163,7 @@
     // مصروف)، بندوّر في السبب/الملاحظة/التصنيف/اسم المحفظة نفسها.
     walletEntries.forEach(function (w) {
       if (w.deleted) return;
-      var hay = norm([w.reason, w.note, w.category, w.wallet].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([w.reason, w.note, w.category, w.wallet])) return;
       results.push({
         cat: "wallet", icon: w.type === "in" ? "⬅️💳" : "➡️💳",
         title: w.reason || w.category || "حركة حساب",
@@ -184,8 +179,7 @@
     // أكواد أعطال الأجهزة: قسم مرجعي مستقل (مش مربوط بعميل/جهاز/أمر
     // شغل) — بندوّر بالكود والوصف والسبب والحل ونوع الجهاز والماركة.
     faultCodes.forEach(function (f) {
-      var hay = norm([f.code, f.title, f.cause, f.fix, f.deviceType, f.brand].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([f.code, f.title, f.cause, f.fix, f.deviceType, f.brand])) return;
       results.push({
         cat: "faultcode", icon: "🧯",
         title: (f.code || "") + (f.title ? " — " + f.title : ""),
@@ -203,8 +197,7 @@
       var main = "";
       var custRec = window.byIdCached ? window.byIdCached(K.c).get(r.customerId) : customers.find(function (c) { return c.id === r.customerId; });
       if (custRec) main = addressText(r.addressKey === "extra" && custRec.extraAddress ? custRec.extraAddress : (custRec.mainAddress || {}));
-      var hay = norm([cust, main, r.no].join(" "));
-      if (hay.indexOf(q) === -1) return;
+      if (!hit([cust, main, r.no])) return;
       var visitLabel = "";
       try { visitLabel = new Date(r.visit).toLocaleString("ar-EG", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) {}
       results.push({
@@ -267,13 +260,11 @@
       (st.executionPlaces || []).forEach(function (e) { pushSetting(e, "📍 مكان تنفيذ", "settings-list-executionPlaces"); });
       (st.orderTags || []).concat(st.orderTagsDisabled || []).forEach(function (tag) { pushSetting(tag, "🏷️ تصنيف يدوي لأمر الشغل", "order-tags-panel"); });
       (st.waTemplates || []).forEach(function (t) {
-        var hay = norm([t.name, t.text].join(" "));
-        if (hay.indexOf(q) === -1) return;
+        if (!hit([t.name, t.text])) return;
         results.push({ cat: "settings", icon: "📨", title: t.name || "رسالة واتساب", sub: (t.text || "").slice(0, 60), href: "settings.html#wa-templates-panel" });
       });
       (st.followupWaTemplates || []).forEach(function (t) {
-        var hay = norm([t.name, t.text].join(" "));
-        if (hay.indexOf(q) === -1) return;
+        if (!hit([t.name, t.text])) return;
         results.push({ cat: "settings", icon: "📨", title: t.name || "رسالة متابعة", sub: (t.text || "").slice(0, 60), href: "followup.html#followup-wa-templates-panel" });
       });
       var receiptFields = (st.receiptFields && st.receiptFields.length) ? st.receiptFields : (typeof window.defaultReceiptFields === "function" ? window.defaultReceiptFields() : []);

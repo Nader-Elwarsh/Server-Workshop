@@ -425,6 +425,11 @@
   /* اختيار صورة الأيقونة (من المعرض/الكاميرا) ← قص ← حفظ. نفس الخطوات من أي مكان في النظام. */
   var pickInput = null;
   function pickIcon() {
+    // نفس طريقة رفع الصور في باقي النظام: كاميرا أو من الصور
+    if (typeof window.wfPickImage === "function") return window.wfPickImage({ title: "صورة أيقونة التطبيق منين؟" }).then(function (f) {
+      if (!f) throw new Error("cancel");
+      return cropImage(f).then(function (d) { return setCustom("icon", d); });
+    });
     return new Promise(function (resolve, reject) {
       if (!pickInput) {
         pickInput = document.createElement("input"); pickInput.type = "file"; pickInput.accept = "image/*"; pickInput.hidden = true;
@@ -439,6 +444,10 @@
     });
   }
   function pickLogo() {
+    if (typeof window.wfPickImage === "function") return window.wfPickImage({ title: "صورة اللوجو منين؟", accept: "image/png,image/jpeg,image/webp,image/svg+xml" }).then(function (f) {
+      if (!f) throw new Error("cancel");
+      return readImage(f, "logo").then(function (d) { return setCustom("logo", d); });
+    });
     return new Promise(function (resolve, reject) {
       var i = document.createElement("input"); i.type = "file"; i.accept = "image/png,image/jpeg,image/webp,image/svg+xml"; i.hidden = true;
       document.body.appendChild(i);

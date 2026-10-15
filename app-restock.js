@@ -121,6 +121,10 @@ function toggleRestockBox() {
     document.getElementById("stkInvoice").value = ""; refreshDualPhotoName("stkInvoice");
     renderLivePhotoPreview("stkInvoicePreview", "");
     document.getElementById("stkCurrentHint").textContent = "اكتب اسم القطعة أو الكود، أو اسم صنف جديد عشان تضيفه.";
+    const wSel = document.getElementById("stkWallet");
+    if (wSel) wSel.innerHTML = '<option value="">— مش هسجّل دفع دلوقتي (آجل / اتدفع قبل كده)</option>' + (settings().wallets || []).map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join("");
+    updateRestockPayHint();
+    if (wSel && window.WFPerm && typeof WFPerm.can === "function" && !WFPerm.can("wallets.add")) wSel.closest("label")?.classList.add("hidden");
     document.getElementById("stkPartSearch")?.focus();
   }
 }
@@ -141,11 +145,11 @@ function filterRestockPartOptions(q) {
   q = String(q ?? document.getElementById("stkPartSearch")?.value ?? "").trim();
   const list = arr(K.p).filter(p => !p.archived);
   const qLower = q.toLowerCase();
-  const matches = (q ? list.filter(p => (p.name || "").toLowerCase().includes(qLower) || (p.code || "").toLowerCase().includes(qLower)) : list).slice(0, 50);
+  const matches = (q ? list.filter(p => typeof partMatchesQuery === "function" ? partMatchesQuery(p, q) : ((p.name || "").toLowerCase().includes(qLower) || (p.code || "").toLowerCase().includes(qLower))) : list).slice(0, 50);
   let html = matches.length
     ? matches.map(p => `<div class="part-ac-item" data-value="${esc(p.id)}"><b>${esc(p.name)}</b><span>الحالي: ${+p.qty || 0}</span></div>`).join("")
     : '<div class="part-ac-empty">لا توجد أصناف مطابقة.</div>';
-  if (q && !list.some(p => (p.name || "").toLowerCase() === qLower)) {
+  if (q && !(typeof findDuplicatePartName === "function" ? findDuplicatePartName(q) : list.some(p => (p.name || "").toLowerCase() === qLower))) {
     html += `<div class="part-ac-item ac-add-new" data-newpart="${esc(q)}"><b>➕ "${esc(q)}" صنف جديد — إضافته للمخزن</b></div>`;
   }
   box.innerHTML = html;
@@ -179,8 +183,22 @@ function selectRestockPart(pid) {
   if (box) box.classList.add("hidden");
   if (hint) hint.textContent = `الكمية الحالية: ${+p.qty || 0} — سعر الشراء الحالي: ${(+p.buy || 0).toFixed(2)} ج.`;
   if (buyEl) buyEl.placeholder = (+p.buy || 0).toFixed(2);
+  updateRestockPayHint();
 }
 
+/* إجمالي تمن التوريد = الكمية × (سعر الشراء الجديد لو اتكتب، وإلا سعر الشراء الحالي) */
+function restockPayAmount() {
+  const p = arr(K.p).find(x => x.id === (document.getElementById("stkPart")?.value || ""));
+  const qty = +(document.getElementById("stkQty")?.value || 0), buyEl = document.getElementById("stkBuy");
+  const buy = buyEl && buyEl.value !== "" ? +buyEl.value : (p ? +p.buy || 0 : 0);
+  return Number.isFinite(qty * buy) && qty > 0 && buy > 0 ? Math.round(qty * buy * 100) / 100 : 0;
+}
+function updateRestockPayHint() {
+  const h = document.getElementById("stkPayHint"), w = document.getElementById("stkWallet")?.value || "";
+  if (!h) return;
+  const amt = restockPayAmount();
+  h.textContent = !w ? "" : amt > 0 ? `هيتسجل صرف ${amt.toFixed(2)} ج من «${w}» (مشتريات قطع غيار).` : "اختار الصنف واكتب سعر الشراء عشان يتحسب المبلغ.";
+}
 function hideRestockPartResults() {
   setTimeout(() => document.getElementById("stkPartResults")?.classList.add("hidden"), 150);
 }
@@ -194,6 +212,7 @@ async function saveRestock() {
   if (!Number.isSafeInteger(qty) || qty < 1) return alert("اكتب كمية واردة صحيحة كعدد صحيح (أكبر من صفر).");
   const buyEl = document.getElementById("stkBuy"), note = (document.getElementById("stkNote")?.value || "").trim();
   if (buyEl?.value !== "" && buyEl?.value != null) { const proposedBuy = Number(buyEl.value); if (!Number.isFinite(proposedBuy) || proposedBuy < 0) return alert("سعر الشراء الجديد يجب أن يكون رقمًا صحيحًا غير سالب."); }
+  if ((document.getElementById("stkWallet")?.value || "") && window.WFPerm && typeof WFPerm.can === "function" && !WFPerm.can("wallets.add")) return alert("مش معاك صلاحية «إضافة حركة محفظة» عشان تسجّل الدفع. سيب خانة الدفع فاضية وسجّل التوريد بس.");
   const invoiceFile = document.getElementById("stkInvoice")?.files?.[0] || null;
   _restockBusy = true;
   let invoice = "",invoiceStored=false,invoiceCommitted=false;
@@ -215,12 +234,22 @@ async function saveRestock() {
     const nb = +buyEl.value;
     if (Number.isFinite(nb) && nb >= 0) p.buy = nb;
   }
-  const moves=arr(K.m);moves.push({id:id(),partId:pid,type:"توريد",note,qty,invoice,at:new Date().toISOString()});
-  if(!await commitStorageAsync({[K.p]:all,[K.m]:moves}))return;
+  const now=new Date(),at=now.toISOString(),moveId=id();
+  const moves=arr(K.m);moves.push({id:moveId,partId:pid,type:"توريد",note,qty,invoice,at});
+  const values={[K.p]:all,[K.m]:moves};
+  // الدفع (اختياري): صرف من المحفظة تحت «مشتريات قطع غيار» في نفس العملية
+  const payWallet=(document.getElementById("stkWallet")?.value||"").trim(),payAmt=Math.round(qty*(+p.buy||0)*100)/100;
+  if(payWallet&&payAmt>0){
+    values[K.wtx]=arr(K.wtx).concat({id:id(),refKey:null,manualOverride:true,deleted:false,type:"out",amount:payAmt,wallet:payWallet,category:"مشتريات قطع غيار",
+      reason:`📦 توريد ${qty} × ${p.name}`,note,date:localDateKey(now),time:now.toTimeString().slice(0,5),source:"restock",moveId,partId:pid,createdAt:at});
+  }
+  // صورة الفاتورة بتتسجل كمان في «فواتير المخزن» مربوطة بالصنف، عشان تظهر في ملفه (قبل كده كانت في سجل الحركات بس)
+  if(invoice)values[K.inv]=arr(K.inv).concat({id:id(),photo:invoice,note:`توريد ${qty} × ${p.name}${note?" — "+note:""}`,partIds:[pid],moveId,at});
+  if(!await commitStorageAsync(values))return;
   invoiceCommitted=true;
   refreshAllScreens?.();
   renderParts?.();
-  alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.`);
+  alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.${values[K.wtx]?`\n💳 واتسجل صرف ${payAmt.toFixed(2)} ج من «${payWallet}».`:""}`);
   toggleRestockBox();
   } finally {
     if(invoiceStored&&!invoiceCommitted&&window.ImageStore?.delete){try{await window.ImageStore.delete(invoice)}catch(_){}}

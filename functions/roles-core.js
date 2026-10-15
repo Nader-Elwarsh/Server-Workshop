@@ -70,6 +70,7 @@
     deleteAllCustomers: { all: ["data.wipe"] }, deleteAllDevices: { all: ["data.wipe"] }, deleteAllRequests: { all: ["data.wipe"] }, deleteAllOperationalData: { all: ["data.wipe"] },
     deletePartRecord: { all: ["inventory.delete"] }, restorePartRecord: { all: ["inventory.edit"] }, applyBulkPriceChange: { all: ["inventory.edit"] },
     saveRestock: { all: ["inventory.add"] }, saveQuickAddPart: { all: ["inventory.add"] },
+    savePartSale: { all: ["inventory.edit", "wallets.add"] }, undoPartSale: { all: ["inventory.edit", "wallets.delete"] },
     saveInvoice: { any: ["invoices.add", "invoices.edit"] }, editInvoiceLinks: { all: ["invoices.edit"] }, deleteInvoiceRecord: { all: ["invoices.delete"] },
     saveQuickCustomer: { all: ["customers.add"] }, saveQuickCustomerHome: { all: ["customers.add"] }, saveQuickDevice: { all: ["devices.add"] }, saveQuickDeviceHome: { all: ["devices.add"] },
     quickCreateRequest: { all: ["requests.add"] }, createRequestFromCallShare: { all: ["requests.add"] },

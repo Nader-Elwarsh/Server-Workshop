@@ -16,6 +16,10 @@
 
   function isOutType(t) { return /خروج/.test(t || ""); }
   function isInType(t) { return /إرجاع|دخول/.test(t || ""); }
+  // اتجاه الحركة: + بتزوّد المخزن، − بتنقّصه
+  function moveSign(t) { t = t || ""; return /خروج|نقص/.test(t) ? -1 : /توريد|دخول|إرجاع|ارجاع|زيادة/.test(t) ? 1 : 0; }
+  function signedQty(m) { const q = Math.abs(+m.qty || 0), s = moveSign(m.type); return `<b style="color:${s > 0 ? "var(--success,#15803d)" : s < 0 ? "var(--danger,#b91c1c)" : "inherit"}">${s > 0 ? "+" : s < 0 ? "−" : ""}${q}</b>`; }
+  function money(v) { return (Math.round((+v || 0) * 100) / 100).toFixed(2) + " ج"; }
 
   function inRange(atIso) {
     if (state.from) {
@@ -56,6 +60,9 @@
     const totalOut = moves.filter(m => isOutType(m.type)).reduce((a, m) => a + (+m.qty || 0), 0);
     const totalIn = moves.filter(m => isInType(m.type)).reduce((a, m) => a + (+m.qty || 0), 0);
     const totalSupply = moves.filter(m => /توريد/.test(m.type || "")).reduce((a, m) => a + (+m.qty || 0), 0);
+    const adjNet = moves.filter(m => /جرد/.test(m.type || "")).reduce((a, m) => a + moveSign(m.type) * Math.abs(+m.qty || 0), 0);
+    const sales = moves.filter(m => m.saleId && /خروج بيع مباشر/.test(m.type || "") && !m.voided);
+    const salesQty = sales.reduce((a, m) => a + Math.abs(+m.qty || 0), 0), salesTotal = sales.reduce((a, m) => a + (+m.total || 0), 0);
 
     // لو رابط دخل الصفحة يشاور على حركة معيّنة (زي فحص سلامة البيانات
     // #move-<id>) بس هي أقدم من أول 20 حركة، نوسّع الحد اللي بيتعرض عشان
@@ -82,6 +89,8 @@
           <div class="report-card"><span>⬇️ إجمالي الخارج</span><b>${totalOut}</b></div>
           <div class="report-card"><span>⬆️ إجمالي الداخل (إرجاع)</span><b>${totalIn}</b></div>
           <div class="report-card"><span>📥 إجمالي التوريد</span><b>${totalSupply}</b></div>
+          ${sales.length ? `<div class="report-card"><span>🛒 بيع مباشر</span><b>${salesQty}</b><small>${money(salesTotal)}</small></div>` : ""}
+          ${adjNet ? `<div class="report-card"><span>⚖️ صافي تعديلات الجرد</span><b>${adjNet > 0 ? "+" : "−"}${Math.abs(adjNet)}</b></div>` : ""}
         </div>
 
         <div class="form-grid" style="margin-top:12px">
@@ -98,14 +107,14 @@
 
         <h2>📋 سجل الحركات (${moves.length})</h2>
         ${visible.length ? `<div class="report-table-wrap"><table class="report-table-full">
-          <tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>الأمر المرتبط</th><th>الفاتورة</th></tr>
+          <tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>التفاصيل</th><th>الفاتورة</th></tr>
           ${visible.map(m => {
             const req = m.requestId ? (byIdCached(K.r).get(m.requestId) || null) : null;
             return `<tr id="move-${m.id}">
               <td>${new Date(m.at).toLocaleString("ar-EG")}</td>
-              <td>${esc(m.type || "—")}</td>
-              <td>${+m.qty || 0}</td>
-              <td>${req ? `<a href="request.html?id=${req.id}">${esc(req.no || req.id)} — ${esc(customerName(req.customerId))}</a>` : (m.note ? esc(m.note) : "—")}</td>
+              <td>${esc(m.type || "—")}${m.voided ? " <small>(اتلغت)</small>" : ""}</td>
+              <td>${signedQty(m)}</td>
+              <td>${req ? `<a href="request.html?id=${req.id}">${esc(req.no || req.id)} — ${esc(customerName(req.customerId))}</a>` : m.saleId && m.total != null ? `🛒 ${money(m.total)}${m.wallet ? " • 💳 " + esc(m.wallet) : ""}${m.buyer ? " • 👤 " + esc(m.buyer) : ""}${m.note ? " • " + esc(m.note) : ""}` : (m.note ? esc(m.note) : "—")}</td>
               <td>${m.invoice ? `<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="showImagePreview('${esc(m.invoice)}','📷 فاتورة توريد')">📷 عرض</button>` : "—"}</td>
             </tr>`;
           }).join("")}

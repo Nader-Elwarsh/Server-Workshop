@@ -253,10 +253,36 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['ts', 'dev']);
     }
 
+    // ---- الإشعارات الداخلية: صندوق لكل مستخدم (موظف أو عميل). الإشعارات بتتكتب من السيرفر بس (دوال notify*). ----
+    // صاحب الصندوق يقرأ ويعلّم «مقروء» ويمسح. الإعلانات العامة للعملاء في inbox/_customers (قراءة لأي حد مسجّل).
+    match /inbox/{uid}/items/{id} {
+      allow read: if signedIn() && (request.auth.uid == uid || uid == '_customers');
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+        && request.resource.data.read is bool;
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+    // إعدادات الإشعارات (الأنواع المكتومة) — كل واحد بتاعه بس.
+    match /notifPrefs/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['mute', 'at'])
+        && request.resource.data.mute is list && request.resource.data.mute.size() <= 60;
+    }
+    // تحكم المالك في الإشعارات للنظام كله (أنواع مقفولة + مواعيد التذكيرات). أي حد مسجّل يقرأ، والمالك بس يكتب.
+    match /notifConfig/{doc} {
+      allow read: if signedIn();
+      allow write: if isStaff() && request.auth.token.get('role', 'owner') == 'owner' && doc == 'global'
+        && request.resource.data.keys().hasOnly(['off', 'remindMin', 'overdueHours', 'digestHour', 'custodyMax', 'feedbackDays', 'warrantyDays', 'at', 'by'])
+        && request.resource.data.off is list && request.resource.data.off.size() <= 80;
+    }
+    // اشتراكات الإشعارات (pushSubs) ومفاتيحها (serverConfig): السيرفر بس، مفيش أي قراءة أو كتابة من المتصفح.
+
     // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من
     // تصعيد صلاحياته أو إضافة موظف آخر عبر القاعدة العامة.
     match /{collection}/{document=**} {
-      allow read, write: if isStaff() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit';
+      allow read, write: if isStaff() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit'
+        && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig';
     }
   }
 }

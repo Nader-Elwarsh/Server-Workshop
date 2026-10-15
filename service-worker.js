@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v71-deposit-refund";
+const CACHE_NAME = "workshop-v83-back-button";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
@@ -85,6 +85,8 @@ const CORE_FILES = [
   "./app-customer-autocomplete.js",
   "./app-list-autocomplete.js",
   "./app-restock.js",
+  "./app-supplier-order.js",
+  "./notif-center.js",
   "./app-quick-add.js",
   "./app-notifications-bootstrap.js",
   "./share-target.html",
@@ -359,4 +361,17 @@ self.addEventListener("notificationclick", event => {
       return self.clients.openWindow(url);
     })
   );
+});
+
+/* إشعارات الموبايل/الكمبيوتر (Web Push) من السيرفر (functions/notify.js): بتوصل حتى والتطبيق مقفول. */
+self.addEventListener("push", event => {
+  let p = {};
+  try { p = event.data ? event.data.json() : {}; } catch (e) { p = { title: "🔔 إشعار جديد", body: event.data ? event.data.text() : "" }; }
+  p = p.data || p.notification || p;
+  let url = "./index.html";
+  try { if (p.link) url = new URL(p.link, self.registration.scope).href; } catch (e) {}
+  event.waitUntil(self.registration.showNotification(p.title || "🔔 إشعار جديد", {
+    body: p.body || "", icon: "./icon-192-v13.png", badge: "./icon-192-v13.png", tag: p.tag || undefined, renotify: !!p.tag,
+    dir: "rtl", lang: "ar", data: { url }
+  }));
 });

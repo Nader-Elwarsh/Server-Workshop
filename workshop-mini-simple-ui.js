@@ -122,13 +122,20 @@
       if (!allPartsById.has(p.id)) allPartsById.set(p.id, p);
       if (!p.archived && !activePartsById.has(p.id)) activePartsById.set(p.id, p);
     }
+    // الأكثر سحبًا = الاستهلاك الفعلي (خروج لأوامر أو بيع مباشر − الإرجاع). التوريد والجرد مش استهلاك
+    // (قبل كده كانوا بيتحسبوا، فصنف اتورّد منه 50 كان بيطلع "الأكثر حركة" وهو ماتسحبش منه حاجة).
     const usage = {};
     movesInPeriod(period).forEach(m => {
+      if (!m || !m.partId) return;
+      const t = String(m.type || ""), q = Math.abs(+m.qty || 0);
+      const sign = /خروج/.test(t) ? 1 : /إرجاع|ارجاع/.test(t) ? -1 : 0;
+      if (!sign) return;
       const e = (usage[m.partId] ||= { qty: 0, count: 0 });
-      e.qty += (+m.qty || 0);
-      e.count += 1;
+      e.qty += sign * q;
+      if (sign > 0) e.count += 1;
     });
     return Object.entries(usage)
+      .filter(([, u]) => u.qty > 0)
       .sort((a, b) => b[1].qty - a[1].qty)
       .map(([pid, u]) => ({ p: activePartsById.get(pid) || allPartsById.get(pid), ...u }));
   }
@@ -361,12 +368,12 @@
     const bucket = state.customerBucket || "";
     const filtered = all.filter(c => {
       if (bucket && !customerBucketMatch(c, bucket)) return false;
-      const text = [c.name, c.phone, c.phone2, c.nickname,
-        addressText(c.mainAddress || {}), addressText(c.extraAddress || {})]
-        .filter(Boolean).join(" ").toLowerCase();
-      return !q || text.includes(q);
+      const parts = [c.name, c.phone, c.phone2, c.nickname,
+        addressText(c.mainAddress || {}), addressText(c.extraAddress || {})];
+      return !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
     });
-    const sortKey = $("customerSortSelect")?.value || "newest";
+    const sortKey = $("customerSortSelect")?.value || state.customerSort || "newest";
+    state.customerSort = sortKey;
     const byCreated = c => new Date(c.createdAt || 0).getTime() || 0;
     if (sortKey === "newest") filtered.sort((a, b) => byCreated(b) - byCreated(a));
     else if (sortKey === "oldest") filtered.sort((a, b) => byCreated(a) - byCreated(b));
@@ -474,10 +481,11 @@
     const filtered = all.filter(d => {
       if (bucket && !deviceBucketMatch(d, bucket)) return false;
       const c = customerById.get(d.customerId) || {};
-      const text = [c.name,c.phone,d.type,d.category,d.brand,d.model,d.desc,addressText(c.mainAddress||{}),addressText(c.extraAddress||{})].filter(Boolean).join(" ").toLowerCase();
-      return !q || text.includes(q);
+      const parts = [c.name,c.phone,d.type,d.category,d.brand,d.model,d.desc,addressText(c.mainAddress||{}),addressText(c.extraAddress||{})];
+      return !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
     });
-    const sortKey = $("deviceSortSelect")?.value || "newest";
+    const sortKey = $("deviceSortSelect")?.value || state.deviceSort || "newest";
+    state.deviceSort = sortKey;
     const byCreated = d => new Date(d.createdAt || 0).getTime() || 0;
     if (sortKey === "newest") filtered.sort((a, b) => byCreated(b) - byCreated(a));
     else if (sortKey === "oldest") filtered.sort((a, b) => byCreated(a) - byCreated(b));
@@ -570,7 +578,7 @@
       });
       const lowParts = all.filter(p => (+p.qty || 0) <= (+p.min || 0))
         .slice().sort((a, b) => ((+a.qty || 0) - (+a.min || 0)) - ((+b.qty || 0) - (+b.min || 0)));
-      const low = lowParts.length;
+      const low = lowParts.length, outOfStock = lowParts.filter(p => (+p.qty || 0) <= 0).length;
       const stockValueBuy = all.reduce((a, p) => a + (+p.qty || 0) * (+p.buy || 0), 0);
       const stockValueUse = all.reduce((a, p) => a + (+p.qty || 0) * (+p.use || 0), 0);
 
@@ -582,8 +590,9 @@
         `<button type="button" class="secondary small-btn ${period === p ? "active-track" : ""}" data-wf-event="click" data-wf-code="setInventoryStatsPeriod('${p}')">${INVENTORY_PERIOD_LABELS[p]}</button>`
       ).join("");
 
-      const cards = Object.entries(cats).slice(0, 6).map(([k,n]) =>
-        `<div class="simple-stat ${categoryColorClass(k)}" data-wf-event="click" data-wf-code="showPartsCategory('${k.replace(/'/g,"\\'")}')" role="button" tabindex="0"><span>${categoryIcon(k)}</span><b>${esc2(k)}</b><strong>${n}</strong><small>قطعة</small></div>`
+      // كل التصنيفات (الأكبر الأول) — قبل كده كان بيعرض أول 6 بس، والباقي مالوش طريق يتفتح منه
+      const cards = Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([k,n]) =>
+        `<div class="simple-stat ${categoryColorClass(k)}" data-wf-event="click" data-wf-code="showPartsCategory(${esc2(JSON.stringify(k))})" role="button" tabindex="0"><span>${categoryIcon(k)}</span><b>${esc2(k)}</b><strong>${n}</strong><small>قطعة</small></div>`
       ).join("");
 
       el.innerHTML = `
@@ -599,9 +608,9 @@
           </div>
           <div class="bucket-group-label">فترة إحصائية الحركة</div>
           <div class="report-mode-toggle">${periodButtons}</div>
-          <div class="simple-line-bar" data-wf-event="click" data-wf-code="showTopMovedParts()" role="button" tabindex="0"><span>🔥 الأكثر حركة ${esc2(periodLabel)}</span><b>${topMoved.length} صنف ›</b></div>
+          <div class="simple-line-bar" data-wf-event="click" data-wf-code="showTopMovedParts()" role="button" tabindex="0"><span>🔥 الأكثر سحبًا ${esc2(periodLabel)}</span><b>${topMoved.length} صنف ›</b></div>
           ${low > 0
-            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showLowStockParts()" role="button" tabindex="0"><span>⚠️ ${low} أصناف عند الحد الأدنى أو أقل</span><b>عرض ›</b></div>`
+            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showLowStockParts()" role="button" tabindex="0"><span>⚠️ ${low} أصناف عند الحد الأدنى أو أقل${outOfStock ? ` (منهم ${outOfStock} خلصان)` : ""}</span><b>عرض ›</b></div>`
             : `<div class="simple-line-bar simple-line-ok"><span>✅ لا توجد أصناف منخفضة حاليًا</span></div>`}
           ${cards ? `<div class="bucket-group-label">حسب التصنيف</div><div id="categoryGrid" class="simple-stat-grid">${cards}</div>` : `<div class="simple-empty">لا توجد قطع مسجلة.</div>`}
           <div class="bucket-group-label">عرض الكل</div>
@@ -620,7 +629,7 @@
     const topMovedData = bucket === "topmoved" ? computeTopMoved(period) : null;
     const topMovedIds = topMovedData ? new Set(topMovedData.filter(u => u.p?.id).map(u => u.p.id)) : null;
     let filtered = all.filter(p => {
-      const ok = [p.name,p.code,p.location,p.category].filter(Boolean).join(" ").toLowerCase().includes(q);
+      const ok = typeof partMatchesQuery === "function" ? partMatchesQuery(p, q) : [p.name,p.code,p.location,p.category].filter(Boolean).join(" ").toLowerCase().includes(q);
       if (bucket === "low" && (+p.qty || 0) > (+p.min || 0)) return false;
       if (bucket === "topmoved" && !topMovedIds.has(p.id)) return false;
       if (cat && (p.category || "أخرى") !== cat) return false;
@@ -635,7 +644,7 @@
       filtered = filtered.slice().sort((a, b) => (orderIndex[a.id] ?? 999) - (orderIndex[b.id] ?? 999));
     }
 
-    const listTitle = bucket === "low" ? "أصناف عند الحد الأدنى أو أقل" : bucket === "value" ? `قيمة المخزون ${valueMode === "use" ? "ببيع الاستخدام" : "بالتكلفة"} — ${filtered.reduce((a,p)=>a+(+p.qty||0)*(+p[valueMode]||0),0).toFixed(2)} ج` : bucket === "topmoved" ? `🔥 الأكثر حركة ${esc2(INVENTORY_PERIOD_LABELS[period] || INVENTORY_PERIOD_LABELS["30"])}` : cat ? esc2(cat) : "كل القطع";
+    const listTitle = bucket === "low" ? "أصناف عند الحد الأدنى أو أقل" : bucket === "value" ? `قيمة المخزون ${valueMode === "use" ? "ببيع الاستخدام" : "بالتكلفة"} — ${filtered.reduce((a,p)=>a+(+p.qty||0)*(+p[valueMode]||0),0).toFixed(2)} ج` : bucket === "topmoved" ? `🔥 الأكثر سحبًا ${esc2(INVENTORY_PERIOD_LABELS[period] || INVENTORY_PERIOD_LABELS["30"])}` : cat ? esc2(cat) : "كل القطع";
 
     const viewMode = state.partsViewMode === "table" ? "table" : "cards";
     const toggleBtn = `<button type="button" class="secondary small-btn" data-wf-event="click" data-wf-code="setInventoryViewMode('${viewMode === "table" ? "cards" : "table"}')">${viewMode === "table" ? "🗂️ عرض كبطاقات" : "📊 عرض كجدول"}</button>`;
@@ -676,7 +685,7 @@
             <small>💰 إجمالي الصنف: ${itemTotal.toFixed(2)} ج • 🔁 استُخدم ${partUsageCount(p.id)} مرة</small>
           </div>
           <span class="simple-qty ${qty <= (+p.min||0) ? "low" : ""}">${qty}</span>
-          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a><button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
+          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a>${qty > 0 && typeof window.openPartSale === "function" ? `<button type="button" class="primary small-btn" data-wf-event="click" data-wf-code="openPartSale('${p.id}')">🛒 بيع</button>` : ""}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
         </div>`;
       }, pgSig).html;
     }
@@ -839,8 +848,8 @@
     state.requestSort = sort;
 
     let filtered = all.filter(r => {
-      const text = [r.no, customerName(r.customerId), r.fault, orderLocationLabel(r), r.tag].filter(Boolean).join(" ").toLowerCase();
-      let ok = !q || text.includes(q);
+      const parts = [r.no, customerName(r.customerId), r.fault, orderLocationLabel(r), r.tag, typeof deviceName === "function" ? deviceName(r.deviceId) : ""];
+      let ok = !q || (typeof wfMatch === "function" ? wfMatch(parts, q) : parts.filter(Boolean).join(" ").toLowerCase().includes(q));
       if (focus) ok = ok && bucketFilter(r,focus);
       if (sf) ok = ok && r.status === sf;
       if (wf === "workshop") ok = ok && r.executionPlace === "الورشة";
@@ -944,16 +953,34 @@
           loc: $("requestOpsWorkshop")?.value || state.requestLocation, sort: state.requestSort && state.requestSort !== "oldest" ? state.requestSort : null, q: qv("requestSearch") });
       }
     } else if ($("customerList")) {
-      if (state.customers) Object.assign(P, { list: 1, f: state.customerBucket, q: qv("customerSearch") });
+      if (state.customers) Object.assign(P, { list: 1, f: state.customerBucket, q: qv("customerSearch"), sort: state.customerSort && state.customerSort !== "newest" ? state.customerSort : null });
     } else if ($("deviceList")) {
-      if (state.devices) Object.assign(P, { list: 1, f: state.deviceBucket, q: qv("deviceSearch") });
+      if (state.devices) Object.assign(P, { list: 1, f: state.deviceBucket, q: qv("deviceSearch"), sort: state.deviceSort && state.deviceSort !== "newest" ? state.deviceSort : null });
     } else if ($("partList")) {
       if (state.parts) Object.assign(P, { list: 1, f: state.partBucket, cat: state.partCategory, vm: state.partBucket === "value" ? state.partValueMode : null, q: qv("partSearch") });
       Object.assign(P, { pp: state.partsStatsPeriod !== "30" ? state.partsStatsPeriod : null, pv: state.partsViewMode !== "cards" ? state.partsViewMode : null });
     } else return;
+    // زر الرجوع: الدخول من الملخص لقايمة = خطوة في السجل (الرجوع يرجّع للملخص)، والخروج منها بزرار «رجوع للملخص» = رجوع فعلي
+    const wasList = window.WFNavState.getParam("list") === "1";
+    if (P.list && !wasList && !popping && window.WFNavState.pushParams) { pushedList = true; window.WFNavState.pushParams(P); return; }
+    if (!P.list && wasList && pushedList && !popping) { pushedList = false; try { history.back(); return; } catch (_) {} }
     window.WFNavState.setParams(P);
   }
-  var applyingDeepLink = false, deepLinkDone = false;
+  var applyingDeepLink = false, deepLinkDone = false, popping = false, pushedList = false;
+  // زر الرجوع في الموبايل جوه نفس الصفحة: نرجّع القايمة/الملخص حسب الرابط
+  window.addEventListener("popstate", function () {
+    if (!deepLinkDone) return;
+    popping = true;
+    try {
+      const sp = new URLSearchParams(location.search);
+      if (sp.get("list") === "1") applyDeepLinkBucket();
+      else if ($("requestList")) window.hideAllRequests && window.hideAllRequests();
+      else if ($("customerList")) window.hideAllCustomers && window.hideAllCustomers();
+      else if ($("deviceList")) window.hideAllDevices && window.hideAllDevices();
+      else if ($("partList")) window.hideAllParts && window.hideAllParts();
+      try { window.scrollTo(0, (history.state && history.state.wfY) || 0); } catch (_) {}
+    } finally { popping = false; pushedList = false; }
+  });
 
   /* ---------- الدخول المباشر من إحصائيات الصفحة الرئيسية (?bucket=...) ---------- */
   function applyDeepLinkBucket() {
@@ -971,10 +998,10 @@
           $("requestSearch")?.classList.remove("hidden");
           renderRequests();
         } else if ($("customerList")) {
-          setQ("customerSearch");
+          setQ("customerSearch"); if (g("sort")) state.customerSort = g("sort");
           if (g("f")) window.showCustomerBucket(g("f")); else window.showAllCustomers();
         } else if ($("deviceList")) {
-          setQ("deviceSearch");
+          setQ("deviceSearch"); if (g("sort")) state.deviceSort = g("sort");
           if (g("f")) window.showDeviceBucket(g("f")); else window.showAllDevices();
         } else if ($("partList")) {
           if (g("pp")) state.partsStatsPeriod = g("pp");
