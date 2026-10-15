@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v88-auth-wait";
+const CACHE_NAME = "workshop-v89-fetch-err";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

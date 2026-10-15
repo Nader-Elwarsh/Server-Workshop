@@ -174,7 +174,9 @@
       return (w.WFAppCheck && w.WFAppCheck.headers ? w.WFAppCheck.headers().catch(function () { return {}; }) : Promise.resolve({})).then(function (h) {
         var hdr = { "Content-Type": "application/json", Authorization: "Bearer " + tok };
         Object.keys(h || {}).forEach(function (k) { hdr[k] = h[k]; });
-        return fetch(url, { method: "POST", headers: hdr, body: JSON.stringify({ data: data || {} }) }).then(function (r) {
+        return fetch(url, { method: "POST", headers: hdr, body: JSON.stringify({ data: data || {} }) }).catch(function () {
+          throw new Error(navigator.onLine === false ? "مفيش إنترنت." : "مقدرتش أوصل للسيرفر (" + name + ") — غالبًا الدالة دي لسه ما اتنشرتش أو فشلت. جرّب تاني بعد دقيقة.");
+        }).then(function (r) {
           return r.json().catch(function () { return {}; }).then(function (j) {
             if (r.ok && j && j.result !== undefined) return j.result;
             var m = (j && j.error && j.error.message) || ("HTTP " + r.status);
