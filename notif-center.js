@@ -282,7 +282,7 @@
   function markRead(x) {
     if (!x || x.read) return Promise.resolve();
     if (x._b) { var cur = +(sget("wf_nc_bseen_" + st.uid) || 0); if (x.at > cur) sset("wf_nc_bseen_" + st.uid, String(x.at)); x.read = true; paintBadge(); return Promise.resolve(); }
-    x.read = true; paintBadge();
+    x.read = true; paintBadge(); ncPersist();
     return db().collection("inbox").doc(st.uid).collection("items").doc(x.id).update({ read: true }).catch(function () {});
   }
   function markAll() {
@@ -292,7 +292,7 @@
     var own = list.filter(function (x) { return !x._b; });
     own.forEach(function (x) { x.read = true; });
     st.bcast.forEach(function (x) { if (x.at <= maxB) x.read = true; });
-    paintBadge(); renderPanel();
+    paintBadge(); renderPanel(); ncPersist();
     if (!own.length) return;
     try { var bt = db().batch(); own.slice(0, 450).forEach(function (x) { bt.update(db().collection("inbox").doc(st.uid).collection("items").doc(x.id), { read: true }); }); bt.commit().catch(function () {}); } catch (e) {}
   }
@@ -488,8 +488,28 @@
     }
     list.slice(0, 3).forEach(toast);
   }
-  function onItems(kind, snap) {
-    var rows = snap.docs.map(function (doc) { var x = doc.data() || {}; return { id: doc.id, kind: x.kind, title: x.title || "", body: x.body || "", link: x.link || "", at: +x.at || 0, read: !!x.read }; });
+  function toRows(snap) { return snap.docs.map(function (doc) { var x = doc.data() || {}; return { id: doc.id, kind: x.kind, title: x.title || "", body: x.body || "", link: x.link || "", at: +x.at || 0, read: !!x.read }; }); }
+  /* توفير قراءات: الإشعارات بتتحفظ على الجهاز، ومع كل فتحة صفحة بنقرا بس اللي وصل بعد آخر إشعار عندنا
+     (بدل آخر 60 إشعار كل مرة). كل 20 دقيقة بنقرا القايمة كاملة تاني عشان «اتقرا» من جهاز تاني يظهر. */
+  var NC_FULL_MS = 20 * 60000;
+  function ncKey(kind) { return "wf_nc_cache_" + kind + "_" + st.uid; }
+  function ncSave(kind, rows, t) { try { sset(ncKey(kind), JSON.stringify({ t: t, rows: rows })); } catch (e) {} }
+  function ncPersist() { var c = st.ncT || {}; if (c.own) ncSave("own", st.items, c.own); if (c.b) ncSave("b", st.bcast, c.b); }
+  function listen(kind, base, lim) {
+    var c = null; try { c = JSON.parse(sget(ncKey(kind)) || "null"); } catch (e) {}
+    st.ncT = st.ncT || {};
+    if (!c || !Array.isArray(c.rows) || !(Date.now() - (+c.t || 0) < NC_FULL_MS)) {
+      return base.limit(lim).onSnapshot(function (s) { var rows = toRows(s), t = st.ncT[kind] || Date.now(); st.ncT[kind] = t; ncSave(kind, rows, t); onItems(kind, rows); }, function () {});
+    }
+    var cached = c.rows, top = 0; cached.forEach(function (x) { if (+x.at > top) top = +x.at; });
+    st.ncT[kind] = +c.t; onItems(kind, cached.slice());
+    return base.where("at", ">", top).limit(lim).onSnapshot(function (s) {
+      var m = {}; cached.forEach(function (x) { m[x.id] = x; }); toRows(s).forEach(function (x) { m[x.id] = x; });
+      var rows = Object.keys(m).map(function (k) { return m[k]; }).sort(function (a, b) { return b.at - a.at; }).slice(0, lim);
+      ncSave(kind, rows, +c.t); onItems(kind, rows);
+    }, function () {});
+  }
+  function onItems(kind, rows) {
     var key = kind === "own" ? "items" : "bcast", prev = st[key];
     st[key] = rows;
     if (st.baseline && st.baseline[kind]) {
@@ -509,9 +529,10 @@
     st.uid = user ? user.uid : "";
     if (!user) { if (st.bell) st.bell.remove(); st.bell = null; return; }
     if (!ensureBell()) { var tries = 0; (function again() { if (!ensureBell() && ++tries < 20) setTimeout(again, 500); else paintBadge(); })(); }
-    var inbox = function (u) { return db().collection("inbox").doc(u).collection("items").orderBy("at", "desc").limit(60); };
-    st.unsubs.push(inbox(st.uid).onSnapshot(function (s) { onItems("own", s); }, function () {}));
-    if (IS_PORTAL) st.unsubs.push(db().collection("inbox").doc("_customers").collection("items").orderBy("at", "desc").limit(15).onSnapshot(function (s) { onItems("b", s); }, function () {}));
+    var inbox = function (u) { return db().collection("inbox").doc(u).collection("items").orderBy("at", "desc"); };
+    st.ncT = {};
+    st.unsubs.push(listen("own", inbox(st.uid), 60));
+    if (IS_PORTAL) st.unsubs.push(listen("b", db().collection("inbox").doc("_customers").collection("items").orderBy("at", "desc"), 15));
     db().collection("notifConfig").doc("global").get().then(function (s) { if (s.exists) st.gcfg = Object.assign({}, CFG_DEF, s.data() || {}); if (!Array.isArray(st.gcfg.off)) st.gcfg.off = []; }).catch(function () {});
     db().collection("notifPrefs").doc(st.uid).get().then(function (s) { st.prefs = s.exists && Array.isArray((s.data() || {}).mute) ? s.data().mute : []; }).catch(function () {});
     resyncPush();
