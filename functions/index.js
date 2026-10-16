@@ -256,7 +256,7 @@ async function sendPush(uid, payload) {
 /* ---------------------------------------------------------------------
    الاستهلاك والمساحة (functions/usage.js) — للمالك: تقرير + تنبيه يومي لو حاجة قربت تعدّي المجاني.
    --------------------------------------------------------------------- */
-const { createUsage } = require("./usage");
+const { createUsage, parseBudgetMessage } = require("./usage");
 const { applicationDefault } = require("firebase-admin/app");
 const adc = applicationDefault();
 const usage = createUsage({
@@ -273,6 +273,18 @@ exports.usageReport = mediaCallable("usageReport", async (uid, d) => {
   if (!a.owner) throw new MediaError("permission-denied", "owner_only");
   return usage.report(!!(d && d.refresh));
 }, { timeoutSeconds: 60 });
+
+/* الفاتورة الحقيقية: ميزانية Google Cloud بتبعت المصروف لموضوع Pub/Sub اسمه billing-alerts كذا مرة في اليوم،
+   والدالة دي بتحفظه عشان شاشة «الاستهلاك والمساحة» تعرض نفس رقم صفحة الفواتير بالظبط. */
+const { onMessagePublished } = require("firebase-functions/v2/pubsub");
+exports.billingWatch = onMessagePublished({ topic: "billing-alerts", region: "us-central1", memory: "256MiB", retry: false }, async (event) => {
+  try {
+    const m = event.data && event.data.message;
+    const json = m && m.json ? m.json : JSON.parse(Buffer.from((m && m.data) || "", "base64").toString("utf8") || "null");
+    const doc = parseBudgetMessage(json, m && m.attributes, Date.now());
+    if (doc) await getFirestore().doc("serverConfig/billing").set(doc);
+  } catch (e) { console.error("[billingWatch]", e && e.message); }
+});
 
 const notifier = createNotifier({ db: fdb, push: sendPush, log: (...a) => console.log("[notify]", ...a),
   usageAlerts: async () => usage.alerts(await usage.report(false)) });
