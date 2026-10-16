@@ -134,7 +134,12 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
     let r = null;
     if (!force && cur && cur.at && now() - cur.at < (hadErr ? 60000 : 15 * 60000)) r = cur;
     else if (force && cur && cur.at && now() - cur.at < 60000) r = cur; // ضغط متكرر: دقيقة على الأقل
-    if (!r) { r = await collect(); await ref.set(JSON.parse(JSON.stringify(r))); }
+    if (!r) {
+      r = await collect();
+      // Cloudinary ساعات بيتأخر في الرد: نعرض آخر أرقام سليمة (مع وقتها) بدل رسالة خطأ، والخطأ بيفضل عشان يتجرّب تاني بعد دقيقة
+      if (!r.cloudinary && cur && cur.cloudinary) r.cloudinary = Object.assign({}, cur.cloudinary, { staleAt: cur.cloudinary.staleAt || cur.at });
+      await ref.set(JSON.parse(JSON.stringify(r)));
+    }
     return Object.assign({}, r, { billing: await billing() });
   }
 

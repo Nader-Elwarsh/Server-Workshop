@@ -99,6 +99,7 @@
     html += '<div class="cu-card"><h3>🖼️ الصور والفيديو والصوت (Cloudinary)</h3>';
     if (cl) {
       var lim = cl.creditsLimit || F.cloudinaryCredits || 25;
+      if (cl.staleAt) html += '<div class="hint">⏳ Cloudinary اتأخر في الرد — دي آخر أرقام وصلت (' + esc(cairo(cl.staleAt)) + '). دوس 🔄 تحديث بعد دقيقة.</div>';
       html += meter("📊 الكريدت الشهر ده", cl.credits, lim, function (v) { return (+v || 0).toFixed(2); }) +
         '<div class="cu-note">💾 المساحة: <b>' + gb(cl.storage) + '</b> • 📤 العرض/التحميل: <b>' + gb(cl.bandwidth) + '</b> • 🔄 تحويلات: <b>' + n(cl.transformations) + '</b> • 📦 ملفات: <b>' + n(cl.resources) + '</b>' + (cl.plan ? ' • الباقة: ' + esc(cl.plan) : "") + '</div>' +
         '<div class="cu-price">💵 الكريدت الواحد = 1 جيجا مساحة أو 1 جيجا عرض أو 1000 تحويل. الباقة المجانية (25 كريدت) <b>مش بتسحب فلوس</b> — لو عدّيتها بيبعتوا تحذيرات وبعدين ممكن يوقفوا الرفع والعرض. الباقة اللي بعدها Plus بـ $' + (P.cloudinaryPlus || 99) + ' في الشهر (' + (P.cloudinaryPlusCredits || 225) + ' كريدت). امسح المرفقات القديمة من تحت 👇</div>';
