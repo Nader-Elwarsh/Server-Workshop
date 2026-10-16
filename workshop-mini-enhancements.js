@@ -15,6 +15,7 @@
   function moveRows() { return arr(K.m); }
   function restorePartsForRequestsInto(stock, requests) {
     (requests || []).forEach(function (r) {
+      if (r && r.status === "ملغي") return; // الأمر الملغي قطعه رجعت المخزن وقت الإلغاء
       (r.parts || []).forEach(function (part) {
         const p = stock.find(function (x) { return x.id === part.partId; });
         if (p) p.qty = (+p.qty || 0) + (+part.qty || 0);
@@ -81,12 +82,16 @@
     // بإجماليها كاملاً، والأوامر المفتوحة تدخل بالعربون المحصّل منها فقط.
     // ده بيفرق عن "إجمالي قيمة التعامل" اللي بيشمل حتى المبالغ اللي لسه
     // ما اتحصلتش، وعن "المتبقي" اللي بيوضح العميل مديون بكام لحد دلوقتي.
-    const totalOrdersValue = rs.reduce(function (a, r) { return a + (+r.total || 0); }, 0);
+    const totalOrdersValue = rs.reduce(function (a, r) { return a + (r.status === "ملغي" ? 0 : (+r.total || 0)); }, 0); // الملغي مش تعامل
     const totalPaid = rs.reduce(function (a, r) {
       return a + ((r.closed || r.paid) ? (+r.total || 0) : Math.min(+r.deposit || 0, +r.total || 0));
     }, 0);
     const totalRemaining = rs.reduce(function (a, r) {
       return a + (r.closed || r.paid || r.status === "ملغي" ? 0 : Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100));
+    }, 0);
+    // المستحق دلوقتي = أوامر خلصت (مكتمل) ولسه ماتقفلتش. الباقي على أوامر لسه شغالة وإجماليها ممكن يتغير.
+    const dueNow = rs.reduce(function (a, r) {
+      return a + (!r.closed && !r.paid && r.status === "مكتمل" ? Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100) : 0);
     }, 0);
 
     // أكتر قطعة غيار اتصرفت مع هذا العميل عبر كل أوامره: بنجمع كل بنود
@@ -133,7 +138,7 @@
         <div class="report-cards" style="margin-top:10px">
           <div class="report-card"><span>📊 إجمالي قيمة التعامل</span><b>${totalOrdersValue.toFixed(2)} ج</b></div>
           <div class="report-card"><span>💰 إجمالي ما دفعه العميل</span><b>${totalPaid.toFixed(2)} ج</b></div>
-          <div class="report-card"><span>🧾 المتبقي عليه حاليًا</span><b>${totalRemaining.toFixed(2)} ج</b></div>
+          <div class="report-card"><span>🧾 مستحق عليه دلوقتي</span><b>${dueNow.toFixed(2)} ج</b>${totalRemaining - dueNow > 0.004 ? `<small>⏳ + ${(totalRemaining - dueNow).toFixed(2)} ج على أوامر لسه شغالة</small>` : ""}</div>
           <div class="report-card"><span>🔧 أكتر قطعة اتصرفت معاه</span><b>${topPartLabel}</b></div>
         </div>
         ${rs.length ? `
@@ -155,7 +160,7 @@
                   <td>${esc(dateLabel)}</td>
                   <td><a href="request.html?id=${r.id}">${esc(r.no || "—")}</a></td>
                   <td>${esc(r.status || "—")}${r.closed ? " 🔒" : ""}</td>
-                  <td>${total.toFixed(2)} ج</td>
+                  <td>${r.status === "ملغي" ? `<s title="ملغي — مش داخل في الإجمالي">${total.toFixed(2)} ج</s>` : total.toFixed(2) + " ج"}</td>
                   <td>${paid.toFixed(2)} ج</td>
                   <td>${remaining.toFixed(2)} ج</td>
                 </tr>`;
@@ -175,7 +180,7 @@
       ${ds.length ? ds.map(function (d) {
         const deviceOrders = requestRows().filter(function (r) { return r.deviceId === d.id; });
         const count = deviceOrders.length;
-        const isRecurring = count >= 2;
+        const isRecurring = count >= 2 && (typeof deviceOrdersRecurring === "function" ? deviceOrdersRecurring(deviceOrders) : true);
         const activeDeviceOrders = deviceOrders.filter(function (r) { return r.status !== "مكتمل" && r.status !== "ملغي"; });
         const deviceAge = typeof worstRequestAgeInfo === "function" ? worstRequestAgeInfo(activeDeviceOrders) : null;
         return `<div class="item record-card${deviceAge ? " " + deviceAge.cls : ""}">
@@ -241,7 +246,7 @@
     // (app-delete-tools.js).
     const orderIds = orders.map(function (r) { return r.id; });
     const stock = stockRows();
-    const partsDelta = orders.flatMap(function (r) {
+    const partsDelta = orders.filter(function (r) { return r.status !== "ملغي"; }).flatMap(function (r) {
       return (r.parts || []).filter(function (x) { return !x.external && x.partId; }).map(function (x) { return { partId: x.partId, qty: +x.qty || 0 }; });
     });
     const removedMoves = moveRows().filter(function (m) { return orderIds.indexOf(m.requestId) !== -1; });
@@ -284,7 +289,7 @@ const trashPayload = { customer: c, devices: devices, requests: orders, moves: r
 
     const orderIds = orders.map(function (r) { return r.id; });
     const stock = stockRows();
-    const partsDelta = orders.flatMap(function (r) {
+    const partsDelta = orders.filter(function (r) { return r.status !== "ملغي"; }).flatMap(function (r) {
       return (r.parts || []).filter(function (x) { return !x.external && x.partId; }).map(function (x) { return { partId: x.partId, qty: +x.qty || 0 }; });
     });
     const removedMoves = moveRows().filter(function (m) { return orderIds.indexOf(m.requestId) !== -1; });

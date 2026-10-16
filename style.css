@@ -7,6 +7,7 @@
 .route-summary .stat b{display:block;font-size:16px}
 .route-summary .stat span{font-size:11px;color:var(--text-muted)}
 .route-badge-done{background:#e3f6ea;color:#18794e}
+.route-badge-frozen{background:#e0f2fe;color:#075985}
 .part-autocomplete{position:relative}
 .part-autocomplete-input{width:100%}
 .part-autocomplete-results{position:absolute;z-index:20;top:calc(100% + 4px);right:0;left:0;background:var(--bg-elevated);border:1px solid var(--border);border-radius:9px;max-height:260px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.12)}
@@ -739,6 +740,7 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 [data-theme="dark"] .route-contact-unavailable{background:rgba(255,107,107,.14)!important;color:#ff9d9d!important;border-color:rgba(255,107,107,.45)!important}
 [data-theme="dark"] .route-contact-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important;border-color:rgba(224,179,74,.45)!important}
 [data-theme="dark"] .route-contact-needspart{background:rgba(74,222,128,.12)!important;color:#7ee2a6!important;border-color:rgba(74,222,128,.4)!important}
+[data-theme="dark"] .route-badge-frozen{background:rgba(56,189,248,.14)!important;color:#7dd3fc!important}
 [data-theme="dark"] .route-badge-done,[data-theme="dark"] .route-badge-needspart{background:rgba(74,222,128,.14)!important;color:#7ee2a6!important}
 [data-theme="dark"] .route-badge-visited{background:rgba(95,176,255,.14)!important;color:#8ec9ff!important}
 [data-theme="dark"] .route-badge-pending,[data-theme="dark"] .route-badge-noanswer{background:rgba(224,179,74,.14)!important;color:#f0cd78!important}
@@ -791,3 +793,8 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .rd-g label>span{flex:1;min-width:0}
 .rd-sub{margin:6px 0 2px;padding:8px;border-radius:10px;border:1px dashed var(--border);background:var(--bg-elevated)}
 .rd-sub label{display:flex;flex-wrap:wrap;gap:6px}.rd-sub label>span{flex:1 1 100%}.rd-sub select,.rd-sub input{flex:1;min-width:120px;padding:6px;border-radius:8px}
+/* ألوان الشارات: عاجل/قرّب يخلص (أحمر) وعالي/قريب (برتقالي) — المهام والضمان */
+.badge.negative{background:#fde2e2!important;color:#b42318!important}
+.badge.high{background:#fff1d6!important;color:#9a5b00!important}
+[data-theme="dark"] .badge.negative{background:rgba(248,113,113,.18)!important;color:#fca5a5!important}
+[data-theme="dark"] .badge.high{background:rgba(251,191,36,.16)!important;color:#fcd34d!important}

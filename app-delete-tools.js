@@ -55,7 +55,7 @@ async function deleteRequestRecord(rid){
   }
   if(!confirm(`حذف أمر الشغل ${r.no||""} نهائيًا؟`))return;
   const stock=arr(K.p),requests=arr(K.r);
-  const partsDelta=(r.parts||[]).filter(x=>!x.external&&x.partId).map(x=>({partId:x.partId,qty:+x.qty||0}));
+  const partsDelta=requestPartsToRestore([r]).flatMap(o=>o.parts||[]).filter(x=>!x.external&&x.partId).map(x=>({partId:x.partId,qty:+x.qty||0}));
   restorePartsIntoStock(stock,[r]);
   const removedMoves=arr(K.m).filter(x=>String(x.requestId)===requestId);
   const tasks=arr(K.tasks),linkedTasks=tasks.filter(x=>String(x.requestId)===requestId);

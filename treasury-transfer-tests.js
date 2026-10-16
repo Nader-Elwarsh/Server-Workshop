@@ -21,8 +21,7 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
   const e=makeEnv(),x=e.context,K=e.K;
   x.transferBetweenWalletAndTreasury('toTreasury','فودافون كاش',100,'2026-10-01','10:00','','');
   const tr=J(e,K.tr)[0];assert.strictEqual(tr.amount,100);
-  e.answers.push('80','سبب','','');
-  x.editTreasuryEntry(tr.id);
+  assert.ok(x.applyTreasuryEdit(tr.id,{amount:'80',reason:'سبب'}).ok);
   assert.strictEqual(J(e,K.tr)[0].amount,80);
   assert.strictEqual(J(e,K.wtx)[0].amount,80,'wallet side must follow the treasury edit');
 }
@@ -31,12 +30,12 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
   const e=makeEnv(),x=e.context,K=e.K;
   x.transferBetweenWalletAndTreasury('toTreasury','فودافون كاش',100,'2026-10-01','10:00','','');
   const tr=J(e,K.tr)[0];
-  for(const bad of ['abc','0','-5','']){e.answers.length=0;e.answers.push(bad);x.editTreasuryEntry(tr.id)}
+  for(const bad of ['abc','0','-5','']){const r=x.applyTreasuryEdit(tr.id,{amount:bad});if(!r.ok)e.alerts.push(r.error)}
   assert.strictEqual(J(e,K.tr)[0].amount,100,'invalid input must not change the amount');
   assert.strictEqual(J(e,K.wtx)[0].amount,100);
   assert.ok(e.alerts.length>=4);
   // أرقام عربية مقبولة
-  e.answers.length=0;e.answers.push('٧٥','','','');x.editTreasuryEntry(tr.id);
+  x.applyTreasuryEdit(tr.id,{amount:'٧٥'});
   assert.strictEqual(J(e,K.tr)[0].amount,75);assert.strictEqual(J(e,K.wtx)[0].amount,75);
 }
 // 3) تحويل بمبلغ سالب بيترفض، والضغط المزدوج بيسجّل مرة واحدة

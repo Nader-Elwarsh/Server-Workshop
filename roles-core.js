@@ -75,15 +75,17 @@
     saveQuickCustomer: { all: ["customers.add"] }, saveQuickCustomerHome: { all: ["customers.add"] }, saveQuickDevice: { all: ["devices.add"] }, saveQuickDeviceHome: { all: ["devices.add"] },
     quickCreateRequest: { all: ["requests.add"] }, createRequestFromCallShare: { all: ["requests.add"] },
     closeOrder: { all: ["requests.close"] }, markPaidAndClose: { all: ["requests.close"] }, addPartToOrder: { all: ["requests.edit"] }, addExternalPartToOrder: { all: ["requests.edit"] }, removeOrderPart: { all: ["requests.edit"] }, updateOrderPartQty: { all: ["requests.edit"] },
-    saveTask: { any: ["tasks.add", "tasks.edit"] }, deleteTask: { all: ["tasks.delete"] },
+    saveTask: { any: ["tasks.add", "tasks.edit"] }, editTask: { all: ["tasks.edit"] }, toggleTask: { all: ["tasks.edit"] }, deleteTask: { all: ["tasks.delete"] },
     addWalletManual: { all: ["wallets.add"] }, quickAddWalletTx: { all: ["wallets.add"] }, editWalletTx: { all: ["wallets.edit"] }, deleteWalletTx: { all: ["wallets.delete"] }, deleteExpense: { all: ["wallets.delete"] },
     transferBetweenWalletAndTreasury: { all: ["wallets.add", "treasury.add"] },
+    transferBetweenWallets: { all: ["wallets.add"] },
     addTreasuryManual: { all: ["treasury.add"] }, saveOpeningBalance: { all: ["treasury.edit"] }, editTreasuryEntry: { all: ["treasury.edit"] }, deleteTreasuryEntry: { all: ["treasury.delete"] },
     exportOrdersCSV: { all: ["reports.export"] }, exportInventoryCSV: { all: ["reports.export"] }, exportTreasuryCSV: { all: ["reports.export"] },
     backupAllData: { all: ["data.backup"] }, restoreBackupFile: { all: ["data.restore"] }, restoreFromTrash: { all: ["trash.restore"] },
     addCenter: { all: ["settings.edit"] }, deleteCenter: { all: ["settings.edit"] }, addVillage: { all: ["settings.edit"] }, addType: { all: ["settings.edit"] }, deleteType: { all: ["settings.edit"] }, editTypeOptions: { all: ["settings.edit"] },
     addBrand: { all: ["settings.edit"] }, deleteBrand: { all: ["settings.edit"] }, addPartCategory: { all: ["settings.edit"] }, deletePartCategory: { all: ["settings.edit"] },
     addSettingItem: { all: ["settings.edit"] }, deleteSettingItem: { all: ["settings.edit"] }, addInlineListItem: { all: ["settings.edit"] }, deleteInlineListItem: { all: ["settings.edit"] },
+    setWarrantyEnabled: { all: ["settings.edit"] }, confirmWarrantyDays: { all: ["settings.edit"] }, confirmWarrantyTerms: { all: ["settings.edit"] }, confirmRequestWarrantyDays: { all: ["requests.edit"] },
     addWaTemplate: { all: ["settings.edit"] }, deleteWaTemplate: { all: ["settings.edit"] }, addFollowupWaTemplate: { all: ["settings.edit"] }, deleteFollowupWaTemplate: { all: ["settings.edit"] },
     deleteReceiptField: { all: ["settings.edit"] }, addReceiptCustomField: { all: ["settings.edit"] }, addOrderTag: { all: ["settings.edit"] }, deleteOrderTag: { all: ["settings.edit"] }
   };

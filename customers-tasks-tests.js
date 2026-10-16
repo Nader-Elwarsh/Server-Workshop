@@ -19,18 +19,19 @@ function makeEnv(){
 }
 const J=(e,k)=>JSON.parse(e.store[k]||'[]');
 (async()=>{
-  // 1) تعديل مهمة: تاريخ/وقت/أولوية غلط بتترفض، والأرقام العربية مقبولة
+  // 1) تعديل مهمة من نفس الفورم: بتتحمّل في الخانات، والحفظ بيعدّل نفس المهمة (مش بيضيف واحدة جديدة)
   {
     const e=makeEnv(),x=e.context,K=e.K;
-    e.store[K.tasks]=JSON.stringify([{id:'t1',title:'اتصال',note:'',date:'2026-10-05',time:'09:00',priority:'عادية'}]);
-    const run=(...a)=>{e.answers.length=0;e.answers.push(...a);x.editTask('t1')};
-    run('اتصال','','بكرة','','عادية');assert.strictEqual(J(e,K.tasks)[0].date,'2026-10-05','free text date must be rejected');
-    run('اتصال','','2026-02-31','','عادية');assert.strictEqual(J(e,K.tasks)[0].date,'2026-10-05','impossible date must be rejected');
-    run('اتصال','','2026-10-06','25:99','عادية');assert.strictEqual(J(e,K.tasks)[0].date,'2026-10-05','bad time must be rejected');
-    run('اتصال','','2026-10-06','10:00','مهمة جدا');assert.strictEqual(J(e,K.tasks)[0].date,'2026-10-05','bad priority must be rejected');
-    assert.ok(e.alerts.length>=4);
-    run('اتصال','تفاصيل','٢٠٢٦-١٠-٠٧','٩:٣٠','عاجلة');
-    const t=J(e,K.tasks)[0];assert.strictEqual(t.date,'2026-10-07');assert.strictEqual(t.time,'09:30');assert.strictEqual(t.priority,'عاجلة');
+    e.store[K.tasks]=JSON.stringify([{id:'t1',title:'اتصال',note:'',date:'2026-10-05',time:'09:00',priority:'عادية',completed:false}]);
+    ['taskTitle','taskNote','taskDate','taskTime','taskPriority','taskCustomer','taskRequest'].forEach(k=>{e.els[k]={value:'',innerHTML:''}});
+    x.editTask('t1');
+    assert.strictEqual(e.els.taskTitle.value,'اتصال');assert.strictEqual(e.els.taskDate.value,'2026-10-05');assert.strictEqual(e.els.taskTime.value,'09:00');
+    e.els.taskTitle.value='اتصال بالعميل';e.els.taskDate.value='2026-10-07';e.els.taskTime.value='09:30';e.els.taskPriority.value='عاجلة';
+    x.saveTask();
+    const all=J(e,K.tasks);assert.strictEqual(all.length,1,'editing must not add a new task');
+    const t=all[0];assert.strictEqual(t.title,'اتصال بالعميل');assert.strictEqual(t.date,'2026-10-07');assert.strictEqual(t.time,'09:30');assert.strictEqual(t.priority,'عاجلة');
+    assert.strictEqual(e.els.taskTitle.value,'','form is cleared after saving');
+    e.els.taskTitle.value='مهمة تانية';x.saveTask();assert.strictEqual(J(e,K.tasks).length,2,'after the edit the form adds new tasks again');
   }
   // 2) حفظ مهمة جديدة مايمسحش المهام المحذوفة (tombstones) من التخزين
   {

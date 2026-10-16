@@ -354,7 +354,7 @@ function moveInlineListItem(key,i,dir){
 function waTemplatesSettingHtml(){
   let list=settings().waTemplates||[];
   return `<section class="panel setting-list-panel" id="wa-templates-panel"><details><summary>📨 رسائل واتساب للعملاء</summary><div class="panel-body">
-    <div class="hint">اكتب أي عدد من الرسائل، واستخدم أي من الكلمات دي وهتتبدل تلقائيًا وقت الإرسال ببيانات أمر الشغل: {اسم_العميل} {اسم_الجهاز} {رقم_الأمر} {الحالة} {العطل} {الإجمالي} {المتبقي} {اسم_الورشة} {التوقيع} {شروط_الضمان}. الرسائل المفعّلة بس هي اللي هتظهر كأزرار إرسال جوه صفحة أمر الشغل.</div>
+    <div class="hint">اكتب أي عدد من الرسائل، واستخدم أي من الكلمات دي وهتتبدل تلقائيًا وقت الإرسال ببيانات أمر الشغل: {اسم_العميل} {اسم_الجهاز} {رقم_الأمر} {الحالة} {العطل} {الإجمالي} {المتبقي} {اسم_الورشة} {التوقيع} {شروط_الضمان} {نطاق_الضمان} {الضمان_لحد}. الرسائل المفعّلة بس هي اللي هتظهر كأزرار إرسال جوه صفحة أمر الشغل.</div>
     <div class="page-head-actions"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="addWaTemplate()">➕ إضافة رسالة</button></div>
     <div id="waTemplatesList">${waTemplatesRowsHtml(list)}</div>
   </div></details></section>`;
@@ -432,26 +432,34 @@ function ensureReceiptFields(s){
 // ===== إعدادات الضمان: تحكم كامل — تفعيل/تعطيل، مدة افتراضية، وشروط ضمان
 // (نص حر متاح كـ {شروط_الضمان} في أي رسالة واتساب، وكبند "📋 شروط الضمان"
 // قابل للتفعيل في الإيصال زي أي بند تاني) =====
-function activeWarrantiesListHtml(){
+/* قايمة الضمان السارٍ: الاسم كامل (الاسم الأول لوحده كان بيلخبط بين العملاء المتشابهين)، رقم الأمر، تليفون العميل،
+   ولون حسب الأيام الفاضلة، مع بحث. الأقرب للانتهاء فوق. */
+function activeWarrantyRows(){
   let now=new Date();
-  let list=arr(K.r).filter(r=>r.closed&&r.warrantyUntil&&new Date(r.warrantyUntil)>=now);
-  list.sort((a,b)=>new Date(a.warrantyUntil)-new Date(b.warrantyUntil));
-  if(!list.length)return `<div class="hint">لا يوجد حاليًا أي عميل عليه ضمان سارٍ.</div>`;
-  // شكل جدول مختصر بدل السطر الطويل: اسم أول بس (مش الاسم كامل — كامله
-  // موجود في tooltip)، ونوع الجهاز بس من غير الماركة (مختصر)، وعدد
-  // الأيام المتبقية بس من غير تاريخ كامل. كل خلية لينك مستقل: للعميل
-  // تودّي لأمر الشغل، وللجهاز تودّي لصفحة الجهاز نفسه. مرتبة أقرب ضمان
-  // هيخلص الأول.
-  let rows=list.map(r=>{
-    let daysLeft=Math.ceil((new Date(r.warrantyUntil)-now)/86400000);
-    let fullName=customerName(r.customerId)||"—";
-    let firstName=fullName.split(/\s+/)[0]||fullName;
-    let dev=arr(K.d).find(d=>d.id===r.deviceId);
-    let devType=dev?.type||"—";
-    let devFull=deviceName(r.deviceId);
-    return `<tr><td><a href="request.html?id=${r.id}" title="${esc(fullName)}">${esc(firstName)}</a></td><td><a href="device.html?id=${r.deviceId}" title="${esc(devFull)}">${esc(devType)}</a></td><td>${daysLeft} يوم</td></tr>`;
-  }).join("");
-  return `<div class="setting-subhead">📋 عملاء عليهم ضمان سارٍ دلوقتي (${list.length})</div><div class="report-table-wrap"><table class="report-table-full"><tr><th>العميل</th><th>الجهاز</th><th>الأيام المتبقية</th></tr>${rows}</table></div>`;
+  return arr(K.r).filter(r=>r.closed&&r.warrantyUntil&&new Date(r.warrantyUntil)>=now).sort((a,b)=>new Date(a.warrantyUntil)-new Date(b.warrantyUntil));
+}
+function activeWarrantiesListHtml(opts){
+  let now=new Date(),all=activeWarrantyRows();
+  if(!all.length)return `<div class="hint">لا يوجد حاليًا أي عميل عليه ضمان سارٍ.</div>`;
+  let q=(document.getElementById("warrantySearch")?.value||"").trim(),cs=typeof byIdCached==="function"?byIdCached(K.c):null;
+  let list=q?all.filter(r=>{const c=(cs?cs.get(r.customerId):null)||{};return typeof wfMatch==="function"?wfMatch([c.name,c.phone,r.no,deviceName(r.deviceId)],q):[c.name,c.phone,r.no,deviceName(r.deviceId)].join(" ").toLowerCase().includes(q.toLowerCase())}):all;
+  let soon=all.filter(r=>Math.ceil((new Date(r.warrantyUntil)-now)/86400000)<=7).length;
+  let row=r=>{
+    let daysLeft=Math.ceil((new Date(r.warrantyUntil)-now)/86400000),c=(cs?cs.get(r.customerId):null)||{};
+    let cls=daysLeft<=7?"negative":daysLeft<=30?"high":"";
+    return `<tr><td><a href="request.html?id=${esc(r.id)}">${esc(c.name||customerName(r.customerId)||"—")}</a><small style="display:block;color:var(--text-muted)">🛠️ ${esc(r.no||"")}${r.closedAt?" • اتقفل "+esc(new Date(r.closedAt).toLocaleDateString("ar-EG")):""}</small>${c.phone?`<a class="tel-link" style="display:block;font-size:13px" href="tel:${esc(c.phone)}">📞 ${esc(c.phone)}</a>`:""}</td><td><a href="device.html?id=${esc(r.deviceId)}">${esc(deviceName(r.deviceId))}</a></td><td><span class="badge ${cls}">${daysLeft} يوم</span><small style="display:block;color:var(--text-muted)">لحد ${esc(new Date(r.warrantyUntil).toLocaleDateString("ar-EG"))}</small></td></tr>`;
+  };
+  let body=list.length?list.map(row).join(""):`<tr><td colspan="3">لا توجد نتائج للبحث.</td></tr>`;
+  let table=`<table class="report-table-full"><tr><th>العميل / الأمر</th><th>الجهاز</th><th>الضمان الفاضل</th></tr>${body}</table>`;
+  if(opts&&opts.tableOnly)return table;
+  return `<div class="setting-subhead">📋 عملاء عليهم ضمان سارٍ دلوقتي (${all.length})${soon?` • <span class="badge negative">⏳ ${soon} بيخلص خلال أسبوع</span>`:""}</div>`+
+    `<label class="wide" style="display:block;margin:6px 0">🔍 <input id="warrantySearch" type="search" value="${esc(q)}" placeholder="اسم العميل، التليفون، رقم الأمر أو الجهاز" data-wf-event="input" data-wf-code="renderWarrantyList()" style="width:calc(100% - 30px)"></label>`+
+    `<div class="report-table-wrap" id="warrantyTableWrap">${table}</div>`;
+}
+function renderWarrantyList(){
+  let wrap=document.getElementById("warrantyTableWrap");
+  if(wrap){wrap.innerHTML=activeWarrantiesListHtml({tableOnly:true});return}
+  let host=document.getElementById("warrantyActiveList");if(host)host.innerHTML=activeWarrantiesListHtml();
 }
 function warrantySettingHtml(){
   let w=settings().warranty||{};
@@ -468,7 +476,7 @@ function warrantySettingHtml(){
   </div></details></section>`;
 }
 function setWarrantyEnabled(val){let s=settings();s.warranty=s.warranty||{};s.warranty.enabled=!!val;saveJSONSafe(K.s,s)}
-function setWarrantyDays(val){let s=settings();s.warranty=s.warranty||{};let days=+val;s.warranty.days=Number.isFinite(days)&&days>0?days:90;saveJSONSafe(K.s,s)}
+function setWarrantyDays(val){let s=settings();s.warranty=s.warranty||{};let days=+val;s.warranty.days=Number.isFinite(days)&&days>0?days:90;return saveJSONSafe(K.s,s)}
 function setWarrantyTerms(val){let s=settings();s.warranty=s.warranty||{};s.warranty.terms=String(val??"").trim();saveJSONSafe(K.s,s)}
 // المدة الافتراضية وشروط الضمان بقوا محتاجين ضغطة "✅ تأكيد" صريحة بدل
 // الحفظ التلقائي بمجرد الخروج من الخانة (change) — عشان مايتحفظش رقم أو
@@ -476,12 +484,15 @@ function setWarrantyTerms(val){let s=settings();s.warranty=s.warranty||{};s.warr
 function confirmWarrantyDays(){
   let input=document.getElementById("warrantyDaysInput");
   if(!input)return;
-  setWarrantyDays(input.value);
+  let d=+String(input.value).replace(/[٠-٩]/g,c=>c.charCodeAt(0)-1632);
+  if(!Number.isFinite(d)||d<=0){alert("المدة لازم تكون رقم أكبر من صفر. لو مش عايز ضمان على الأوامر، شيل علامة «تفعيل متابعة الضمان».");input.value=+(settings().warranty||{}).days||90;return}
+  if(setWarrantyDays(Math.round(d))!==false){input.value=Math.round(d);alert(`✅ اتحفظت: الأوامر اللي هتتقفل من دلوقتي ضمانها ${Math.round(d)} يوم (الأوامر المقفولة قبل كده مش هتتغير).`)}
 }
 function confirmWarrantyTerms(){
   let input=document.getElementById("warrantyTermsInput");
   if(!input)return;
   setWarrantyTerms(input.value);
+  alert("✅ اتحفظت شروط الضمان.");
 }
 // معاينة حيّة تحت خانة "اسم الورشة" في الإعدادات — بتتحدّث مع كل حرف تكتبه
 // (مش بس بعد الحفظ)، بنفس منطق العرض في الإيصال بالظبط (trim + رجوع

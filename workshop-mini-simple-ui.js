@@ -235,8 +235,10 @@
     return (typeof villageGroupOf === "function" ? villageGroupOf(a.center || "", a.village || "") : "village") === "city" ? "city" : "village";
   }
 
+  /* «عليه فلوس مستحقة» = أمر خلص (مكتمل) ولسه ماتقفلش بالتحصيل. الأوامر اللي لسه شغالة إجماليها تقديري ومش مستحق لسه. */
+  function orderDueNow(r) { return !!r && !r.closed && r.status === "مكتمل" && Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100) > 0; }
   function customerHasUnpaid(cid) {
-    return ordersOfCustomer(cid).some(r => !r.closed && r.status !== "ملغي" && Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100) > 0);
+    return ordersOfCustomer(cid).some(orderDueNow);
   }
 
   function lastOrderTime(list) {
@@ -258,7 +260,8 @@
   }
 
   function deviceIsRecurring(d) {
-    return ordersOfDevice(d.id).length >= 2;
+    const os = ordersOfDevice(d.id);
+    return os.length >= 2 && (typeof deviceOrdersRecurring === "function" ? deviceOrdersRecurring(os) : true);
   }
 
   function deviceIsStale(d) {
@@ -272,7 +275,7 @@
   }
 
   function customerRemainingTotal(cid) {
-    return ordersOfCustomer(cid).filter(r => !r.closed && r.status !== "ملغي")
+    return ordersOfCustomer(cid).filter(orderDueNow)
       .reduce((a, r) => a + Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100), 0);
   }
 
@@ -337,8 +340,8 @@
           <div class="simple-summary-title"><b>📋 الملخص</b><span>${all.length} إجمالي ${psActions("ملخص العملاء")}</span></div>
           ${dupGroupsBar()}
           ${unpaidCount > 0
-            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showCustomerBucket('unpaid')" role="button" tabindex="0"><span>💰 ${unpaidCount} عميل عليه متبقي غير محصل</span><b>عرض ›</b></div>`
-            : `<div class="simple-line-bar simple-line-ok"><span>✅ لا يوجد عملاء عليهم متبقي غير محصل حاليًا</span></div>`}
+            ? `<div class="simple-line-bar simple-line-warn" data-wf-event="click" data-wf-code="showCustomerBucket('unpaid')" role="button" tabindex="0"><span>💰 ${unpaidCount} عميل عليه فلوس مستحقة (أوامر خلصت ولسه ماتحصّلتش)</span><b>عرض ›</b></div>`
+            : `<div class="simple-line-bar simple-line-ok"><span>✅ مفيش عملاء عليهم فلوس مستحقة دلوقتي</span></div>`}
           <div class="bucket-group-label">حسب الحالة</div>
           <div class="simple-stat-grid">
             ${simpleButton(`عليه أمر مفتوح (${cnt("active")})`, "🛠️", "showCustomerBucket('active')", "")}
@@ -354,7 +357,7 @@
           <div class="bucket-group-label">متابعة</div>
           <div class="simple-stat-grid">
             ${simpleButton(`لم يتردد من فترة (${cnt("stale")})`, "⏳", "showCustomerBucket('stale')", "")}
-            ${simpleButton(`متبقي غير محصل (${cnt("unpaid")})`, "💰", "showCustomerBucket('unpaid')", "")}
+            ${simpleButton(`فلوس مستحقة (${cnt("unpaid")})`, "💰", "showCustomerBucket('unpaid')", "")}
           </div>
           <div class="bucket-group-label">عرض الكل</div>
           <div class="simple-stat-grid">
@@ -381,7 +384,7 @@
     const title = {
       active: "عليه أمر مفتوح حاليًا", workshop: "لديه جهاز في الورشة", completed: "كل أوامره مكتملة",
       none: "بدون أي أمر شغل", city: "🏙️ عملاء المدن", village: "🌾 عملاء القرى",
-      stale: "⏳ لم يتردد من فترة", unpaid: "💰 عليه متبقي غير محصل"
+      stale: "⏳ لم يتردد من فترة", unpaid: "💰 عليه فلوس مستحقة"
     }[bucket] || "كل العملاء";
     const deviceCountByCustomer = new Map();
     for (const d of deviceRows()) deviceCountByCustomer.set(d.customerId, (deviceCountByCustomer.get(d.customerId) || 0) + 1);
@@ -406,7 +409,7 @@
           <a href="customer.html?id=${c.id}"><b>${esc2(c.name)}</b></a>${(c.portal||c.portalUid)?' <small title="عنده حساب بوابة">🌐</small>':""}<span>${c.phone?`<a class="tel-link" href="tel:${esc2(c.phone)}" target="_blank" rel="noopener" data-wf-event="click" data-wf-code="event.stopPropagation()">📞 ${esc2(c.phone)}</a>`:"📞 —"}</span>
           <small>📍 ${esc2(addressText(c.mainAddress || {}) || "بدون عنوان")}</small>
           <small>🔧 ${ds} أجهزة • 🛠️ ${rs} أوامر${ao.length ? ` • 🔴 ${ao.length} فعال` : ""}${hw ? " • 🏭 جهاز في الورشة" : ""}</small>
-          <small>${lastDate ? `📅 آخر تعامل: ${lastDate.toLocaleDateString("ar-EG",{day:"2-digit",month:"2-digit",year:"2-digit"})}` : "📅 بدون تعامل سابق"}${remain > 0 ? ` • 💰 متبقي ${remain.toFixed(2)} ج` : ""}${age ? ` • <span class="age-badge ${age.cls}" title="⏱️ أقدم أمر مفتوح: ${esc2(age.range)}">${age.dot} ${esc2(age.label)}</span>` : ""}</small>
+          <small>${lastDate ? `📅 آخر تعامل: ${lastDate.toLocaleDateString("ar-EG",{day:"2-digit",month:"2-digit",year:"2-digit"})}` : "📅 بدون تعامل سابق"}${remain > 0 ? ` • 💰 مستحق ${remain.toFixed(2)} ج` : ""}${age ? ` • <span class="age-badge ${age.cls}" title="⏱️ أقدم أمر مفتوح: ${esc2(age.range)}">${age.dot} ${esc2(age.label)}</span>` : ""}</small>
         </div><div class="simple-record-actions"><a class="secondary small-btn" href="customer.html?id=${c.id}">فتح</a><button class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteCustomerRecord('${c.id}')">حذف</button></div></div>`;
       }, [q, bucket, sortKey].join("|")).html : `<div class="item">لا توجد نتائج.</div>`}`;
   });
@@ -756,11 +759,12 @@
     if (b === "parts") return orderIsParts(r);
     if (b === "overdue") return orderIsOverdue(r);
     if (b === "stale") return typeof requestIsStale === "function" && requestIsStale(r);
-    if (b === "open" || b === "unfinished" || b === "needed") return r.status !== "مكتمل" && r.status !== "ملغي" && !r.closed;
+    if (b === "needed") return r.status !== "مكتمل" && r.status !== "ملغي" && r.status !== "مجمد" && !r.closed; // المجمّد متوقف (ليه مربع لوحده)
+    if (b === "open" || b === "unfinished") return r.status !== "مكتمل" && r.status !== "ملغي" && !r.closed;
     if (b === "new") return r.status === "جديد";
     if (b === "active") return r.status === "جاري التنفيذ";
     if (b === "cancelled") return r.status === "ملغي";
-    if (b === "unpaid") return !r.closed && r.status !== "ملغي" && Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100) > 0;
+    if (b === "unpaid") return orderDueNow(r);
     return true;
   }
 
@@ -787,7 +791,7 @@
     const el = $("requestList");
     if (!el) return;
     const all = requestRows();
-    const open = all.filter(r => r.status !== "مكتمل" && r.status !== "ملغي" && !r.closed);
+    const open = all.filter(r => bucketFilter(r, "needed"));
     const counts = {
       all: all.length,
       open: open.length,
@@ -890,13 +894,13 @@
           ${selectHtml("requestOpsFocus",[
             {v:"",t:"كل الأوامر"},{v:"needed",t:"🎯 المطلوب الآن"},{v:"completed",t:"✅ مكتمل"},
             {v:"overdue",t:"⚠️ متأخر"},{v:"stale",t:"🔴 قديم (لسه واقف)"},{v:"parts",t:"📦 انتظار قطع"},
-            {v:"today",t:"📅 اليوم"},{v:"unpaid",t:"🧾 غير محصل"}
+            {v:"today",t:"📅 اليوم"},{v:"unpaid",t:"🧾 خلص ولسه ماتحصّلش"}
           ],focus,"التركيز")}
           ${selectHtml("requestOpsStatus",[
-            {v:"جديد",t:"جديد"},{v:"جاري التنفيذ",t:"جاري التنفيذ"},{v:"مكتمل",t:"مكتمل"},{v:"ملغي",t:"ملغي"}
+            {v:"جديد",t:"جديد"},{v:"جاري التنفيذ",t:"جاري التنفيذ"},{v:"مجمد",t:"مجمّد"},{v:"مكتمل",t:"مكتمل"},{v:"ملغي",t:"ملغي"}
           ],sf,"الحالة")}
           ${selectHtml("requestOpsWorkshop",[
-            {v:"workshop",t:"🏭 في الورشة"},{v:"home",t:"🏠 في المنزل"}
+            {v:"workshop",t:"🏭 في الورشة"},{v:"home",t:"🏠 عند العميل"}
           ],wf,"📍 مكان التنفيذ")}
           ${selectHtml("requestOpsSort",[
             {v:"oldest",t:"الأقدم أولًا"},{v:"newest",t:"الأحدث أولًا"},{v:"visit",t:"حسب موعد الزيارة"},

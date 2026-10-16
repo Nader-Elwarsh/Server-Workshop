@@ -28,6 +28,7 @@ function addTreasuryManual(type){
   let amount=typeof parseAmountInput==="function"?parseAmountInput(amountEl.value):(+amountEl.value||0),reason=(reasonEl.value||"").trim(),
       date=dateEl?.value||localDateKey(new Date()),time=timeEl?.value||new Date().toTimeString().slice(0,5);
   if(amount<=0)return alert("أدخل مبلغ صحيح.");
+  if(type==="out"){const bal=treasuryBalance();if(bal-amount<-0.004&&!confirm(`⚠️ الصرف ده (${amount.toFixed(2)} ج) أكبر من رصيد الدرج (${bal.toFixed(2)} ج) — الرصيد هيبقى بالسالب.\n\nلو الفلوس مش من الدرج سجّلها من المحفظة اللي اتدفعت منها. تكمل؟`))return}
   if(!reason)return alert("اكتب سبب الحركة.");
   let entry={
     id:id(),refKey:null,manualOverride:true,deleted:false,type,amount,date,time,
@@ -48,34 +49,59 @@ function saveOpeningBalance(){
   else a.push({id:id(),refKey:"opening-balance",manualOverride:true,deleted:false,type:"in",amount,date,time:"00:00",reason:"رصيد افتتاحي",category:"رصيد افتتاحي",source:"cash-drawer",createdAt:new Date().toISOString()});
   if(!saveJSONSafe(K.tr,a))return;window.auditLog?.("تعديل رصيد افتتاحي", "خزنة", existing?.id||"opening-balance", `${amount.toFixed(2)} ج`);renderTreasury();
 }
+/* تعديل حركة الخزنة من شاشة واحدة (قبل كده 4 رسايل ورا بعض ومن غير التاريخ والوقت والنوع) */
 function editTreasuryEntry(entryId){
-  let a=arr(K.tr),e=a.find(x=>x.id===entryId);if(!e)return;
-  let newAmount=prompt("المبلغ:",e.amount);if(newAmount===null)return;
-  // قبل كده أي مدخل مش رقم كان بيتحوّل بصمت لـ 0 (وبيتحول السالب لموجب). دلوقتي بنرفضه ونقبل الأرقام العربية.
-  let amt=typeof parseAmountInput==="function"?parseAmountInput(newAmount):(+newAmount||0);
-  if(!(amt>0))return alert("أدخل مبلغ صحيح أكبر من صفر.");
-  let newReason=prompt("سبب الحركة:",e.reason);if(newReason===null)return;
-  let newPerson=prompt("لمن / من؟:",e.counterparty||"");if(newPerson===null)return;
-  let newPlace=prompt("فين / المكان؟:",e.place||"");if(newPlace===null)return;
-  let oldAmount=+e.amount||0;
-  e.amount=amt;e.reason=(newReason||"").trim()||e.reason;
-  e.counterparty=(newPerson||"").trim();e.place=(newPlace||"").trim();e.manualOverride=true;
+  let a0=arr(K.tr),e0=a0.find(x=>x.id===entryId);if(!e0)return;
+  if(e0.refKey==="opening-balance")return alert("الرصيد الافتتاحي بيتعدّل من «⚙️ الرصيد الافتتاحي».");
+  const D=document,cats=["شخصي","تشغيل","سلفة","تحويل","أخرى"];if(e0.category&&!cats.includes(e0.category))cats.push(e0.category);
+  const m=D.createElement("div");m.className="txd-modal";m.id="trEditDialog";
+  const isTr=e0.source==="transfer"&&e0.transferId;
+  m.innerHTML=`<div class="txd-sheet rd-sheet" role="dialog" aria-label="تعديل حركة الخزنة"><div class="txd-title">✏️ تعديل حركة ${e0.type==="in"?"وارد":"صرف"}</div>
+    ${isTr?`<div class="hint">🔁 حركة تحويل مع محفظة — المبلغ والسبب هيتعدّلوا في الحركة المقابلة في المحفظة كمان.</div>`:""}
+    <div class="form-grid">
+      <label>المبلغ<input id="tre_amount" type="number" step="0.01" min="0" value="${esc(String(+e0.amount||0))}"></label>
+      <label>النوع<select id="tre_cat">${cats.map(c=>`<option ${c===(e0.category||"أخرى")?"selected":""}>${esc(c)}</option>`).join("")}</select></label>
+      <label>التاريخ<input id="tre_date" type="date" value="${esc(e0.date||"")}"></label>
+      <label>الوقت<input id="tre_time" type="time" value="${esc(e0.time||"")}"></label>
+      <label>لمن / من؟<input id="tre_person" value="${esc(e0.counterparty||"")}"></label>
+      <label>فين / المكان؟<input id="tre_place" value="${esc(e0.place||"")}"></label>
+      <label class="wide">السبب<input id="tre_reason" value="${esc(e0.reason||"")}"></label>
+      <label class="wide">تفاصيل إضافية<input id="tre_note" value="${esc(e0.note||"")}"></label>
+    </div><p class="hint" id="tre_msg" style="color:var(--danger-text)"></p>
+    <div class="txd-actions"><button type="button" class="primary" id="tre_ok">💾 حفظ</button><button type="button" class="secondary" id="tre_cancel">إلغاء</button></div></div>`;
+  D.body.appendChild(m);
+  const q=s=>m.querySelector(s),close=()=>m.remove();
+  q("#tre_cancel").onclick=close;m.addEventListener("click",ev=>{if(ev.target===m)close()});
+  q("#tre_ok").onclick=()=>{
+    const r=applyTreasuryEdit(entryId,{amount:q("#tre_amount").value,reason:q("#tre_reason").value,category:q("#tre_cat").value,date:q("#tre_date").value,time:q("#tre_time").value,counterparty:q("#tre_person").value,place:q("#tre_place").value,note:q("#tre_note").value});
+    if(!r.ok){if(r.error)q("#tre_msg").textContent=r.error;return}
+    close();
+  };
+  setTimeout(()=>{try{q("#tre_amount").focus()}catch(_){}},50);
+}
+/* الحفظ الفعلي لتعديل حركة خزنة (من غير شاشة): بيرجّع {ok} أو {ok:false,error} */
+function applyTreasuryEdit(entryId,v){
+  v=v||{};
+  const amt=typeof parseAmountInput==="function"?parseAmountInput(v.amount):(+v.amount||0);
+  if(!(amt>0))return{ok:false,error:"اكتب مبلغ صحيح أكبر من صفر."};
+  let a=arr(K.tr),e=a.find(x=>x.id===entryId);if(!e)return{ok:false,error:"الحركة دي اتمسحت أو اتغيرت. حدّث الصفحة."};
+  const reason=String(v.reason??e.reason??"").trim()||e.reason;if(!reason)return{ok:false,error:"اكتب سبب الحركة."};
+  const oldAmount=+e.amount||0,T=x=>x===undefined?undefined:String(x).trim();
+  Object.assign(e,{amount:Math.round(amt*100)/100,reason,manualOverride:true,updatedAt:new Date().toISOString()});
+  if(T(v.category))e.category=T(v.category);if(T(v.date))e.date=T(v.date);if(T(v.time))e.time=T(v.time);
+  ["counterparty","place","note"].forEach(k=>{if(v[k]!==undefined)e[k]=T(v[k])});
   // حركة التحويل ليها حركة مقابلة في المحفظة: لازم تتعدّل معاها في نفس العملية، وإلا الطرفين يبقوا بمبلغين مختلفين.
+  let ok;
   if(e.source==="transfer"&&e.transferId){
     let w=arr(K.wtx),wt=w.find(x=>x.transferId===e.transferId&&x.source==="transfer"&&!x.deleted);
-    if(wt){
-      wt.amount=e.amount;wt.reason=e.reason;
-      if(!commitStorage({[K.tr]:a,[K.wtx]:w}))return;
-      window.auditLog?.("تعديل حركة", "خزنة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج (مع حركة المحفظة المقابلة)`);
-      renderTreasury();
-      if(typeof renderWallets==="function")renderWallets();
-      if(typeof renderWalletDetail==="function")renderWalletDetail();
-      return;
-    }
-  }
-  if(!saveJSONSafe(K.tr,a))return;
-  window.auditLog?.("تعديل حركة", "خزنة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج`);
-  renderTreasury();
+    if(wt){wt.amount=e.amount;wt.reason=e.reason;wt.date=e.date;wt.time=e.time;ok=commitStorage({[K.tr]:a,[K.wtx]:w})}else ok=saveJSONSafe(K.tr,a);
+  }else ok=saveJSONSafe(K.tr,a);
+  if(!ok)return{ok:false};
+  window.auditLog?.("تعديل حركة","خزنة",e.id,`${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج${e.source==="transfer"?" (مع حركة المحفظة المقابلة)":""}`);
+  if(typeof renderTreasury==="function")renderTreasury();
+  if(typeof renderWallets==="function")renderWallets();
+  if(typeof renderWalletDetail==="function")renderWalletDetail();
+  return{ok:true};
 }
 function deleteTreasuryEntry(entryId){
   let a0=arr(K.tr),e0=a0.find(x=>x.id===entryId);
@@ -95,8 +121,9 @@ function deleteTreasuryEntry(entryId){
   if(typeof renderWalletDetail==="function")renderWalletDetail();
 }
 function operationalTreasurySummary(){
-  let deposits=arr(K.r).reduce((a,x)=>a+(+x.deposit||0),0);
-  let finalCollections=arr(K.r).filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-(+x.deposit||0))*100)/100),0);
+  // العربون اللي اترد للعميل مايتحسبش تحصيل
+  let deposits=arr(K.r).reduce((a,x)=>a+Math.max(0,(+x.deposit||0)-(+x.depositRefunded||0)),0);
+  let finalCollections=arr(K.r).filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-((+x.deposit||0)-(+x.depositRefunded||0)))*100)/100),0);
   let expenses=(typeof walletTxEntries==="function"?walletTxEntries():[]).filter(x=>x.category==="مصروف تشغيل").reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0);
   return {deposits,finalCollections,orderCollections:deposits+finalCollections,expenses};
 }
@@ -104,6 +131,8 @@ function renderTreasury(){
   let el=document.getElementById("treasuryPage");if(!el)return;
   let balance=treasuryBalance();
   let list=treasuryEntries().sort((a,b)=>new Date((b.date||"")+"T"+(b.time||"00:00"))-new Date((a.date||"")+"T"+(a.time||"00:00"))||new Date(b.createdAt)-new Date(a.createdAt));
+  // رصيد الدرج بعد كل حركة (بالترتيب الزمني) — عشان تطابق الدرج الفعلي في أي لحظة
+  const runBal={};{let b=0;for(let k=list.length-1;k>=0;k--){const x=list[k];b=Math.round((b+(x.type==="in"?1:-1)*(+x.amount||0))*100)/100;runBal[x.id]=b}}
   let opening=arr(K.tr).find(x=>x.refKey==="opening-balance"&&!x.deleted);
   let op=operationalTreasurySummary();
   let today=localDateKey(new Date());
@@ -156,8 +185,8 @@ function renderTreasury(){
         <small>${esc(new Date((x.date||today)+"T"+(x.time||"00:00")).toLocaleString("ar-EG"))} • ${esc(x.category||"أخرى")}${x.counterparty?` • 👤 ${esc(x.counterparty)}`:""}${x.place?` • 📍 ${esc(x.place)}`:""}</small>
         ${x.note?`<small>📝 ${esc(x.note)}</small>`:""}
       </div>
-      <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</div>
+      <div class="treasury-row-amount ${x.type}">${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج<small style="display:block;font-weight:400;color:var(--text-muted)">الرصيد: ${(runBal[x.id]||0).toFixed(2)}</small></div>
       <div class="treasury-row-actions"><button type="button" class="mini-action" data-wf-event="click" data-wf-code="editTreasuryEntry('${x.id}')">✏️</button><button type="button" class="mini-action" data-wf-event="click" data-wf-code="deleteTreasuryEntry('${x.id}')">🗑️</button></div>
-    </div>`,"treasury",{step:40,hashPrefix:"tx-"}).html:`<div class="hint">لا توجد حركات في درج الخزنة بعد.</div>`}
+    </div>`,"treasury|"+list.length+"|"+balance,{step:40,hashPrefix:"tx-"}).html:`<div class="hint">لا توجد حركات في درج الخزنة بعد.</div>`}
   `;
 }

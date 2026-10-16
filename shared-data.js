@@ -1024,6 +1024,7 @@ if (typeof document !== "undefined" && typeof document.addEventListener === "fun
     box.innerHTML = '<div class="wf-sh-h"><span>🕘 آخر عمليات البحث</span><button type="button" data-sh-clear="1">مسح</button></div>' +
       items.map(function (q, i) { return '<div class="wf-sh-i"><button type="button" class="wf-sh-q" data-sh-q="' + i + '">🕘 ' + esc(q) + '</button><button type="button" class="wf-sh-x" data-sh-x="' + i + '" aria-label="شيل">✕</button></div>'; }).join("");
     place();
+    if (!box) return; // الخانة اختفت من الصفحة (اتعملها render من جديد) فـ place() قفلت القايمة
     // mousedown بدل click عشان الخانة ماتفقدش التركيز وتقفل القايمة قبل ما الضغطة توصل
     box.onmousedown = function (e) { e.preventDefault(); };
     box.onclick = function (e) {

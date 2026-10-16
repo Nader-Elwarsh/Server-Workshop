@@ -25,6 +25,7 @@ function routeRowStatusInfo(x){
   if(x.status==="مكتمل")return{collapsed:true,cls:"route-badge-done",text:"✅ مكتمل",retry:false};
   if(x.status==="ملغي")return{collapsed:true,cls:"route-badge-cancelled",text:"🚫 ملغي",retry:false};
   if(x.workshopStatus&&x.workshopStatus!=="غير مطلوب")return{collapsed:true,cls:"route-badge-workshop",text:`🏭 ${x.workshopStatus}`,retry:false};
+  if(x.status==="مجمد")return{collapsed:true,cls:"route-badge-frozen",text:"❄️ مجمّد",retry:false};
   if(x.partsWaiting)return{collapsed:true,cls:"route-badge-needspart",text:"📦 محتاج قطعة غيار",retry:false};
   if(x.contactStatus==="unavailable")return{collapsed:true,cls:"route-badge-unavailable",text:"📵 غير متاح",retry:true};
   if(x.contactStatus==="no-answer")return{collapsed:true,cls:"route-badge-noanswer",text:"📞 لم يرد",retry:true};
@@ -146,10 +147,10 @@ function renderRoute(){
   }
   if(summaryEl){
     let scheduledOnly=list;
-    let closedToday=scheduledOnly.filter(x=>x.closed),visitedNotClosed=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day),notVisited=scheduledOnly.filter(x=>!x.closed&&!x.contactStatus&&x.status!=="ملغي"&&!(x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day)),collected=closedToday.reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-(+x.deposit||0))*100)/100),0),offSchedule=scheduledOnly.filter(x=>x._viaClosedOffSchedule).length;
+    let closedToday=scheduledOnly.filter(x=>x.closed),visitedNotClosed=scheduledOnly.filter(x=>!routeRowStatusInfo(x).collapsed&&x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day),notVisited=scheduledOnly.filter(x=>!routeRowStatusInfo(x).collapsed&&!(x.visitedAt&&dayKeyLocal(x.visitedAt)===routeViewState.day)),collected=closedToday.reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-((+x.deposit||0)-(+x.depositRefunded||0)))*100)/100),0),offSchedule=scheduledOnly.filter(x=>x._viaClosedOffSchedule).length;
     // شريط تقدم اليوم + تفصيله: نقسّم كل أمر لحالة واحدة بس (بنفس أولوية
     // routeRowStatusInfo) عشان العدّ يبقى صحيح من غير تكرار.
-    let buckets={done:0,cancelled:0,workshop:0,needspart:0,contact:0,pending:0,late:0};
+    let buckets={done:0,cancelled:0,workshop:0,needspart:0,frozen:0,contact:0,pending:0,late:0};
     scheduledOnly.forEach(x=>{
       let info=routeRowStatusInfo(x);
       if(!info.collapsed)buckets.pending++;
@@ -157,6 +158,7 @@ function renderRoute(){
       else if(info.cls==="route-badge-cancelled")buckets.cancelled++;
       else if(info.cls==="route-badge-workshop")buckets.workshop++;
       else if(info.cls==="route-badge-needspart")buckets.needspart++;
+      else if(info.cls==="route-badge-frozen")buckets.frozen++;
       else buckets.contact++;
       if(!x.closed&&x.status!=="ملغي"&&x.visit&&dayKeyLocal(x.visit)<today)buckets.late++;
     });
@@ -166,6 +168,7 @@ function renderRoute(){
     if(buckets.pending)bd.push(`⏳ ${buckets.pending} لسه`);
     if(buckets.workshop)bd.push(`🏭 ${buckets.workshop} ورشة`);
     if(buckets.needspart)bd.push(`📦 ${buckets.needspart} قطعة غيار`);
+    if(buckets.frozen)bd.push(`❄️ ${buckets.frozen} مجمّد`);
     if(buckets.contact)bd.push(`📵 ${buckets.contact} تعليق تواصل`);
     if(buckets.cancelled)bd.push(`🚫 ${buckets.cancelled} ملغي`);
     if(buckets.late)bd.push(`⚠️ ${buckets.late} متأخر`);
@@ -181,7 +184,9 @@ function renderRoute(){
   // "اللي عليه الدور": أول أمر شغل في ترتيب اليوم لسه نشط (مش مكتمل/مغلق/ملغي/
   // في الورشة/محتاج قطعة غيار/عليه حالة تواصل) هو الوحيد اللي بيتفتح كارت كامل.
   // أي حاجة تانية — سواء خلصت أو لسه ماجاش دورها — بتترجع سطر واحد مختصر.
-  const currentTurnId=(list.find(x=>!routeRowStatusInfo(x).collapsed)||{}).id;
+  // الترتيب المعروض فعلًا = متجمّع بالمركز (بنفس ترتيب أول ظهور لكل مركز)، فالدور = أول أمر نشط في الترتيب ده
+  const shown=[];{const gs={},ord=[];list.forEach(x=>{const k=x._addr.center||"بدون مركز";if(!gs[k]){gs[k]=[];ord.push(k)}gs[k].push(x)});ord.forEach(k=>shown.push(...gs[k]))}
+  const currentTurnId=(shown.find(x=>!routeRowStatusInfo(x).collapsed)||{}).id;
   // نعمل auto-scroll للكارت المميز بس لما "الدور" يتغيّر فعلًا (مش كل مرة
   // بيتعمل فيها renderRoute، وده بيحصل كتير)، ومش وإحنا بندوّر (sq) عشان
   // منقطعش على المستخدم وهو بيكتب.
@@ -279,6 +284,8 @@ function updateQuickCloseTotal(i){
   if(remainEl)remainEl.value=Math.max(0,total-deposit-newDeposit).toFixed(2)+" ج";
 }
 function toggleQuickClose(i){
+  // حساب الفني: التحصيل والقفل بيتسجلوا في عهدته من السيرفر (بوابة الفني)، مش من الجهاز
+  if(window.wfSyncMode==="scoped"){location.href="tech.html?id="+encodeURIComponent(i);return}
   routeViewState.quickCloseId=String(routeViewState.quickCloseId)===String(i)?null:String(i);
   routeViewState.quickCloseDraft=null;
   renderRoute();
@@ -342,6 +349,7 @@ function confirmQuickPartialPayment(i){
 function confirmQuickClose(i){
   const a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
   if(!r||r.closed||r.paid)return;
+  if(["جديد","جاري التنفيذ","مكتمل"].indexOf(r.status)<0){alert(`الأمر حالته «${r.status}» — غيّرها من صفحة الأمر الأول.`);return}
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value||0);
   if(!Number.isFinite(labor)||labor<0){alert("اكتب قيمة مصنعية صحيحة.");return}
   const wallet=document.getElementById(`qcWallet-${i}`)?.value||"";
@@ -352,6 +360,7 @@ function confirmQuickClose(i){
   const effDeposit=deposit-(+r.depositRefunded||0)-rf.refund;
   const collectedPreview=Math.max(0,estimatedTotal-effDeposit);
   if(collectedPreview>0&&!wallet&&!confirm(`مفيش محفظة محددة للمبلغ المتبقي المُحصّل (${collectedPreview.toFixed(2)} ج)، فمش هتتسجل كحركة في الحسابات.\n\nمتابعة القفل من غير تسجيله في محفظة؟`))return;
+  if(r.returnPayPending&&!confirm("🔄 حساب الفني على المرتجع ده لسه ما اتحددش (من صفحة الأمر). تقفل الأمر وتحدده بعدين؟"))return;
   if(!rf.refund&&!confirm("تأكيد إن الزيارة خلصت، الأمر مكتمل، واستلام كامل قيمته وإغلاقه نهائيًا؟ بعد التأكيد لن يمكن التعديل."))return;
   if(rf.refund)applyDepositRefund(r,rf.refund,rf.wallet);
   r.labor=labor;
@@ -366,6 +375,7 @@ function confirmQuickClose(i){
   const now=new Date().toISOString();
   const collected=Math.max(0,Math.round(((+r.total||0)-((+r.deposit||0)-(+r.depositRefunded||0)))*100)/100);
   r.paid=true;r.remain=0;r.paidAt=now;r.closed=true;r.closedAt=now;r.closeWallet=wallet;
+  if(typeof applyCloseWarranty==="function")applyCloseWarranty(r,now); // الضمان زي القفل من صفحة الأمر بالظبط
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncTreasuryForOrderClose==="function")syncTreasuryForOrderClose(r,collected);
@@ -374,6 +384,7 @@ function confirmQuickClose(i){
     return{ok:true};
   });
   if(!saved?.ok){alert("تعذر حفظ الإغلاق والحركة المالية معًا؛ لم يتم إغلاق أمر الشغل.");return}
+  window.auditLog?.("تحصيل وإغلاق (خط السير)","أمر شغل",r.id,`المبلغ المحصل ${collected.toFixed(2)} ج`);
   routeViewState.quickCloseId=null;
   routeViewState.quickCloseDraft=null;
   if(typeof renderDash==="function")renderDash();
@@ -422,15 +433,21 @@ function logFollowupSend(c,tpl,text){
   if(log.length>500)log=log.slice(log.length-500);
   saveJSONSafe(K.followupLog,log);
 }
+/* آخر تعامل مع العميل = أحدث تاريخ إنشاء أو تقفيل لأي أمر (أمر اتعمل من 70 يوم واتقفل امبارح = العميل لسه متعامل)،
+   والعميل اللي عنده أمر لسه مفتوح مش «ساكت». */
+function followupInfo(c,orders,now){
+  now=now||new Date();
+  let last="",latest=null,open=false;
+  (orders||[]).forEach(o=>{const t=[o.createdAt,o.closedAt].filter(Boolean).map(String).sort().pop()||"";if(t>last){last=t;latest=o}if(!o.closed&&o.status&&o.status!=="ملغي")open=true});
+  const daysSince=last&&!Number.isNaN(new Date(last).getTime())?Math.floor((now-new Date(last))/86400000):null;
+  return{c,ordersCount:(orders||[]).length,last,latest,daysSince,open};
+}
 function sendFollowupTemplate(customerId,tplIndex){
   let c=arr(K.c).find(x=>x.id===customerId);if(!c)return;
   let wa=typeof waNumber==="function"?waNumber(c.phone):"";
   if(!wa)return alert("لا يوجد رقم هاتف مسجل لهذا العميل.");
   let tpl=(settings().followupWaTemplates||[])[tplIndex];if(!tpl)return;
-  let orders=arr(K.r).filter(o=>o.customerId===c.id);
-  let last=orders.reduce((a,o)=>{let d=o.createdAt||"";return d>a?d:a},"");
-  let daysSince=last?Math.floor((new Date()-new Date(last))/86400000):null;
-  let msg=fillFollowupTemplate(tpl.text,{c,ordersCount:orders.length,last,daysSince});
+  let msg=fillFollowupTemplate(tpl.text,followupInfo(c,arr(K.r).filter(o=>o.customerId===c.id)));
   logFollowupSend(c,tpl,msg);
   window.open(`https://wa.me/${wa}?text=${encodeURIComponent(msg)}`,"_blank","noopener");
   renderFollowup();
@@ -453,22 +470,21 @@ function renderFollowup(){
   // الأوامر بتتقسّم على العملاء مرة واحدة (قبل كده arr(K.r) كانت بتتقرا وتتحلّل من الأول لكل عميل).
   let ordersByCustomer=new Map();arr(K.r).forEach(o=>{let a=ordersByCustomer.get(o.customerId);if(!a)ordersByCustomer.set(o.customerId,a=[]);a.push(o)});
   let lastSendByCustomer=new Map();arr(K.followupLog).forEach(l=>lastSendByCustomer.set(l.customerId,l));
-  let rows=arr(K.c).map(cu=>{
-    let orders=ordersByCustomer.get(cu.id)||[];
-    let latest=orders.slice().sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||"")))[0]||null;
-    let last=latest?.createdAt||"";
-    let daysSince=last?Math.floor((now-new Date(last))/86400000):null;
-    return {c:cu,ordersCount:orders.length,last,latest,daysSince};
-  }).filter(x=>x.ordersCount>0&&x.daysSince!==null&&x.daysSince>=days);
-  rows.sort((a,b)=>b.daysSince-a.daysSince);
-  el.innerHTML=rows.length?rows.map(x=>{
+  const RECENT=14; // اللي اتبعتله رسالة في آخر أسبوعين بينزل آخر القايمة (عشان ماتبعتش لنفس العميل مرتين ورا بعض)
+  const sentDays=id=>{const l=lastSendByCustomer.get(id);return l&&l.sentAt?Math.floor((now-new Date(l.sentAt))/86400000):null};
+  let rows=arr(K.c).map(cu=>followupInfo(cu,ordersByCustomer.get(cu.id)||[],now)).filter(x=>x.ordersCount>0&&!x.open&&x.daysSince!==null&&x.daysSince>=days);
+  rows.forEach(x=>{x.sent=sentDays(x.c.id);x.recent=x.sent!==null&&x.sent<RECENT});
+  rows.sort((a,b)=>(a.recent-b.recent)||(b.daysSince-a.daysSince));
+  const nRecent=rows.filter(x=>x.recent).length;
+  const rowHtml=x=>{
     let waRow=(templates.length&&x.c.phone)?`<div class="wa-send-row">${templates.map(t=>`<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="sendFollowupTemplate('${x.c.id}',${t.i})">💬 ${esc(t.name||"رسالة")}</button>`).join("")}</div>`:"";
     // آخر رسالة متابعة اتبعتت لنفس العميل (لو موجودة) — اسم القالب
     // وتاريخ الإرسال، مع إمكانية فتح نفس النص تاني في واتساب وعرضه كامل.
     let lastSend=lastSendByCustomer.get(x.c.id)||null;
     let lastSendHtml=lastSend?`<div class="setting-row" style="margin-top:4px"><details><summary>📨 آخر رسالة اتبعتت: ${esc(lastSend.templateName)} — ${esc(new Date(lastSend.sentAt).toLocaleString("ar-EG"))}</summary><div class="hint" style="white-space:pre-wrap">${esc(lastSend.text)}</div><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="reopenFollowupSend('${x.c.id}','${lastSend.id}')">↩️ فتحها تاني في واتساب</button></details></div>`:"";
-    return `<div class="item followup-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span></div><div class="followup-line">${contactLinksHtml(x.c.phone)}</div><div class="followup-line">📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div class="followup-line">🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${x.latest ? `<a href="request.html?id=${x.latest.id}">${esc(x.latest.no||"فتح الأمر")}</a> — ` : ""}${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
-  }).join(""):'<div class="item">لا يوجد عملاء ساكتين ضمن المدة المختارة 🎉</div>';
+    return `<div class="item followup-card"><div class="item-head"><a href="customer.html?id=${x.c.id}"><b>👤 ${esc(x.c.name)}</b></a><span class="badge">⏳ ${x.daysSince} يوم</span>${x.recent?`<span class="badge">📨 اتبعتله من ${x.sent?x.sent+" يوم":"النهارده"}</span>`:""}</div><div class="followup-line">${contactLinksHtml(x.c.phone)}</div><div class="followup-line">📍 ${esc(addressText(x.c.mainAddress||{}))}</div><div class="followup-line">🛠️ ${x.ordersCount} أمر سابق • آخر أمر ${x.latest ? `<a href="request.html?id=${x.latest.id}">${esc(x.latest.no||"فتح الأمر")}</a> — ` : ""}${new Date(x.last).toLocaleDateString("ar-EG")}</div>${waRow}${lastSendHtml}<div class="actions"><a class="primary small-btn" href="requests.html?customer=${x.c.id}&add=1">➕ أمر شغل جديد</a></div></div>`;
+  };
+  el.innerHTML=rows.length?`<div class="hint" style="margin:6px 0">${rows.length} عميل${nRecent?` • منهم ${nRecent} اتبعتلهم رسالة في آخر ${RECENT} يوم (تحت خالص)`:""}</div>`+(window.WFPager?window.WFPager.render("followup",rows,rowHtml,String(days)+"|"+rows.length).html:rows.map(rowHtml).join("")):'<div class="item">لا يوجد عملاء ساكتين ضمن المدة المختارة 🎉</div>';
 }
 function initFollowupPage(){
   let dEl=document.getElementById("followupDays");if(!dEl)return;

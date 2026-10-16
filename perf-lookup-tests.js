@@ -43,10 +43,13 @@ function makeEnv(){
   e.reads[K.r]=0;e.reads[K.followupLog]=0;
   e.context.renderFollowup();
   const html=e.els.followupList.innerHTML;
-  assert.strictEqual((html.match(/class="item followup-card"/g)||[]).length,N,'every customer with an old order is listed');
+  // القايمة بتتعرض على دفعات (WFPager) — أول دفعة بس في الـ HTML، والعدد الكلي مكتوب فوق
+  const shownN=(html.match(/class="item followup-card"/g)||[]).length,pg=e.context.window&&e.context.window.WFPager;
+  assert.ok(html.includes(N+' عميل'),'the header counts every silent customer');
+  assert.strictEqual(shownN,pg?Math.min(N,pg.DEFAULT_STEP):N,'first page of the list is rendered');
   assert.ok(e.reads[K.r]<=3,'orders must not be re-read per customer (reads='+e.reads[K.r]+')');
   assert.ok(e.reads[K.followupLog]<=3,'follow-up log must not be re-read per row (reads='+e.reads[K.followupLog]+')');
-  assert.ok(html.includes('قالب'),'last send info still shown for the customer who has one');
+  assert.ok(html.includes('منهم 1 اتبعتلهم رسالة'),'customers messaged recently are counted (and moved to the end of the list)');
 }
 // 3) Global search: each collection is read once per query, and multiple
 // wallet entries linked to the same order do not rescan the order list.

@@ -12,26 +12,38 @@
 --------------------------------------------------------------------- */
 function taskRows(){return arr(K.tasks).filter(x=>!x.deleted)}
 function taskPriorityClass(p){return p==="عاجلة"?"negative":p==="عالية"?"high":""}
+/* الإضافة والتعديل من نفس الفورم (قبل كده التعديل كان 5 رسايل prompt ورا بعض). */
+let taskEditingId="";
+function taskFormEl(id){return document.getElementById(id)}
 function saveTask(){
-  let title=(document.getElementById("taskTitle")?.value||"").trim();
+  let title=(taskFormEl("taskTitle")?.value||"").trim();
   if(!title)return alert("اكتب عنوان المهمة.");
-  let t={
-    id:id(),title,
-    note:(document.getElementById("taskNote")?.value||"").trim(),
-    date:document.getElementById("taskDate")?.value||localDateKey(new Date()),
-    time:document.getElementById("taskTime")?.value||"",
-    priority:document.getElementById("taskPriority")?.value||"عادية",
-    customerId:document.getElementById("taskCustomer")?.value||"",
-    requestId:document.getElementById("taskRequest")?.value||"",
-    completed:false,createdAt:new Date().toISOString()
+  let v={
+    title,
+    note:(taskFormEl("taskNote")?.value||"").trim(),
+    date:taskFormEl("taskDate")?.value||localDateKey(new Date()),
+    time:taskFormEl("taskTime")?.value||"",
+    priority:taskFormEl("taskPriority")?.value||"عادية",
+    customerId:taskFormEl("taskCustomer")?.value||"",
+    requestId:taskFormEl("taskRequest")?.value||""
   };
+  let a=arr(K.tasks);
+  if(taskEditingId){
+    const t=a.find(x=>x.id===taskEditingId);
+    if(!t){taskEditingId="";return alert("المهمة دي اتحذفت أو اتغيرت. حدّث الصفحة.")}
+    Object.assign(t,v,{updatedAt:new Date().toISOString()});
+  }else a=a.concat(Object.assign({id:id()},v,{completed:false,createdAt:new Date().toISOString()}));
   // الفورم ماتتمسحش لو الحفظ فشل (قبل كده المستخدم كان بيخسر اللي كتبه).
-  if(!put(K.tasks,arr(K.tasks).concat(t)))return;clearTaskForm();renderTasks();
+  if(!put(K.tasks,a))return;clearTaskForm();renderTasks();
 }
 function clearTaskForm(){
-  ["taskTitle","taskNote","taskTime","taskCustomer","taskRequest"].forEach(idv=>{let e=document.getElementById(idv);if(e)e.value=""});
-  let d=document.getElementById("taskDate");if(d)d.value=localDateKey(new Date());
-  let p=document.getElementById("taskPriority");if(p)p.value="عادية";
+  ["taskTitle","taskNote","taskTime","taskCustomer","taskCustomerSearch"].forEach(idv=>{let e=taskFormEl(idv);if(e)e.value=""});
+  let d=taskFormEl("taskDate");if(d)d.value=localDateKey(new Date());
+  let p=taskFormEl("taskPriority");if(p)p.value="عادية";
+  fillTaskRequests(taskFormEl("taskRequest"),"");
+  taskEditingId="";
+  const b=document.querySelector('[data-wf-click="saveTask"]');if(b)b.textContent="💾 حفظ المهمة";
+  const h=taskFormEl("taskFormTitle");if(h)h.textContent="➕ مهمة جديدة";
 }
 function toggleTask(idv){
   let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;t.completed=!t.completed;t.completedAt=t.completed?new Date().toISOString():"";if(!put(K.tasks,a))return;renderTasks();
@@ -39,23 +51,18 @@ function toggleTask(idv){
 function deleteTask(idv){
   let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;
   if(!confirm(`حذف المهمة «${t.title||""}»؟`))return;
-  if(!put(K.tasks,a.filter(x=>x.id!==idv)))return;renderTasks();
+  if(!put(K.tasks,a.filter(x=>x.id!==idv)))return;if(taskEditingId===idv)clearTaskForm();renderTasks();
 }
 function editTask(idv){
-  let a=arr(K.tasks),t=a.find(x=>x.id===idv);if(!t)return;
-  let title=prompt("عنوان المهمة:",t.title);if(title===null)return;
-  let note=prompt("التفاصيل:",t.note||"");if(note===null)return;
-  let date=prompt("التاريخ YYYY-MM-DD:",t.date||localDateKey(new Date()));if(date===null)return;
-  let time=prompt("الوقت HH:MM (اختياري):",t.time||"");if(time===null)return;
-  let priority=prompt("الأولوية (عادية / عالية / عاجلة):",t.priority||"عادية");if(priority===null)return;
-  // قبل كده أي نص كان بيتحفظ كتاريخ/وقت/أولوية، فالمهمة كانت بتتلخبط في الترتيب وفلتر «متأخرة». دلوقتي بنتحقق ونقبل الأرقام العربية.
-  const digits=v=>String(v||"").replace(/[٠-٩]/g,c=>c.charCodeAt(0)-1632).replace(/[۰-۹]/g,c=>c.charCodeAt(0)-1776).trim();
-  date=digits(date);time=digits(time);priority=String(priority||"").trim();
-  if(date){const d=new Date(date+"T12:00:00");if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(d.getTime())||localDateKey(d)!==date)return alert("التاريخ غير صحيح. اكتبه بالشكل 2026-10-25.")}
-  if(time&&!/^([01]?\d|2[0-3]):[0-5]\d$/.test(time))return alert("الوقت غير صحيح. اكتبه بالشكل 14:30 أو سيبه فاضي.");
-  if(priority&&!["عادية","عالية","عاجلة"].includes(priority))return alert("الأولوية لازم تكون: عادية أو عالية أو عاجلة.");
-  t.title=title.trim()||t.title;t.note=note.trim();t.date=date||t.date;t.time=time?time.padStart(5,"0"):"";t.priority=priority||t.priority;
-  if(!put(K.tasks,a))return;renderTasks();
+  let t=arr(K.tasks).find(x=>x.id===idv);if(!t)return;
+  taskEditingId=idv;
+  const set=(k,v)=>{const e=taskFormEl(k);if(e)e.value=v||""};
+  set("taskTitle",t.title);set("taskNote",t.note);set("taskDate",t.date);set("taskTime",t.time);set("taskPriority",t.priority||"عادية");
+  if(typeof fillCustomerAutocomplete==="function"&&taskFormEl("taskCustomerSearch"))fillCustomerAutocomplete("taskCustomer",t.customerId||"");else set("taskCustomer",t.customerId);
+  fillTaskRequests(taskFormEl("taskRequest"),t.customerId||"",t.requestId||"");
+  const b=document.querySelector('[data-wf-click="saveTask"]');if(b)b.textContent="💾 حفظ التعديل";
+  const h=taskFormEl("taskFormTitle");if(h)h.textContent="✏️ تعديل المهمة";
+  const f=taskFormEl("taskTitle");if(f&&typeof f.scrollIntoView==="function"){f.scrollIntoView({behavior:"smooth",block:"center"});setTimeout(()=>{try{f.focus()}catch(e){}},300)}
 }
 function renderTasks(){
   let el=document.getElementById("taskList");if(!el)return;
@@ -94,18 +101,29 @@ function renderTasks(){
 }
 function initTasks(){
   if(!document.getElementById("taskList"))return;
-  let d=document.getElementById("taskDate");if(d&&!d.value)d.value=localDateKey(new Date());
-  let c=document.getElementById("taskCustomer"),r=document.getElementById("taskRequest");
-  if(c){fillCustomer(c);c.onchange=()=>{if(r)fillTaskRequests(r,c.value)}}
-  if(r)fillTaskRequests(r,c?.value||"");
+  let d=taskFormEl("taskDate");if(d&&!d.value)d.value=localDateKey(new Date());
+  let qs=new URLSearchParams(location.search);
+  let c=taskFormEl("taskCustomer"),r=taskFormEl("taskRequest");
+  // مهمة من صفحة أمر شغل أو عميل: tasks.html?request=..&customer=..
+  let qr=qs.get("request")||"",qo=qr?arr(K.r).find(x=>String(x.id)===String(qr)):null,qc=qs.get("customer")||(qo?qo.customerId:"")||"";
+  if(c){
+    if(taskFormEl("taskCustomerSearch")&&typeof fillCustomerAutocomplete==="function")fillCustomerAutocomplete("taskCustomer",qc);else{fillCustomer(c);c.value=qc}
+    c.onchange=()=>{if(r)fillTaskRequests(r,c.value)};
+  }
+  if(r)fillTaskRequests(r,qc,qo?qo.id:"");
+  if(qo&&taskFormEl("taskTitle")&&!taskFormEl("taskTitle").value)taskFormEl("taskTitle").value=`متابعة أمر ${qo.no||""}`;
   document.getElementById("taskSearch")?.addEventListener("input",renderTasks);
   document.getElementById("taskFilter")?.addEventListener("change",renderTasks);
-  let qsf=new URLSearchParams(location.search).get("filter");if(qsf&&document.getElementById("taskFilter"))document.getElementById("taskFilter").value=qsf;
+  let qsf=qs.get("filter");if(qsf&&document.getElementById("taskFilter"))document.getElementById("taskFilter").value=qsf;
   window.WFNavState?.keep({q:"taskSearch",filter:"taskFilter"});
   renderTasks();
 }
-function fillTaskRequests(el,cid){
+/* أوامر الربط: من غير عميل = الأوامر المفتوحة بس (الأحدث الأول) بدل كل أوامر الورشة؛ مع عميل = كل أوامره. */
+function fillTaskRequests(el,cid,selected){
   if(!el)return;
-  let rows=arr(K.r).filter(x=>!cid||x.customerId===cid);
-  el.innerHTML='<option value="">بدون ربط بأمر شغل</option>'+rows.map(x=>`<option value="${x.id}">${esc(x.no)} — ${esc(customerName(x.customerId))}</option>`).join("");
+  const ts=x=>String(x.createdAt||"");
+  let rows=arr(K.r).filter(x=>cid?x.customerId===cid:(!x.closed&&x.status!=="ملغي")).sort((a,b)=>ts(b).localeCompare(ts(a)));
+  if(!cid&&rows.length>200)rows=rows.slice(0,200);
+  if(selected&&!rows.some(x=>x.id===selected)){const o=arr(K.r).find(x=>x.id===selected);if(o)rows.unshift(o)}
+  el.innerHTML=`<option value="">${cid?"بدون ربط بأمر شغل":"بدون ربط بأمر شغل (الأوامر المفتوحة — اختار العميل لأوامره كلها)"}</option>`+rows.map(x=>`<option value="${esc(x.id)}" ${x.id===selected?"selected":""}>${esc(x.no)} — ${esc(customerName(x.customerId))}${x.closed?" 🔒":""}</option>`).join("");
 }
