@@ -399,6 +399,19 @@ function createNotifier(deps) {
         out.overdue += n.length;
       }
     }
+    // 2.5) استهلاك السحابة (Firestore/الدوال/Cloudinary/نسخ الدوال): بيتفحص كل 3 ساعات، والإشعار للمالك مرة واحدة في اليوم لكل بند.
+    {
+      const today0 = cairoLocal(t).slice(0, 10);
+      const um = db.doc("serverConfig/usageCheck"), us = await um.get(), lastAt = us.exists ? +((us.data() || {}).at || 0) : 0;
+      if (cfg.off.indexOf("usage_high") < 0 && typeof deps.usageAlerts === "function" && t.getTime() - lastAt >= 3 * 3600000) {
+        await um.set({ at: t.getTime() });
+        try {
+          const list = await deps.usageAlerts();
+          const owners = list && list.length ? await admins(KINDS.usage_high.perm) : [];
+          for (const a of list || []) out.usage = (out.usage || 0) + (await deliver(owners, { kind: "usage_high", key: `usage-${a.id}-${today0}`, refId: a.id, link: "settings.html#media-cleanup-panel", title: a.title, body: a.body })).length;
+        } catch (e) { log("usage alerts", e && e.message); }
+      }
+    }
     // 3) مرة في اليوم في الساعة اللي المالك حددها: ملخص الصبح + رأي العميل + الضمان
     const local = cairoLocal(t), today = local.slice(0, 10), hour = +local.slice(11, 13);
     const mark = db.doc("serverConfig/notifyDaily"), m = await mark.get();
@@ -419,14 +432,6 @@ function createNotifier(deps) {
         const lines = [`📅 زيارات النهارده: ${todayV}`, late ? `⚠️ متأخرة: ${late}` : "", unassigned ? `👷 مش متعيّنة لفني: ${unassigned}` : "", waitPay ? `💰 مكتملة ولسه ماتحصّلتش: ${waitPay}` : "", exp.size ? `🧾 مصروفات مستنية اعتماد: ${exp.size}` : "", low ? `📉 أصناف ناقصة: ${low}` : ""].filter(Boolean);
         out.digest = (await deliver(await admins(KINDS.morning_digest.perm), { kind: "morning_digest", key: `digest-${today}`, refId: today, link: "index.html",
           title: `☀️ صباح الخير — ملخص النهارده`, body: lines.join(" • ") })).length;
-      }
-      // استهلاك السحابة (Firestore/الدوال/Cloudinary/نسخ الدوال): للمالك بس، مرة في اليوم لكل بند.
-      if (cfg.off.indexOf("usage_high") < 0 && typeof deps.usageAlerts === "function") {
-        try {
-          const list = await deps.usageAlerts();
-          const owners = await admins(KINDS.usage_high.perm);
-          for (const a of list || []) out.usage = (out.usage || 0) + (await deliver(owners, { kind: "usage_high", key: `usage-${a.id}-${today}`, refId: a.id, link: "settings.html#media-cleanup-panel", title: a.title, body: a.body })).length;
-        } catch (e) { log("usage alerts", e && e.message); }
       }
       if (cfg.off.indexOf("c_feedback") < 0) {
         const a = new Date(t.getTime() - (cfg.feedbackDays + 1) * 86400000).toISOString(), b = new Date(t.getTime() - cfg.feedbackDays * 86400000).toISOString();
