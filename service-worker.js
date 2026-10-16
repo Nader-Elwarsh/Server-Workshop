@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v98-bell";
+const CACHE_NAME = "workshop-v99-auth";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [

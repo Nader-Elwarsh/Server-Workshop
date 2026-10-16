@@ -155,6 +155,11 @@
   /* ---------- الرفع ---------- */
   /* أول ما الصفحة تفتح، تسجيل الدخول بيرجع بعد لحظة: بنستنى لحد 15 ثانية بدل ما نقول «لازم تسجّل دخول» على طول. */
   function whenUser() {
+    // الصفحة ممكن تفتح (من البيانات المحلية) قبل ما Firebase نفسه يجهز: نستنى يجهز الأول بدل ما نقول «لازم تسجّل دخول» على الفاضي
+    var t0 = Date.now();
+    return new Promise(function (resolve) { (function wait() { if (fb() || Date.now() - t0 > 15000) resolve(); else setTimeout(wait, 150); })(); }).then(whenUser1);
+  }
+  function whenUser1() {
     var f = fb();
     if (!f) return Promise.resolve(null);
     var u = f.auth().currentUser;
