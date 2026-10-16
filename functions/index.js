@@ -38,6 +38,18 @@ function sign(params, secret) {
 }
 function json(res, status, body) { res.status(status).set("Cache-Control", "no-store").json(body); }
 
+// مين مسموح له يرفع ملفات: موظف (staff/{uid}) أو عميل بوابة فعّال. بترجع "staff" أو "customer" أو "".
+async function uploaderRole(uid) {
+  const db = getFirestore();
+  const staff = await db.doc(`staff/${uid}`).get();
+  if (staff.exists) return "staff";
+  const link = await db.doc(`portalLinks/${uid}`).get();
+  if (link.exists) return link.data().disabled !== true && typeof link.data().customerId === "string" ? "customer" : "";
+  // عميل سجّل بنفسه من البوابة: مفيش portalLinks، والهوية = customers/{uid} (نفس منطق قواعد Firestore own()).
+  const own = await db.doc(`customers/${uid}`).get();
+  return own.exists && own.data().portal === true ? "customer" : "";
+}
+
 exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], timeoutSeconds: 120, memory: "512MiB" }, async (req, res) => {
   const origins = allowedOrigins.value().split(",").map((x) => x.trim()).filter(Boolean);
   const origin = req.get("origin") || "";
@@ -50,18 +62,7 @@ exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], t
     const match = authorization.match(/^Bearer (.+)$/i);
     if (!match) return json(res, 401, { error: "authentication_required" });
     const decoded = await getAuth().verifyIdToken(match[1]);
-    const db = getFirestore();
-    const staff = await db.doc(`staff/${decoded.uid}`).get();
-    if (!staff.exists) {
-      const link = await db.doc(`portalLinks/${decoded.uid}`).get();
-      let allowed = false;
-      if (link.exists) allowed = link.data().disabled !== true && typeof link.data().customerId === "string";
-      else { // عميل سجّل بنفسه من البوابة: مفيش portalLinks، والهوية = customers/{uid} (نفس منطق قواعد Firestore own()).
-        const own = await db.doc(`customers/${decoded.uid}`).get();
-        allowed = own.exists && own.data().portal === true;
-      }
-      if (!allowed) return json(res, 403, { error: "upload_not_authorized" });
-    }
+    if (!(await uploaderRole(decoded.uid))) return json(res, 403, { error: "upload_not_authorized" });
     const mime = String(req.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const file = req.rawBody;
     if (!MIME_TYPES.has(mime)) return json(res, 415, { error: "file_type_not_allowed" });
@@ -91,6 +92,48 @@ exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], t
     return json(res, 500, { error: "upload_failed" });
   }
 });
+
+/* ---------------------------------------------------------------------
+   مرفقات العطل — صور/فيديو/صوت (functions/media.js): الملفات بتترفع من المتصفح
+   لـ Cloudinary مباشرة بتوقيع من هنا (لحد 100 ميجا من غير ما تعدي على الدالة)،
+   وكل ملف بيتسجّل في mediaFiles عشان نقدر نمسحه من السحابة أو نلاقيه لو يتيم.
+   --------------------------------------------------------------------- */
+const { createMedia, MediaError } = require("./media");
+const rolesCore = require("./roles-core");
+async function mediaActor(uid) {
+  const role = await uploaderRole(uid);
+  if (role !== "staff") return { role, perms: {}, owner: false };
+  const db = getFirestore();
+  const [st, cfgSnap] = await Promise.all([db.doc(`staff/${uid}`).get(), db.doc("accessConfig/roles").get()]);
+  const staff = st.data() || {};
+  if (staff.disabled === true) return { role: "", perms: {}, owner: false };
+  const cfg = cfgSnap.exists ? rolesCore.normalizeConfig(cfgSnap.data()) : rolesCore.defaultConfig();
+  const perms = {}; rolesCore.effectivePerms(cfg, staff).forEach((k) => { perms[k] = 1; });
+  return { role, perms, owner: rolesCore.isOwner(cfg, staff) };
+}
+const media = createMedia({
+  db: { collection: (p) => getFirestore().collection(p), runTransaction: (fn) => getFirestore().runTransaction(fn) },
+  creds: () => ({ cloud: cloudName.value(), apiKey: apiKey.value(), secret: apiSecret.value() }),
+  actor: mediaActor,
+  log: (...a) => console.warn("[media]", ...a)
+});
+function mediaCallable(name, handler, opts) {
+  // invoker: "public" = أي حد يقدر «يوصل» للدالة (زي باقي دوال Firebase)، والتحقق من الحساب والصلاحية جوه الدالة نفسها.
+  // من غيره Cloud Run بيرفض طلب الـ CORS اللي المتصفح بيبعته قبل الطلب الحقيقي، والموبايل يقول «Failed to fetch».
+  return onCall(Object.assign({ region: "us-central1", cors: true, invoker: "public", maxInstances: 10, timeoutSeconds: 30, memory: "256MiB", secrets: [apiSecret] }, opts || {}), async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "sign_in_required");
+    try { return await handler(request.auth.uid, request.data || {}); }
+    catch (e) {
+      if (e instanceof MediaError) throw new HttpsError(e.code, e.message);
+      console.error(`[${name}]`, e && e.message);
+      throw new HttpsError("internal", "internal");
+    }
+  });
+}
+exports.mediaSign = mediaCallable("mediaSign", (uid, d) => media.sign(uid, d));
+exports.mediaDelete = mediaCallable("mediaDelete", (uid, d) => media.remove(uid, d), { timeoutSeconds: 120 });
+exports.mediaUsage = mediaCallable("mediaUsage", (uid) => media.usage(uid));
+exports.mediaCleanup = mediaCallable("mediaCleanup", (uid, d) => media.orphans(uid, d), { timeoutSeconds: 300, memory: "512MiB" });
 
 /* ---------------------------------------------------------------------
    البحث عن حساب البوابة بالتليفون (بديل قراءة phoneIndex المباشرة من المتصفح).
@@ -210,7 +253,29 @@ async function sendPush(uid, payload) {
     }
   }));
 }
-const notifier = createNotifier({ db: fdb, push: sendPush, log: (...a) => console.log("[notify]", ...a) });
+/* ---------------------------------------------------------------------
+   الاستهلاك والمساحة (functions/usage.js) — للمالك: تقرير + تنبيه يومي لو حاجة قربت تعدّي المجاني.
+   --------------------------------------------------------------------- */
+const { createUsage } = require("./usage");
+const { applicationDefault } = require("firebase-admin/app");
+const adc = applicationDefault();
+const usage = createUsage({
+  getToken: async () => (await adc.getAccessToken()).access_token,
+  projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "",
+  db: { doc: (p) => getFirestore().doc(p) },
+  cloudinary: () => ({ cloud: cloudName.value(), apiKey: apiKey.value(), secret: apiSecret.value() }),
+  countUsers: async () => { let n = 0, token; for (let i = 0; i < 20; i++) { const r = await getAuth().listUsers(1000, token); n += r.users.length; token = r.pageToken; if (!token) break; } return n; },
+  regions: () => ["us-central1", notifyRegion.value()],
+  log: (...a) => console.warn("[usage]", ...a)
+});
+exports.usageReport = mediaCallable("usageReport", async (uid, d) => {
+  const a = await mediaActor(uid);
+  if (!a.owner) throw new MediaError("permission-denied", "owner_only");
+  return usage.report(!!(d && d.refresh));
+}, { timeoutSeconds: 60 });
+
+const notifier = createNotifier({ db: fdb, push: sendPush, log: (...a) => console.log("[notify]", ...a),
+  usageAlerts: async () => usage.alerts(await usage.report(false)) });
 const TRIG = { region: notifyRegion, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60, retry: false };
 function data(snap) { return snap && snap.exists ? snap.data() : null; }
 function guard(name, fn) { return async (event) => { try { await fn(event); } catch (e) { console.error(`[notify:${name}]`, e && e.message); } }; }
@@ -259,7 +324,7 @@ exports.pushTest = adminCallable("pushTest", async (uid) => {
 
 /* المجدولة: كل ربع ساعة (تذكير قبل الزيارة، الأوامر المتأخرة، وفي الساعة اللي المالك حددها: ملخص الصبح + رأي العميل + الضمان) */
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-exports.notifyTick = onSchedule({ schedule: "every 15 minutes", timeZone: "Africa/Cairo", region: "us-central1", memory: "256MiB", timeoutSeconds: 120, retryCount: 0 }, async () => {
+exports.notifyTick = onSchedule({ schedule: "every 15 minutes", timeZone: "Africa/Cairo", region: "us-central1", memory: "256MiB", timeoutSeconds: 120, retryCount: 0, secrets: [apiSecret] }, async () => {
   try { const r = await notifier.tick(); console.log("[notify:tick]", JSON.stringify(r)); } catch (e) { console.error("[notify:tick]", e && e.message); }
 });
 /* رسالة من الإدارة (لفني / لكل الفنيين / لكل الموظفين) — لصاحب صلاحية تعيين الفنيين أو المالك */

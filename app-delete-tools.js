@@ -1,5 +1,8 @@
 /* app-delete-tools.js — أدوات حذف فردي/جماعي للعملاء والأجهزة وأوامر الشغل. */
-function cleanupRequestRecordings(requests){if(!window.ImageStore?.delete)return;(requests||[]).forEach(r=>(r.callRecordings||[]).forEach(cr=>{if(cr?.ref)window.ImageStore.delete(cr.ref)}))}
+function cleanupRequestRecordings(requests){
+  // صور/فيديو/صوت العطل على السحابة: بتتمسح مع الحذف النهائي (لو مفيش نت بتتلم بعدين في «تنظيف الملفات اليتيمة»).
+  try{const urls=[];(requests||[]).forEach(r=>(Array.isArray(r?.media)?r.media:[]).forEach(m=>{if(m?.url)urls.push(m.url)}));if(urls.length&&window.WFMedia?.removeRemote)window.WFMedia.removeRemote(urls).catch(()=>{})}catch(e){}
+  if(!window.ImageStore?.delete)return;(requests||[]).forEach(r=>(r.callRecordings||[]).forEach(cr=>{if(cr?.ref)window.ImageStore.delete(cr.ref)}))}
 function cleanupDevicePhotos(devices){if(!window.ImageStore?.delete)return;(devices||[]).forEach(d=>{if(d.photo)window.ImageStore.delete(d.photo)})}
 function requestPartsToRestore(requests){return(requests||[]).filter(r=>r.status!=="ملغي")}
 function walletEntriesAfterRemovingRequests(requestIds){

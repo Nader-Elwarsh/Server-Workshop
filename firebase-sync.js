@@ -615,6 +615,10 @@
         if (!exists) {
           var s = window.settings();
           var r = { id: id, portalRequestId: id, no: window.orderNo(), customerId: p.customerId, deviceId: p.deviceId, addressKey: "main", visit: p.visit || "", status: "جديد", executionPlace: p.executionPlace || (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault: p.fault || "", work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, source: "portal", customerNote: p.note || "", createdAt: new Date().toISOString() };
+          // صور/فيديو/صوت العطل ولوكيشن مكان التنفيذ اللي العميل بعتهم (لينكات Cloudinary بس، وإحداثيات أرقام).
+          var pm = (Array.isArray(p.media) ? p.media : []).filter(function (m) { return m && /^https:\/\/res\.cloudinary\.com\/[^\s"'<>]+$/.test(String(m.url || "")) && (m.kind === "video" || m.kind === "audio" || m.kind === "image"); }).slice(0, 6).map(function (m) { return { url: m.url, kind: m.kind, dur: +m.dur || 0, bytes: +m.bytes || 0, at: String(m.at || "").slice(0, 40), by: "العميل" }; });
+          if (pm.length) r.media = pm;
+          if (p.loc && typeof p.loc === "object" && ((isFinite(+p.loc.lat) && isFinite(+p.loc.lng)) || typeof p.loc.url === "string")) r.loc = p.loc.url ? { url: String(p.loc.url).slice(0, 300) } : { lat: +p.loc.lat, lng: +p.loc.lng, acc: +p.loc.acc || 0 };
           window.recordStatusHistory(r, "", r.status); window.applyStatusTimestamp(r, r.status);
           if (!window.saveJSONSafe(window.K.r, window.arr(window.K.r).concat(r))) return;
           exists = r; n++;

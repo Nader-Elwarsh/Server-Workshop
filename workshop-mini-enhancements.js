@@ -125,8 +125,8 @@
         <div class="profile-grid">
           <div class="kv"><b>📞 التليفون</b>${typeof contactLinksHtml==="function"?contactLinksHtml(c.phone):esc(c.phone||"—")}</div>
           <div class="kv"><b>🌐 حساب البوابة</b>${(c.portalUid||c.portal)?"✅ مفعّل":"⚪ غير مفعّل"}</div>
-          <div class="kv"><b>📍 العنوان الأساسي</b>${esc(main || "—")}</div>
-          <div class="kv"><b>📍 العنوان الإضافي</b>${esc(extra || "—")}</div>
+          <div class="kv"><b>📍 العنوان الأساسي</b>${esc(main || "—")}${window.WFLoc ? WFLoc.linkHtml((c.mainAddress || {}).loc, "🗺️ اللوكيشن") : ""}</div>
+          <div class="kv"><b>📍 العنوان الإضافي</b>${esc(extra || "—")}${window.WFLoc ? WFLoc.linkHtml((c.extraAddress || {}).loc, "🗺️ اللوكيشن") : ""}</div>
           <div class="kv"><b>🔧 عدد الأجهزة</b>${ds.length}</div>
           <div class="kv"><b>🛠️ عدد أوامر الشغل</b>${rs.length}</div>
         </div>

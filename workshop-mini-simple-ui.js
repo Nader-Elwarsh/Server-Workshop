@@ -970,6 +970,7 @@
   // زر الرجوع في الموبايل جوه نفس الصفحة: نرجّع القايمة/الملخص حسب الرابط
   window.addEventListener("popstate", function () {
     if (!deepLinkDone) return;
+    if (window.WFBack && WFBack.owns && WFBack.owns()) return; // رجوع لقفل نافذة مفتوحة
     popping = true;
     try {
       const sp = new URLSearchParams(location.search);
