@@ -382,7 +382,14 @@
     w.addEventListener("load", function () { wrapActions(); applyAll(); });
     setTimeout(function () { wrapActions(); applyAll(); }, 1200);
     try { new w.MutationObserver(function (list) { for (var i = 0; i < list.length; i++) if (list[i].addedNodes && list[i].addedNodes.length) return schedule(); }).observe(w.document.body, { childList: true, subtree: true }); } catch (e) {}
-    try { w.firebase.auth().onAuthStateChanged(function (u) { if (u) { ensureChip(); refresh(); } }); } catch (e) {}
+    // توفير قراءات: الصلاحيات المحفوظة على الجهاز بتتطبق فورًا، والتحديث من السيرفر مرة كل 3 دقايق بالكتير مع التنقل بين الصفحات
+    // (الحماية الفعلية في قواعد Firestore والدوال، فالتأخير ده في شكل الواجهة بس).
+    try { w.firebase.auth().onAuthStateChanged(function (u) {
+      if (!u) return; ensureChip();
+      var k = "wf_perm_ref_at", v = ""; try { v = (store() && store().getItem(k)) || ""; } catch (e) {}
+      var p = v.split("|"); if (state.profile && p[0] === u.uid && Date.now() - (+p[1] || 0) < 3 * 60000) return;
+      refresh().then(function (ok) { if (ok) try { store().setItem(k, u.uid + "|" + Date.now()); } catch (e) {} });
+    }); } catch (e) {}
   }
   function boot() {
     Promise.resolve(w.WFStorageReady).then(start, start);

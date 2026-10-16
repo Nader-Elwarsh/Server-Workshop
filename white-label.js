@@ -543,7 +543,12 @@
     var noImgs = !bs && wasSched !== isSched ? waitFor(brandReady, 12000).then(function (ok) { return ok && window.WFBrand.resetAll ? quietly(window.WFBrand.resetAll()) : false; }) : Promise.resolve(false);
     return (bs ? adoptBrand(bs, Number(r.updatedAt) || Date.now()) : noImgs).then(function () { return true; });
   }
+  var pullingP = null;
   function cloudPull(opts) {
+    var p = cloudPull1(opts); pullingP = p; p.then(function () { if (pullingP === p) pullingP = null; }, function () { if (pullingP === p) pullingP = null; });
+    return p;
+  }
+  function cloudPull1(opts) {
     opts = opts || {};
     return waitFor(fbReady, opts.wait || 20000).then(function (ok) {
       if (!ok) throw new Error("Firebase مش جاهز — لازم تكون أونلاين");
@@ -679,7 +684,7 @@
     cloudPull({ wait: 25000 })["catch"](function () {});
     waitFor(fbReady, 25000).then(function (ok) {
       if (!ok) return;
-      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { try { WFStorage.removeItem(LAST_PULL); } catch (e) {} setTimeout(retryPending, 4000); cloudPull({ wait: 3000 })["catch"](function () {}); } }); } catch (e) {}
+      try { firebase.auth().onAuthStateChanged(function (u) { if (u) { setTimeout(retryPending, 4000); Promise.resolve(pullingP)["catch"](function () {}).then(function () { var l = 0; try { l = Number(WFStorage.getItem(LAST_PULL) || 0); } catch (e) {} if (Date.now() - l < 60000) return; /* لسه نازلة حالًا: مفيش داعي لقراية تانية */ cloudPull({ wait: 3000 })["catch"](function () {}); }); } }); } catch (e) {}
     });
   }
 
