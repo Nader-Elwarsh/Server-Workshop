@@ -205,7 +205,10 @@
         x.onload = function () {
           var j = {}; try { j = JSON.parse(x.responseText); } catch (e) {}
           if (x.status >= 200 && x.status < 300 && j.secure_url) resolve(j);
-          else reject(new Error(/format/i.test(j.error && j.error.message || "") ? "نوع الملف ده مش مدعوم — جرّب صورة jpg أو فيديو mp4 أو تسجيل صوت." : /signature|api_key|api key|cloud_name|Unknown/i.test(j.error && j.error.message || "") ? "الرفع فشل: مفتاح Cloudinary على السيرفر مش مظبوط (" + String(j.error.message).slice(0, 80) + ")" : "الرفع فشل — جرّب تاني." + (j.error && j.error.message ? " (" + String(j.error.message).slice(0, 80) + ")" : "")));
+          else var em = j.error && j.error.message || "";
+          // «Invalid Signature» من Cloudinary بيذكر allowed_formats في نصه، فلازم يتشيّك قبل «format» عشان مايطلعش «نوع الملف مش مدعوم» غلط.
+          if (/signature|api_secret/i.test(em)) return reject(new Error("الرفع فشل: الـ API Secret بتاع Cloudinary على السيرفر مش مطابق للمفتاح — حطه تاني من Cloud Shell."));
+          reject(new Error(/format/i.test(em) ? "نوع الملف ده مش مدعوم — جرّب صورة jpg أو فيديو mp4 أو تسجيل صوت." : /signature|api_key|api key|cloud_name|Unknown/i.test(j.error && j.error.message || "") ? "الرفع فشل: مفتاح Cloudinary على السيرفر مش مظبوط (" + String(j.error.message).slice(0, 80) + ")" : "الرفع فشل — جرّب تاني." + (j.error && j.error.message ? " (" + String(j.error.message).slice(0, 80) + ")" : "")));
         };
         x.onerror = function () { reject(new Error("الرفع وقف — اتأكد من النت وجرّب تاني.")); };
         x.send(fd);
