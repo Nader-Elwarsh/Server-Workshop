@@ -22,6 +22,7 @@
       ".cu-grid{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}.cu-grid>*{min-width:0}@media(min-width:760px){.cu-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}.cu-card{border:1px solid var(--border,#d6dbe4);border-radius:14px;padding:12px 14px;background:var(--card,var(--bg-elevated,#fff))}.cu-card h3{margin:0 0 8px;font-size:16px}" +
       ".cu-m{margin:8px 0}.cu-m .cu-l{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:3px}.cu-bar{height:9px;border-radius:6px;background:rgba(127,127,127,.18);overflow:hidden}.cu-bar i{display:block;height:100%;border-radius:6px}" +
       ".cu-ok{background:#2e7d32}.cu-warn{background:#f59e0b}.cu-bad{background:#c62828}.cu-note{font-size:12.5px;opacity:.8;margin-top:6px;line-height:1.6}.cu-price{font-size:12.5px;margin-top:8px;padding:7px 9px;border-radius:9px;background:rgba(21,101,192,.08)}.cu-err{color:#c62828;font-size:13px}" +
+      ".cu-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.cu-link{display:inline-flex;align-items:center;gap:4px;padding:6px 10px;border-radius:9px;border:1px solid var(--border,#d6dbe4);text-decoration:none;font-size:13px;font-weight:700}.cu-card .cu-link{margin-top:8px}" +
       ".cu-cmd{max-width:100%;box-sizing:border-box;direction:ltr;text-align:left;font:12px/1.5 monospace;background:rgba(127,127,127,.12);padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:6px 0;user-select:all}";
     (d.head || d.documentElement).appendChild(s);
   }
@@ -67,7 +68,20 @@
     var r = last, head = '<div class="cu-top"><span class="hint">' + (r ? "آخر تحديث: " + esc(cairo(r.at)) : "") + '</span><button type="button" class="secondary" id="cuRefresh"' + (busy ? " disabled" : "") + '>' + (busy ? "⏳ بنجيب الأرقام…" : "🔄 تحديث") + '</button></div>';
     if (!r) { box.innerHTML = head + (err ? '<p class="cu-err">⚠️ ' + esc(err) + '</p>' : '<p class="hint">⏳ جاري التحميل…</p>'); bind(); return; }
     var F = r.free || {}, P = r.prices || {}, fp = P.firestore || {}, E = r.errors || {}, c = costs(r), html = head;
-    html += '<div class="cu-cost">' + (c.total < 0.005 ? '<b>✅ كله في المجاني لحد دلوقتي</b><span class="hint">التكلفة المتوقعة الشهر ده: $0</span>' : '<b>≈ ' + usd(c.total) + ' الشهر ده</b><span class="hint">قاعدة البيانات ' + usd(c.fs) + ' • الدوال ' + usd(c.fn) + ' • نسخ الدوال ' + usd(c.art) + ' — تقريبي، والفاتورة الحقيقية في Google Cloud Billing</span>') + '</div><div class="cu-grid">';
+    var B = r.billing, acct = (B && B.account) || "", proj = encodeURIComponent(r.project || "");
+    var billUrl = acct ? "https://console.cloud.google.com/billing/" + encodeURIComponent(acct) + "/reports" : "https://console.cloud.google.com/billing";
+    var credUrl = acct ? "https://console.cloud.google.com/billing/" + encodeURIComponent(acct) + "/credits" : "https://console.cloud.google.com/billing";
+    var link = function (u, t) { return '<a class="cu-link" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + t + '</a>'; };
+    html += '<div class="cu-cost">';
+    if (B && isFinite(+B.cost)) {
+      // الرقم الرسمي من جوجل (نفس صفحة الفواتير) — بيتحدّث من جوجل كذا مرة في اليوم
+      html += '<b>📄 ' + "$" + (+B.cost).toFixed(2) + ' الشهر ده</b><span class="hint">ده رقم فاتورة جوجل نفسه (من الميزانية «' + esc(B.name || "") + '»' + (B.budget ? ' — ' + Math.round(B.cost / B.budget * 100) + '% من $' + B.budget : "") + ') • آخر تحديث من جوجل: ' + esc(cairo(B.at)) + '</span>' +
+        '<div class="cu-note">تقدير الشاشة للحاجات اللي بتعدّي المجاني: ≈ ' + usd(c.total) + ' (قاعدة البيانات ' + usd(c.fs) + ' • الدوال ' + usd(c.fn) + ' • نسخ الدوال ' + usd(c.art) + '). الفرق بيبقى من بناء الدوال وقت النشر والمشروع التجريبي.</div>';
+    } else {
+      html += (c.total < 0.005 ? '<b>✅ كله في المجاني لحد دلوقتي</b><span class="hint">التكلفة المتوقعة الشهر ده: $0 (تقدير)</span>' : '<b>≈ ' + usd(c.total) + ' الشهر ده</b><span class="hint">تقدير: قاعدة البيانات ' + usd(c.fs) + ' • الدوال ' + usd(c.fn) + ' • نسخ الدوال ' + usd(c.art) + '</span>') +
+        '<div class="cu-note">⚠️ ده تقدير. عشان يظهر هنا رقم الفاتورة نفسه: اربط الميزانية بموضوع Pub/Sub اسمه <b>billing-alerts</b> (Billing ← Budgets ← الميزانية ← Manage notifications).</div>';
+    }
+    html += '<div class="cu-links">' + link(billUrl, "🧾 الفاتورة في Google Cloud") + link(credUrl, "🎁 الرصيد (Credits)") + '</div></div><div class="cu-grid">';
 
     // 1) Firestore
     html += '<div class="cu-card"><h3>🗄️ قاعدة البيانات (Firestore)</h3>';
@@ -78,7 +92,7 @@
         '<div class="cu-note">الشهر ده: ' + n(m.reads) + ' قراءة • ' + n(m.writes) + ' كتابة • ' + n(m.deletes) + ' مسح</div>';
     } else html += E.firestore === "denied" ? denied("أرقام قاعدة البيانات", "roles/monitoring.viewer") : '<div class="cu-err">⚠️ تعذّر قراءة الأرقام' + (E.firestore ? " (" + esc(E.firestore) + ")" : "") + '</div>';
     html += meter("💾 المساحة (تقدير)", dbEstimate(), F.storageBytes || 1073741824, gb, "محسوبة من البيانات اللي على الجهاز ده + الفهارس.") +
-      '<div class="cu-price">💵 بعد المجاني: كل 100 ألف قراءة ≈ $' + fp.reads + ' • كل 100 ألف كتابة ≈ $' + fp.writes + ' • كل 100 ألف مسح ≈ $' + fp.deletes + ' • كل 1 جيجا زيادة ≈ $' + fp.storageGiB + ' في الشهر' + (r.dbLocation ? ' <small>(' + esc(r.dbLocation) + ')</small>' : "") + '</div></div>';
+      '<div class="cu-price">💵 بعد المجاني: كل 100 ألف قراءة ≈ $' + fp.reads + ' • كل 100 ألف كتابة ≈ $' + fp.writes + ' • كل 100 ألف مسح ≈ $' + fp.deletes + ' • كل 1 جيجا زيادة ≈ $' + fp.storageGiB + ' في الشهر' + (r.dbLocation ? ' <small>(' + esc(r.dbLocation) + ')</small>' : "") + '</div>' + link("https://console.firebase.google.com/project/" + proj + "/firestore/usage", "🔗 الأرقام في Firebase") + '</div>';
 
     // 2) Cloudinary
     var cl = r.cloudinary;
@@ -91,13 +105,13 @@
     } else if (/403/.test(E.cloudinary || "")) html += '<div class="hint">🔐 مفتاح Cloudinary شغال للرفع، بس مش مسموح له يقرا أرقام الاستهلاك (صلاحيات المفتاح في Cloudinary). تقدر تشوف الاستهلاك من لوحة Cloudinary نفسها: <a href="https://console.cloudinary.com/" target="_blank" rel="noopener noreferrer">console.cloudinary.com</a> ← Usage.</div><div class="cu-price">💵 الكريدت الواحد = 1 جيجا مساحة أو 1 جيجا عرض أو 1000 تحويل. الباقة المجانية (25 كريدت) <b>مش بتسحب فلوس</b> — لو عدّيتها بيبعتوا تحذيرات وبعدين ممكن يوقفوا الرفع والعرض.</div>';
     else if (/401/.test(E.cloudinary || "")) html += '<div class="cu-err">🔑 Cloudinary رفض مفتاح السيرفر (API Key أو API Secret مش مطابقين). ده نفس المفتاح اللي بيرفع الصور، فلو الرفع مش شغال كمان صحّح المفتاح من Cloud Shell.<div class="cu-cmd">' + esc(E.cloudinary) + '</div></div>';
     else html += '<div class="cu-err">⚠️ تعذّر قراءة الاستهلاك من Cloudinary' + (E.cloudinary ? " (" + esc(E.cloudinary) + ")" : "") + '</div>';
-    html += '</div>';
+    html += link("https://console.cloudinary.com/", "🔗 لوحة Cloudinary") + '</div>';
 
     // 3) Functions
     html += '<div class="cu-card"><h3>⚙️ السيرفر (الدوال)</h3>';
     if (r.functions) html += meter("📨 طلبات الشهر ده", r.functions.monthRequests, F.fnRequests || 2e6);
     else html += E.functions === "denied" ? denied("أرقام الدوال", "roles/monitoring.viewer") : '<div class="cu-err">⚠️ تعذّر قراءة الأرقام</div>';
-    html += '<div class="cu-note">الإشعارات وتسجيل الدخول والرفع وقفل أوامر الفني كلها طلبات للسيرفر.</div><div class="cu-price">💵 بعد 2 مليون طلب في الشهر: كل مليون ≈ $' + (P.fnPerMillion || 0.4) + '</div></div>';
+    html += '<div class="cu-note">الإشعارات وتسجيل الدخول والرفع وقفل أوامر الفني كلها طلبات للسيرفر.</div><div class="cu-price">💵 بعد 2 مليون طلب في الشهر: كل مليون ≈ $' + (P.fnPerMillion || 0.4) + '</div>' + link("https://console.firebase.google.com/project/" + proj + "/functions/list", "🔗 الدوال في Firebase") + '</div>';
 
     // 4) Artifact Registry
     html += '<div class="cu-card"><h3>📦 نسخ الدوال المتخزنة</h3>';
@@ -105,7 +119,7 @@
     if (arts.length) html += meter("💾 المساحة", artTotal, F.artifactBytes || 0.5 * 1073741824, gb, arts.map(function (a) { return esc(a.region) + ": " + (a.bytes == null ? "؟" : gb(a.bytes)); }).join(" • "));
     else if (E.artifacts === "denied") html += denied("حجم نسخ الدوال", "roles/artifactregistry.reader");
     else html += '<div class="hint">مفيش نسخ متخزنة.</div>';
-    html += '<div class="cu-note">كل مرة بتنشر الدوال بيتخزن نسخة منها. عشان القديم يتمسح لوحده اكتب في Cloud Shell مرة واحدة:</div><div class="cu-cmd">' + (arts.length ? arts : [{ region: "us-central1" }]).map(function (a) { return "firebase functions:artifacts:setpolicy --days 7 --location " + esc(a.region) + " --project " + esc(r.project || "PROJECT_ID"); }).join("\n") + '</div><div class="cu-price">💵 بعد نص جيجا: كل 1 جيجا ≈ $' + (P.artifactPerGB || 0.1) + ' في الشهر</div></div>';
+    html += '<div class="cu-note">كل مرة بتنشر الدوال بيتخزن نسخة منها. عشان القديم يتمسح لوحده اكتب في Cloud Shell مرة واحدة:</div><div class="cu-cmd">' + (arts.length ? arts : [{ region: "us-central1" }]).map(function (a) { return "firebase functions:artifacts:setpolicy --days 7 --location " + esc(a.region) + " --project " + esc(r.project || "PROJECT_ID"); }).join("\n") + '</div><div class="cu-price">💵 بعد نص جيجا: كل 1 جيجا ≈ $' + (P.artifactPerGB || 0.1) + ' في الشهر</div>' + link("https://console.cloud.google.com/artifacts?project=" + proj, "🔗 النسخ في Google Cloud") + '</div>';
 
     // 5) Auth + device + hosting
     html += '<div class="cu-card"><h3>👤 الحسابات وتسجيل الدخول</h3><div>' + (r.authUsers != null ? "عدد الحسابات (موظفين + عملاء البوابة): <b>" + n(r.authUsers) + "</b>" : "—") + '</div><div class="cu-price">💵 مجاني لحد 50 ألف مستخدم نشط في الشهر (دخول بالإيميل وكلمة السر).</div></div>';

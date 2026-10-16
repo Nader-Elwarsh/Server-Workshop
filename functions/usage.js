@@ -126,14 +126,16 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
       artifacts: art, cloudinary: cl, authUsers: users, errors, free: FREE, prices: Object.assign({}, PRICES, { firestore: multi ? PRICES.multi : PRICES.regional }) };
   }
 
+  // الفاتورة الحقيقية من جوجل (رسايل الميزانية على Pub/Sub — دالة billingWatch بتحفظها في serverConfig/billing).
+  async function billing() { try { const b = await db.doc("serverConfig/billing").get(); return b.exists ? b.data() : null; } catch (e) { return null; } }
   async function report(force) {
     const ref = db.doc("serverConfig/usage"), snap = await ref.get(), cur = snap.exists ? snap.data() : null;
     const hadErr = cur && cur.errors && Object.keys(cur.errors).length > 0; // تقرير فيه خطأ مابيتخزنش ربع ساعة
-    if (!force && cur && cur.at && now() - cur.at < (hadErr ? 60000 : 15 * 60000)) return cur;
-    if (force && cur && cur.at && now() - cur.at < 60000) return cur; // ضغط متكرر: دقيقة على الأقل
-    const r = await collect();
-    await ref.set(JSON.parse(JSON.stringify(r)));
-    return r;
+    let r = null;
+    if (!force && cur && cur.at && now() - cur.at < (hadErr ? 60000 : 15 * 60000)) r = cur;
+    else if (force && cur && cur.at && now() - cur.at < 60000) r = cur; // ضغط متكرر: دقيقة على الأقل
+    if (!r) { r = await collect(); await ref.set(JSON.parse(JSON.stringify(r))); }
+    return Object.assign({}, r, { billing: await billing() });
   }
 
   /* تنبيهات للمالك: أي حاجة عدّت 80% من المجاني (أو زادت عنه). */
@@ -158,4 +160,18 @@ function createUsage({ fetchImpl = fetch, getToken, projectId, db, cloudinary, c
   return { report, collect, alerts, pacificMidnight };
 }
 
-module.exports = { createUsage, FREE, PRICES, pacificMidnight };
+/* رسالة ميزانية جوجل (Pub/Sub): costAmount = المصروف الحقيقي من أول الفترة (زي اللي في صفحة الفواتير بالظبط). */
+function parseBudgetMessage(data, attributes, t) {
+  if (!data || typeof data !== "object") return null;
+  const cost = +data.costAmount, budget = +data.budgetAmount;
+  if (!isFinite(cost)) return null;
+  const a = attributes || {};
+  return {
+    cost: Math.round(cost * 100) / 100, budget: isFinite(budget) ? budget : 0, currency: String(data.currencyCode || "USD").slice(0, 5),
+    periodStart: String(data.costIntervalStart || "").slice(0, 40), name: String(data.budgetDisplayName || "").slice(0, 80),
+    threshold: +data.alertThresholdExceeded || 0, forecast: +data.forecastThresholdExceeded || 0,
+    account: String(a.billingAccountId || "").replace(/[^A-Za-z0-9-]/g, "").slice(0, 40), at: t
+  };
+}
+
+module.exports = { createUsage, FREE, PRICES, pacificMidnight, parseBudgetMessage };
