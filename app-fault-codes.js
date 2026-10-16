@@ -251,7 +251,7 @@ function renderFaultCodes(){
   let a=arr(K.fc)
     .filter(f=>!typeFilter||f.deviceType===typeFilter)
     .filter(f=>!brandFilter||f.brand===brandFilter)
-    .filter(f=>!q||(f.code+" "+f.title+" "+f.cause+" "+f.fix+" "+f.deviceType+" "+f.brand).toLowerCase().includes(q))
+    .filter(f=>!q||(typeof wfMatch==="function"?wfMatch([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand],q):normalizeFaultText([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand].join(" ")).includes(normalizeFaultText(q))))
     .sort((x,y)=>(x.deviceType||"").localeCompare(y.deviceType||"","ar")||(x.brand||"").localeCompare(y.brand||"","ar")||(x.code||"").localeCompare(y.code||"","ar"));
   el.innerHTML=a.length?WFPager.render("faultcodes",a,f=>`<div class="item ps-context-target" data-ps-title="كود عطل ${esc(f.code)}">
     <div class="item-head"><a href="faultcode.html?id=${f.id}"><b>🧯 ${esc(f.code)} — ${esc(f.title)}</b></a>${psActions("كود عطل "+f.code)}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteFaultCodeRecord('${f.id}')">🗑️ حذف</button></div>
@@ -308,9 +308,12 @@ function importFaultCodesFile(input){
       let incoming=Array.isArray(data)?data:(Array.isArray(data?.faultCodes)?data.faultCodes:null);
       if(!incoming)throw new Error("bad");
       let existing=arr(K.fc),added=0,skipped=0;
-      incoming.forEach(raw=>{
+      const seenImport=new Set();incoming.forEach(raw=>{
         if(!raw||!raw.code)return;
-        let dup=findDuplicateFaultCode(raw.deviceType,raw.brand,raw.code,null);
+        // مكرر عندك أو مكرر جوه نفس الملف (قبل كده التكرار جوه الملف كان بيدخل مرتين)
+        let key=[raw.deviceType,raw.brand,raw.code].map(normalizeFaultText).join("|");
+        let dup=findDuplicateFaultCode(raw.deviceType,raw.brand,raw.code,null)||seenImport.has(key);
+        seenImport.add(key);
         if(dup){skipped++;return}
         existing.push({
           id:id(),deviceType:raw.deviceType||"",brand:raw.brand||"",code:raw.code||"",
@@ -320,7 +323,7 @@ function importFaultCodesFile(input){
         added++;
       });
       saveFaultCodesRecords(existing);
-      alert(`تم استيراد ${added} كود جديد.${skipped?` (اتجاهل ${skipped} كود مكرر موجود عندك بالفعل).`:""}`);
+      alert(`تم استيراد ${added} كود جديد.${skipped?` (اتجاهل ${skipped} كود مكرر — موجود عندك أو متكرر في الملف).`:""}`);
       renderFaultCodes?.();
     }catch(err){alert("⚠️ ملف غير صالح. تأكد إنه ملف أكواد أعطال مُصدَّر من نفس النظام.")}
     input.value="";

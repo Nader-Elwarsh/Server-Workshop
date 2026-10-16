@@ -162,8 +162,8 @@
       const shares=(o.payShares||[]).filter(sh=>sh&&new Date(sh.at)>=new Date(x.at)).reduce((a,sh)=>a+(+sh.amount||0),0);
       warranty.push({o,kind:'مرتجع',at:x.at,cost:Math.max(0,after)+shares,charged:0})});
     const byDevice=new Map();allOrders.forEach(o=>{if(o.deviceId)bump(byDevice,o.deviceId,()=>[]).push(o)});
-    created.forEach(o=>{if(!o.deviceId||o.status==='ملغي')return;const prior=(byDevice.get(o.deviceId)||[]).find(p=>p.id!==o.id&&p.closed&&p.warrantyUntil&&new Date(p.createdAt)<new Date(o.createdAt)&&new Date(p.warrantyUntil)>=new Date(o.createdAt));
-      if(prior)warranty.push({o,prior,kind:'أمر جديد جوه ضمان',at:o.createdAt,cost:(+o.partsCost||0)+(+o.techPay||0),charged:o.closed?revOf(o):0})});
+    created.forEach(o=>{if(!o.deviceId||o.status==='ملغي'||o.warrantyDecision==='paid')return;/* «عطل تاني — بفلوس» مش شغل ضمان */const prior=(byDevice.get(o.deviceId)||[]).find(p=>p.id!==o.id&&p.closed&&p.warrantyUntil&&new Date(p.createdAt)<new Date(o.createdAt)&&new Date(p.warrantyUntil)>=new Date(o.createdAt));
+      if(prior)warranty.push({o,prior,kind:o.warrantyDecision==='warranty'?'أمر ضمان':'أمر جديد جوه ضمان (من غير ما يتحدد)',at:o.createdAt,cost:(+o.partsCost||0)+(+o.techPay||0),charged:o.closed?revOf(o):0})});
     return Object.assign(base,{weak,faultsByType,partsByType,runout,leads,firstVisit,onTime,late,withPlan,markedPct,overdueNow,lostInspections,visitedTotal,ltvArr,sleepingVip,tripCost,perTrip,homeJobs,areaProfit,warranty,ex,cs,ds,ps,ts,tr,open,waiting,workshop,low:ps.filter(p=>(+p.qty||0)<=(+p.min||0)).length,treasuryBalance:treasuryUntil(r.end),
       byWallet,receivables,depositsHeld,techs,areas,villages,byType,byBrand,sources,places,weekdays,series,bucket,activeCust,repeat,custRev,moves,use,inQty,outQty,usedValue,expByCat,custMap,devMap});
   }

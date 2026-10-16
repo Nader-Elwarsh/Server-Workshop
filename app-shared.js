@@ -316,6 +316,60 @@ function techCloseOnServer(r){
     alert(M[m]||("تعذّر قفل الأمر ("+(m||e&&e.code||"خطأ")+")."));
   });
 }
+/* «الجهاز بيتكرر عطله» = جاله أمر جديد خلال 90 يوم من الأمر اللي قبله (مش مجرد إن ليه أمرين على مدار سنين). */
+const DEVICE_REPEAT_DAYS=90;
+function deviceOrdersRecurring(orders){
+  const t=v=>{const x=new Date(v||0).getTime();return Number.isFinite(x)?x:0};
+  const list=(orders||[]).filter(r=>r&&r.status!=="ملغي").sort((a,b)=>t(a.createdAt)-t(b.createdAt));
+  for(let k=1;k<list.length;k++){const prev=list[k-1],from=t(prev.closedAt)||t(prev.createdAt),at=t(list[k].createdAt);if(from&&at&&at-from<=DEVICE_REPEAT_DAYS*86400000)return true}
+  return false;
+}
+/* رقم التليفون مسجل لعميل تاني: بدل «تكمل وتعمل عميل مكرر؟» (اللي كان أسهل اختيار فيه هو التكرار)، بنعرض 3 اختيارات:
+   استخدم العميل الموجود (الأسلم) / سجّل عميل تاني بنفس الرقم (فرد تاني من نفس البيت مثلًا) / إلغاء. بترجع "use" | "create" | null. */
+function customerDuplicateDialog(dup,phone,useLabel){
+  const D=document;
+  if(!D||!D.body||typeof D.createElement!=="function")return Promise.resolve(confirm(`⚠️ الرقم ${phone||""} مسجل للعميل: ${dup.name||"—"}.\nتسجل عميل تاني بنفس الرقم؟`)?"create":null);
+  return new Promise(resolve=>{
+    const m=D.createElement("div");m.className="txd-modal";m.id="custDupDialog";
+    const addr=typeof addressText==="function"?addressText(dup.mainAddress||{}):"";
+    m.innerHTML=`<div class="txd-sheet rd-sheet" role="dialog" aria-label="رقم مسجل قبل كده"><div class="txd-title">⚠️ الرقم ده مسجل قبل كده</div>
+      <div class="kv" style="margin:6px 0"><b>👤 ${esc(dup.name||"—")}</b><div>📞 ${esc(dup.phone||phone||"")}</div>${addr?`<div>📍 ${esc(addr)}</div>`:""}</div>
+      <div class="hint">لو هو نفس العميل استخدمه بدل ما يتكرر. لو شخص تاني بنفس الرقم (من نفس البيت مثلًا) سجّله جديد.</div>
+      <div class="txd-actions" style="flex-direction:column;align-items:stretch">
+        <button type="button" class="primary" data-d="use">${esc(useLabel||"✅ استخدم العميل ده")}</button>
+        <button type="button" class="secondary" data-d="create">➕ سجّل عميل تاني بنفس الرقم</button>
+        <button type="button" class="secondary" data-d="">إلغاء</button></div></div>`;
+    const done=v=>{m.remove();resolve(v||null)};
+    m.addEventListener("click",e=>{const b=e.target.closest("[data-d]");if(b)done(b.getAttribute("data-d"));else if(e.target===m)done(null)});
+    D.body.appendChild(m);
+  });
+}
+/* نطاق الضمان: الضمان على الشغل اللي اتعمل والقطع اللي اتغيرت في الأمر ده بس (مش أي عطل تاني في الجهاز).
+   بيتكتب تلقائي من الأمر، وممكن يتعدّل يدوي (r.warrantyScope). بيظهر في صفحة الأمر والإيصال وبوابة العميل. */
+const WARRANTY_SCOPE_NOTE="الضمان على الشغل والقطع دي بس — مش بيشمل أي عطل تاني في الجهاز أو سوء الاستخدام.";
+function warrantyScopeAuto(r){
+  if(!r)return"";
+  const pm=typeof byIdCached==="function"?byIdCached(K.p):null;
+  const parts=(r.parts||[]).map(x=>x&&(x.external?(x.name||""):((pm?pm.get(x.partId):arr(K.p).find(p=>p.id===x.partId))||{}).name||"")).filter(Boolean);
+  const work=String(r.work||"").trim()||String(r.fault||"").trim();
+  return [work?`🛠️ ${work}`:"",parts.length?`🔩 القطع: ${[...new Set(parts)].join("، ")}`:""].filter(Boolean).join("\n");
+}
+function warrantyScopeText(r){return String(r&&r.warrantyScope||"").trim()||warrantyScopeAuto(r)}
+/* الجهاز عليه ضمان سارٍ من أمر قبل الأمر ده؟ (أقرب أمر مقفول ضمانه شغال وقت فتح الأمر) */
+function priorWarrantyOrder(o){
+  if(!o||!o.deviceId)return null;
+  const at=new Date(o.createdAt||Date.now());
+  return arr(K.r).filter(p=>p&&p.id!==o.id&&p.deviceId===o.deviceId&&p.closed&&p.warrantyUntil&&new Date(p.warrantyUntil)>=at&&(!p.closedAt||new Date(p.closedAt)<=at)).sort((a,b)=>String(b.closedAt||"").localeCompare(String(a.closedAt||"")))[0]||null;
+}
+// ضمان الإصلاح وقت التقفيل (نفس الحساب في صفحة الأمر وفي التقفيل السريع من خط السير)
+function applyCloseWarranty(r,now){
+  let wc=settings().warranty||{};
+  if(wc.enabled!==false&&!r.warrantyManual){
+    let days=Number.isFinite(+wc.days)&&+wc.days>0?+wc.days:90;
+    r.warrantyDays=days;
+    r.warrantyUntil=days>0?new Date(new Date(now).getTime()+days*86400000).toISOString():"";
+  }
+}
 function markPaidAndClose(i){
   let a=arr(K.r),r=a.find(x=>String(x.id)===String(i));
   if(r&&!r.closed&&r.status==="مكتمل"&&window.wfSyncMode==="scoped"&&window.WFPerm&&typeof window.WFPerm.call==="function")return techCloseOnServer(r);
@@ -351,12 +405,7 @@ function markPaidAndClose(i){
   // مدة يدويًا بنفسه قبل كده (r.warrantyManual). لو كان غيّرها يدويًا
   // (حتى لو صفر لأمر كشف/معاينة مالوش ضمان)، بنسيب اختياره زي ما هو
   // وميتكتبش فوقه بالمدة الافتراضية تاني.
-  let wc=settings().warranty||{};
-  if(wc.enabled!==false&&!r.warrantyManual){
-    let days=Number.isFinite(+wc.days)&&+wc.days>0?+wc.days:90;
-    r.warrantyDays=days;
-    r.warrantyUntil=days>0?new Date(new Date(now).getTime()+days*86400000).toISOString():"";
-  }
+  applyCloseWarranty(r,now);
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncTreasuryForOrderClose==="function")syncTreasuryForOrderClose(r,collected);

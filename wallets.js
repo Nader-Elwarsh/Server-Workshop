@@ -182,38 +182,87 @@ function parseAmountInput(v){
   let t=String(v??"").replace(/[\u0660-\u0669]/g,c=>c.charCodeAt(0)-1632).replace(/[\u06F0-\u06F9]/g,c=>c.charCodeAt(0)-1776).replace(/[٬,]/g,"").replace(/٫/g,".").trim();
   return /^\d+(\.\d+)?$/.test(t)?parseFloat(t):0;
 }
+/* تعديل حركة محفظة من شاشة واحدة: المبلغ والمحفظة (لو اتسجلت في محفظة غلط) والتاريخ والوقت والسبب والتفاصيل،
+   والتصنيف للحركات اليدوية بس (حركات الأوامر والتوريد تصنيفها ثابت عشان التقارير). */
 function editWalletTx(txId){
-  let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return;
-  let newAmount=prompt("المبلغ:",e.amount);if(newAmount===null)return;
+  let e0=arr(K.wtx).find(x=>x.id===txId);if(!e0)return;
+  const D=document;
+  if(!D||typeof D.createElement!=="function"||!D.body){ // من غير شاشة (اختبارات): الطريقة القديمة
+    let newAmount=prompt("المبلغ:",e0.amount);if(newAmount===null)return;
+    let newReason=prompt("سبب الحركة:",e0.reason||"");if(newReason===null)return;
+    let newNote=prompt("تفاصيل إضافية:",e0.note||"");if(newNote===null)return;
+    const r=applyWalletTxEdit(txId,{amount:newAmount,reason:newReason,note:newNote});if(!r.ok&&r.error)alert(r.error);return;
+  }
+  const ws=(settings().wallets||[]).map(String);if(e0.wallet&&!ws.includes(String(e0.wallet)))ws.push(String(e0.wallet));
+  const manual=e0.source==="manual"||(!e0.source&&!e0.refKey&&!e0.orderId),cats=(settings().walletCategories||[]).map(String);if(e0.category&&!cats.includes(e0.category))cats.push(e0.category);
+  const m=D.createElement("div");m.className="txd-modal";m.id="wtEditDialog";
+  m.innerHTML=`<div class="txd-sheet rd-sheet" role="dialog" aria-label="تعديل حركة المحفظة"><div class="txd-title">✏️ تعديل حركة ${e0.type==="in"?"وارد":"صرف"}</div>
+    ${e0.source==="transfer"?`<div class="hint">🔁 حركة تحويل مع الخزنة — المبلغ والسبب والتاريخ هيتعدّلوا في حركة الخزنة كمان.</div>`:""}
+    ${e0.refKey||e0.orderId?`<div class="hint">🔗 الحركة دي مربوطة بأمر شغل — تعديلها هنا مابيغيّرش الأمر نفسه.</div>`:""}
+    <div class="form-grid">
+      <label>المبلغ<input id="wte_amount" type="number" step="0.01" min="0" value="${esc(String(+e0.amount||0))}"></label>
+      <label>المحفظة<select id="wte_wallet">${ws.map(w=>`<option ${w===String(e0.wallet)?"selected":""}>${esc(w)}</option>`).join("")}</select></label>
+      ${manual&&cats.length?`<label>التصنيف<select id="wte_cat">${cats.map(c=>`<option ${c===e0.category?"selected":""}>${esc(c)}</option>`).join("")}</select></label>`:""}
+      <label>التاريخ<input id="wte_date" type="date" value="${esc(e0.date||"")}"></label>
+      <label>الوقت<input id="wte_time" type="time" value="${esc(e0.time||"")}"></label>
+      <label class="wide">السبب<input id="wte_reason" value="${esc(e0.reason||"")}"></label>
+      <label class="wide">تفاصيل إضافية<input id="wte_note" value="${esc(e0.note||"")}"></label>
+    </div><p class="hint" id="wte_msg" style="color:var(--danger-text)"></p>
+    <div class="txd-actions"><button type="button" class="primary" id="wte_ok">💾 حفظ</button><button type="button" class="secondary" id="wte_cancel">إلغاء</button></div></div>`;
+  D.body.appendChild(m);
+  const q=s=>m.querySelector(s),close=()=>m.remove();
+  q("#wte_cancel").onclick=close;m.addEventListener("click",ev=>{if(ev.target===m)close()});
+  q("#wte_ok").onclick=()=>{
+    const r=applyWalletTxEdit(txId,{amount:q("#wte_amount").value,wallet:q("#wte_wallet").value,category:q("#wte_cat")?q("#wte_cat").value:undefined,date:q("#wte_date").value,time:q("#wte_time").value,reason:q("#wte_reason").value,note:q("#wte_note").value});
+    if(!r.ok){if(r.error)q("#wte_msg").textContent=r.error;return}
+    close();
+  };
+  setTimeout(()=>{try{q("#wte_amount").focus()}catch(_){}},50);
+}
+/* الحفظ الفعلي لتعديل حركة محفظة: {ok} أو {ok:false,error} */
+function applyWalletTxEdit(txId,v){
+  v=v||{};
+  let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return{ok:false,error:"الحركة دي اتمسحت أو اتغيرت. حدّث الصفحة."};
   // قبل كده أي مدخل مش رقم (أو فاضي) كان بيتحوّل بصمت لـ 0 وتفضل الحركة موجودة بمبلغ صفر.
-  let amt=parseAmountInput(newAmount);
-  if(amt<=0)return alert("أدخل مبلغ صحيح أكبر من صفر.");
-  let newReason=prompt("سبب الحركة:",e.reason||"");if(newReason===null)return;
-  let newNote=prompt("تفاصيل إضافية:",e.note||"");if(newNote===null)return;
-  let oldAmount=+e.amount||0;
-  e.amount=amt;e.reason=(newReason||"").trim()||e.reason;e.note=(newNote||"").trim();
+  let amt=parseAmountInput(v.amount);
+  if(amt<=0)return{ok:false,error:"أدخل مبلغ صحيح أكبر من صفر."};
+  const T=x=>x===undefined||x===null?undefined:String(x).trim(),oldAmount=+e.amount||0,oldWallet=e.wallet;
+  e.amount=amt;
+  if(T(v.reason))e.reason=T(v.reason);
+  if(v.note!==undefined)e.note=T(v.note);
+  if(T(v.wallet))e.wallet=T(v.wallet);
+  if(T(v.category))e.category=T(v.category);
+  if(T(v.date))e.date=T(v.date);
+  if(T(v.time))e.time=T(v.time);
   if(e.refKey)e.manualOverride=true;
+  e.updatedAt=new Date().toISOString();
+  const note=`${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج${oldWallet!==e.wallet?` • ${oldWallet} ← ${e.wallet}`:""}`;
   // حركة التحويل ليها حركة مقابلة في الخزنة: لازم تتعدّل معاها في نفس العملية،
   // وإلا الطرفين يبقوا بمبلغين مختلفين (المحفظة نقصت 100 والخزنة زادت 80 مثلًا).
   if(e.source==="transfer"&&e.transferId){
     let t=arr(K.tr),tx=t.find(x=>x.transferId===e.transferId&&x.source==="transfer");
     if(tx){
-      tx.amount=e.amount;tx.reason=e.reason;tx.note=e.note;
-      if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return;
-      window.auditLog?.("تعديل حركة", "محفظة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج (مع حركة الخزنة المقابلة)`);
+      tx.amount=e.amount;tx.reason=e.reason;tx.note=e.note;tx.date=e.date;tx.time=e.time;
+      if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return{ok:false};
+      window.auditLog?.("تعديل حركة","محفظة",e.id,note+" (مع حركة الخزنة المقابلة)");
       renderWallets();renderWalletDetail();
       if(typeof renderTreasury==="function")renderTreasury();
-      return;
+      return{ok:true};
     }
   }
-  if(!saveJSONSafe(K.wtx,a))return;
-  window.auditLog?.("تعديل حركة", "محفظة", e.id, `${oldAmount.toFixed(2)} ← ${e.amount.toFixed(2)} ج`);
+  if(e.source==="wallet-transfer"&&e.transferId){ // الطرف التاني من التحويل بين محفظتين: نفس المبلغ والتاريخ والسبب
+    const c=a.find(x=>x&&x!==e&&x.source==="wallet-transfer"&&x.transferId===e.transferId&&!x.deleted);
+    if(c){c.amount=e.amount;c.reason=e.reason;c.note=e.note;c.date=e.date;c.time=e.time;if(oldWallet!==e.wallet)c.counterWallet=e.wallet}
+  }
+  if(!saveJSONSafe(K.wtx,a))return{ok:false};
+  window.auditLog?.("تعديل حركة","محفظة",e.id,note);
   renderWallets();renderWalletDetail();
+  return{ok:true};
 }
 function deleteWalletTx(txId){
   let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return;
-  let isTransfer=e.source==="transfer"&&e.transferId;
-  let msg=isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في الخزنة. حذف الحركتين معًا (من المحفظة والخزنة)؟":(e.refKey?"هذه الحركة مرتبطة بأمر شغل. حذفها من هنا لن يعدّل أمر الشغل نفسه، بس هتختفي من كشف المحفظة. تأكيد الحذف؟":"حذف هذه الحركة من كشف المحفظة؟");
+  let isTransfer=e.source==="transfer"&&e.transferId,isW2W=e.source==="wallet-transfer"&&e.transferId;
+  let msg=isW2W?`هذه حركة تحويل بين محفظتين (${e.type==="out"?e.wallet+" ← "+(e.counterWallet||"؟"):(e.counterWallet||"؟")+" ← "+e.wallet}). حذف الحركتين معًا؟`:isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في الخزنة. حذف الحركتين معًا (من المحفظة والخزنة)؟":(e.refKey?"هذه الحركة مرتبطة بأمر شغل. حذفها من هنا لن يعدّل أمر الشغل نفسه، بس هتختفي من كشف المحفظة. تأكيد الحذف؟":"حذف هذه الحركة من كشف المحفظة؟");
   if(!confirm(msg))return;
   e.deleted=true;
   // علامة "اتحذفت بقصد": من غيرها أول حفظ تاني للأمر (أي تعديل بسيط زي إضافة قطعة)
@@ -224,6 +273,7 @@ function deleteWalletTx(txId){
     e.userDeleted=true;e.deletedAmount=snap?snap.amount:(+e.amount||0);e.deletedWallet=snap?snap.wallet:(e.wallet||"");
     e.deletedAt=new Date().toISOString();
   }
+  if(isW2W)a.forEach(x=>{if(x&&x!==e&&x.source==="wallet-transfer"&&x.transferId===e.transferId)x.deleted=true});
   if(isTransfer){
     let t=arr(K.tr),tidx=t.findIndex(x=>x.transferId===e.transferId&&x.source==="transfer");
     if(tidx>=0){t.splice(tidx,1);if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return}else if(!saveJSONSafe(K.wtx,a))return;
@@ -460,11 +510,13 @@ function walletTransferWidgetHtml(){
     <div id="walletTransferBody" class="hidden">
       <div class="hint" style="margin-top:10px">كل حساب بيفضل مستقل في حساباته؛ التحويل بيسجل حركة صادر من المصدر ووارد في الوجهة بس، من غير ما يدمج الحسابين.</div>
       <div class="form-grid" style="margin-top:8px">
-        <label>الاتجاه<select id="wtrDirection">
+        <label>الاتجاه<select id="wtrDirection" data-wf-event="change" data-wf-code="toggleWalletTransferDir(this.value)">
           <option value="toTreasury">من محفظة ← إلى الخزنة</option>
           <option value="toWallet">من الخزنة ← إلى محفظة</option>
+          ${wallets.length>1?`<option value="between">من محفظة ← إلى محفظة تانية</option>`:""}
         </select></label>
-        <label>المحفظة<select id="wtrWallet">${wallets.length?wallets.map(w=>`<option>${esc(w)}</option>`).join(""):`<option value="">لا توجد محافظ</option>`}</select></label>
+        <label>المحفظة${wallets.length>1?" (من)":""}<select id="wtrWallet">${wallets.length?wallets.map(w=>`<option>${esc(w)}</option>`).join(""):`<option value="">لا توجد محافظ</option>`}</select></label>
+        ${wallets.length>1?`<label id="wtrWallet2Wrap" class="hidden">إلى محفظة<select id="wtrWallet2">${wallets.map((w,i)=>`<option ${i===1?"selected":""}>${esc(w)}</option>`).join("")}</select></label>`:""}
         <label>المبلغ<input id="wtrAmount" type="number" step="0.01" min="0" placeholder="0.00"></label>
         <label>التاريخ<input id="wtrDate" type="date" value="${today}"></label>
         <label>الوقت<input id="wtrTime" type="time" value="${new Date().toTimeString().slice(0,5)}"></label>
@@ -477,7 +529,28 @@ function walletTransferWidgetHtml(){
     </div>
   </section>`;
 }
+function toggleWalletTransferDir(v){document.getElementById("wtrWallet2Wrap")?.classList.toggle("hidden",v!=="between")}
+/* تحويل من محفظة لمحفظة تانية (مثلًا فودافون كاش ← الكاش): حركة صادر من الأولى ووارد في التانية مربوطين بـ transferId */
+let _wfW2WLast=0;
+function transferBetweenWallets(from,to,amount,date,time,reason,note){
+  if(Date.now()-_wfW2WLast<900)return;
+  amount=Math.round((+amount||0)*100)/100;
+  from=String(from||"").trim();to=String(to||"").trim();
+  if(amount<=0)return alert("أدخل مبلغ صحيح.");
+  if(!from||!to)return alert("اختر المحفظتين.");
+  if(from===to)return alert("اختار محفظتين مختلفتين.");
+  _wfW2WLast=Date.now();
+  date=date||localDateKey(new Date());time=time||new Date().toTimeString().slice(0,5);
+  const transferId=id(),now=new Date().toISOString(),rs=(reason||"").trim()||`🔁 تحويل من ${from} إلى ${to}`,nt=(note||"").trim();
+  const base={refKey:null,manualOverride:true,deleted:false,amount,category:"سلفة / تحويل",date,time,reason:rs,note:nt,source:"wallet-transfer",transferId,createdAt:now};
+  const out={...base,id:id(),type:"out",wallet:from,counterWallet:to},inn={...base,id:id(),type:"in",wallet:to,counterWallet:from};
+  if(!put(K.wtx,arr(K.wtx).concat(out,inn)))return alert("تعذر حفظ التحويل؛ لم يتسجل أي من طرفيه.");
+  window.auditLog?.("تحويل","محفظة/محفظة",transferId,`${from} ← ${to} ${amount.toFixed(2)} ج`);
+  renderWallets();if(typeof renderWalletDetail==="function")renderWalletDetail();
+  return{ok:true};
+}
 function executeWalletTreasuryTransfer(){
+  if(document.getElementById("wtrDirection")?.value==="between")return transferBetweenWallets(document.getElementById("wtrWallet")?.value||"",document.getElementById("wtrWallet2")?.value||"",parseAmountInput(document.getElementById("wtrAmount")?.value),document.getElementById("wtrDate")?.value,document.getElementById("wtrTime")?.value,document.getElementById("wtrReason")?.value||"",document.getElementById("wtrNote")?.value||"");
   let dir=document.getElementById("wtrDirection")?.value||"toTreasury",
       wallet=document.getElementById("wtrWallet")?.value||"",
       amount=parseAmountInput(document.getElementById("wtrAmount")?.value),

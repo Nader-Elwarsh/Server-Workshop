@@ -488,6 +488,9 @@
       if (V.work) p.work = r.work || "";
       if (V.parts) p.parts = (r.parts || []).map(function (i) { var pt = pm[i.partId] || {}; var o = { name: pt.name || pt.title || i.name || "قطعة" }; if (showQty) o.qty = +i.qty || 1; if (showPartPrice) o.price = +i.sell || 0; return o; });
       if (V.history) p.history = (r.statusHistory || []).map(function (x) { return { to: x.to || "", at: x.at || "" }; });
+      // الضمان: لحد إمتى وعلى إيه بالظبط (الشغل والقطع اللي اتغيرت) — عشان العميل يعرف إن الضمان مش على أي عطل تاني
+      if (r.closed && r.warrantyUntil) { p.warrantyUntil = String(r.warrantyUntil); var sc = (V.work || V.parts) && typeof window.warrantyScopeText === "function" ? window.warrantyScopeText(r) : String(r.warrantyScope || ""); if (sc) p.warrantyScope = String(sc).slice(0, 600); }
+      if (r.warrantyDecision === "warranty") p.warrantyOfNo = String(r.warrantyOfNo || "");
       var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
     Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });

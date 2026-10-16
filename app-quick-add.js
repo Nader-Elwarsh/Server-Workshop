@@ -48,7 +48,7 @@ async function saveQuickCustomerHome(){
   if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
   if(!validateQuickCustomerPhone(phone))return;
   let duplicate=duplicateCustomerByPhone(phone);
-  if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
+  if(duplicate){const dd=await customerDuplicateDialog(duplicate,phone);if(!dd)return;if(dd==="use"){fillCustomerAutocomplete("qoCustomer",duplicate.id);fillDevice(document.getElementById("qoDevice"),duplicate.id,"");closeQuickAdd('qoCustomerBox');document.getElementById('qoCustomerBox').querySelectorAll('input').forEach(x=>x.value='');return}}
   let c={id:id(),name,phone,mainAddress:{center:qoCenter.value,village:qoVillage.value,address:"",street:(qoStreet.value||"").trim()},extraAddress:{},createdAt:new Date().toISOString()};
   let a=arr(K.c);a.push(c);if(!await saveQuickOperational("customers",K.c,a))return;
   fillCustomerAutocomplete("qoCustomer",c.id);
@@ -133,7 +133,8 @@ async function saveQuickCustomer(){
   let name=document.getElementById('qcName')?.value.trim(),phone=document.getElementById('qcPhone')?.value.trim();
   if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
   if(!validateQuickCustomerPhone(phone))return;
-  let duplicate=duplicateCustomerByPhone(phone);if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
+  let duplicate=duplicateCustomerByPhone(phone);
+  if(duplicate){const dd=await customerDuplicateDialog(duplicate,phone);if(!dd)return;if(dd==="use"){fillCustomerAutocomplete("rCustomer",duplicate.id);fillAddress(rAddress,duplicate.id,'main');closeQuickAdd('quickCustomerBox');document.getElementById('quickCustomerBox').querySelectorAll('input').forEach(x=>x.value='');fillDevice(rDevice,duplicate.id,'');return}}
   let c={id:id(),name,phone,mainAddress:{center:qcCenter.value,village:qcVillage.value,address:"",street:qcStreet.value.trim()},extraAddress:{},createdAt:new Date().toISOString()};
   let a=arr(K.c);a.push(c);if(!await saveQuickOperational("customers",K.c,a))return;
   fillCustomerAutocomplete("rCustomer",c.id);fillAddress(rAddress,c.id,'main');
@@ -151,7 +152,8 @@ async function saveQuickDevice(){
 async function saveDeviceCustomer(){
   let name=dcName.value.trim(),phone=dcPhone.value.trim();if(!name||!phone)return alert('اكتب اسم العميل والتليفون أولاً.');
   if(!validateQuickCustomerPhone(phone))return;
-  let duplicate=duplicateCustomerByPhone(phone);if(duplicate&&!confirm(`⚠️ الرقم مسجل بالفعل للعميل: ${duplicate.name||'—'}.\n\nهل تريد إنشاء عميل آخر بنفس الرقم؟`))return;
+  let duplicate=duplicateCustomerByPhone(phone);
+  if(duplicate){const dd=await customerDuplicateDialog(duplicate,phone);if(!dd)return;if(dd==="use"){fillCustomerAutocomplete("dCustomer",duplicate.id);fillAddress(dAddress,duplicate.id,'main');closeQuickAdd('quickDeviceCustomerBox');return}}
   let c={id:id(),name,phone,mainAddress:{center:dcCenter.value,village:dcVillage.value,address:"",street:dcStreet.value.trim()},extraAddress:{},createdAt:new Date().toISOString()};
   let a=arr(K.c);a.push(c);if(!await saveQuickOperational("customers",K.c,a))return;fillCustomerAutocomplete("dCustomer",c.id);fillAddress(dAddress,c.id,'main');closeQuickAdd('quickDeviceCustomerBox');
 }

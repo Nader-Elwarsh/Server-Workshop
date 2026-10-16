@@ -33,7 +33,7 @@ function _ensureQuickAddPartBox(anchorEl) {
         <label class="wide">اسم القطعة<input id="qapName"></label>
         <label>التصنيف<div class="part-autocomplete"><input type="text" id="qapCategorySearch" class="part-autocomplete-input" placeholder="🔍 اكتب اسم التصنيف..." autocomplete="off" data-wf-event="input" data-wf-code="filterListOptions('qapCategory', this.value)" data-wf-refocus-code="filterListOptions('qapCategory', this.value)" data-wf-blur="hideListResults" data-wf-args='["qapCategory"]'><input type="hidden" id="qapCategory"><div id="qapCategoryResults" class="part-autocomplete-results hidden"></div></div></label>
         <label>الكود <small>اختياري</small><input id="qapCode"></label>
-        <label>الكمية الأولى<input id="qapQty" type="number" step="1" min="0" value="1"></label>
+        <label id="qapQtyLabel">الكمية الأولى<input id="qapQty" type="number" step="1" min="0" value="1"></label>
         <label>سعر الشراء<input id="qapBuy" type="number" min="0" step=".01" value="0"></label>
         <label>سعر الاستخدام<input id="qapUse" type="number" min="0" step=".01" value="0"></label>
       </div>
@@ -60,7 +60,9 @@ function openQuickAddPart(name, ctx = {}) {
   document.getElementById("qapName").value = (name || "").trim();
   fillListSearch("qapCategory", "partCat", "");
   document.getElementById("qapCode").value = "";
-  document.getElementById("qapQty").value = ctx.defaultQty ?? 1;
+  document.getElementById("qapQty").value = ctx.restock ? 0 : (ctx.defaultQty ?? 1);
+  // من «توريد جديد»: الصنف بيتعمل بكمية صفر والكمية والدفع والفاتورة بيتسجلوا من فورم التوريد نفسه (قبل كده الدفع كان بيضيع)
+  document.getElementById("qapQtyLabel")?.classList.toggle("hidden", !!ctx.restock);
   document.getElementById("qapBuy").value = "";
   document.getElementById("qapUse").value = "";
   box.classList.remove("hidden");
@@ -84,7 +86,7 @@ async function saveQuickAddPart() {
   const code = (document.getElementById("qapCode")?.value || "").trim();
   const dupCode = code ? findDuplicatePartCode(code) : null;
   if (dupCode) return alert(`⚠️ الكود «${code}» مستخدم بالفعل مع «${dupCode.name}». اختر كودًا مختلفًا أو اتركه فاضي.`);
-  const qty = +(document.getElementById("qapQty")?.value || 0);
+  const qty = _qapCtx && _qapCtx.restock ? 0 : +(document.getElementById("qapQty")?.value || 0);
   const buy = +(document.getElementById("qapBuy")?.value || 0);
   const use = +(document.getElementById("qapUse")?.value || 0);
   if (!Number.isSafeInteger(qty) || qty < 0) return alert("اكتب كمية أولى صحيحة كعدد صحيح (صفر أو أكبر).");
@@ -163,10 +165,15 @@ function filterRestockPartOptions(q) {
       box.classList.add("hidden");
       openQuickAddPart(typedName, {
         anchor: "stkPartResults",
-        defaultQty: Number.isSafeInteger(qty) && qty > 0 ? qty : 1,
+        restock: true,
         onCreated: (p) => {
-          toggleRestockBox();
-          alert(`✅ تمت إضافة الصنف الجديد «${p.name}» للمخزن بكمية ${p.qty}.`);
+          // الصنف اتعمل: بنختاره في فورم التوريد (الكمية اللي كتبتها فاضلة) عشان الدفع والفاتورة يتسجلوا معاه
+          selectRestockPart(p.id);
+          const b = document.getElementById("stkBuy"); if (b && +p.buy > 0) b.value = p.buy;
+          const qEl = document.getElementById("stkQty"); if (qEl && !(+qEl.value > 0)) qEl.value = Number.isSafeInteger(qty) && qty > 0 ? qty : 1;
+          updateRestockPayHint();
+          const hint = document.getElementById("stkCurrentHint"); if (hint) hint.textContent = `✅ اتضاف الصنف «${p.name}». كمّل الكمية والدفع واضغط «تسجيل التوريد».`;
+          document.getElementById("stkQty")?.focus();
         }
       });
     };
@@ -193,7 +200,22 @@ function restockPayAmount() {
   const buy = buyEl && buyEl.value !== "" ? +buyEl.value : (p ? +p.buy || 0 : 0);
   return Number.isFinite(qty * buy) && qty > 0 && buy > 0 ? Math.round(qty * buy * 100) / 100 : 0;
 }
+/* سعر الشراء زاد → سعر البيع (الاستخدام) يزيد بنفس النسبة. مثال: الشراء 50→60 (+20%) → البيع 80→96.
+   بيتقرّب لأقرب جنيه. لو السعر نزل أو مفيش سعر بيع، مفيش تغيير تلقائي. */
+function restockSellUpdate(p,newBuy){
+  const ob=+(p&&p.buy)||0,os=+(p&&p.use)||0,nb=+newBuy;
+  if(!p||!(ob>0)||!(os>0)||!Number.isFinite(nb)||nb<=ob)return null;
+  const pct=(nb-ob)/ob,ns=Math.round(os*(1+pct));
+  return ns>os?{oldBuy:ob,newBuy:nb,oldSell:os,newSell:ns,pct:Math.round(pct*1000)/10}:null;
+}
 function updateRestockPayHint() {
+  { // سعر البيع الجديد بنفس نسبة زيادة الشراء
+    const box=document.getElementById("stkSellBox"),txt=document.getElementById("stkSellHint"),bEl=document.getElementById("stkBuy");
+    const sp=arr(K.p).find(x=>x.id===(document.getElementById("stkPart")?.value||""));
+    const u=sp&&bEl&&bEl.value!==""?restockSellUpdate(sp,+bEl.value):null;
+    if(box)box.classList.toggle("hidden",!u);
+    if(u&&txt)txt.textContent=`📈 الشراء زاد ${u.pct}% (${u.oldBuy} → ${u.newBuy} ج) — زوّد سعر البيع بنفس النسبة: ${u.oldSell} → ${u.newSell} ج`;
+  }
   const h = document.getElementById("stkPayHint"), w = document.getElementById("stkWallet")?.value || "";
   if (!h) return;
   const amt = restockPayAmount();
@@ -215,7 +237,7 @@ async function saveRestock() {
   if ((document.getElementById("stkWallet")?.value || "") && window.WFPerm && typeof WFPerm.can === "function" && !WFPerm.can("wallets.add")) return alert("مش معاك صلاحية «إضافة حركة محفظة» عشان تسجّل الدفع. سيب خانة الدفع فاضية وسجّل التوريد بس.");
   const invoiceFile = document.getElementById("stkInvoice")?.files?.[0] || null;
   _restockBusy = true;
-  let invoice = "",invoiceStored=false,invoiceCommitted=false;
+  let invoice = "",invoiceStored=false,invoiceCommitted=false,sellNote="";
   try {
   if (invoiceFile) {
     try {
@@ -232,7 +254,11 @@ async function saveRestock() {
   p.qty = currentQty + qty;
   if (buyEl?.value !== "" && buyEl?.value != null) {
     const nb = +buyEl.value;
-    if (Number.isFinite(nb) && nb >= 0) p.buy = nb;
+    if (Number.isFinite(nb) && nb >= 0) {
+      const su = document.getElementById("stkRaiseSell")?.checked !== false ? restockSellUpdate(p, nb) : null;
+      if (su) { p.use = su.newSell; sellNote = `\n📈 سعر البيع اتزوّد ${su.pct}%: ${su.oldSell} → ${su.newSell} ج`; }
+      p.buy = nb;
+    }
   }
   const now=new Date(),at=now.toISOString(),moveId=id();
   const moves=arr(K.m);moves.push({id:moveId,partId:pid,type:"توريد",note,qty,invoice,at});
@@ -249,7 +275,7 @@ async function saveRestock() {
   invoiceCommitted=true;
   refreshAllScreens?.();
   renderParts?.();
-  alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.${values[K.wtx]?`\n💳 واتسجل صرف ${payAmt.toFixed(2)} ج من «${payWallet}».`:""}`);
+  alert(`✅ تم تسجيل توريد ${qty} من «${p.name}». الكمية الحالية الآن: ${p.qty}.${values[K.wtx]?`\n💳 واتسجل صرف ${payAmt.toFixed(2)} ج من «${payWallet}».`:""}${sellNote}`);
   toggleRestockBox();
   } finally {
     if(invoiceStored&&!invoiceCommitted&&window.ImageStore?.delete){try{await window.ImageStore.delete(invoice)}catch(_){}}
