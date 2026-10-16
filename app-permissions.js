@@ -302,6 +302,7 @@
         tg.parentNode.insertBefore(grp, tg);
         chipEl.__inline = true; chipEl.className = "icon-nav-btn no-print";
         grp.appendChild(chipEl); grp.appendChild(tg);
+        var bell = w.document.querySelector(".wf-nc-bell"); if (bell && bell.parentNode === grp.parentNode) grp.insertBefore(bell, chipEl); // الجرس 🔔 جوه نفس المجموعة
       } else w.document.body.appendChild(chipEl);
     }
     if (chipEl.__inline) chipEl.style.cssText = "flex:none;" + (pv ? "background:#b45309;color:#fff" : "");

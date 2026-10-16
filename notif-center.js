@@ -202,7 +202,9 @@
     var b = d.createElement("button"); b.type = "button"; b.className = "wf-nc-bell no-print"; b.setAttribute("aria-label", "الإشعارات"); b.title = "الإشعارات";
     b.innerHTML = '🔔<span class="wf-nc-badge" hidden></span>';
     b.addEventListener("click", function () { openPanel("list"); });
-    if (anchor && anchor.parentNode === host) host.insertBefore(b, anchor); else host.appendChild(b);
+    var grp = !IS_PORTAL && d.getElementById("wfAcctGroup"); // نفس مجموعة زر الحساب 👤 وزر المظهر 🌙: التلاتة يظهروا ويتحركوا مع بعض
+    if (grp) grp.insertBefore(b, grp.firstChild);
+    else if (anchor && anchor.parentNode === host) host.insertBefore(b, anchor); else host.appendChild(b);
     if (IS_PORTAL) { var row = d.createElement("div"); row.style.cssText = "display:flex;align-items:center;gap:8px"; host.insertBefore(row, b); row.appendChild(b); if (anchor) row.appendChild(anchor); }
     st.bell = b; return b;
   }
@@ -527,7 +529,8 @@
   function start(user) {
     stop();
     st.uid = user ? user.uid : "";
-    if (!user) { if (st.bell) st.bell.remove(); st.bell = null; return; }
+    if (user && !IS_PORTAL) sset("wf_nc_last_uid", user.uid);
+    if (!user) { if (!IS_PORTAL) sset("wf_nc_last_uid", ""); if (st.bell) st.bell.remove(); st.bell = null; return; }
     if (!ensureBell()) { var tries = 0; (function again() { if (!ensureBell() && ++tries < 20) setTimeout(again, 500); else paintBadge(); })(); }
     var inbox = function (u) { return db().collection("inbox").doc(u).collection("items").orderBy("at", "desc"); };
     st.ncT = {};
@@ -538,7 +541,16 @@
     resyncPush();
     if (IS_PORTAL) { try { portalDeepLink(new URL(location.href)); } catch (e) {} }
   }
+  /* الجرس بيظهر فورًا مع زرار الحساب والمظهر (من آخر حساب ورسائل محفوظة على الجهاز)، من غير ما يستنى تسجيل الدخول يرجع من Firebase */
+  function early() {
+    if (IS_PORTAL || st.uid) return;
+    var u = sget("wf_nc_last_uid"); if (!u) return;
+    st.uid = u;
+    try { var c = JSON.parse(sget("wf_nc_cache_own_" + u) || "null"); if (c && Array.isArray(c.rows)) st.items = c.rows; } catch (e) {}
+    var n = 0; (function again() { if (st.uid !== u) return; if (ensureBell()) paintBadge(); else if (++n < 20) setTimeout(again, 100); })();
+  }
   function boot() {
+    try { Promise.resolve(w.WFStorageReady).then(early, early); } catch (e) {}
     var tries = 0;
     (function wait() {
       var f = fb();
