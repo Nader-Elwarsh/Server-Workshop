@@ -191,6 +191,18 @@ const seed = {
     assert.strictEqual(sm.sent, 2); assert.ok(inbox(db2, "t2").some((x) => x.kind === "admin_msg" && /اجتماع/.test(x.title)));
   }
 
+  // 14) استهلاك السحابة: فحص كل 3 ساعات، وإشعار للمالك بس مرة في اليوم لكل بند
+  {
+    const db3 = mockDb(seed); let clock = new Date("2026-10-15T07:00:00Z"), calls = 0;
+    const N5 = createNotifier({ db: db3, now: () => clock, usageAlerts: async () => { calls++; return [{ id: "fs-reads", title: "☁️ قراءات 85%", body: "x" }]; } });
+    await N5.tick();
+    assert.strictEqual(calls, 1); assert.strictEqual(inbox(db3, "own").filter((x) => x.kind === "usage_high").length, 1);
+    assert.ok(!inbox(db3, "t1").some((x) => x.kind === "usage_high"), "owner only");
+    clock = new Date(clock.getTime() + 60 * 60000); await N5.tick(); assert.strictEqual(calls, 1, "not before 3 hours");
+    clock = new Date(clock.getTime() + 2.5 * 3600000); await N5.tick(); assert.strictEqual(calls, 2, "checks again after 3 hours");
+    assert.strictEqual(inbox(db3, "own").filter((x) => x.kind === "usage_high").length, 1, "same item notified once a day");
+  }
+
   // قايمة الأنواع في الواجهة (notif-center.js) لازم تطابق السيرفر
   const src = require("fs").readFileSync(__dirname + "/notif-center.js", "utf8");
   const clientKinds = [...src.matchAll(/(\w+): \["(tech|admin|customer|staff)"/g)].map((m) => m[1] + ":" + m[2]).sort();
