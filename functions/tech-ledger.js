@@ -85,7 +85,8 @@ function createTechLedger(deps) {
   }
   function bumpMeta(tx) {
     const ref = db.doc("settings/wf_meta"), v = { ts: now().getTime(), dev: "server" };
-    if (tx) tx.set(ref, v); else return ref.set(v);
+    // merge: يحافظ على s (نسخة الإعدادات) عشان الأجهزة ماتقراش مجموعة الإعدادات كلها مع كل تعديل من الفني
+    if (tx) tx.set(ref, v, { merge: true }); else return ref.set(v, { merge: true });
   }
   function finalTx(order, wallet, amount, when, existing) {
     const base = existing && typeof existing === "object" ? Object.assign({}, existing) : {};

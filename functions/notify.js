@@ -385,12 +385,21 @@ function createNotifier(deps) {
       }
     }
     // 2) أوامر عدّت ميعادها ولسه مفتوحة (آخر يومين)
+    // توفير قراءات: بنفتكر لحد فين اتفحص (overdueToMs) وبنقرا بس الشريحة الجديدة + ساعتين احتياطي (بدل كل أوامر آخر يومين كل ربع ساعة)،
+    // والأوامر اللي اتبعت عنها قبل كده (sent) مابنقراش عميلها ولا بنفحص صناديق الإشعارات بتاعتها تاني.
     if (cfg.off.indexOf("overdue_order") < 0 || cfg.off.indexOf("visit_missed") < 0) {
-      const from = cairoLocal(new Date(t.getTime() - 48 * 3600000)), to = cairoLocal(new Date(t.getTime() - cfg.overdueHours * 3600000));
+      const stRef = db.doc("serverConfig/notifyTick"), stSnap = await stRef.get(), state = stSnap.exists ? (stSnap.data() || {}) : {};
+      const sent = state.sent && typeof state.sent === "object" ? Object.assign({}, state.sent) : {};
+      const toMs = t.getTime() - cfg.overdueHours * 3600000, lastTo = +state.overdueToMs || 0;
+      const fromMs = Math.max(t.getTime() - 48 * 3600000, lastTo ? lastTo - 2 * 3600000 : 0);
+      const from = cairoLocal(new Date(fromMs)), to = cairoLocal(new Date(toMs));
       const snap = await db.collection("requests").where("visit", ">", from).where("visit", "<=", to).get();
       for (const doc of snap.docs) {
         const r = doc.data() || {};
         if (!isOpen(r)) continue;
+        const sk = `${doc.id}|${r.visit}`;
+        if (sent[sk]) continue;
+        sent[sk] = t.getTime();
         const c = await custName(r.customerId), who = str(r.techName, 40);
         const n = await deliver(await admins(KINDS.overdue_order.perm, r.techId), { kind: "overdue_order", key: `overdue-${doc.id}-${r.visit}`, refId: doc.id, link: `request.html?id=${encodeURIComponent(doc.id)}`,
           title: `⏳ الأمر ${str(r.no, 30)} عدّى ميعاده ولسه ماتقفلش`, body: [c, "كان " + fmtVisit(r.visit), who ? "👷 " + who : "مش متعيّن لفني"].filter(Boolean).join(" • ") });
@@ -398,6 +407,8 @@ function createNotifier(deps) {
           title: `⏳ الأمر ${str(r.no, 30)} عدّى ميعاده`, body: [c, "كان " + fmtVisit(r.visit), "حدّث حالته أو كلّم الإدارة"].filter(Boolean).join(" • ") });
         out.overdue += n.length;
       }
+      Object.keys(sent).forEach((k) => { if (t.getTime() - (+sent[k] || 0) > 3 * 86400000) delete sent[k]; });
+      await stRef.set({ overdueToMs: toMs, sent, at: t.getTime() });
     }
     // 2.5) استهلاك السحابة (Firestore/الدوال/Cloudinary/نسخ الدوال): بيتفحص كل 3 ساعات، والإشعار للمالك مرة واحدة في اليوم لكل بند.
     {
