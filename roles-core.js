@@ -80,7 +80,7 @@
     transferBetweenWalletAndTreasury: { all: ["wallets.add", "treasury.add"] },
     transferBetweenWallets: { all: ["wallets.add"] },
     addTreasuryManual: { all: ["treasury.add"] }, saveOpeningBalance: { all: ["treasury.edit"] }, editTreasuryEntry: { all: ["treasury.edit"] }, deleteTreasuryEntry: { all: ["treasury.delete"] },
-    exportOrdersCSV: { all: ["reports.export"] }, exportInventoryCSV: { all: ["reports.export"] }, exportTreasuryCSV: { all: ["reports.export"] },
+    exportOrdersCSV: { all: ["reports.export"] }, exportInventoryCSV: { all: ["reports.export"] }, exportTreasuryCSV: { all: ["reports.export"] }, exportReportSummaryCSV: { all: ["reports.export"] }, exportPurchaseList: { all: ["reports.export"] }, sharePurchaseList: { all: ["reports.export"] }, setReportMonthlyTarget: { all: ["settings.edit"] },
     backupAllData: { all: ["data.backup"] }, restoreBackupFile: { all: ["data.restore"] }, restoreFromTrash: { all: ["trash.restore"] },
     addCenter: { all: ["settings.edit"] }, deleteCenter: { all: ["settings.edit"] }, addVillage: { all: ["settings.edit"] }, addType: { all: ["settings.edit"] }, deleteType: { all: ["settings.edit"] }, editTypeOptions: { all: ["settings.edit"] },
     addBrand: { all: ["settings.edit"] }, deleteBrand: { all: ["settings.edit"] }, addPartCategory: { all: ["settings.edit"] }, deletePartCategory: { all: ["settings.edit"] },

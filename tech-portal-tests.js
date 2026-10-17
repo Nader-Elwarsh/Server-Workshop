@@ -289,14 +289,14 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   // مصروف من جيب الفني: اعتماد من غير حركة، وبيتضاف لمستحقاته • ودفعته الإدارة: بيتسجل من محفظة الورشة اللي اتختارت
   {
     const d4 = mkData(); d4.wf_wallet_tx = [];
-    const FS4 = { techExpenses: { o1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 60, note: 'قطعة: ترموستات', status: 'pending', pay: 'own', at: '2026-10-12T08:00:00Z' }, w1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 80, note: 'قطعة: موتور', status: 'pending', pay: 'workshop', at: '2026-10-12T09:00:00Z' } } };
+    const FS4 = { techExpenses: { o1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 60, note: 'قطعة: ترموستات', category: 'part', status: 'pending', pay: 'own', at: '2026-10-12T08:00:00Z' }, w1: { techId: 'tech-a', techName: 'أحمد', wallet: 'عهدة أحمد', amount: 80, note: 'قطعة: موتور', status: 'pending', pay: 'workshop', at: '2026-10-12T09:00:00Z' } } };
     const c4 = makeEnv({ rootId: 'custodyRoot', data: d4, fs: FS4, uid: 'boss' });
     c4.win.WFTech = { directory: async () => [{ uid: 'tech-a', name: 'أحمد', wallet: 'عهدة أحمد', scope: 'assigned' }], lastError: '' };
     vm.runInNewContext(fs.readFileSync('custody-page.js', 'utf8'), c4.win); await flush(); await flush();
     assert(c4.root.textContent.includes('من جيبه') && c4.root.textContent.includes('الإدارة دفعتها'), 'نوع الدفع ظاهر');
     const goBtns = all(c4.root).filter((n) => n.tagName === 'BUTTON' && n.textContent.includes('اعتماد'));
     await goBtns[0].onclick(); await flush(); await flush();
-    assert.deepStrictEqual([d4.wf_wallet_tx.length, c4.fsUpdates[0][1], c4.fsUpdates[0][2].status], [0, 'o1', 'approved'], 'من جيبه: مفيش حركة محفظة');
+    assert.deepStrictEqual([d4.wf_wallet_tx.length, c4.fsUpdates[0][1], c4.fsUpdates[0][2].status], [0, 'o1', 'approved'], 'قطعة من جيبه: مفيش حركة محفظة (تكلفتها في تكلفة القطع)');
     await goBtns[1].onclick();
     const m4 = c4.win.document.body.children[c4.win.document.body.children.length - 1];
     all(m4).find((n) => n.tagName === 'SELECT').value = 'كاش الورشة';

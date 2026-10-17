@@ -754,9 +754,9 @@
     if (!b) return true;
     if (b.indexOf("tag:") === 0) { const t = b.slice(4); return t ? r.tag === t : !r.tag; }
     if (b === "today") return orderIsToday(r);
-    if (b === "workshop") return orderIsWorkshop(r);
+    if (b === "workshop") return orderIsWorkshop(r) && !orderIsCompleted(r) && r.status !== "ملغي" && r.workshopStatus !== "تم التسليم"; // «في الورشة دلوقتي» (من الرئيسية)
     if (b === "completed") return orderIsCompleted(r);
-    if (b === "parts") return orderIsParts(r);
+    if (b === "parts") return orderIsParts(r) && !orderIsCompleted(r) && r.status !== "ملغي"; // الأمر اللي خلص مابقاش مستني قطع
     if (b === "overdue") return orderIsOverdue(r);
     if (b === "stale") return typeof requestIsStale === "function" && requestIsStale(r);
     if (b === "needed") return r.status !== "مكتمل" && r.status !== "ملغي" && r.status !== "مجمد" && !r.closed; // المجمّد متوقف (ليه مربع لوحده)
@@ -801,7 +801,7 @@
       cancelled: all.filter(r => r.status === "ملغي").length,
       frozen: all.filter(r => r.status === "مجمد").length,
       workshop: all.filter(orderIsWorkshop).length,
-      parts: all.filter(orderIsParts).length,
+      parts: all.filter(r => bucketFilter(r, "parts")).length,
       overdue: all.filter(orderIsOverdue).length,
       today: all.filter(orderIsToday).length
     };

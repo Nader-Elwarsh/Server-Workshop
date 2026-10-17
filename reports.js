@@ -30,6 +30,12 @@
   }
   /* الفترة اللي قبلها بنفس عدد الأيام (للمقارنة) */
   function prevRange(r){
+    /* شهر كامل (أو كذا شهر كاملين) ← نفس عدد الشهور اللي قبلهم بالظبط (أكتوبر بيتقارن بسبتمبر مش بـ 31 أغسطس–30 سبتمبر) */
+    const f=new Date(r.from+'T12:00:00'),t=new Date(r.to+'T12:00:00'),tn=new Date(t);tn.setDate(tn.getDate()+1);
+    if(f.getDate()===1&&tn.getDate()===1){const months=(t.getFullYear()-f.getFullYear())*12+t.getMonth()-f.getMonth()+1,ps=new Date(f.getFullYear(),f.getMonth()-months,1),pe=new Date(f.getFullYear(),f.getMonth(),0);
+      /* الفترة لسه ماخلصتش (زي «هذا الشهر» يوم 17): نقارن بنفس عدد الأيام من أول الفترة اللي فاتت، عشان المقارنة تبقى عادلة */
+      const today=dateKey(new Date());if(today>=r.from&&today<r.to){const el=Math.round((new Date(today+'T12:00:00')-f)/DAY);const ce=new Date(ps);ce.setDate(ce.getDate()+el);return mkRange(dateKey(ps),dateKey(ce>pe?pe:ce))}
+      return mkRange(dateKey(ps),dateKey(pe))}
     const days=Math.round((new Date(r.to+'T12:00:00')-new Date(r.from+'T12:00:00'))/DAY)+1;
     const e=new Date(r.from+'T12:00:00');e.setDate(e.getDate()-1);
     const s=new Date(e);s.setDate(s.getDate()-days+1);
@@ -50,6 +56,8 @@
     const c=customers.get(o.customerId)||{},m=c.mainAddress||c.address||{};
     return {center:(m&&m.center)||c.center||'غير محدد',village:(m&&m.village)||c.village||''};
   }
+  /* بيعة مباشرة اتلغت: الخروج والإرجاع بتاعها الاتنين مش استهلاك */
+  const skipMove=m=>!!(m&&m.saleId&&(m.voided||/إلغاء البيعة/.test(String(m.type||''))));
   function bump(map,k,f){const v=map.get(k)||f();map.set(k,v);return v}
 
   function compute(r,light){
@@ -83,7 +91,7 @@
     // التحصيل: حسب المحفظة + المستحق على العملاء (مكتمل ولسه ماتقفلش/ماتدفعش) + عربون الأوامر المفتوحة
     const byWallet=new Map();collectedTx.forEach(x=>{const k=x.wallet||'غير محدد';byWallet.set(k,(byWallet.get(k)||0)+sgn(x))});
     const receivables=allOrders.filter(o=>o.status==='مكتمل'&&!o.closed&&!o.paid).map(o=>({o,due:Math.max(0,Math.round(((+o.total||0)-((+o.deposit||0)-(+o.depositRefunded||0)))*100)/100)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due);
-    const depositsHeld=activeOrders.reduce((a,o)=>a+(+o.deposit||0),0);
+    const depositsHeld=activeOrders.reduce((a,o)=>a+Math.max(0,(+o.deposit||0)-(+o.depositRefunded||0)),0);
     // الفنيين
     const techs=new Map();
     closedOrders.forEach(o=>{const t=bump(techs,o.techName||'بدون فني',()=>({closed:0,rev:0,pay:0,days:[],returns:0,open:0}));t.closed++;t.rev+=revOf(o);t.pay+=(+o.techPay||0);const s=cycleStart(o),e=o.closedAt?new Date(o.closedAt):null;if(s&&e&&e>=s)t.days.push((e-s)/DAY)});
@@ -101,24 +109,25 @@
     created.forEach(o=>{const k=SOURCES[o.source]||'🧑‍💼 من الإدارة';sources.set(k,(sources.get(k)||0)+1);if(o.executionPlace==='الورشة')places.workshop++;else places.home++;const d=new Date(o.createdAt);if(!Number.isNaN(d.getTime()))weekdays[d.getDay()]++});
     // الاتجاه اليومي (بيتجمّع أسبوعيًا/شهريًا لو الفترة طويلة)
     const spanDays=Math.round((r.end-r.start)/DAY)+1,bucket=spanDays>400?'month':spanDays>62?'week':'day';
-    const keyFor=k=>{if(!k)return '';if(bucket==='day')return k;const d=new Date(k+'T12:00:00');if(bucket==='month')return k.slice(0,7);const s=new Date(d);s.setDate(d.getDate()-((d.getDay()+1)%7));return dateKey(s)}; // الأسبوع بيبدأ السبت
+    const keyFor=k=>{if(!k)return '';if(bucket==='day')return k;const d=new Date(k+'T12:00:00');if(bucket==='month')return k.slice(0,7);const s=new Date(d);s.setDate(d.getDate()-((d.getDay()+6)%7));return dateKey(s)}; // الأسبوع بيبدأ الاتنين (زي «هذا الأسبوع»)
     const series=new Map();for(let d=new Date(r.start);d<=r.end;d.setDate(d.getDate()+1)){const k=keyFor(dateKey(d));if(!series.has(k))series.set(k,{rev:0,orders:0})}
     closedOrders.forEach(o=>{const k=keyFor(dayOf(o.closedAt||o.createdAt));if(series.has(k))series.get(k).rev+=revOf(o)});
     directSales.forEach(m=>{const k=keyFor(dayOf(m.at));if(series.has(k))series.get(k).rev+=(+m.total||0)});
     created.forEach(o=>{const k=keyFor(dayOf(o.createdAt));if(series.has(k))series.get(k).orders++});
     // العملاء
     const ordersPerCust=new Map();allOrders.forEach(o=>{if(o.customerId)ordersPerCust.set(o.customerId,(ordersPerCust.get(o.customerId)||0)+1)});
-    const activeCust=new Set(os.map(o=>o.customerId).filter(Boolean)),repeat=[...activeCust].filter(id=>(ordersPerCust.get(id)||0)>=2).length;
+    const activeCust=new Set(os.filter(o=>o.status!=='ملغي').map(o=>o.customerId).filter(Boolean)),repeat=[...activeCust].filter(id=>(ordersPerCust.get(id)||0)>=2).length;
     const custRev=new Map();closedOrders.forEach(o=>{if(o.customerId)custRev.set(o.customerId,(custRev.get(o.customerId)||0)+revOf(o))});
     // المخزن: الاستهلاك الفعلي (خروج − إرجاع) والوارد
     const moves=list(K.m).filter(m=>m&&inRangeDate(m.at,r)),partMap=new Map(psAll.map(p=>[p.id,p])),use=new Map();let inQty=0,outQty=0,usedValue=0;
-    moves.forEach(m=>{const t=String(m.type||''),q=Math.abs(+m.qty||0),p=partMap.get(m.partId)||{};let sign=0;if(/خروج|out/i.test(t))sign=1;else if(/إرجاع|ارجاع|return/i.test(t))sign=-1;else if(/توريد|دخول|in/i.test(t)){inQty+=q;return}else sign=1;
+    let adjQty=0;moves.forEach(m=>{if(skipMove(m))return;const t=String(m.type||''),q=Math.abs(+m.qty||0),p=partMap.get(m.partId)||{};let sign=0;if(/تعديل جرد|تسوية/.test(t)){adjQty+=/بالنقص/.test(t)?-q:q;return}if(/خروج|^out$/i.test(t))sign=1;else if(/إرجاع|ارجاع|return/i.test(t))sign=-1;else if(/توريد|دخول|^in$/i.test(t)){inQty+=q;return}else return;
       if(sign>0)outQty+=q;usedValue+=sign*q*(+p.buy||0);if(m.partId)use.set(m.partId,(use.get(m.partId)||0)+sign*q)});
     // المصاريف حسب البند
     const expByCat=new Map();ex.forEach(x=>{const k=x.subCategory||x.reason||'أخرى';expByCat.set(k,(expByCat.get(k)||0)+(x.type==='in'?-(+x.amount||0):(+x.amount||0)))});
     /* (2) الأوامر الخسرانة/ضعيفة المكسب: الإيراد − تكلفة القطع − أجر الفني */
     const profitOf=o=>revOf(o)-(+o.partsCost||0)-(+o.techPay||0);
-    const weak=closedOrders.map(o=>({o,profit:profitOf(o),rev:revOf(o)})).filter(x=>x.profit<=0||(x.rev>0&&x.profit/x.rev<0.15)).sort((a,b)=>a.profit-b.profit);
+    const isWarrantyJob=o=>o.warrantyDecision==='warranty'||(!!o.warrantyOf&&o.warrantyDecision!=='paid');
+    const weak=closedOrders.filter(o=>!isWarrantyJob(o)).map(o=>({o,profit:profitOf(o),rev:revOf(o)})).filter(x=>x.profit<=0||(x.rev>0&&x.profit/x.rev<0.15)).sort((a,b)=>a.profit-b.profit);
     /* (3) الأعطال والقطع الأكثر تكرارًا لكل نوع جهاز (من أوامر الفترة) */
     const normFault=t=>String(t||'').replace(/[\u064B-\u0652ـ]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[^\u0621-\u064Aa-z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toLowerCase();
     const faults=new Map(),faultLabel=new Map(),partsByType=new Map();
@@ -129,8 +138,8 @@
     faultsByType.forEach(a=>a.sort((x,y)=>y.n-x.n));
     /* (4) امتى الصنف هيخلص: معدل السحب آخر 60 يوم لحد النهارده */
     const today0=new Date();today0.setHours(23,59,59,999);const from60=new Date(today0.getTime()-60*DAY);
-    const rate=new Map();list(K.m).forEach(m=>{if(!m||!m.partId)return;const t=new Date(m.at);if(Number.isNaN(t.getTime())||t<from60||t>today0)return;const ty=String(m.type||''),q=Math.abs(+m.qty||0);
-      if(/توريد|دخول/.test(ty)&&!/خروج/.test(ty))return;const sign=/إرجاع|ارجاع/.test(ty)?-1:1;rate.set(m.partId,(rate.get(m.partId)||0)+sign*q)});
+    const rate=new Map();list(K.m).forEach(m=>{if(!m||!m.partId||skipMove(m))return;const t=new Date(m.at);if(Number.isNaN(t.getTime())||t<from60||t>today0)return;const ty=String(m.type||''),q=Math.abs(+m.qty||0);
+      if(/تعديل جرد|تسوية/.test(ty)||(/توريد|دخول/.test(ty)&&!/خروج/.test(ty)))return;const sign=/إرجاع|ارجاع/.test(ty)?-1:1;rate.set(m.partId,(rate.get(m.partId)||0)+sign*q)});
     const runout=ps.map(p=>{const used=Math.max(0,rate.get(p.id)||0),perDay=used/60,qty=+p.qty||0;const days=perDay>0?qty/perDay:null;const need=Math.max(0,Math.ceil(perDay*30+(+p.min||0)-qty));return {p,perDay,days,need,qty}})
       .filter(x=>(x.days!==null&&x.days<=30)||x.qty<=(+x.p.min||0)).sort((a,b)=>(a.days===null?9999:a.days)-(b.days===null?9999:b.days));
     /* (5) سرعة الاستجابة والالتزام بالمواعيد */
@@ -162,10 +171,10 @@
       const shares=(o.payShares||[]).filter(sh=>sh&&new Date(sh.at)>=new Date(x.at)).reduce((a,sh)=>a+(+sh.amount||0),0);
       warranty.push({o,kind:'مرتجع',at:x.at,cost:Math.max(0,after)+shares,charged:0})});
     const byDevice=new Map();allOrders.forEach(o=>{if(o.deviceId)bump(byDevice,o.deviceId,()=>[]).push(o)});
-    created.forEach(o=>{if(!o.deviceId||o.status==='ملغي'||o.warrantyDecision==='paid')return;/* «عطل تاني — بفلوس» مش شغل ضمان */const prior=(byDevice.get(o.deviceId)||[]).find(p=>p.id!==o.id&&p.closed&&p.warrantyUntil&&new Date(p.createdAt)<new Date(o.createdAt)&&new Date(p.warrantyUntil)>=new Date(o.createdAt));
+    created.forEach(o=>{if(!o.deviceId||o.status==='ملغي'||o.warrantyDecision==='paid')return;/* «عطل تاني — بفلوس» مش شغل ضمان */const prior=(o.warrantyOf&&allOrders.find(p=>String(p.id)===String(o.warrantyOf)))||(byDevice.get(o.deviceId)||[]).find(p=>p.id!==o.id&&p.closed&&p.warrantyUntil&&new Date(p.createdAt)<new Date(o.createdAt)&&new Date(p.warrantyUntil)>=new Date(o.createdAt));
       if(prior)warranty.push({o,prior,kind:o.warrantyDecision==='warranty'?'أمر ضمان':'أمر جديد جوه ضمان (من غير ما يتحدد)',at:o.createdAt,cost:(+o.partsCost||0)+(+o.techPay||0),charged:o.closed?revOf(o):0})});
     return Object.assign(base,{weak,faultsByType,partsByType,runout,leads,firstVisit,onTime,late,withPlan,markedPct,overdueNow,lostInspections,visitedTotal,ltvArr,sleepingVip,tripCost,perTrip,homeJobs,areaProfit,warranty,ex,cs,ds,ps,ts,tr,open,waiting,workshop,low:ps.filter(p=>(+p.qty||0)<=(+p.min||0)).length,treasuryBalance:treasuryUntil(r.end),
-      byWallet,receivables,depositsHeld,techs,areas,villages,byType,byBrand,sources,places,weekdays,series,bucket,activeCust,repeat,custRev,moves,use,inQty,outQty,usedValue,expByCat,custMap,devMap});
+      byWallet,receivables,depositsHeld,techs,areas,villages,byType,byBrand,sources,places,weekdays,series,bucket,activeCust,repeat,custRev,moves,use,inQty,outQty,adjQty,usedValue,expByCat,custMap,devMap});
   }
   let CUR=null;
   function reportData(){const r=range();const d=compute(r);d.prev=compute(prevRange(r),true);CUR=d;return d}
@@ -184,7 +193,7 @@
     }catch(e){console.error("[reports] تعذر تصدير CSV",e);alert("تعذر إنشاء ملف CSV.");return false}
   }
   function exportOrdersCSV(){const d=reportData();downloadCSV(`تقرير-اوامر-الشغل-${d.r.from}-الى-${d.r.to}.csv`,["رقم الأمر","العميل","الجهاز","الحالة","المكان","الفني","المصنعية","القطع","الإجمالي","العربون","تاريخ الإنشاء","تاريخ القفل"],d.os.map(o=>[o.no||"",customerName(o.customerId),deviceName(o.deviceId),o.status||"",o.executionPlace==="الورشة"?"الورشة":"العميل",o.techName||"",(+o.labor||0).toFixed(2),(+o.partsTotal||0).toFixed(2),(+o.total||0).toFixed(2),(+o.deposit||0).toFixed(2),dayOf(o.createdAt),dayOf(o.closedAt)]))}
-  function exportInventoryCSV(){const d=reportData();downloadCSV(`تقرير-المخزن-${d.r.to}.csv`,["اسم الصنف","الكمية الحالية","الحد الأدنى","سعر الشراء","سعر البيع","المستهلك بالفترة"],d.ps.map(p=>[p.name||"",p.qty||0,p.min||0,(+p.buy||0).toFixed(2),(+p.sell||0).toFixed(2),d.use.get(p.id)||0]))}
+  function exportInventoryCSV(){const d=reportData();downloadCSV(`تقرير-المخزن-${d.r.to}.csv`,["اسم الصنف","الكمية الحالية","الحد الأدنى","سعر الشراء","سعر البيع","المستهلك بالفترة"],d.ps.map(p=>[p.name||"",p.qty||0,p.min||0,(+p.buy||0).toFixed(2),(+p.use||+p.sell||0).toFixed(2),d.use.get(p.id)||0]))}
   function exportTreasuryCSV(){const d=reportData();downloadCSV(`تقرير-الخزنة-${d.r.from}-الى-${d.r.to}.csv`,["التاريخ","الوقت","الحركة","السبب","لمن/من","المكان","المبلغ"],d.tr.map(x=>[x.date||"",x.time||"",x.type==="in"?"وارد":"صرف",x.reason||"",x.counterparty||"",x.place||"",(+x.amount||0).toFixed(2)]))}
   function exportSummaryCSV(){const d=reportData();const p=d.prev;downloadCSV(`ملخص-التقرير-${d.r.from}-الى-${d.r.to}.csv`,["البند","الفترة","الفترة اللي قبلها"],[
     ["الإيراد",d.revenue.toFixed(2),p.revenue.toFixed(2)],["المصنعية",d.labor.toFixed(2),p.labor.toFixed(2)],["قطع الغيار",d.partsSell.toFixed(2),p.partsSell.toFixed(2)],["بيع قطع مباشر",d.saleRev.toFixed(2),p.saleRev.toFixed(2)],["تكلفة القطع",(d.partsCost+d.saleCost).toFixed(2),(p.partsCost+p.saleCost).toFixed(2)],
@@ -284,14 +293,14 @@
   function areasReport(d){
     return section('📍 المناطق',`<div class="report-mini-grid"><div><h3>الأوامر الجديدة حسب المركز</h3>${bars(d.areas,{val:v=>v.orders,fmt:(n,v)=>`${n} أمر${v.rev?' • '+money0(v.rev):''}`,empty:'لا توجد أوامر جديدة.'})}</div><div><h3>أكتر القرى/المناطق طلبًا</h3>${bars(d.villages,{val:v=>v.orders,fmt:n=>n+' أمر',empty:'مفيش قرى متسجلة على عناوين العملاء.'})}</div></div>${areaProfitBlock(d)}`,'report-areas');
   }
-  function customersReport(d){let counts={};d.os.forEach(o=>{if(o.customerId)counts[o.customerId]=(counts[o.customerId]||0)+1});let top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,n])=>`<div class="report-list-row"><span>${detailLink('customer.html',id,customerName(id))}</span><b>${n} أمر</b></div>`).join('');let topRev=[...d.custRev.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,v])=>`<div class="report-list-row"><span>${detailLink('customer.html',id,customerName(id))}</span><b>${money(v)}</b></div>`).join('');let newC=d.cs.filter(c=>inRangeDate(c.createdAt,d.r)).length;const act=d.activeCust.size;
+  function customersReport(d){let counts={};d.os.forEach(o=>{if(o.customerId&&o.status!=='ملغي')counts[o.customerId]=(counts[o.customerId]||0)+1});let top=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,n])=>`<div class="report-list-row"><span>${detailLink('customer.html',id,customerName(id))}</span><b>${n} أمر</b></div>`).join('');let topRev=[...d.custRev.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,v])=>`<div class="report-list-row"><span>${detailLink('customer.html',id,customerName(id))}</span><b>${money(v)}</b></div>`).join('');let newC=d.cs.filter(c=>inRangeDate(c.createdAt,d.r)).length;const act=d.activeCust.size;
     return section('👤 تقرير العملاء',`<div class="report-cards"><div class="report-card"><span>إجمالي العملاء</span><b>${d.cs.length}</b></div><div class="report-card"><span>عملاء جدد بالفترة</span><b>${newC}</b></div><div class="report-card"><span>عملاء تعاملوا بالفترة</span><b>${Object.keys(counts).length}</b></div><div class="report-card"><span>عملاء راجعين (أكتر من أمر)</span><b>${d.repeat}</b><small>${act?num(d.repeat/act*100)+'% من اللي اتعاملوا':''}</small></div></div><div class="report-mini-grid"><div><h3>⭐ أكثر العملاء تعاملًا في الفترة</h3><div class="report-list">${top||'<div class="report-empty">لا توجد تعاملات.</div>'}</div></div><div><h3>💰 أكتر العملاء دفعًا في الفترة</h3><div class="report-list">${topRev||'<div class="report-empty">لا توجد أوامر مقفولة.</div>'}</div></div></div>${ltvBlock(d)}`, 'report-customers')}
   function devicesReport(d){let types={},brands={},serviced={};d.ds.forEach(x=>{let type=x.type||'غير محدد',brand=x.brand||'غير محدد';types[type]=(types[type]||0)+1;brands[brand]=(brands[brand]||0)+1});d.os.forEach(o=>{if(o.deviceId)serviced[o.deviceId]=(serviced[o.deviceId]||0)+1});let servicedRows=Object.entries(serviced).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,n])=>{let device=d.devMap.get(id);return `<div class="report-list-row"><span>${detailLink('device.html',id,device?deviceName(id):'جهاز محذوف')}</span><b>${n} أمر</b></div>`}).join('');
     const revFmt=(v,o)=>`${money0(v)} • ${o.n} أمر`;
     return section('🔧 تقرير الأجهزة',`<div class="report-cards"><div class="report-card"><span>إجمالي الأجهزة</span><b>${d.ds.length}</b></div><div class="report-card"><span>أنواع الأجهزة</span><b>${Object.keys(types).length}</b></div><div class="report-card"><span>الماركات</span><b>${Object.keys(brands).length}</b></div><div class="report-card"><span>أجهزة دخلت الخدمة بالفترة</span><b>${Object.keys(serviced).length}</b></div></div><div class="report-mini-grid"><div><h3>💰 الإيراد حسب نوع الجهاز</h3>${bars(d.byType,{val:v=>v.rev,fmt:revFmt,empty:'لا توجد أوامر مقفولة.'})}<h3>💰 الإيراد حسب الماركة</h3>${bars(d.byBrand,{val:v=>v.rev,fmt:revFmt,empty:'لا توجد أوامر مقفولة.'})}</div><div><h3>🛠️ الأجهزة الأكثر دخولًا للصيانة</h3><div class="report-list">${servicedRows||'<div class="report-empty">لا توجد أجهزة مخدومة في الفترة.</div>'}</div><h3>كل الأجهزة حسب النوع</h3>${bars(new Map(Object.entries(types)),{empty:'لا توجد أجهزة.'})}</div></div>${faultsSection(d)}`, 'report-devices')}
-  function inventoryReport(d){let stockValue=d.ps.reduce((a,p)=>a+(+p.qty||0)*(+p.buy||0),0),sellValue=d.ps.reduce((a,p)=>a+(+p.qty||0)*(+p.sell||+p.use||0),0),low=d.ps.filter(p=>(+p.qty||0)<=(+p.min||0));const pmap=new Map(d.ps.map(p=>[p.id,p]));let usedRows=[...d.use.entries()].filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,n])=>{let p=pmap.get(id);return `<div class="report-list-row"><span>${detailLink('part.html',id,p?.name||'قطعة محذوفة')}</span><b>${n}</b></div>`}).join('');let lowRows=low.slice(0,15).map(p=>`<div class="report-list-row report-danger"><span>${detailLink('part.html',p.id,p.name||'قطعة بدون اسم')} <small>(${escR(p.qty)}/${escR(p.min)})</small></span><b>${money((+p.qty||0)*(+p.buy||0))}</b></div>`).join('');
+  function inventoryReport(d){let stockValue=d.ps.reduce((a,p)=>a+(+p.qty||0)*(+p.buy||0),0),sellValue=d.ps.reduce((a,p)=>a+(+p.qty||0)*(+p.use||+p.sell||0),0),low=d.ps.filter(p=>(+p.qty||0)<=(+p.min||0));const pmap=new Map(d.ps.map(p=>[p.id,p]));let usedRows=[...d.use.entries()].filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([id,n])=>{let p=pmap.get(id);return `<div class="report-list-row"><span>${detailLink('part.html',id,p?.name||'قطعة محذوفة')}</span><b>${n}</b></div>`}).join('');let lowRows=low.slice(0,15).map(p=>`<div class="report-list-row report-danger"><span>${detailLink('part.html',p.id,p.name||'قطعة بدون اسم')} <small>(${escR(p.qty)}/${escR(p.min)})</small></span><b>${money((+p.qty||0)*(+p.buy||0))}</b></div>`).join('');
     const still=d.ps.filter(p=>(+p.qty||0)>0&&!d.use.get(p.id)).sort((a,b)=>(+b.qty||0)*(+b.buy||0)-(+a.qty||0)*(+a.buy||0)).slice(0,8).map(p=>`<div class="report-list-row"><span>${detailLink('part.html',p.id,p.name||'قطعة')} <small>(${escR(p.qty)} قطعة)</small></span><b>${money((+p.qty||0)*(+p.buy||0))}</b></div>`).join('');
-    return section('📦 تقرير المخزن',`<button type="button" class="secondary small-btn no-print" data-wf-event="click" data-wf-code="exportInventoryCSV()">⬇️ تصدير CSV</button><div class="report-cards"><div class="report-card"><span>قيمة المخزون بالتكلفة</span><b>${money(stockValue)}</b><small>بسعر البيع: ${escR(money0(sellValue))}</small></div><div class="report-card"><span>أصناف منخفضة</span><b>${low.length}</b></div><div class="report-card"><span>إجمالي الأصناف</span><b>${d.ps.length}</b></div><div class="report-card"><span>المستهلك بالفترة</span><b>${num(d.outQty)} قطعة</b><small>بتكلفة ${escR(money0(d.usedValue))} • وارد ${num(d.inQty)}</small></div></div><div class="report-mini-grid"><div><h3>🔥 الأكثر استهلاكًا بالفترة</h3><div class="report-list">${usedRows||'<div class="report-empty">لا توجد حركات.</div>'}</div><h3>🐢 مخزون واقف (ماتحركش في الفترة)</h3><div class="report-list">${still||'<div class="report-empty">كل الأصناف اتحركت.</div>'}</div></div><div><h3>⚠️ الأصناف المنخفضة — اضغط لفتح الصنف</h3><div class="report-list">${lowRows||'<div class="report-empty">لا توجد أصناف منخفضة.</div>'}</div></div></div>${runoutSection(d)}`, 'report-inventory')}
+    return section('📦 تقرير المخزن',`<button type="button" class="secondary small-btn no-print" data-wf-event="click" data-wf-code="exportInventoryCSV()">⬇️ تصدير CSV</button><div class="report-cards"><div class="report-card"><span>قيمة المخزون بالتكلفة</span><b>${money(stockValue)}</b><small>بسعر البيع: ${escR(money0(sellValue))}</small></div><div class="report-card"><span>أصناف منخفضة</span><b>${low.length}</b></div><div class="report-card"><span>إجمالي الأصناف</span><b>${d.ps.length}</b></div><div class="report-card"><span>المستهلك بالفترة</span><b>${num(d.outQty)} قطعة</b><small>بتكلفة ${escR(money0(d.usedValue))} • وارد ${num(d.inQty)}${d.adjQty?' • تسوية جرد '+(d.adjQty>0?'+':'−')+num(Math.abs(d.adjQty)):''}</small></div></div><div class="report-mini-grid"><div><h3>🔥 الأكثر استهلاكًا بالفترة</h3><div class="report-list">${usedRows||'<div class="report-empty">لا توجد حركات.</div>'}</div><h3>🐢 مخزون واقف (ماتحركش في الفترة)</h3><div class="report-list">${still||'<div class="report-empty">كل الأصناف اتحركت.</div>'}</div></div><div><h3>⚠️ الأصناف المنخفضة — اضغط لفتح الصنف</h3><div class="report-list">${lowRows||'<div class="report-empty">لا توجد أصناف منخفضة.</div>'}</div></div></div>${runoutSection(d)}`, 'report-inventory')}
   function workshopReport(d){const current=list(K.r).filter(o=>o&&!o.closed&&o.status!=='مكتمل'&&o.status!=='ملغي'&&(o.workshopStatus!=='تم التسليم'&&(o.executionPlace==='الورشة'||(o.workshopStatus&&o.workshopStatus!=='غير مطلوب'))));const currentUnique=current.filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i);const delivered=list(K.r).filter(o=>o&&o.workshopStatus==='تم التسليم'&&inRangeDate(o.workshopAt,d.r));const rows=currentUnique.map(o=>`<tr><td>${detailLink('request.html',o.id,o.no||'—')}</td><td>${detailLink('customer.html',o.customerId,customerName(o.customerId))}</td><td>${detailLink('device.html',o.deviceId,deviceName(o.deviceId))}</td><td>${escR(o.workshopStatus||'غير مطلوب')}</td><td>${o.workshopAt?new Date(o.workshopAt).toLocaleString('ar-EG'):'—'}</td></tr>`).join('');const waiting=d.waiting;return section('🏭 تقرير الورشة',`<div class="report-cards"><div class="report-card"><span>أجهزة/أوامر داخل الورشة الآن</span><b>${currentUnique.length}</b></div><div class="report-card"><span>انتظار قطع</span><b>${waiting}</b></div><div class="report-card"><span>تم التسليم بالفترة</span><b>${delivered.length}</b></div></div><div class="report-table-wrap"><table class="report-table-full"><tr><th>الأمر</th><th>العميل</th><th>الجهاز</th><th>حالة الورشة</th><th>آخر تحديث</th></tr>${rows||'<tr><td colspan="5">لا توجد أجهزة داخل الورشة حاليًا.</td></tr>'}</table></div>`, 'report-workshop')}
   function returnsReport(d){
     const reasons=new Map();d.cancelled.forEach(o=>{const k=String(o.cancelReason||'بدون سبب').trim()||'بدون سبب';reasons.set(k,(reasons.get(k)||0)+1)});
@@ -496,7 +505,7 @@
     const wrap=document.createElement('div');wrap.className='rep-presets no-print';
     EXTRA.forEach(([k,t])=>{const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=t;b.setAttribute('data-rep-preset',k);b.addEventListener('click',()=>preset(k));wrap.appendChild(b)});
     const pr=document.createElement('button');pr.type='button';pr.className='secondary';pr.textContent='🖨️ طباعة / PDF';pr.addEventListener('click',()=>{try{(window.printWorkshopPage||window.print)()}catch(e){window.print()}});wrap.appendChild(pr);
-    const sm=document.createElement('button');sm.type='button';sm.className='secondary';sm.textContent='⬇️ ملخص CSV';sm.addEventListener('click',exportSummaryCSV);wrap.appendChild(sm);
+    const sm=document.createElement('button');sm.type='button';sm.className='secondary';sm.textContent='⬇️ ملخص CSV';sm.addEventListener('click',()=>(window.exportReportSummaryCSV||exportSummaryCSV)());wrap.appendChild(sm);
     box.insertAdjacentElement('afterend',wrap);
     // صفحة قسم لوحده: الفترة بتتلم في سطر صغير عشان الإحصائيات تبان على طول
     const ok=onlyKeys(),panel=box.closest&&box.closest('section.panel');

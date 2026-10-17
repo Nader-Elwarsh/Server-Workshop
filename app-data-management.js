@@ -164,9 +164,12 @@ function renderAuditLog(){
 }
 document.addEventListener("DOMContentLoaded",renderAuditLog);
 
+const BACKUP_EXTRA_KEYS=["wf_techpay","wf_comp_custom","wf_comp_fav"];
 async function snapshotAllData(){
   const data={};Object.values(K).forEach(k=>{data[k]=get(k,k===K.s?null:[])});
   data.wf_notif_enabled=WFStorage.getItem("wf_notif_enabled");
+  // بيانات بتتزامن بس مش ضمن K: أجور الفنيين وأكواد الكمبروسر المضافة والمفضلة (كانت بتضيع لو استرجعت على جهاز/حساب جديد)
+  data._extra={};BACKUP_EXTRA_KEYS.forEach(k=>{const v=WFStorage.getItem(k);if(typeof v==="string"&&v)data._extra[k]=v});
   data.images=window.ImageStore?await window.ImageStore.exportAll():{};
   data._meta={exportedAt:new Date().toISOString(),app:"الورشة الفنية",version:1,schemaVersion:window.getSchemaVersion?window.getSchemaVersion():1};
   return data;
@@ -209,6 +212,7 @@ function validateBackupData(data){
   }
   if(data.images!==undefined&&(data.images===null||typeof data.images!=="object"||Array.isArray(data.images)))throw new Error("invalid-images");
   if(data.images&&Object.values(data.images).some(x=>typeof x!=="string"))throw new Error("invalid-image-value");
+  if(data._extra!==undefined&&(data._extra===null||typeof data._extra!=="object"||Array.isArray(data._extra)||Object.keys(data._extra).some(k=>!BACKUP_EXTRA_KEYS.includes(k)||typeof data._extra[k]!=="string")))throw new Error("invalid-extra");
   if(data._meta!==undefined&&(data._meta===null||typeof data._meta!=="object"||Array.isArray(data._meta)))throw new Error("invalid-meta");
   const rawSchema=data._meta?.schemaVersion,schema=rawSchema===undefined?1:+rawSchema,current=+(window.CURRENT_SCHEMA_VERSION||schema);if(!Number.isInteger(schema)||schema<1)throw new Error("invalid-schema");if(schema>current)throw new Error("future-schema");
   if(data.wf_notif_enabled!==undefined&&data.wf_notif_enabled!==null&&typeof data.wf_notif_enabled!=="string")throw new Error("invalid-notification-setting");
@@ -243,6 +247,7 @@ async function restoreBackupFile(input){
       if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");
       if(!await commitStorageAsync(staged))throw new Error("storage-failed");
       if("wf_notif_enabled" in data){if(data.wf_notif_enabled==null)WFStorage.removeItem("wf_notif_enabled");else if(!put("wf_notif_enabled",data.wf_notif_enabled))throw new Error("notification-setting-failed")}
+      if(data._extra)Object.keys(data._extra).forEach(k=>{try{JSON.parse(data._extra[k]);WFStorage.setItem(k,data._extra[k])}catch(_){}});
       if(window.setSchemaVersion)window.setSchemaVersion(Math.min(backupSchema,window.CURRENT_SCHEMA_VERSION||backupSchema));
       if(data._meta?.exportedAt)WFStorage.setItem("wf_last_backup_at",data._meta.exportedAt);
       WFStorage.setItem(AUTO_BACKUP_HASH_KEY,await backupDataFingerprint(await snapshotAllData()));WFStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));WFStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));

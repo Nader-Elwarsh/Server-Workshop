@@ -173,9 +173,13 @@
       var rid = roleSel.value, base = setOf(state.config.roles[rid] ? state.config.roles[rid].perms : []);
       var allow = [], deny = [];
       if (rid !== "owner") R.KEYS.forEach(function (k) { if (current[k] && !base[k]) allow.push(k); if (!current[k] && base[k]) deny.push(k); });
+      var nw = String(walletIn.value || "").replace(/\s+/g, " ").trim(), ow = String(u.wallet || "").trim();
+      if (ow && nw !== ow) { // تغيير محفظة العهدة: الرصيد القديم والأوامر المفتوحة بيفضلوا على المحفظة القديمة
+        var ob = walletBal(ow), oo = openOrdersOf(u.uid).length;
+        if ((ob || oo) && !window.confirm("محفظة " + (u.name || "") + " هتتغير من «" + ow + "» لـ «" + (nw || "بدون محفظة") + "».\n" + (ob ? "• فيها رصيد " + ob.toFixed(2) + " ج هيفضل في المحفظة القديمة — سوّيه الأول من «الفنيين والعهدة».\n" : "") + (oo ? "• معاه " + oo + " أمر مفتوح متسجل عليه المحفظة القديمة (هتتحدث لو عيّنتهم تاني).\n" : "") + "تكمل؟")) return;
+      }
       busy(save, true);
-      ensureWallet(walletIn.value);
-      P.call("staffUpdate", { uid: u.uid, name: nameIn.value, role: rid, allow: allow, deny: deny, scope: scopeSel.value, wallet: walletIn.value }).then(function () { say("تم حفظ بيانات " + (nameIn.value || "المستخدم") + ".", false); state.editUid = null; return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(save, false); });
+      P.call("staffUpdate", { uid: u.uid, name: nameIn.value, role: rid, allow: allow, deny: deny, scope: scopeSel.value, wallet: walletIn.value }).then(function () { ensureWallet(walletIn.value); /* بعد ما السيرفر يقبل بس */ say("تم حفظ بيانات " + (nameIn.value || "المستخدم") + ".", false); state.editUid = null; return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(save, false); });
     } } });
     return h("div", { style: "margin-top:10px;border-top:1px solid var(--border,#ddd);padding-top:10px" }, [
       h("label", {}, ["الاسم", nameIn]), h("label", {}, ["الدور", roleSel]),
@@ -186,9 +190,13 @@
       holder, h("div", { class: "actions" }, [save])
     ]);
   }
+  /* الصفحة دي مش محمّل فيها باقي النظام: بنقرا الأوامر والحركات من تخزين الجهاز مباشرة */
+  function stored(k) { try { var v = JSON.parse(window.WFStorage.getItem(k) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  function walletBal(w) { return Math.round(stored("wf_wallet_tx").reduce(function (a, x) { return a + (x && !x.deleted && String(x.wallet || "").trim() === w ? (x.type === "in" ? +x.amount || 0 : -(+x.amount || 0)) : 0); }, 0) * 100) / 100; }
+  function openOrdersOf(uid) { try { return stored("wf_r").filter(function (r) { return r && r.techId === uid && !r.closed && !r.paid && r.status !== "ملغي"; }); } catch (e) { return []; } }
   function toggleDisabled(u, btn) {
-    var to = !u.disabled;
-    if (!window.confirm(to ? "إيقاف " + (u.name || u.email) + "؟ هيتقفل عليه الدخول فورًا." : "تفعيل " + (u.name || u.email) + " تاني؟")) return;
+    var to = !u.disabled, oo = to ? openOrdersOf(u.uid).length : 0;
+    if (!window.confirm(to ? "إيقاف " + (u.name || u.email) + "؟ هيتقفل عليه الدخول فورًا." + (oo ? "\n\n⚠️ معاه " + oo + " أمر مفتوح — وزّعهم على فني تاني من «توزيع الأوامر» عشان مايقفوش." : "") : "تفعيل " + (u.name || u.email) + " تاني؟")) return;
     busy(btn, true);
     P.call("staffUpdate", { uid: u.uid, disabled: to }).then(function () { say(to ? "تم إيقاف الحساب." : "تم تفعيل الحساب.", false); return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(btn, false); });
   }
@@ -218,8 +226,9 @@
     var add = h("button", { type: "button", class: "primary", text: "➕ إضافة المستخدم", on: { click: function () {
       var secret = pw.value;
       busy(add, true);
-      if (wallet.value.trim()) ensureWallet(wallet.value);
+      var wv = wallet.value;
       P.call("staffCreate", { email: email.value, name: name.value, password: secret, role: role.value, scope: scope.value, wallet: wallet.value }).then(function (r) {
+        if (String(wv || "").trim()) ensureWallet(wv); // بعد ما الحساب يتعمل (لو اترفض مثلًا «المحفظة متحددة لموظف تاني» ماتتضافش)
         showSecret("تم إنشاء حساب " + r.name + " — الإيميل: " + r.email, secret);
         email.value = ""; name.value = ""; pw.value = ""; wallet.value = ""; scope.value = ""; return load();
       }, function (e) { say(explain(e), true); }).then(function () { busy(add, false); });

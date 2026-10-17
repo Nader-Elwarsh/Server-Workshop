@@ -82,7 +82,7 @@
   function hideDenied() { if (overlay) { try { overlay.remove(); } catch (e) {} overlay = null; } }
   function guardPage() {
     if (!w.document || !w.document.body) return;
-    if (state.profile && state.profile.disabled === true) return showDenied("🔒 الحساب ده موقوف. كلّم مالك الورشة.");
+    if (state.profile && state.profile.pending) return showDenied("⏳ جارٍ تحميل صلاحيات حسابك… (محتاج نت)"); if (state.profile && state.profile.disabled === true) return showDenied("🔒 الحساب ده موقوف. كلّم مالك الورشة.");
     if (OWNER_PAGES[FILE] && !isOwner()) return showDenied("🔒 الصفحة دي للمالك فقط.");
     var need = R.PAGES[FILE];
     if (need && !can(need)) return showDenied("🔒 مش مصرّح لك بفتح الصفحة دي (" + (R.LABELS[need] || need) + "). كلّم مالك الورشة لو محتاجها.");
@@ -340,11 +340,12 @@
     });
   }
   function acceptProfile(p, cfg) {
-    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "", scope: R.cleanScope ? R.cleanScope(p.scope) : "", wallet: p.wallet || "" };
+    state.profile = { name: p.name || "", role: p.role == null ? "" : p.role, allow: p.allow || [], deny: p.deny || [], disabled: p.disabled === true, acl: p.acl === 1 ? 1 : 0, createdBy: p.createdBy || "", scope: R.cleanScope ? R.cleanScope(p.scope) : "", wallet: p.wallet || "", uid: curUid() };
     if (cfg) state.config = R.normalizeConfig(cfg);
     writeJSON(K_PROFILE, state.profile); writeJSON(K_CONFIG, state.config);
     recompute(); applyAll(); notify();
   }
+  function curUid() { try { var u = w.firebase.auth().currentUser; return u ? u.uid : ""; } catch (e) { return ""; } }
   function refresh() {
     var u = w.firebase && w.firebase.auth && w.firebase.auth().currentUser;
     if (!u || (w.navigator && w.navigator.onLine === false)) return Promise.resolve(false);
@@ -386,9 +387,12 @@
     // توفير قراءات: الصلاحيات المحفوظة على الجهاز بتتطبق فورًا، والتحديث من السيرفر مرة كل 3 دقايق بالكتير مع التنقل بين الصفحات
     // (الحماية الفعلية في قواعد Firestore والدوال، فالتأخير ده في شكل الواجهة بس).
     try { w.firebase.auth().onAuthStateChanged(function (u) {
-      if (!u) return; ensureChip();
+      if (!u) return;
+      // حساب تاني على نفس الجهاز: صلاحيات الحساب القديم (ممكن يكون مالك) ماتتطبقش على الجديد لحد ما صلاحياته توصل
+      var switched = false; if (state.profile && state.profile.uid && state.profile.uid !== u.uid) { switched = true; state.profile = { role: "", acl: 1, disabled: true, uid: u.uid, pending: true }; recompute(); applyAll(); notify(); }
+      ensureChip();
       var k = "wf_perm_ref_at", v = ""; try { v = (store() && store().getItem(k)) || ""; } catch (e) {}
-      var p = v.split("|"); if (state.profile && p[0] === u.uid && Date.now() - (+p[1] || 0) < 3 * 60000) return;
+      var p = v.split("|"); if (!switched && state.profile && p[0] === u.uid && Date.now() - (+p[1] || 0) < 3 * 60000) return;
       refresh().then(function (ok) { if (ok) try { store().setItem(k, u.uid + "|" + Date.now()); } catch (e) {} });
     }); } catch (e) {}
   }

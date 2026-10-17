@@ -345,6 +345,9 @@ var WFStorage = window.WFStorage;
     // الإعدادات زي قبل، فبتتفرض هنا دايمًا بغض النظر عمّا هو مخزّن.
     s.orderStatuses = ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"];
     s.executionPlaces = s.executionPlaces || ["عند العميل", "الورشة"];
+    // القيم الأساسية اللي النظام بيعتمد عليها بالاسم: لو اتمسحت قبل كده من الإعدادات بترجع للقايمة (من غير ما نلمس الباقي)
+    if (Array.isArray(s.executionPlaces)) ["عند العميل", "الورشة"].forEach(function (v) { if (s.executionPlaces.indexOf(v) < 0) s.executionPlaces.push(v); });
+    if (Array.isArray(s.walletCategories)) ["تحصيل عميل", "مصروف شخصي", "مصروف تشغيل", "مشتريات قطع غيار", "سلفة / تحويل"].forEach(function (v) { if (s.walletCategories.indexOf(v) < 0) s.walletCategories.push(v); });
     s.workshopStatuses = ["غير مطلوب", "تم السحب", "تم التسليم"];
     delete s.priorities;
     s.paymentStatuses = s.paymentStatuses || ["غير مكتمل", "تم الدفع بالكامل"];

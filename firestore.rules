@@ -41,7 +41,9 @@ service cloud.firestore {
           'customerId', 'deviceId', 'addressKey', 'no', 'createdAt', 'source', 'portalRequestId', 'portalVis', 'portal',
           'deposit', 'depositWallet', 'depositExtra',
           'closed', 'paid', 'paidAt', 'closedAt', 'closeWallet', 'closedByTech',
-          'jobType', 'jobTypeName', 'techPay', 'techPayManual', 'techPayAt', 'techPayBy', 'payShares', 'payShareUids', 'returnPayPending'
+          'jobType', 'jobTypeName', 'techPay', 'techPayManual', 'techPayAt', 'techPayBy', 'payShares', 'payShareUids', 'returnPayPending',
+          // فلوس العربون المرتجع والضمان بتتحدد من الإدارة بس
+          'depositRefunded', 'warrantyUntil', 'warrantyDays', 'warrantyManual', 'warrantyDecision', 'warrantyOf', 'warrantyOfNo', 'warrantyOfScope', 'warrantyScope'
         ])
         // الإلغاء للإدارة بس. القفل والتحصيل بيتعملوا من السيرفر (دالة techCloseOrder) عشان الأمر وحركة المحفظة يتسجلوا مع بعض.
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) || request.resource.data.status != 'ملغي');

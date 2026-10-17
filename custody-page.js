@@ -53,6 +53,7 @@
        workshop → بتتخصم من محفظة الورشة اللي تختارها (أو من غير حركة لو اتسجلت قبل كده) */
     function approveExpense(e, noteText, workshopWallet) {
       var kind = payKind(e);
+      if (kind === "own" && e.category !== "part") ownExpenseTx(e); // مصروف دفعه من جيبه: لازم يدخل في مصاريف التشغيل (صافي المكسب) — من غيره كان بيختفي من التقارير
       if (kind === "own" || (kind === "workshop" && !workshopWallet)) return markDecision(e, "approved", noteText);
       var u = state.users.filter(function (x) { return x.uid === e.techId; })[0];
       var wallet = kind === "workshop" ? String(workshopWallet).trim() : String(e.wallet || (u && u.wallet) || "").trim();
@@ -65,6 +66,18 @@
         if (!window.put(window.K.wtx, A(window.K.wtx).concat(tx))) return Promise.reject("تعذّر حفظ حركة المحفظة.");
       }
       return markDecision(e, "approved", noteText, wallet).catch(function (err) { throw "الحركة اتسجلت لكن تحديث حالة المصروف فشل (" + String(err) + ") — اضغط اعتماد تاني (مش هيتكرر)."; });
+    }
+    /* مصروف تشغيل دفعه الفني من جيبه: حركتين في محفظة عهدته بيلغوا بعض (الرصيد مايتغيرش):
+       صرف «مصروف تشغيل» (عشان يتحسب في التقارير) + وارد «من جيبه» (الفلوس دي هتترد له مع المستحقات). مفتاح ثابت = مايتكررش. */
+    function ownExpenseTx(e) {
+      var u = state.users.filter(function (x) { return x.uid === e.techId; })[0], wallet = String(e.wallet || (u && u.wallet) || "").trim(), ref = "custody-exp-" + e.id;
+      if (!wallet || (window.settings().wallets || []).map(String).indexOf(wallet) < 0) return;
+      var all = A(window.K.wtx);
+      if (all.some(function (x) { return x && x.refKey === ref && !x.deleted; })) return;
+      var t = nowParts(), who = e.techName || "", base = { refKey: ref, manualOverride: true, deleted: false, amount: +e.amount, wallet: wallet, note: "", date: t.date, time: t.time, source: "custody-expense", orderId: e.orderId || "", techPayName: who, createdAt: t.iso, ownPocket: true };
+      window.put(window.K.wtx, all.concat(
+        Object.assign({ id: ref, type: "out", category: "مصروف تشغيل", reason: "🧾 " + e.note + (e.orderNo ? " (أمر " + e.orderNo + ")" : "") + " — " + who + " (من جيبه)" }, base),
+        Object.assign({ id: ref + "-own", type: "in", category: "سلفة / تحويل", reason: "👛 " + who + " دفعها من جيبه — هتترد له مع مستحقاته" }, base, { refKey: ref + "-own" })));
     }
     function markDecision(e, status, noteText, wallet) {
       var upd = { status: status, decidedBy: myUid(), decidedAt: new Date().toISOString(), decisionNote: noteText || "" };
@@ -272,14 +285,14 @@
       var orders = A(window.K.r).filter(function (r) { return r && r.techId === u.uid && !r.closed && !r.paid && r.status !== "ملغي"; });
       var today = dayOf(new Date());
       var todays = orders.filter(function (r) { return r.visit && dayOf(r.visit) === today; }).sort(function (a, b) { return String(a.visit).localeCompare(String(b.visit)); });
-      var late = orders.filter(function (r) { return r.visit && dayOf(r.visit) < today; }).length, soon = orders.filter(function (r) { return r.visit && dayOf(r.visit) > today; }).length, none = orders.filter(function (r) { return !r.visit; }).length;
+      var late = orders.filter(function (r) { return r.visit && dayOf(r.visit) < today && r.status !== "مجمد"; }).length, soon = orders.filter(function (r) { return r.visit && dayOf(r.visit) > today; }).length, none = orders.filter(function (r) { return !r.visit; }).length;
       card.appendChild(mk("div", "font-size:14px;margin:6px 0", "🛠️ " + orders.length + " أمر مفتوح • 📅 اليوم " + todays.length + " • ⚠️ متأخر " + late + " • ⏭️ قادم " + soon + " • 🕓 بدون موعد " + none));
       todays.slice(0, 5).forEach(function (r) { card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px", "• " + timeOf(r.visit) + " — #" + (r.no || "") + " " + custName(r.customerId))); });
       if (todays.length > 5) card.appendChild(mk("div", "font-size:13px;margin-inline-start:12px;opacity:.75", "… و" + (todays.length - 5) + " زيارة كمان النهارده"));
       // شغل الشهر: الأوامر اللي اتقفلت (منه أو من الإدارة) والمبلغ اللي اتحصّل فيها
       var ym = monthOf(new Date()), done = A(window.K.r).filter(function (r) { return r && r.techId === u.uid && r.closed; }).sort(function (a, b) { return String(b.closedAt || "").localeCompare(String(a.closedAt || "")); });
       var doneM = done.filter(function (r) { return monthOf(r.closedAt || r.paidAt) === ym; });
-      var coll = doneM.reduce(function (s, r) { return s + (r.paid ? Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100) : 0); }, 0);
+      var coll = doneM.reduce(function (s, r) { return s + (r.paid ? Math.max(0, Math.round(((+r.total || 0) - ((+r.deposit || 0) - (+r.depositRefunded || 0))) * 100) / 100) : 0); }, 0);
       card.appendChild(mk("div", "font-size:14px;margin:6px 0", "✅ اتقفل الشهر ده: " + doneM.length + " أمر • حصّل " + money(coll)));
       if (done.length) {
         var hist = mk("details", "margin:4px 0"); hist.appendChild(mk("summary", "cursor:pointer;font-size:13px;font-weight:700", "📜 آخر الأوامر المقفولة"));
@@ -383,7 +396,7 @@
     }
 
     window.WFTech.directory(true).then(function (users) {
-      state.users = users || []; if (!state.users.length && window.WFTech.lastError) state.err = "قايمة الفنيين: " + window.WFTech.lastError;
+      state.users = users || []; var le = typeof window.WFTech.lastError === "function" ? window.WFTech.lastError() : ""; if (!state.users.length && le) state.err = "قايمة الفنيين: " + le; // دالة: قبل كده كان بيطبع كود الدالة نفسه
       draw();
     });
     function watch() {
