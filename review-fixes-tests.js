@@ -107,4 +107,51 @@ assert.ok(/function transferBetweenWallets\(from,to,amount,date,time,reason,note
 assert.ok(/function applyWalletTxEdit\(txId,v\)/.test(wl) && /wtEditDialog/.test(wl), "تعديل حركة الحساب في نافذة (والحساب نفسه يتغير)");
 assert.ok(/function toggleWalletTransferDir\(v\)/.test(wl));
 assert.ok(read("roles-core.js") === read("functions/roles-core.js") && /transferBetweenWallets/.test(read("roles-core.js")), "صلاحية التحويل بين الحسابات في نسختي الصلاحيات");
-console.log("review-fixes-tests: PASS (أوامر الشغل، خط السير، متابعة العملاء، المهام، الضمان، العملاء، الأجهزة، المخزن، الأكواد، الخزنة، الحسابات)");
+// 13) التقارير: تسوية الجرد مش استهلاك، البيعة الملغية مش محسوبة، أوامر الضمان مش «خسرانة»، المقارنة بالشهر اللي فات بعدل
+const rp = read("reports.js"), dr = read("app-dashboard-reports.js");
+assert.ok(/const skipMove=/.test(rp) && /تعديل جرد\|تسوية/.test(rp), "تسوية الجرد والبيعة الملغية برا الاستهلاك");
+assert.ok(/closedOrders\.filter\(o=>!isWarrantyJob\(o\)\)/.test(rp), "أمر الضمان مكانه قسم الضمان مش الأوامر الخسرانة");
+assert.ok(/o\.warrantyOf&&allOrders\.find/.test(rp));
+{
+  const vm = require("vm"), ctx = { DAY: 864e5 }; vm.createContext(ctx);
+  vm.runInContext("const dateKey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');" + rp.slice(rp.indexOf("function mkRange"), rp.indexOf("function range()")) + rp.slice(rp.indexOf("  function prevRange"), rp.indexOf("function inRangeDate")) + ";this.prevRange=prevRange;this.mkRange=mkRange;", ctx);
+  const pr = ctx.prevRange(ctx.mkRange("2025-03-01", "2025-03-31"));
+  assert.deepStrictEqual([pr.from, pr.to], ["2025-02-01", "2025-02-28"], "مارس بيتقارن بفبراير كله");
+  const pw = ctx.prevRange(ctx.mkRange("2025-03-10", "2025-03-16"));
+  assert.deepStrictEqual([pw.from, pw.to], ["2025-03-03", "2025-03-09"]);
+}
+assert.ok(/function reportDirectSales\(\)/.test(dr) && /sales=reportDirectSales\(\),revenue=labor\+partsSell\+sales\.rev/.test(dr), "كشف الحساب فيه البيع المباشر زي التقارير");
+assert.ok(/فلوس مستحقة/.test(dr) && /if \(b === "workshop"\) return orderIsWorkshop\(r\) && !orderIsCompleted\(r\)/.test(ui), "أرقام الرئيسية = القوايم اللي بتفتحها");
+assert.ok(/setReportMonthlyTarget: \{ all: \["settings\.edit"\] \}/.test(read("roles-core.js")));
+// 14) بوابة الفني: المتبقي بيطرح العربون المرتجع، أمر الضمان واضح ومصنعيته صفر، المجمّد مايختفيش، والفني مايقدرش يعدّل الضمان/المرتجع
+const tp = read("tech-portal.js");
+assert.ok(/\(\+r\.deposit \|\| 0\) - \(\+r\.depositRefunded \|\| 0\)/.test(tp) && /function warrantyBox\(r\)/.test(tp) && /if \(isWarranty\(r\)\) r\.labor = 0;/.test(tp));
+assert.ok(/section\("❄️ مجمّدة \(متوقفة\)", frozen\)/.test(tp), "الأوامر المجمّدة اللي ميعادها فات ليها مكان");
+["depositRefunded", "warrantyUntil", "warrantyDecision", "warrantyOfScope"].forEach((f) => {
+  assert.ok(read("firestore.rules").includes("'" + f + "'") && read("firebase-sync.js").includes('"' + f + '"'), "الفني مايعدّلش " + f);
+});
+assert.ok(/fd\.warrantyOfScope=/.test(rq), "أمر الضمان بياخد نطاق ضمان الأمر القديم عشان الفني يشوفه");
+// 15) الفنيين والعهدة: إيداع/تسوية العهدة حركتين بيتعدلوا ويتمسحوا مع بعض، ومصروف الفني من جيبه بيدخل مصاريف التشغيل
+const cu = read("custody-page.js"), wl2 = read("wallets.js");
+assert.ok(/function ownExpenseTx\(e\)/.test(cu) && /if \(kind === "own" && e\.category !== "part"\) ownExpenseTx\(e\);/.test(cu), "مصروف من جيب الفني بيتحسب في صافي المكسب");
+assert.ok(/window\.WFTech\.lastError\(\)/.test(cu), "رسالة الخطأ بتتنادى كدالة مش بتطبع الكود");
+assert.ok(/cPair=e\.source==="custody"&&e\.custodyId/.test(wl2) && /if\(e\.source==="custody"&&e\.custodyId\)\{/.test(wl2), "حركة العهدة: الطرفين مع بعض في التعديل والحذف");
+// 16) توزيع الشغل: المنطقة والموعد على الكارت، شغل كل فني، التعيين للظاهر بس، وتأكيد قبل نقل أمر من فني لفني
+const dp = read("dispatch-page.js");
+assert.ok(/function areaOf\(r\)/.test(dp) && /function openLoad\(\)/.test(dp) && /var ids = selectedIds\(\);/.test(dp) && /متعيّن لفني تاني/.test(dp));
+// 17) المستخدمين والصلاحيات: صلاحيات حساب قديم ماتتطبقش على حساب جديد على نفس الجهاز، والمحفظة ماتتضافش لو السيرفر رفض
+const pm = read("app-permissions.js"), up = read("users-page.js");
+assert.ok(/uid: curUid\(\) \};/.test(pm) && /state\.profile\.uid !== u\.uid\) \{ switched = true;/.test(pm) && /if \(!switched && state\.profile && p\[0\] === u\.uid/.test(pm), "تبديل الحساب: صلاحيات الجديد تتحمّل فورًا");
+assert.ok(/then\(function \(\) \{ ensureWallet\(walletIn\.value\);/.test(up) && /function openOrdersOf\(uid\)/.test(up), "تحذير قبل إيقاف فني معاه أوامر أو تغيير محفظته");
+// 19) الإعدادات: تغيير الأسماء بيتطبق على البيانات، المحفظة بتتغير في كل مكان، أسماء النظام الأساسية محمية، النسخة الاحتياطية كاملة
+const st2 = read("app-settings.js"), sl = read("app-settings-lists.js"), dm = read("app-data-management.js");
+assert.ok(/function renameRecordsPayload\(kind,old,n,center\)/.test(st2) && /commitRename\(s,"center",c,n\)/.test(st2) && /commitRename\(s,"type",t,n\)/.test(st2));
+assert.ok(/commitRename\(s,"village",v,n,center\)/.test(sl) && /commitRename\(s,"brand",x,n\)/.test(sl) && /commitRename\(s,"partCat",x,n\)/.test(sl));
+assert.ok(/p\.payWallet===old/.test(st2) && /r\.techWallet===old/.test(st2) && /x\.counterparty===old/.test(st2) && /function walletTechs\(w\)/.test(st2), "تغيير اسم المحفظة في كل مكان + تحذير لو عهدة فني");
+assert.ok(/const RESERVED_LIST_VALUES=/.test(st2) && /reservedListValue\(key,removed\)/.test(st2), "الورشة/مصروف تشغيل/... مايتمسحوش");
+assert.ok(/const BACKUP_EXTRA_KEYS=\["wf_techpay","wf_comp_custom","wf_comp_fav"\]/.test(dm), "النسخة الاحتياطية فيها أجور الفنيين");
+// 20) بوابة العملاء: العربون الصافي والمتبقي محسوبين صح، والمجمّد «متوقف مؤقتًا»
+assert.ok(/var netDep = Math\.round\(\(\(\+r\.deposit \|\| 0\) - \(\+r\.depositRefunded \|\| 0\)\)/.test(read("firebase-sync.js")) && /متوقف مؤقتًا/.test(read("portal.html")));
+// 21) إدارة البوابة: طلب الزائر لعميل موجود بيستخدم جهازه بدل جهاز مكرر + سجل العمليات
+assert.ok(/useDev=same\.length===1/.test(read("portal-admin.html")) && /تحويل طلب زائر/.test(read("portal-admin.html")));
+console.log("review-fixes-tests: PASS (أوامر الشغل، خط السير، متابعة العملاء، المهام، الضمان، العملاء، الأجهزة، المخزن، الأكواد، الخزنة، الحسابات، التقارير، بوابة الفني، العهدة، التوزيع، الصلاحيات، الإعدادات، البوابة، إدارة البوابة)");

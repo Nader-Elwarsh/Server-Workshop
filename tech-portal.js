@@ -163,7 +163,7 @@
     }
     function bottomNav() {
       var nav = el("nav", "tp-nav"), open = openOrders(), today = dayOf(new Date());
-      var todayCount = open.filter(function (r) { return r.visit && dayOf(r.visit) <= today; }).length;
+      var todayCount = open.filter(function (r) { var k = r.visit ? dayOf(r.visit) : ""; return k && (k === today || (k < today && r.status !== "مجمد")); }).length; // نفس «النهارده + المتأخر» في الصفحة
       // حساب الفني: «الرئيسية» = النهارده في بوابته. موظف كامل فاتح البوابة: «الرئيسية» = رئيسية النظام.
       // «الرئيسية» = رئيسية النظام لكل الناس (الفني بيشوف فيها أوامره بس).
       var items = [["__home", "🏠", "الرئيسية", 0], ["today", "📅", "النهارده", todayCount]];
@@ -191,6 +191,7 @@
       if (addr) card.appendChild(el("div", "tp-line tp-muted", "📍 " + addr));
       var foot = el("div", "tp-row tp-wrap tp-foot");
       foot.appendChild(el("span", "tp-chip tp-st-" + statusClass(r.status), r.status || "جديد"));
+      if (isWarranty(r)) foot.appendChild(el("span", "tp-chip tp-st-done", "🛡️ ضمان"));
       if (c.phone) { var a = el("a", "tp-btn2 tp-small", "📞 اتصال"); a.href = "tel:" + c.phone; a.onclick = function (e) { e.stopPropagation(); }; foot.appendChild(a); }
       if (addr || locOf(c, r)) { var m = el("a", "tp-btn2 tp-small", locOf(c, r) ? "🧭 اللوكيشن" : "🗺️ الخريطة"); m.href = mapHref(c, r, addr); m.target = "_blank"; m.rel = "noopener"; m.onclick = function (e) { e.stopPropagation(); }; foot.appendChild(m); }
       if (window.WFMedia && window.WFMedia.clean(r.media).length) foot.appendChild(el("span", "tp-chip", "📎 " + window.WFMedia.clean(r.media).length));
@@ -214,11 +215,12 @@
       var now = all.filter(function (r) { return r.visit && dayOf(r.visit) === today; }).sort(byVisit);
       var soon = all.filter(function (r) { var k = r.visit ? dayOf(r.visit) : ""; return k > today; }).sort(byVisit);
       var none = all.filter(function (r) { return !r.visit; });
+      var frozen = all.filter(function (r) { return r.visit && dayOf(r.visit) < today && r.status === "مجمد"; }); // متوقفة وميعادها فات: كانت بتختفي من الصفحة
       var tiles = el("div", "tp-tiles");
       tiles.appendChild(tile("النهارده", now.length, "tp-t-blue")); tiles.appendChild(tile("متأخر", overdue.length, "tp-t-red"));
       tiles.appendChild(tile("قادم", soon.length, "tp-t-green")); tiles.appendChild(tile("بدون موعد", none.length, "tp-t-amber"));
       box.appendChild(tiles);
-      [section("⚠️ متأخرة عن موعدها", overdue, "tp-red"), section("📅 النهارده", now), section("⏭️ قادمة", soon), section("🕓 بدون موعد — حدّد موعدها", none, "tp-amber")].forEach(function (s) { if (s) box.appendChild(s); });
+      [section("⚠️ متأخرة عن موعدها", overdue, "tp-red"), section("📅 النهارده", now), section("⏭️ قادمة", soon), section("🕓 بدون موعد — حدّد موعدها", none, "tp-amber"), section("❄️ مجمّدة (متوقفة)", frozen)].forEach(function (s) { if (s) box.appendChild(s); });
       if (!all.length) {
         var e = el("div", "tp-empty");
         e.appendChild(el("div", "tp-empty-ico", "🎉"));
@@ -300,8 +302,9 @@
       var pt = (r.parts || []).reduce(function (a, p) { return a + (+p.qty || 0) * (+p.sell || 0); }, 0);
       var pc = (r.parts || []).reduce(function (a, p) { return a + (+p.qty || 0) * (+p.cost || 0); }, 0);
       r.partsTotal = Math.round(pt * 100) / 100; r.partsCost = Math.round(pc * 100) / 100;
+      if (isWarranty(r)) r.labor = 0; // أمر ضمان: المصنعية على الورشة
       r.total = Math.round(((+r.labor || 0) + r.partsTotal) * 100) / 100;
-      r.remain = Math.max(0, Math.round((r.total - (+r.deposit || 0)) * 100) / 100);
+      r.remain = remainOf(r);
     }
     function mutate(id, fn, failMsg) {
       return window.updateRequestRecordAsync(id, function (_, r) { if (r.closed || r.paid) return false; fn(r); return true; }).then(function (ok) {
@@ -309,7 +312,16 @@
         return ok;
       });
     }
-    function remainOf(r) { return Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100); }
+    /* المتبقي = الإجمالي − (العربون − اللي اترد للعميل منه) — نفس حساب السيرفر وصفحة الأمر */
+    function remainOf(r) { return Math.max(0, Math.round(((+r.total || 0) - ((+r.deposit || 0) - (+r.depositRefunded || 0))) * 100) / 100); }
+    function isWarranty(r) { return !!r && r.warrantyDecision === "warranty"; }
+    function warrantyBox(r) {
+      var b = el("div", "tp-warranty");
+      b.appendChild(el("b", "", "🛡️ أمر ضمان" + (r.warrantyOfNo ? " على الأمر #" + r.warrantyOfNo : "")));
+      b.appendChild(el("div", "", "المصنعية على الورشة مش على العميل. القطع اللي تحت الضمان مايتحاسبش عليها العميل برضه — لو العطل مختلف كلّم الإدارة تحوّله «بفلوس»."));
+      if (r.warrantyOfScope) { b.appendChild(el("div", "tp-small-t tp-muted tp-mt", "الضمان كان على:")); b.appendChild(el("div", "tp-pre", r.warrantyOfScope)); }
+      return b;
+    }
     function kv(label, value) { var d = el("div", "tp-kv"); d.appendChild(el("b", "", label)); d._v = d.appendChild(el("span", "", value)); return d; }
     function block(title) { var c = el("div", "tp-card"); c.appendChild(el("h3", "tp-card-title", title)); return c; }
 
@@ -390,6 +402,7 @@
       t.appendChild(el("span", "tp-chip tp-st-" + statusClass(r.status), locked ? "مقفول 🔒" : (r.status || "جديد")));
       h.appendChild(t);
       if (r.visit) h.appendChild(el("div", "tp-muted", "📅 " + dateLabel(r.visit) + " " + timeOf(r.visit)));
+      if (isWarranty(r)) h.appendChild(warrantyBox(r));
       box.appendChild(h);
 
       var cc = block("👤 العميل");
@@ -460,6 +473,7 @@
         var work = el("textarea", "tp-input"); work.value = r.work || ""; work.placeholder = "اكتب اللي اتعمل في الجهاز…";
         var lbl = el("label", "tp-label", "أجرة الصنعة (ج)");
         var labor = el("input", "tp-input"); labor.type = "number"; labor.min = "0"; labor.step = "any"; labor.inputMode = "decimal"; labor.value = r.labor == null ? "" : r.labor; labor.placeholder = "أجرة الصنعة (ج)";
+        if (isWarranty(r)) { labor.value = "0"; labor.disabled = true; lbl.textContent = "أجرة الصنعة — أمر ضمان (على الورشة)"; }
         var ws = savedTag(), wTimer = null, lastSaved = (r.work || "") + "|" + (r.labor == null ? "" : r.labor);
         wc.appendChild(work); wc.appendChild(lbl); wc.appendChild(labor); wc.appendChild(ws.el);
         // حفظ تلقائي: بعد ما تبطّل كتابة بثانية، ولما تخرج من الخانة (والحساب تحت بيتحدث لما تخرج)
@@ -569,6 +583,7 @@
       var kLab = kv("المصنعية (على العميل)", money(r.labor)), kTot = kv("الإجمالي", money(r.total));
       mc.appendChild(kLab); mc.appendChild(kv("القطع", money(r.partsTotal)));
       mc.appendChild(kTot); mc.appendChild(kv("العربون", money(r.deposit)));
+      if (+r.depositRefunded > 0) mc.appendChild(kv("اترد للعميل من العربون", "− " + money(r.depositRefunded)));
       var rem = kv("المتبقي على العميل", money(remainOf(r))); rem.className = "tp-kv tp-kv-total"; mc.appendChild(rem);
       // الحساب بيتحدث مكانه بعد الحفظ التلقائي (من غير ما الصفحة تترسم تاني وتضيّع الضغطة اللي بعدها)
       state.totalsEls = { lab: kLab._v, tot: kTot._v, rem: rem._v };

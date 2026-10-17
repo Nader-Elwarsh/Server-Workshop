@@ -98,6 +98,15 @@ function makeDb(seed) {
   db.data.requests.r5 = { techId: "t1", no: "A5", status: "جديد", total: 10, closed: false };
   await fail(L.closeOrder("t1", { orderId: "r5", fields: { status: "ملغي" } }), "not_completed");
   delete db.data.requests.r4; delete db.data.requests.r5; delete db.data.walletTx["order-final-r4"];
+  // عربون اترد جزء منه للعميل: الفني يقدر يقفل، والتحصيل = الإجمالي − (العربون − المرتجع)
+  db.data.requests.r6 = { techId: "t1", no: "A6", status: "مكتمل", labor: 300, total: 300, deposit: 500, depositRefunded: 250, closed: false };
+  const o6 = await L.closeOrder("t1", { orderId: "r6", expectTotal: 300, expectDeposit: 500 });
+  assert.strictEqual(o6.collected, 50, "300 − (500 − 250)");
+  // أمر ضمان: الأجرة اللي الفني كتبها مابتتحسبش على العميل
+  db.data.requests.r7 = { techId: "t1", no: "A7", status: "مكتمل", labor: 0, total: 80, partsTotal: 80, parts: [{ external: true, name: "ثرموستات", qty: 1, sell: 80, cost: 50 }], deposit: 0, warrantyDecision: "warranty", closed: false };
+  const o7 = await L.closeOrder("t1", { orderId: "r7", fields: { labor: 200, total: 280, parts: [{ external: true, name: "ثرموستات", qty: 1, sell: 80, cost: 50 }] } });
+  assert.deepStrictEqual([o7.collected, db.data.requests.r7.labor, db.data.requests.r7.total], [80, 0, 80], "المصنعية صفر على أمر الضمان");
+  ["r6", "r7"].forEach((k) => { delete db.data.requests[k]; delete db.data.walletTx["order-final-" + k]; });
 
   // الحساب: إصلاح التحصيل القديم الناقص (مرة واحدة)، الرصيد، السجل، المصروفات
   const acc = await L.account("t1", {});

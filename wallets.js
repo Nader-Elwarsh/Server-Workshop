@@ -242,7 +242,7 @@ function applyWalletTxEdit(txId,v){
   if(e.source==="transfer"&&e.transferId){
     let t=arr(K.tr),tx=t.find(x=>x.transferId===e.transferId&&x.source==="transfer");
     if(tx){
-      tx.amount=e.amount;tx.reason=e.reason;tx.note=e.note;tx.date=e.date;tx.time=e.time;
+      tx.amount=e.amount;tx.reason=e.reason;tx.note=e.note;tx.date=e.date;tx.time=e.time;tx.counterparty=e.wallet;
       if(!commitStorage({[K.wtx]:a,[K.tr]:t}))return{ok:false};
       window.auditLog?.("تعديل حركة","محفظة",e.id,note+" (مع حركة الخزنة المقابلة)");
       renderWallets();renderWalletDetail();
@@ -254,6 +254,10 @@ function applyWalletTxEdit(txId,v){
     const c=a.find(x=>x&&x!==e&&x.source==="wallet-transfer"&&x.transferId===e.transferId&&!x.deleted);
     if(c){c.amount=e.amount;c.reason=e.reason;c.note=e.note;c.date=e.date;c.time=e.time;if(oldWallet!==e.wallet)c.counterWallet=e.wallet}
   }
+  if(e.source==="custody"&&e.custodyId){ // إيداع/تسوية عهدة: الطرف التاني (محفظة الورشة ↔ عهدة الفني) بنفس المبلغ والتاريخ
+    const c=a.find(x=>x&&x!==e&&x.source==="custody"&&x.custodyId===e.custodyId&&!x.deleted);
+    if(c){c.amount=e.amount;c.note=e.note;c.date=e.date;c.time=e.time;c.updatedAt=e.updatedAt}
+  }
   if(!saveJSONSafe(K.wtx,a))return{ok:false};
   window.auditLog?.("تعديل حركة","محفظة",e.id,note);
   renderWallets();renderWalletDetail();
@@ -261,10 +265,13 @@ function applyWalletTxEdit(txId,v){
 }
 function deleteWalletTx(txId){
   let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return;
-  let isTransfer=e.source==="transfer"&&e.transferId,isW2W=e.source==="wallet-transfer"&&e.transferId;
+  let isTransfer=e.source==="transfer"&&e.transferId,isW2W=e.source==="wallet-transfer"&&e.transferId,cPair=e.source==="custody"&&e.custodyId?a.find(x=>x&&x!==e&&x.source==="custody"&&x.custodyId===e.custodyId&&!x.deleted):null;
+  if(!cPair&&e.ownPocket&&e.refKey){const k=/-own$/.test(e.refKey)?e.refKey.slice(0,-4):e.refKey+"-own";cPair=a.find(x=>x&&x!==e&&x.refKey===k&&!x.deleted)||null} // مصروف الفني من جيبه: الحركتين مع بعض
   let msg=isW2W?`هذه حركة تحويل بين محفظتين (${e.type==="out"?e.wallet+" ← "+(e.counterWallet||"؟"):(e.counterWallet||"؟")+" ← "+e.wallet}). حذف الحركتين معًا؟`:isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في الخزنة. حذف الحركتين معًا (من المحفظة والخزنة)؟":(e.refKey?"هذه الحركة مرتبطة بأمر شغل. حذفها من هنا لن يعدّل أمر الشغل نفسه، بس هتختفي من كشف المحفظة. تأكيد الحذف؟":"حذف هذه الحركة من كشف المحفظة؟");
+  if(cPair&&e.ownPocket)msg="ده مصروف الفني دفعه من جيبه (متسجل حركتين: المصروف + اللي هيترد له). هتتحذف الحركتين مع بعض. تكمل؟";
+  else if(cPair)msg=`دي حركة عهدة فني (${e.type==="out"?e.wallet+" ← "+cPair.wallet:cPair.wallet+" ← "+e.wallet}). هتتحذف الحركتين مع بعض عشان الرصيدين يفضلوا مظبوطين. تكمل؟`;
   if(!confirm(msg))return;
-  e.deleted=true;
+  e.deleted=true;if(cPair)cPair.deleted=true;
   // علامة "اتحذفت بقصد": من غيرها أول حفظ تاني للأمر (أي تعديل بسيط زي إضافة قطعة)
   // كان بيعيد إنشاء الحركة اللي انت مسحتها. بنفتكر المبلغ/المحفظة وقت الحذف عشان
   // لو غيّرت العربون أو المحفظة في الأمر بعدها تتسجل حركة جديدة عادي.

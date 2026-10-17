@@ -234,10 +234,29 @@ function setOverdueAlertDays(){
 }
 function setTypePosition(i,pos){let n=parseInt(pos,10),entries=Object.entries(settings().types||{});if(!Number.isFinite(n))return settingsPage();n=Math.max(1,Math.min(entries.length,n));if(i<0||i>=entries.length||i===n-1)return;let item=entries.splice(i,1)[0];entries.splice(n-1,0,item);let s=settings();s.types=Object.fromEntries(entries);put(K.s,s);settingsPage()}
 function addCenter(){let el=document.getElementById("newCenter"),v=el&&el.value?el.value:prompt("اسم المركز الجديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();if(!s.centers.includes(v)){s.centers.push(v);s.villages[v]=s.villages[v]||[]}put(K.s,s);if(el)el.value="";settingsPage()}
-function renameCenter(c){let n=prompt("الاسم الجديد للمركز",c);if(!n||n===c)return;n=n.trim();if(!n)return;let s=settings(),i=s.centers.indexOf(c);if(i<0)return;s.centers[i]=n;s.villages[n]=s.villages[c]||[];if(n!==c)delete s.villages[c];put(K.s,s);settingsPage()}
-function deleteCenter(c){let used=arr(K.c).filter(x=>x.mainAddress?.center===c||(x.extraAddresses||[]).some?.(a=>a?.center===c)).length;if(used&&!confirm(`⚠️ فيه ${used} عميل عنوانه في مركز «${c}». لو حذفته هتفضل عناوينهم مكتوبة بس المركز مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف المركز «${c}» وكل قراه؟`))return;let s=settings();s.centers=s.centers.filter(x=>x!==c);delete s.villages[c];put(K.s,s);settingsPage()}
+/* تغيير اسم مركز/قرية/نوع/ماركة/تصنيف من الإعدادات بيتطبق كمان على البيانات اللي متسجلة بالاسم القديم.
+   من غيره: تصحيح غلطة إملائية («المنصوره» ← «المنصورة») كان بيقسم العملاء على اسمين في التقارير وخط السير والفلاتر. */
+function renameRecordsPayload(kind,old,n,center){
+  const out={};let ch=0;
+  const fixAddr=a=>{if(!a||typeof a!=="object")return;if(kind==="center"&&a.center===old){a.center=n;ch++}if(kind==="village"&&a.center===center&&a.village===old){a.village=n;ch++}};
+  if(kind==="center"||kind==="village"){
+    const cs=arr(K.c);cs.forEach(c=>{if(!c)return;fixAddr(c.mainAddress);fixAddr(c.extraAddress);(Array.isArray(c.extraAddresses)?c.extraAddresses:[]).forEach(fixAddr);fixAddr(c)});
+    if(ch)out[K.c]=cs;
+  }
+  if(kind==="type"||kind==="brand"){const f=kind==="type"?"type":"brand",ds=arr(K.d);ds.forEach(d=>{if(d&&d[f]===old){d[f]=n;ch++}});if(ch)out[K.d]=ds}
+  if(kind==="partCat"){const ps=arr(K.p);ps.forEach(x=>{if(x&&x.category===old){x.category=n;ch++}});if(ch)out[K.p]=ps}
+  return{values:out,count:ch};
+}
+function commitRename(s,kind,old,n,center){
+  const r=renameRecordsPayload(kind,old,n,center);
+  if(!commitStorage(Object.assign({[K.s]:s},r.values)))return false;
+  if(r.count)window.auditLog?.("تغيير اسم","إعدادات",kind,`${old} ← ${n} (${r.count} سجل)`);
+  return true;
+}
+function renameCenter(c){let n=prompt("الاسم الجديد للمركز",c);if(!n||n===c)return;n=n.trim();if(!n)return;let s=settings(),i=s.centers.indexOf(c);if(i<0)return;if(s.centers.includes(n)){alert("المركز ده موجود بالفعل.");return}s.centers[i]=n;s.villages[n]=s.villages[c]||[];if(n!==c)delete s.villages[c];if(s.villageGroups&&s.villageGroups[c]){s.villageGroups[n]=s.villageGroups[c];delete s.villageGroups[c]}commitRename(s,"center",c,n);settingsPage()}
+function deleteCenter(c){let used=arr(K.c).filter(x=>x.mainAddress?.center===c||x.extraAddress?.center===c||(x.extraAddresses||[]).some?.(a=>a?.center===c)).length;if(used&&!confirm(`⚠️ فيه ${used} عميل عنوانه في مركز «${c}». لو حذفته هتفضل عناوينهم مكتوبة بس المركز مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف المركز «${c}» وكل قراه؟`))return;let s=settings();s.centers=s.centers.filter(x=>x!==c);delete s.villages[c];put(K.s,s);settingsPage()}
 function addType(){let t=prompt("اسم نوع الجهاز الجديد");if(!t)return;t=t.trim();if(!t)return;let s=settings();if(!(t in s.types))s.types[t]=[];put(K.s,s);settingsPage()}
-function renameType(t){let n=prompt("الاسم الجديد للنوع",t);if(!n||n===t)return;n=n.trim();if(!n)return;let s=settings();if(!(t in s.types))return;if(n in s.types&&n!==t){alert("هذا النوع موجود بالفعل");return}let entries=Object.entries(s.types).map(([k,v])=>[k===t?n:k,v]);s.types=Object.fromEntries(entries);put(K.s,s);settingsPage()}
+function renameType(t){let n=prompt("الاسم الجديد للنوع",t);if(!n||n===t)return;n=n.trim();if(!n)return;let s=settings();if(!(t in s.types))return;if(n in s.types&&n!==t){alert("هذا النوع موجود بالفعل");return}let entries=Object.entries(s.types).map(([k,v])=>[k===t?n:k,v]);s.types=Object.fromEntries(entries);commitRename(s,"type",t,n);settingsPage()}
 function deleteType(t){let used=arr(K.d).filter(x=>x.type===t).length;if(used&&!confirm(`⚠️ فيه ${used} جهاز من نوع «${t}». لو حذفت النوع هتفضل الأجهزة موجودة بس النوع مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف نوع الجهاز «${t}» وكل تصنيفاته؟`))return;let s=settings();delete s.types[t];put(K.s,s);settingsPage()}
 function addBrand(){let v=prompt("اسم الماركة الجديدة");if(!v)return;v=(typeof wfCanonicalBrand==="function"?wfCanonicalBrand(v):v.trim());if(!v)return;let s=settings(),k=typeof wfBrandKey==="function"?wfBrandKey(v):v;if(s.brands.some(b=>(typeof wfBrandKey==="function"?wfBrandKey(b):b)===k))return alert("الماركة دي موجودة بالفعل ("+v+").");s.brands.push(v);put(K.s,s);settingsPage()}
 function unifyBrandsNow(){if(typeof wfUnifyBrands!=="function")return;let r=wfUnifyBrands();if(!r.ok)return alert("تعذر توحيد الماركات. جرّب تاني.");alert("تم توحيد الماركات ✅\nالقايمة: "+r.brandsBefore+" ← "+r.brandsAfter+" ماركة\nأجهزة اتعدلت: "+r.devices+"\nأكواد أعطال اتعدلت: "+r.faultCodes);settingsPage()}
@@ -245,8 +264,8 @@ function deleteBrand(b){let used=arr(K.d).filter(x=>x.brand===b).length;if(used&
 function addPartCategory(){let v=prompt("اسم تصنيف القطع الجديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();if(!s.partCats.includes(v))s.partCats.push(v);put(K.s,s);settingsPage()}
 function deletePartCategory(c){let used=arr(K.p).filter(x=>!x.archived&&x.category===c).length;if(used&&!confirm(`⚠️ فيه ${used} صنف في المخزن تحت تصنيف «${c}». لو حذفته هتفضل الأصناف موجودة بس التصنيف مش هيظهر في القوايم. تكمّل؟`))return;if(!confirm(`حذف تصنيف «${c}»؟`))return;let s=settings();s.partCats=s.partCats.filter(x=>x!==c);put(K.s,s);settingsPage()}
 function addSettingItem(key){let v=prompt("أضف عنصر جديد");if(!v)return;v=v.trim();if(!v)return;let s=settings();s[key]=s[key]||[];if(!s[key].includes(v))s[key].push(v);put(K.s,s);settingsPage()}
-function renameSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;let n=prompt("الاسم الجديد",a[i]);if(!n||n===a[i])return;n=n.trim();if(!n)return;a[i]=n;s[key]=a;put(K.s,s);settingsPage()}
-function deleteSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;if(!confirm(`حذف «${a[i]}»؟`))return;a.splice(i,1);s[key]=a;put(K.s,s);settingsPage()}
+function renameSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;if(reservedListValue(key,a[i])){alert(`«${a[i]}» اسم أساسي في النظام، فمش هينفع يتغير.`);return}let n=prompt("الاسم الجديد",a[i]);if(!n||n===a[i])return;n=n.trim();if(!n)return;a[i]=n;s[key]=a;put(K.s,s);settingsPage()}
+function deleteSettingItem(key,i){let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;if(reservedListValue(key,a[i])){alert(`«${a[i]}» اسم أساسي في النظام، فمش هينفع يتمسح.`);return}if(!confirm(`حذف «${a[i]}»؟`))return;a.splice(i,1);s[key]=a;put(K.s,s);settingsPage()}
 
 /* =========================================================
    محرّر قوائم بديل — بدون prompt()/confirm() (مستخدم للمحافظ وتصنيفاتها)
@@ -295,8 +314,12 @@ function addInlineListItem(key){
   settingsPage();
   let refocus=document.getElementById("newInlineItem-"+key);refocus?.focus();
 }
+/* قيم النظام بيعتمد عليها بالاسم (التقارير، صافي المكسب، الورشة/عند العميل، القفل والتحصيل): ماينفعش تتغير أو تتمسح */
+const RESERVED_LIST_VALUES={executionPlaces:["الورشة","عند العميل"],walletCategories:["تحصيل عميل","مصروف شخصي","مصروف تشغيل","مشتريات قطع غيار","سلفة / تحويل","أجور فنيين"],paymentStatuses:["تم الدفع بالكامل"]};
+function reservedListValue(key,v){return (RESERVED_LIST_VALUES[key]||[]).includes(v)}
 function renameInlineListItem(key,i,v){
   v=(v||"").trim();let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;
+  if(reservedListValue(key,a[i])&&v!==a[i]){alert(`«${a[i]}» اسم أساسي في النظام (التقارير والحسابات بتعتمد عليه)، فمش هينفع يتغير. تقدر تضيف اسم جديد جنبه.`);settingsPage();return}
   if(!v){settingsPage();return} // رجوع للاسم القديم لو مسحه فاضي بدل ما يحفظ قيمة فاضية
   let old=a[i];
   // اسم محفظة مكرر كان بيخلي نفس الرصيد يتحسب مرتين في الإجمالي.
@@ -310,29 +333,43 @@ function renameInlineListItem(key,i,v){
     // محفوظة باسم مش موجود في قايمة المحافظ، فبتختفي من إجمالي المحفظة
     // (الاسم الجديد) وهي لسه موجودة فعليًا في البيانات؛ ده بالظبط سبب
     // ظهور المبلغ في كشف/سجل عام بس عدم تغيّر "المجموع" الخاص بالمحفظة.
+    const techs=walletTechs(old);
+    if(techs.length&&!confirm(`«${old}» محفظة عهدة ${techs.join("، ")}.\nبعد التغيير لازم تغيّر محفظته كمان من «المستخدمون والصلاحيات» لـ «${v}»، وإلا تحصيلاته هتتسجل على الاسم القديم.\nتكمل؟`)){settingsPage();return}
     let wtx=arr(K.wtx),touchedWtx=false;
-    wtx.forEach(x=>{if(x.wallet===old){x.wallet=v;touchedWtx=true}});
+    wtx.forEach(x=>{if(x.wallet===old){x.wallet=v;touchedWtx=true}if(x.counterWallet===old){x.counterWallet=v;touchedWtx=true}});
     let reqs=arr(K.r),touchedReq=false;
     reqs.forEach(r=>{
       if(r.depositWallet===old){r.depositWallet=v;touchedReq=true}
       if(r.closeWallet===old){r.closeWallet=v;touchedReq=true}
+      if(r.techWallet===old){r.techWallet=v;touchedReq=true}
+      // محفظة دفع القطعة اللي من بره: من غير ما تتغير، التصحيح التلقائي لحركات الأمر كان بيرجّع الحركة للاسم القديم
+      (r.parts||[]).forEach(p=>{if(p&&p.payWallet===old){p.payWallet=v;touchedReq=true}});
     });
+    // طرف التحويل في الخزنة (اسم المحفظة) + حركات بيع القطع في المخزن
+    let tr=arr(K.tr),touchedTr=false;tr.forEach(x=>{if(x&&x.source==="transfer"&&x.counterparty===old){x.counterparty=v;touchedTr=true}});
+    let mv=arr(K.m),touchedMv=false;mv.forEach(x=>{if(x&&x.wallet===old){x.wallet=v;touchedMv=true}});
     let payload={[K.s]:s};
     if(touchedWtx)payload[K.wtx]=wtx;
     if(touchedReq)payload[K.r]=reqs;
+    if(touchedTr)payload[K.tr]=tr;
+    if(touchedMv)payload[K.m]=mv;
     if(!commitStorage(payload))return;
     settingsPage();
     return;
   }
   put(K.s,s);settingsPage();
 }
+/* الفنيين اللي المحفظة دي عهدتهم (من آخر قايمة فنيين اتحمّلت على الجهاز) */
+function walletTechs(w){try{const d=JSON.parse((window.WFStorage&&WFStorage.getItem("wf_tech_dir"))||"[]");return (Array.isArray(d)?d:[]).filter(u=>u&&String(u.wallet||"").trim()===w).map(u=>u.name||"فني")}catch(e){return[]}}
 function deleteInlineListItem(key,i){
   let s=settings(),a=s[key]||[];if(i<0||i>=a.length)return;
   let removed=a[i];
+  if(reservedListValue(key,removed)){alert(`«${removed}» اسم أساسي في النظام (التقارير والحسابات بتعتمد عليه)، فمش هينفع يتمسح.`);return}
   // نفس مشكلة إعادة التسمية بالظبط: حذف محفظة من القايمة هنا بيشيلها من
   // walletsOverview()/الإجمالي، لكن حركاتها القديمة (wf_wallet_tx) بتفضل
   // موجودة في البيانات باسمها القديم من غير أي تنبيه — يعني رصيدها بيختفي
   // بصمت من "إجمالي أرصدة كل الحسابات" رغم إن الفلوس دي لسه مسجّلة فعليًا.
+  if(key==="wallets"){const techs=walletTechs(removed);if(techs.length&&!confirm(`«${removed}» محفظة عهدة ${techs.join("، ")}. لو اتشالت من القايمة، تحصيلاته مش هتظهر في إجمالي المحافظ. غيّر محفظته الأول من «المستخدمون والصلاحيات». تحذفها برضه؟`))return}
   if(key==="wallets"&&typeof walletRawBalance==="function"){
     let raw=walletRawBalance(removed);
     if(raw&&!confirm(`المحفظة "${removed}" لسه فيها حركات برصيد ${raw.toFixed(2)} ج. حذفها من القايمة هيشيلها من إجمالي المحافظ بالكامل، مع إن حركاتها القديمة هتفضل موجودة (تقدر تشوفها من كشف التصنيف لو محتاج). تأكيد الحذف؟`))return;

@@ -22,15 +22,22 @@
       var q = state.q.trim().toLowerCase();
       return A(window.K.r).filter(function (r) { return r && !r.closed && !r.paid && r.status !== "ملغي"; }).map(function (r) {
         var c = cs[r.customerId] || {}, d = ds[r.deviceId];
-        return { r: r, cname: c.name || "عميل محذوف", phone: c.phone || "", dev: devLabel(d) };
+        return { r: r, cname: c.name || "عميل محذوف", phone: c.phone || "", dev: devLabel(d), area: areaOf(r) };
       }).filter(function (x) {
         if (state.filter === "unassigned" && x.r.techId) return false;
         if (state.filter !== "all" && state.filter !== "unassigned" && x.r.techId !== state.filter) return false;
-        if (q && (x.cname + " " + x.phone + " " + x.dev + " " + (x.r.no || "") + " " + (x.r.fault || "")).toLowerCase().indexOf(q) < 0) return false;
+        if (q && !(typeof window.wfMatch === "function" ? window.wfMatch([x.cname, x.phone, x.dev, x.r.no, x.r.fault, x.area], q) : (x.cname + " " + x.phone + " " + x.dev + " " + (x.r.no || "") + " " + (x.r.fault || "") + " " + x.area).toLowerCase().indexOf(q) > -1)) return false;
         return true;
       }).sort(function (a, b) { return String(b.r.createdAt || b.r.no || "").localeCompare(String(a.r.createdAt || a.r.no || "")); });
     }
-    function selCount() { return Object.keys(state.sel).filter(function (k) { return state.sel[k]; }).length; }
+    /* المنطقة (المركز - القرية) والموعد: أهم حاجتين وانت بتوزّع على الفنيين */
+    function areaOf(r) { try { var a = typeof window.resolveRequestAddress === "function" ? window.resolveRequestAddress(r) : {}; return [a.center, a.village].filter(Boolean).join(" - "); } catch (e) { return ""; } }
+    function visitLabel(v) { var d = new Date(v); if (!v || isNaN(d.getTime())) return ""; return d.toLocaleDateString("ar-EG", { weekday: "short", day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
+    function openLoad() { var m = {}; A(window.K.r).forEach(function (r) { if (r && r.techId && !r.closed && !r.paid && r.status !== "ملغي") m[r.techId] = (m[r.techId] || 0) + 1; }); return m; }
+    var shownIds = {};
+    /* المحدد = اللي ظاهر قدامك بس (لو غيّرت الفلتر أو البحث، اللي اختفى مايتعيّنش من غير ما تشوفه) */
+    function selectedIds() { return Object.keys(state.sel).filter(function (k) { return state.sel[k] && shownIds[k]; }); }
+    function selCount() { return selectedIds().length; }
     function draw() {
       while (root.firstChild) root.removeChild(root.firstChild);
       var bar = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin:8px 0");
@@ -40,7 +47,7 @@
       var q = mk("input", "flex:2;min-width:140px;padding:9px;border-radius:10px"); q.type = "search"; q.placeholder = "🔍 بحث (عميل، موبايل، جهاز، رقم أمر)"; q.value = state.q;
       q.oninput = function () { state.q = q.value; clearTimeout(qT); qT = setTimeout(function () { state.limit = 60; var pos = q.selectionStart; draw(); var n = root.querySelector("input[type=search]"); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} } }, 220); };
       bar.appendChild(f); bar.appendChild(q); root.appendChild(bar);
-      var list = rows();
+      var list = rows(); shownIds = {}; list.forEach(function (x) { shownIds[x.r.id] = 1; });
       root.appendChild(mk("div", "font-size:13px;opacity:.75;margin-bottom:6px", list.length + " أمر"));
       var all = mk("button", "margin-bottom:8px", "تحديد الكل / إلغاء الكل"); all.type = "button"; all.className = "secondary mini-action";
       all.onclick = function () { var every = list.length && list.every(function (x) { return state.sel[x.r.id]; }); list.forEach(function (x) { state.sel[x.r.id] = !every; }); draw(); };
@@ -53,6 +60,8 @@
         body.appendChild(mk("b", "", "#" + (x.r.no || "") + " — " + x.cname + (x.phone ? " (" + x.phone + ")" : "")));
         if (x.dev) body.appendChild(mk("div", "font-size:14px", "🔧 " + x.dev));
         if (x.r.fault) body.appendChild(mk("div", "font-size:13px;opacity:.8", String(x.r.fault).slice(0, 90)));
+        var meta = [x.area ? "📍 " + x.area : "", x.r.visit ? "📅 " + visitLabel(x.r.visit) : "🕓 بدون موعد", x.r.status && x.r.status !== "جديد" ? "• " + x.r.status : ""].filter(Boolean).join("  ");
+        body.appendChild(mk("div", "font-size:13px;margin-top:2px", meta));
         body.appendChild(mk("div", "font-size:13px;margin-top:2px;" + (x.r.techId ? "color:var(--primary,#1d4ed8)" : "color:var(--warn-text,#b45309)"), x.r.techId ? "👷 " + (x.r.techName || "فني") : "بدون فني"));
         card.appendChild(cb); card.appendChild(body); root.appendChild(card);
       });
@@ -63,12 +72,15 @@
       var who = mk("select", "flex:1;min-width:150px;padding:9px;border-radius:10px"); who.id = "dispatchWho";
       var o0 = mk("option", "", "— اختار الفني —"); o0.value = "__none__"; who.appendChild(o0);
       var o1 = mk("option", "", "إلغاء التعيين (بدون فني)"); o1.value = ""; who.appendChild(o1);
-      state.users.forEach(function (u) { var o = mk("option", "", (u.name || u.uid) + (u.scope === "assigned" ? " (مقيّد بأوامره)" : "")); o.value = u.uid; who.appendChild(o); });
+      var load = openLoad();
+      state.users.forEach(function (u) { var o = mk("option", "", (u.name || u.uid) + " — معاه " + (load[u.uid] || 0) + " مفتوح" + (u.scope === "assigned" ? " (مقيّد بأوامره)" : "")); o.value = u.uid; who.appendChild(o); });
       var go = mk("button", "", ""); go.type = "button"; go.id = "dispatchGo"; go.className = "primary small-btn";
       go.onclick = async function () {
-        var ids = Object.keys(state.sel).filter(function (k) { return state.sel[k]; });
+        var ids = selectedIds();
         if (!ids.length) return say("اختار أمر واحد على الأقل.", true);
         if (who.value === "__none__") return say("اختار الفني الأول.", true);
+        var moving = A(window.K.r).filter(function (r) { return r && ids.indexOf(String(r.id)) > -1 && r.techId && r.techId !== who.value; });
+        if (moving.length && !window.confirm(moving.length + " أمر من المحدد متعيّن لفني تاني (" + moving.slice(0, 3).map(function (r) { return "#" + (r.no || "") + " مع " + (r.techName || "فني"); }).join("، ") + (moving.length > 3 ? "…" : "") + ").\nهيتنقلوا. تكمل؟")) return;
         go.disabled = true; say("");
         try {
           var res = await window.WFTech.assign(ids, who.value);

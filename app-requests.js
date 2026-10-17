@@ -129,7 +129,7 @@ async function persistRequestRecord(formData,existing){
       return{ok:true,request:existing}
     }
     let r={id:id(),no:orderNo(),customerId:formData.customerId,deviceId:formData.deviceId,addressKey:formData.addressKey,visit:formData.visit,status:formData.status,executionPlace:formData.executionPlace,workshopStatus:formData.workshopStatus,partsWaiting:formData.partsWaiting,tag:formData.tag,fault:formData.fault,work:formData.work,labor:formData.labor,parts:formData.parts,partsTotal:formData.partsTotal,partsCost,total:formData.total,deposit:formData.deposit,depositWallet:formData.depositWallet,remain:Math.max(0,formData.total-formData.deposit),closed:false,createdAt:new Date().toISOString()};
-    if(formData.warrantyDecision){r.warrantyDecision=formData.warrantyDecision;r.warrantyOf=formData.warrantyOf||"";r.warrantyOfNo=formData.warrantyOfNo||""}
+    if(formData.warrantyDecision){r.warrantyDecision=formData.warrantyDecision;r.warrantyOf=formData.warrantyOf||"";r.warrantyOfNo=formData.warrantyOfNo||"";r.warrantyOfScope=formData.warrantyOfScope||""}
     applyStatusTimestamp(r,r.status);
     recordStatusHistory(r,"",r.status);
     let stock=arr(K.p),moves=arr(K.m),m0=moves.length;
@@ -222,7 +222,7 @@ function warrantyDecisionDialog(prior){
   });
 }
 function applyWarrantyDecisionToForm(fd,prior,dec){
-  fd.warrantyDecision=dec;fd.warrantyOf=prior.id;fd.warrantyOfNo=prior.no||"";
+  fd.warrantyDecision=dec;fd.warrantyOf=prior.id;fd.warrantyOfNo=prior.no||"";fd.warrantyOfScope=typeof warrantyScopeText==="function"?warrantyScopeText(prior):""; /* الفني يشوف الضمان على إيه (الأمر القديم مش عنده) */
   if(dec==="warranty"){fd.labor=0;fd.total=Math.round(((+fd.partsTotal||0))*100)/100}
 }
 /* قرار الضمان لأمر اتعمل من غير السؤال (من البوابة أو الفني أو إضافة سريعة) — من صفحة الأمر */
@@ -231,7 +231,7 @@ async function setWarrantyDecision(i,dec){
   const r0=arr(K.r).find(x=>String(x.id)===String(i)),prior=r0&&typeof priorWarrantyOrder==="function"?priorWarrantyOrder(r0):null;
   if(!r0||!prior||r0.closed)return;
   if(dec==="warranty"&&(+r0.labor||0)>0&&!confirm(`هيتسجل الأمر ضمان على الأمر ${prior.no||""} والمصنعية (${(+r0.labor).toFixed(2)} ج) هتبقى صفر. تكمل؟`))return;
-  const ok=await updateRequestRecordAsync(i,(_,r)=>{if(r.closed)return false;r.warrantyDecision=dec;r.warrantyOf=prior.id;r.warrantyOfNo=prior.no||"";if(dec==="warranty"){r.labor=0;r.total=Math.round((+r.partsTotal||0)*100)/100;r.remain=Math.max(0,r.total-(+r.deposit||0))}return true});
+  const ok=await updateRequestRecordAsync(i,(_,r)=>{if(r.closed)return false;r.warrantyDecision=dec;r.warrantyOf=prior.id;r.warrantyOfNo=prior.no||"";r.warrantyOfScope=typeof warrantyScopeText==="function"?warrantyScopeText(prior):"";if(dec==="warranty"){r.labor=0;r.total=Math.round((+r.partsTotal||0)*100)/100;r.remain=Math.max(0,r.total-(+r.deposit||0))}return true});
   if(ok){window.auditLog?.("قرار ضمان","أمر شغل",i,dec==="warranty"?`ضمان أمر ${prior.no||""}`:"شغل جديد بفلوس");requestProfile()}
 }
 async function saveWarrantyScope(i){
