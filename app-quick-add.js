@@ -121,7 +121,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
 })
 
 // Quick-create relations: create the missing entity without leaving the current workflow.
-function validateQuickCustomerPhone(phone){if(typeof wfPhoneKey!=="function"||!wfPhoneKey(phone)){alert("اكتب رقم تليفون صحيح (7 أرقام على الأقل).");return false}return true}
+function validateQuickCustomerPhone(phone){if(typeof wfEgMobile==="function"?!wfEgMobile(phone):(typeof wfPhoneKey!=="function"||!wfPhoneKey(phone))){alert("اكتب رقم تليفون صحيح — رقم الموبايل لازم يكون 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015.");return false}return true}
 function setupQuickLocation(prefix){
   let center=document.getElementById(prefix+'Center'), village=document.getElementById(prefix+'Village');
   if(!center||!village)return;

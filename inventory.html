@@ -8,12 +8,9 @@
 <label class="wide">📷 صورة الفاتورة<div class="dual-photo-picker" data-target="invPhoto"><button type="button" class="secondary small-btn dual-photo-btn" data-mode="camera">📷 كاميرا</button><button type="button" class="secondary small-btn dual-photo-btn" data-mode="gallery">🖼️ من الصور</button><span class="dual-photo-filename">لم يتم اختيار ملف</span></div><input id="invPhoto" type="file" accept="image/*" class="hidden"></label>
 <div id="invPhotoPreview" class="wide"></div>
 <label class="wide">ملاحظة <small>اختياري، مثلًا اسم المورد أو التاريخ</small><input id="invNote"></label>
-<label class="wide">ربط بالأصناف <small>اختياري، تقدر تحددها بعدين لو مش متأكد دلوقتي</small>
-<input type="text" id="invPartFilter" placeholder="🔍 دوّر على اسم الصنف عشان تفلتر القائمة..." autocomplete="off" data-wf-input="filterInvoicePartOptions">
-<div id="invPartOptions" class="inv-part-options"></div>
-</label>
+<div class="hint wide">بعد الحفظ هيفتحلك اختيار أصناف الفاتورة على طول — دوس على الصنف يتربط فورًا.</div>
 </div>
-<div class="actions"><button type="button" class="primary" id="invSaveBtn" data-wf-click="saveInvoice">💾 حفظ الفاتورة</button><button type="button" class="secondary" data-wf-click="invoiceFormReset">إلغاء</button></div>
+<div class="actions"><button type="button" class="primary" id="invSaveBtn" data-wf-click="saveInvoice">💾 حفظ واختيار الأصناف</button><button type="button" class="secondary" data-wf-click="invoiceFormReset">إلغاء</button></div>
 <h3 style="margin-top:14px">📋 الفواتير المسجّلة</h3>
 <div id="invoicesList"></div>
 </section>

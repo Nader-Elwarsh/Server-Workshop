@@ -49,7 +49,7 @@ function invoiceFormReset() {
   const photo = document.getElementById("invPhoto"); if (photo) photo.value = ""; refreshDualPhotoName("invPhoto");
   const preview = document.getElementById("invPhotoPreview"); if (preview) preview.innerHTML = "";
   const note = document.getElementById("invNote"); if (note) note.value = "";
-  const btn = document.getElementById("invSaveBtn"); if (btn) btn.textContent = "💾 حفظ الفاتورة";
+  const btn = document.getElementById("invSaveBtn"); if (btn) btn.textContent = "💾 حفظ واختيار الأصناف";
   const filterEl = document.getElementById("invPartFilter"); if (filterEl) filterEl.value = "";
   filterInvoicePartOptions();
 }
@@ -79,7 +79,7 @@ async function editInvoiceLinks(invId) {
     const cb = document.querySelector(`#invPartOptions .inv-part-cb[value="${pid}"]`);
     if (cb) cb.checked = true;
   });
-  const btn = document.getElementById("invSaveBtn"); if (btn) btn.textContent = "💾 تحديث الفاتورة";
+  const btn = document.getElementById("invSaveBtn"); if (btn) btn.textContent = "💾 حفظ الصورة/الملاحظة";
   document.getElementById("invoiceForm")?.scrollIntoView({ behavior: "smooth", block: "start" });
   const src = window.ImageStore ? await window.ImageStore.resolveSrc(inv.photo) : inv.photo;
   if (src) showInvoicePhotoPreview(src);
@@ -94,25 +94,15 @@ async function saveInvoice() {
 async function saveInvoiceInner() {
   const file = document.getElementById("invPhoto")?.files?.[0] || null;
   const note = (document.getElementById("invNote")?.value || "").trim();
-  const partIds = Array.from(document.querySelectorAll("#invPartOptions .inv-part-cb:checked")).map(x => x.value);
   const list = arr(K.inv);
   if (_editingInvoiceId) {
     const inv = list.find(x => x.id === _editingInvoiceId);
     if (!inv) { invoiceFormReset(); renderInvoices(); return; }
-    // لو في أصناف كانت مربوطة بالفاتورة دي وبقت مش متحدّدة دلوقتي (يعني
-    // هتتشال من الربط)، ننبّه قبل الحفظ عشان تتأكدي إنه مقصود ومش بغلط.
-    const removedIds = (inv.partIds || []).filter(pid => !partIds.includes(pid));
-    if (removedIds.length) {
-      const partsById = byIdCached(K.p);
-      const removedNames = removedIds.map(pid => partsById.get(pid)?.name).filter(Boolean);
-      const namesText = removedNames.length ? removedNames.join("، ") : `${removedIds.length} صنف`;
-      if (!confirm(`ده هيلغي ربط الفاتورة دي بـ: ${namesText}.\nمتأكد إنك عايز تكمّل الحفظ كده؟`)) return;
-    }
     if (file) {
       const dataURL = await imageToDataURL(file, 1400, 0.72);
       inv.photo = window.ImageStore ? await window.ImageStore.save(dataURL, inv.photo) : dataURL;
     }
-    inv.note = note; inv.partIds = partIds;
+    inv.note = note; /* الأصناف بتتربط من «🔗 الأصناف» وبتتحفظ لحظتها */
     if (!saveJSONSafe(K.inv, list)) return;
     invoiceFormReset(); renderInvoices();
     if (typeof partProfile === "function") partProfile();
@@ -121,10 +111,11 @@ async function saveInvoiceInner() {
   if (!file) return alert("اختر صورة الفاتورة الأول.");
   const dataURL = await imageToDataURL(file, 1400, 0.72);
   const photo = window.ImageStore ? await window.ImageStore.save(dataURL) : dataURL;
-  list.push({ id: id(), photo, note, partIds, at: new Date().toISOString() });
+  const newId = id();
+  list.push({ id: newId, photo, note, partIds: [], at: new Date().toISOString() });
   if (!saveJSONSafe(K.inv, list)) return;
   invoiceFormReset(); renderInvoices();
-  alert("تم حفظ الفاتورة" + (partIds.length ? ` وربطها بـ ${partIds.length} صنف.` : "."));
+  openInvoiceLinker(newId); // على طول: اختار أصنافها (كل صنف بيتسجل أول ما تدوس عليه)
 }
 function deleteInvoiceRecord(invId) {
   const list = arr(K.inv), inv = list.find(x => x.id === invId); if (!inv) return;
@@ -166,7 +157,7 @@ function renderInvoices() {
         <small>${new Date(inv.at).toLocaleDateString("ar-EG")}${inv.note ? " • " + esc(inv.note) : ""}</small>
         <small>${names.length ? `🔗 ${names.map(esc).join("، ")}` : "بدون ربط بصنف"}</small>
       </div>
-      <div class="compact-actions"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="editInvoiceLinks('${inv.id}')">✏️ تعديل الربط</button><button type="button" class="danger-btn mini-action" data-wf-event="click" data-wf-code="deleteInvoiceRecord('${inv.id}')">🗑️ حذف</button></div>
+      <div class="compact-actions"><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="openInvoiceLinker('${inv.id}')">🔗 الأصناف (${(inv.partIds || []).length})</button><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="editInvoiceLinks('${inv.id}')">✏️ الصورة/الملاحظة</button><button type="button" class="danger-btn mini-action" data-wf-event="click" data-wf-code="deleteInvoiceRecord('${inv.id}')">🗑️ حذف</button></div>
     </div>`;
   }, "invoices", { step: 20 }).html;
   resolveInvoiceThumbs(host);
@@ -225,3 +216,71 @@ function unlinkPartInvoice(partId, invId) {
   if (typeof partProfile === "function") partProfile();
 }
 document.addEventListener("DOMContentLoaded", () => { if (document.getElementById("invoicesList")) renderInvoices(); });
+
+/* ===== ربط الفاتورة بأصنافها: نافذة واحدة — دوس على الصنف يتربط فورًا، ودوس ✖ يتشال فورًا (من غير زرار حفظ) ===== */
+function invoiceLinkSet(invId, partId, on) {
+  const list = arr(K.inv), inv = list.find(x => x.id === invId); if (!inv) return false;
+  const ids = new Set(inv.partIds || []);
+  if (on) ids.add(partId); else ids.delete(partId);
+  inv.partIds = Array.from(ids);
+  if (!saveJSONSafe(K.inv, list)) return false;
+  return true;
+}
+function openInvoiceLinker(invId) {
+  const inv0 = arr(K.inv).find(x => x.id === invId); if (!inv0) return;
+  document.getElementById("invLinkerDialog")?.remove();
+  const D = document, m = D.createElement("div"); m.className = "txd-modal"; m.id = "invLinkerDialog";
+  m.innerHTML = `<div class="txd-sheet rd-sheet inv-linker" role="dialog" aria-label="أصناف الفاتورة">
+    <div class="inv-lk-head"><img class="invoice-thumb" alt="🧾" data-photo-ref="${esc(inv0.photo)}"><div><div class="txd-title">🔗 أصناف الفاتورة</div><small class="hint">${new Date(inv0.at).toLocaleDateString("ar-EG")}${inv0.note ? " • " + esc(inv0.note) : ""}</small></div></div>
+    <div class="hint">دوس على أي صنف يتربط على طول — ودوس ✖ عشان تشيله. مفيش زرار حفظ.</div>
+    <div id="invLkChips" class="inv-lk-chips"></div>
+    <input type="search" id="invLkQ" placeholder="🔍 اكتب اسم الصنف أو الكود…" autocomplete="off">
+    <div id="invLkRes" class="inv-lk-res"></div>
+    <div class="txd-actions"><button type="button" class="primary" id="invLkDone">✅ تم</button></div></div>`;
+  D.body.appendChild(m);
+  resolveInvoiceThumbs(m);
+  const q = s => m.querySelector(s), close = () => { m.remove(); renderInvoices(); if (typeof partProfile === "function") partProfile(); };
+  let flashT = null;
+  const flash = (el) => { if (!el) return; el.classList.add("inv-lk-flash"); clearTimeout(flashT); flashT = setTimeout(() => el.classList.remove("inv-lk-flash"), 700); };
+  function chips() {
+    const inv = arr(K.inv).find(x => x.id === invId) || { partIds: [] }, pm = byIdCached(K.p);
+    const ids = inv.partIds || [];
+    q("#invLkChips").innerHTML = ids.length ? ids.map(pid => `<span class="inv-lk-chip" data-pid="${esc(pid)}">${esc(pm.get(pid)?.name || "صنف محذوف")}<button type="button" aria-label="شيل" data-rm="${esc(pid)}">✖</button></span>`).join("") : `<span class="hint">لسه مفيش أصناف مربوطة.</span>`;
+    q("#invLkChips").querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { if (invoiceLinkSet(invId, b.dataset.rm, false)) { chips(); results(); } });
+    return ids;
+  }
+  function results() {
+    const ids = new Set((arr(K.inv).find(x => x.id === invId) || {}).partIds || []), f = q("#invLkQ").value.trim();
+    const parts = arr(K.p).filter(p => p && !p.archived && !ids.has(p.id));
+    const list = f ? parts.filter(p => typeof partMatchesQuery === "function" ? partMatchesQuery(p, f) : ((p.name || "").includes(f) || (p.code || "").includes(f))) : parts;
+    let h = list.slice(0, 40).map(p => `<button type="button" class="inv-lk-item" data-pid="${esc(p.id)}">➕ ${esc(p.name)}${p.code ? ` <small>(${esc(p.code)})</small>` : ""}<small class="hint"> • متاح ${+p.qty || 0}</small></button>`).join("");
+    if (!list.length) h = `<div class="hint">${f ? "مفيش صنف بالاسم ده." : "كل الأصناف مربوطة بالفاتورة دي."}</div>`;
+    if (f && !(typeof findDuplicatePartName === "function" ? findDuplicatePartName(f) : arr(K.p).some(p => (p.name || "").trim().toLowerCase() === f.toLowerCase())))
+      h += `<button type="button" class="secondary small-btn inv-lk-new">➕ «${esc(f)}» صنف جديد — يتضاف للمخزن ويتربط</button>`;
+    q("#invLkRes").innerHTML = h;
+    q("#invLkRes").querySelectorAll(".inv-lk-item").forEach(b => b.onclick = () => {
+      if (!invoiceLinkSet(invId, b.dataset.pid, true)) return;
+      chips(); flash(q(`#invLkChips [data-pid="${CSS.escape(b.dataset.pid)}"]`)); results(); q("#invLkQ").focus();
+    });
+    const nb = q(".inv-lk-new");
+    if (nb) nb.onclick = () => {
+      if (typeof openQuickAddPart !== "function") { alert("إضافة صنف جديد متاحة من صفحة المخزن."); return; }
+      openQuickAddPart(f, { anchor: "invLkRes", onCreated: p => { if (invoiceLinkSet(invId, p.id, true)) { q("#invLkQ").value = ""; chips(); results(); } } });
+    };
+  }
+  q("#invLkQ").addEventListener("input", results);
+  q("#invLkDone").onclick = close; m.addEventListener("click", ev => { if (ev.target === m) close(); });
+  chips(); results();
+  setTimeout(() => { try { q("#invLkQ").focus(); } catch (_) {} }, 50);
+}
+(function () {
+  try {
+    if (document.getElementById("invLkCss")) return;
+    const st = document.createElement("style"); st.id = "invLkCss";
+    st.textContent = ".inv-linker{max-height:88vh;display:flex;flex-direction:column;gap:8px}.inv-lk-head{display:flex;gap:10px;align-items:center}.inv-lk-head .invoice-thumb{width:54px;height:54px;object-fit:cover;border-radius:10px}" +
+      ".inv-lk-chips{display:flex;flex-wrap:wrap;gap:6px;min-height:30px}.inv-lk-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:999px;background:var(--bg-sunken);border:1px solid var(--border);font-size:14px;transition:background .3s}" +
+      ".inv-lk-chip button{border:0;background:transparent;color:var(--danger-text);font-size:13px;min-height:0;width:auto;padding:2px 6px;cursor:pointer}.inv-lk-flash{background:var(--success-bg,#dcfce7)}" +
+      ".inv-lk-res{overflow:auto;max-height:42vh;display:grid;gap:4px}.inv-lk-item{display:block;width:100%;text-align:start;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);font:inherit;cursor:pointer}.inv-lk-item:active{opacity:.6}";
+    document.head.appendChild(st);
+  } catch (e) {}
+})();

@@ -657,6 +657,8 @@ function renderWalletDetail(){dedupeWalletTxByRef();
       <div class="treasury-row-actions"><button type="button" class="mini-action" data-wf-event="click" data-wf-code="editWalletTx('${x.id}')">✏️</button><button type="button" class="mini-action" data-wf-event="click" data-wf-code="deleteWalletTx('${x.id}')">🗑️</button></div>
     </div>`,[type,name,filterCategory].join("|"),{step:40,hashPrefix:"tx-"}).html:`<div class="hint">لا توجد حركات بعد.</div>`}
   `;
+  // صفحة «مصاريفي الشخصية»/«مصاريف التشغيل»: تحليل بالشهر والبند والنسبة بدل الرقم الإجمالي بس
+  if(!isWallet&&typeof renderSpendAnalysisHtml==="function"&&typeof SPEND_EXP_CATS!=="undefined"&&SPEND_EXP_CATS[name]){const tb=el.querySelector(".treasury-balance");if(tb)tb.insertAdjacentHTML("afterend",renderSpendAnalysisHtml(SPEND_EXP_CATS[name]))}
 }
 
 /* ---------------------------------------------------------------------

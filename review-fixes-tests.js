@@ -154,4 +154,18 @@ assert.ok(/const BACKUP_EXTRA_KEYS=\["wf_techpay","wf_comp_custom","wf_comp_fav"
 assert.ok(/var netDep = Math\.round\(\(\(\+r\.deposit \|\| 0\) - \(\+r\.depositRefunded \|\| 0\)\)/.test(read("firebase-sync.js")) && /متوقف مؤقتًا/.test(read("portal.html")));
 // 21) إدارة البوابة: طلب الزائر لعميل موجود بيستخدم جهازه بدل جهاز مكرر + سجل العمليات
 assert.ok(/useDev=same\.length===1/.test(read("portal-admin.html")) && /تحويل طلب زائر/.test(read("portal-admin.html")));
+// batch73: موبايل مصري، حذف مستخدم، ربط الفاتورة الفوري، شكل صفحة الأمر، تحليل المصروفات، الطلبية من ملف الصنف، التحويل في فحص السلامة
+{
+  const vm = require("vm"), ctx = {}; vm.createContext(ctx);
+  const sd = read("shared-data.js");
+  vm.runInContext(sd.slice(sd.indexOf("  function phoneKey(v) {"), sd.indexOf("  window.wfEgMobile")) + ";this.egMobile=egMobile;", ctx);
+  assert.strictEqual(ctx.egMobile("01012345678"), "01012345678"); assert.strictEqual(ctx.egMobile("٠١١٢٣٤٥٦٧٨٩"), "01123456789"); assert.strictEqual(ctx.egMobile("+201512345678"), "01512345678");
+  ["0101234567", "010123456789", "01312345678", "0221234567"].forEach((x) => assert.strictEqual(ctx.egMobile(x), "", "مرفوض: " + x));
+}
+assert.ok(/async function remove\(uid, data\)/.test(read("functions/staff-admin.js")) && /exports\.staffDelete/.test(read("functions/index.js")) && /P\.call\("staffDelete"/.test(read("users-page.js")));
+assert.ok(/function openInvoiceLinker\(invId\)/.test(read("app-invoices.js")) && /function invoiceLinkSet\(invId, partId, on\)/.test(read("app-invoices.js")));
+assert.ok(/\.request-one-page \.receipt-actions-row,\.request-one-page \.wa-send-row\{display:grid/.test(read("style.css")));
+assert.ok(/function renderSpendAnalysisHtml\(fixed\)/.test(dr) && /SPEND_EXP_CATS\[name\]/.test(read("wallets.js")));
+assert.ok(/function partOrderBoxHtml\(p\)/.test(read("app-supplier-order.js")) && /partOrderBoxHtml\(p\)/.test(read("app-parts.js")));
+assert.ok(/x\.source==="wallet-transfer"&&x\.transferId/.test(dm), "التحويل بين محفظتين مش «ناقص طرف الخزنة»");
 console.log("review-fixes-tests: PASS (أوامر الشغل، خط السير، متابعة العملاء، المهام، الضمان، العملاء، الأجهزة، المخزن، الأكواد، الخزنة، الحسابات، التقارير، بوابة الفني، العهدة، التوزيع، الصلاحيات، الإعدادات، البوابة، إدارة البوابة)");

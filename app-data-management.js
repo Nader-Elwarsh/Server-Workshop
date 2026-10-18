@@ -336,9 +336,17 @@ function dataIntegrityReport(){
     if(!Number.isFinite(+x.amount)||+x.amount<=0)push({key:`tr-amt:${x.id}`,message:`حركة خزنة ${desc}: المبلغ المسجل (${x.amount}) غير صالح. المفروض يكون رقم أكبر من صفر.`,link:tLink,linkLabel:"فتح الحركة نفسها",fix:null});
     if(x.type!=="in"&&x.type!=="out")push({key:`tr-type:${x.id}`,message:`حركة خزنة ${desc}: نوع الحركة (${x.type}) غير صالح. المفروض يكون "وارد" أو "صرف".`,link:tLink,linkLabel:"فتح الحركة نفسها",fix:null});
   });
-  const transferIds=new Set([...activeWallet,...activeTreasury].map(x=>x.transferId).filter(Boolean));
+  // تحويل بين محفظتين (من غير خزنة): طرفين في الحسابات (صرف + وارد) بنفس المبلغ — مالوش طرف في الخزنة أصلًا
+  const w2w=new Set(activeWallet.filter(x=>x.source==="wallet-transfer"&&x.transferId).map(x=>x.transferId));
+  w2w.forEach(tid=>{
+    const w=activeWallet.filter(x=>x.transferId===tid),o=w.filter(x=>x.type==="out"),n=w.filter(x=>x.type==="in");
+    const link=w[0]&&w[0].wallet?`wallet.html?type=wallet&name=${encodeURIComponent(w[0].wallet)}#tx-${w[0].id}`:"wallets.html";
+    if(o.length!==1||n.length!==1)push({key:`w2w-parts:${tid}`,message:`تحويل بين محفظتين ${tid}: ناقص طرف (${o.length} صرف، ${n.length} وارد). المفروض صرف من محفظة ووارد في التانية.`,link,linkLabel:"فتح الحركة",fix:null});
+    else if(Math.abs(+o[0].amount-+n[0].amount)>0.005)push({key:`w2w-amt:${tid}`,message:`تحويل بين محفظتين ${tid}: المبلغ مختلف بين الطرفين (${(+o[0].amount).toFixed(2)} مقابل ${(+n[0].amount).toFixed(2)} ج).`,link,linkLabel:"فتح الحركة",fix:null});
+  });
+  const transferIds=new Set([...activeWallet.filter(x=>x.source!=="wallet-transfer"),...activeTreasury].map(x=>x.transferId).filter(Boolean));
   transferIds.forEach(tid=>{
-    const w=activeWallet.filter(x=>x.transferId===tid),t=activeTreasury.filter(x=>x.transferId===tid);
+    const w=activeWallet.filter(x=>x.transferId===tid&&x.source!=="wallet-transfer"),t=activeTreasury.filter(x=>x.transferId===tid);
     const anchor=t[0]?{link:`treasury.html#tx-${t[0].id}`,label:"فتح طرف الخزنة"}:(w[0]&&w[0].wallet?{link:`wallet.html?type=wallet&name=${encodeURIComponent(w[0].wallet)}#tx-${w[0].id}`,label:"فتح طرف المحفظة"}:{link:"treasury.html",label:"فتح الخزنة"});
     if(w.length!==1||t.length!==1)push({key:`transfer-parts:${tid}`,message:`التحويل ${tid}: عدد أطرافه غير صحيح (${w.length} في المحفظة، ${t.length} في الخزنة). المفروض طرف واحد بالظبط في كل جانب.`,link:anchor.link,linkLabel:anchor.label,fix:null});
     else if(+w[0].amount!==+t[0].amount)push({key:`transfer-amt:${tid}`,message:`التحويل ${tid}: المبلغ مختلف بين طرفَي التحويل (${(+w[0].amount).toFixed(2)} ج في المحفظة مقابل ${(+t[0].amount).toFixed(2)} ج في الخزنة). المفروض يكونوا نفس المبلغ في الطرفين.`,link:anchor.link,linkLabel:anchor.label,fix:null});
