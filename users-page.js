@@ -16,7 +16,7 @@
   var ERR = {
     owner_only: "العملية دي للمالك فقط.", bad_email: "الإيميل غير صحيح.", bad_name: "الاسم مطلوب (حتى 60 حرف).",
     bad_password: "كلمة السر لازم تكون من 8 إلى 64 حرف.", bad_role: "الدور غير موجود.", email_exists: "الإيميل ده مستخدم بالفعل.",
-    last_owner: "مينفعش تشيل آخر مالك في النظام.", cannot_disable_self: "مينفعش توقف حسابك أنت.", no_such_user: "المستخدم مش موجود.",
+    last_owner: "مينفعش تشيل آخر مالك في النظام.", cannot_disable_self: "مينفعش توقف حسابك أنت.", cannot_delete_self: "مينفعش تمسح حسابك أنت.", no_such_user: "المستخدم مش موجود.",
     nothing_to_update: "مفيش تغيير للحفظ.", bad_wallet: "اسم المحفظة طويل (حتى 40 حرف).", wallet_taken: "المحفظة دي متحددة لموظف تاني. كل فني ليه محفظة عهدة لوحده.", bad_config: "إعداد الأدوار غير صالح.", not_staff: "حسابك مش موظف مفعّل.", sign_in_required: "سجّل الدخول الأول."
   };
   var state = { users: [], config: null, draft: null, roleId: "owner", editUid: null, audit: [] };
@@ -137,6 +137,7 @@
     btns.appendChild(edit); btns.appendChild(reset);
     if (!u.isSelf) {
       btns.appendChild(h("button", { type: "button", class: "secondary mini-action" + (u.disabled ? "" : " danger-btn"), text: u.disabled ? "▶️ تفعيل" : "⏸️ إيقاف", on: { click: function (ev) { toggleDisabled(u, ev.currentTarget); } } }));
+      btns.appendChild(h("button", { type: "button", class: "secondary mini-action danger-btn", text: "🗑️ حذف نهائي", on: { click: function (ev) { deleteUser(u, ev.currentTarget); } } }));
     }
     var card = h("section", { class: "panel", style: "margin:8px 0" }, [info, btns]);
     if (state.editUid === u.uid) card.appendChild(editor(u));
@@ -194,6 +195,17 @@
   function stored(k) { try { var v = JSON.parse(window.WFStorage.getItem(k) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
   function walletBal(w) { return Math.round(stored("wf_wallet_tx").reduce(function (a, x) { return a + (x && !x.deleted && String(x.wallet || "").trim() === w ? (x.type === "in" ? +x.amount || 0 : -(+x.amount || 0)) : 0); }, 0) * 100) / 100; }
   function openOrdersOf(uid) { try { return stored("wf_r").filter(function (r) { return r && r.techId === uid && !r.closed && !r.paid && r.status !== "ملغي"; }); } catch (e) { return []; } }
+  /* حذف نهائي: حساب الدخول ومستند الموظف بيتمسحوا. شغله القديم (أوامر، حركات، عهدة) بيفضل في البيانات باسمه. */
+  function deleteUser(u, btn) {
+    var who = u.name || u.email || "", oo = openOrdersOf(u.uid).length, bal = u.wallet ? walletBal(String(u.wallet).trim()) : 0;
+    var warn = (oo ? "\n⚠️ معاه " + oo + " أمر مفتوح — وزّعهم الأول من «توزيع الأوامر»." : "") + (bal ? "\n⚠️ محفظة عهدته «" + u.wallet + "» فيها " + bal.toFixed(2) + " ج — سوّيها الأول من «الفنيين والعهدة»." : "");
+    if (!window.confirm("حذف «" + who + "» نهائيًا؟\n• مش هيقدر يدخل تاني بالإيميل ده (لو رجع لازم تعمله حساب جديد).\n• أوامره وحركاته القديمة هتفضل زي ما هي." + warn + "\n\nلو عايز توقفه مؤقتًا استخدم «⏸️ إيقاف» بدل الحذف.")) return;
+    var typed = window.prompt("للتأكيد اكتب اسمه زي ما هو: " + who);
+    if (typed === null) return;
+    if (String(typed).trim() !== String(who).trim()) { say("الاسم مش مطابق — ماتمسحش حاجة.", true); return; }
+    busy(btn, true);
+    P.call("staffDelete", { uid: u.uid }).then(function () { say("تم حذف " + who + " نهائيًا.", false); state.editUid = null; return load(); }, function (e) { say(explain(e), true); }).then(function () { busy(btn, false); });
+  }
   function toggleDisabled(u, btn) {
     var to = !u.disabled, oo = to ? openOrdersOf(u.uid).length : 0;
     if (!window.confirm(to ? "إيقاف " + (u.name || u.email) + "؟ هيتقفل عليه الدخول فورًا." + (oo ? "\n\n⚠️ معاه " + oo + " أمر مفتوح — وزّعهم على فني تاني من «توزيع الأوامر» عشان مايقفوش." : "") : "تفعيل " + (u.name || u.email) + " تاني؟")) return;
@@ -272,7 +284,7 @@
   }
 
   /* ---------- سجل المراجعة ---------- */
-  var ACTION_AR = { create_user: "إضافة مستخدم", update_user: "تعديل مستخدم", reset_password: "كلمة سر جديدة", save_roles: "حفظ الأدوار", migrate_legacy_owner: "ترقية حساب قديم لمالك" };
+  var ACTION_AR = { create_user: "إضافة مستخدم", update_user: "تعديل مستخدم", reset_password: "كلمة سر جديدة", delete_user: "حذف مستخدم نهائيًا", save_roles: "حفظ الأدوار", migrate_legacy_owner: "ترقية حساب قديم لمالك" };
   function auditPanel() {
     var names = {}; state.users.forEach(function (u) { names[u.uid] = u.name || u.email || u.uid; });
     var rows = state.audit.map(function (a) { return h("li", { text: fmtDate(a.at) + " — " + (names[a.by] || a.by) + ": " + (ACTION_AR[a.action] || a.action) + (a.target ? " ← " + (names[a.target] || a.target) : "") }); });

@@ -798,3 +798,8 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .badge.high{background:#fff1d6!important;color:#9a5b00!important}
 [data-theme="dark"] .badge.negative{background:rgba(248,113,113,.18)!important;color:#fca5a5!important}
 [data-theme="dark"] .badge.high{background:rgba(251,191,36,.16)!important;color:#fcd34d!important}
+
+/* صفحة أمر الشغل: أزرار الإيصال والمتابعة شبكة متساوية (مفيش زرار لوحده في سطر)، والزرار الأخير الفردي بياخد السطر كله */
+.request-one-page .receipt-actions-row,.request-one-page .wa-send-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%}
+.request-one-page .receipt-actions-row>*,.request-one-page .wa-send-row>*{width:100%;justify-content:center;text-align:center;box-sizing:border-box;margin:0}
+.request-one-page .receipt-actions-row>:last-child:nth-child(odd),.request-one-page .wa-send-row>:last-child:nth-child(odd){grid-column:1/-1}

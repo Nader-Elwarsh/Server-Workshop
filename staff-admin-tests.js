@@ -183,6 +183,17 @@ async function rejects(promise, code, msg) {
   const mp = core.fromMask(T.claims[mg.uid].pm);
   assert(mp.includes('requests.assign') && !mp.includes('custody.approve') && !mp.includes('custody.settle'), 'manager defaults: assign yes, custody approve/settle no');
 
+  // ---- حذف نهائي: مش نفسك، مش آخر مالك، وبيمسح حساب الدخول ومستند الموظف ----
+  {
+    const tD = makeEnv({ boss: {} });
+    const vic = await tD.admin.create('boss', { email: 'del@x.co', name: 'مؤقت', password: 'secret123', role: 'tech' });
+    await rejects(tD.admin.remove('boss', { uid: 'boss' }), 'failed-precondition', 'cannot_delete_self');
+    await rejects(tD.admin.remove(vic.uid, { uid: 'boss' }), 'permission-denied', 'owner_only');
+    const out = await tD.admin.remove('boss', { uid: vic.uid });
+    assert.strictEqual(out.deleted, true); assert(!tD.users.has(vic.uid), 'auth user deleted'); assert(!tD.docs.get('staff/' + vic.uid), 'staff doc deleted');
+    await rejects(tD.admin.remove('boss', { uid: vic.uid }), 'not-found', 'no_such_user');
+    assert(tD.audit.some((x) => x.action === 'delete_user'));
+  }
   // ---- سجل المراجعة بيسجّل كل عملية ----
   const actions = t.audit.map((a) => a.action);
   ['create_user', 'update_user', 'reset_password', 'save_roles'].forEach((a) => assert(actions.includes(a), 'audit has ' + a));

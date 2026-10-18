@@ -394,6 +394,19 @@ var WFStorage = window.WFStorage;
     if (d.length === 10 && d[0] === "1") d = "0" + d;
     return d.length >= 7 ? d : "";
   }
+  /* موبايل مصري: 11 رقم ويبدأ بـ 010/011/012/015 (بيقبل أرقام عربية و +20) */
+  function egMobile(v) { const d = phoneKey(v); return /^01[0125]\d{8}$/.test(d) ? d : ""; }
+  window.wfEgMobile = egMobile;
+  /* خانات الموبايل: إطار أحمر وتلميح أول ما الرقم يكتمل غلط (من غير ما نستنى الحفظ) */
+  try {
+    document.addEventListener("input", function (e) {
+      const el = e.target; if (!el || !/^(cPhone|qoPhone|qcPhone|dcPhone)$/.test(el.id || "")) return;
+      const raw = String(el.value || "").replace(/\D/g, ""), bad = raw.length >= 11 && !egMobile(el.value);
+      el.style.borderColor = bad ? "var(--danger-text,#b91c1c)" : ""; el.title = bad ? window.WF_PHONE_MSG : "";
+      if (!el.getAttribute("inputmode")) el.setAttribute("inputmode", "tel");
+    }, true);
+  } catch (e) {}
+  window.WF_PHONE_MSG = "رقم الموبايل لازم يكون 11 رقم ويبدأ بـ 010 أو 011 أو 012 أو 015.";
   function duplicateCustomerByPhone(phone, excludeId) {
     let normalized = phoneKey(phone);
     if (!normalized) return null;

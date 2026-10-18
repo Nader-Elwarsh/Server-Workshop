@@ -463,6 +463,26 @@
     render();
   }
 
+  /* ملف الصنف: صندوق «الطلبية الجاية» — ضغطة واحدة تضيفه للمسودة (بتتحفظ على طول) بالكمية المقترحة،
+     وتقدر تزوّد/تقلل من هنا، أو تفتح المسودة كلها وتعدّل براحتك وتبعتها للمورد وقت ما تحب. */
+  function partOrderBoxHtml(p) {
+    var d = getDraft(), line = d.lines.find(function (l) { return l.partId === p.id; }), qty = num(p.qty), min = num(p.min);
+    var short = shortages().some(function (x) { return x.p.id === p.id; }), sug = suggestQty(p);
+    var state = qty <= 0 ? "خلصان ❗" : short ? "قرّب يخلص ⚠️" : "";
+    var head = state ? '<b>' + state + '</b> — موجود ' + e(qty) + (min ? ' والحد الأدنى ' + e(min) : '') : '<b>📝 الطلبية الجاية</b>';
+    var body = line
+      ? '<div class="po-box-row">✅ في المسودة: <b>' + e(line.qty) + '</b> قطعة</div><div class="po-box-actions"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="partDraftQty(\'' + e(p.id) + '\',-1)">➖</button><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="partDraftQty(\'' + e(p.id) + '\',1)">➕</button><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="partDraftRemove(\'' + e(p.id) + '\')">🗑️ شيله</button><button type="button" class="primary mini-action" data-wf-event="click" data-wf-code="openSupplierOrder()">📝 فتح المسودة (' + d.lines.length + ' صنف)</button></div>'
+      : '<div class="po-box-actions"><button type="button" class="primary" data-wf-event="click" data-wf-code="partDraftAdd(\'' + e(p.id) + '\')">➕ ضيفه للطلبية الجاية (' + sug + ' قطعة)</button>' + (d.lines.length ? '<button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="openSupplierOrder()">📝 المسودة (' + d.lines.length + ' صنف)</button>' : '') + '</div>';
+    return '<div class="po-box' + (state ? ' po-box-warn' : '') + '" id="partOrderBox">' + '<div>' + head + '</div>' + body + '<small class="hint">المسودة بتتحفظ لوحدها — تزوّد عليها أصناف تانية وتعدّل الكميات وتبعتها للمورد وقت ما تحب.</small></div>';
+  }
+  function refreshPartBox(pid) { var box = document.getElementById("partOrderBox"), p = arr(K.p).find(function (x) { return x.id === pid; }); if (box && p) { var t = document.createElement("div"); t.innerHTML = partOrderBoxHtml(p); box.replaceWith(t.firstElementChild); } }
+  window.partOrderBoxHtml = partOrderBoxHtml;
+  window.partDraftAdd = function (pid) { var d = getDraft(); if (!addPartToDraft(d, pid)) { alert("المسودة مليانة (" + MAX_LINES + " صنف)."); return; } setDraft(d); refreshPartBox(pid); };
+  window.partDraftQty = function (pid, n) { var d = getDraft(), l = d.lines.find(function (x) { return x.partId === pid; }); if (!l) return; l.qty = Math.max(1, Math.round(num(l.qty)) + (+n || 0)); setDraft(d); refreshPartBox(pid); };
+  window.partDraftRemove = function (pid) { var d = getDraft(); d.lines = d.lines.filter(function (x) { return x.partId !== pid; }); setDraft(d); refreshPartBox(pid); };
+  (function () { try { if (document.getElementById("poBoxCss")) return; var st = document.createElement("style"); st.id = "poBoxCss";
+    st.textContent = ".po-box{margin:10px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-sunken);display:grid;gap:8px}.po-box-warn{border-color:var(--warn-text);border-inline-start-width:4px}.po-box-actions{display:flex;gap:6px;flex-wrap:wrap}.po-box-actions .primary{flex:1 1 auto}";
+    document.head.appendChild(st); } catch (x) {} })();
   window.openSupplierOrder = function () { open(); };
   window.addPartToSupplierOrder = function (pid) { open({ addPartId: pid }); };
   window.WFSupplierOrder = { shortages: shortages, suggestQty: suggestQty, orderText: orderText, waPhone: waPhone, getDraft: getDraft, normLine: normLine, addShortages: addShortages, addPartToDraft: addPartToDraft, renderPages: renderPages, open: open };

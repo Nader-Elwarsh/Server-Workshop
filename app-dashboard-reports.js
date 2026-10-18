@@ -81,20 +81,77 @@ function currentMonthSpendingStats(){
 // كارت سريع أعلى صفحة الحسابات: إجمالي المصروف هذا الشهر + أكتر 3 حاجات
 // بيتصرف عليها — منفصل عن قسم "كشف الحساب" المفصّل تحت (اللي بيدّي اختيار
 // شهر/أسبوع بعينه). ده دايمًا عن الشهر التقويمي الحالي بالظبط.
-function renderSpendingStatsHtml(){
-  let stats=currentMonthSpendingStats();
-  if(!stats.breakdown.length)return `<div class="hint" style="margin:10px 0">📊 لا توجد مصاريف مسجلة هذا الشهر بعد لعرض إحصائيات الصرف.</div>`;
-  let monthLabel=new Date().toLocaleDateString("ar-EG",{month:"long",year:"numeric"});
-  return `<section class="panel" style="margin:10px 0">
-    <div class="page-head"><h2>📊 إحصائيات الصرف — ${esc(monthLabel)}</h2></div>
-    <div class="treasury-balance"><span>إجمالي المصروف (تشغيل + شخصي) هذا الشهر</span><b>${stats.total.toFixed(2)} ج</b></div>
-    <div class="hint" style="margin:6px 0">🏆 الأكتر صرفًا عليه: <b>${esc(stats.top.label)}</b> (${stats.top.catShort}) — ${stats.top.amount.toFixed(2)} ج</div>
-    <div class="profile-grid">
-      ${stats.breakdown.slice(0,5).map((x,i)=>`<div class="kv"><b>${i+1}. ${esc(x.label)} <small>(${x.catShort})</small></b>${x.amount.toFixed(2)} ج · ${x.count} حركة</div>`).join("")}
-    </div>
-    <div class="hint">تقدر تشوف تفصيل أي شهر أو أسبوع سابق كمان من "📈 كشف الحساب" تحت. الأنواع الفرعية (وقود، مواصلات، أكل...) قابلة للتعديل من ⚙️ الإعدادات ← الحسابات.</div>
+function renderSpendingStatsHtml(){return renderSpendAnalysisHtml()}
+/* ===== 📊 تحليل المصروفات والإيرادات: تختار الشهر (أو كل الوقت) والنوع (تشغيل/شخصي/إيرادات)،
+   وكل بند جنبه نسبته من مجموعته، وكل مجموعة نسبتها من إجمالي الصرف. اضغط البند تشوف حركاته. ===== */
+const SPEND_EXP_CATS={"مصروف تشغيل":"op","مصروف شخصي":"personal"};
+const SPEND_NOT_INCOME_CATS=["سلفة / تحويل","تحويل","رصيد افتتاحي","مشتريات قطع غيار","أجور فنيين"];
+const SPEND_NOT_INCOME_SRC=["transfer","wallet-transfer","custody","custody-expense"];
+let SPEND=(function(){let o={};try{o=JSON.parse(WFStorage.getItem("wf_spend_view")||"{}")||{}}catch(e){}return{month:typeof o.month==="string"&&o.month?o.month:"",kind:o.kind||"all",open:""}})();
+function spendSave(){try{WFStorage.setItem("wf_spend_view",JSON.stringify({month:SPEND.month,kind:SPEND.kind}))}catch(e){}}
+function spendMonth(){return SPEND.month||monthKeyLocal(new Date())}
+function spendData(month){
+  const all=walletTxEntries(),inP=x=>month==="all"||String(x.date||"").slice(0,7)===month;
+  const groups={op:new Map(),personal:new Map(),income:new Map()},tot={op:0,personal:0,income:0};
+  all.forEach(x=>{
+    if(!x||!inP(x))return;
+    const amt=+x.amount||0,g=SPEND_EXP_CATS[x.category];
+    if(g){const k=x.subCategory||"غير مصنف",sign=x.type==="in"?-1:1,m=groups[g];const e=m.get(k)||{amt:0,n:0,tx:[]};e.amt+=sign*amt;e.n++;e.tx.push(x);m.set(k,e);tot[g]+=sign*amt;return}
+    if(x.type!=="in"||SPEND_NOT_INCOME_CATS.includes(x.category)||SPEND_NOT_INCOME_SRC.includes(x.source)||x.ownPocket)return;
+    const k=x.category||"أخرى",e=groups.income.get(k)||{amt:0,n:0,tx:[]};e.amt+=amt;e.n++;e.tx.push(x);groups.income.set(k,e);tot.income+=amt;
+  });
+  return{groups,tot,spend:tot.op+tot.personal};
+}
+function spendPct(a,b){return b>0?Math.round(a/b*1000)/10:0}
+function spendMonthLabel(m){if(m==="all")return"كل الوقت";try{return new Date(m+"-01T12:00:00").toLocaleDateString("ar-EG",{month:"long",year:"numeric"})}catch(e){return m}}
+function renderSpendAnalysisHtml(fixed){
+  const m=spendMonth(),d=spendData(m),kind=fixed||SPEND.kind,money=n=>(Math.round((+n||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ج";
+  const prevKey=m==="all"?"":(()=>{const t=new Date(m+"-01T12:00:00");t.setMonth(t.getMonth()-1);return monthKeyLocal(t)})(),pd=prevKey?spendData(prevKey):null;
+  const delta=(cur,prev)=>{if(!pd||!prev)return"";const p=(cur-prev)/prev*100;if(Math.abs(p)<0.5)return"";return ` <small class="spend-delta ${p>0?"up":"down"}">${p>0?"▲":"▼"}${Math.abs(Math.round(p))}%</small>`};
+  const LBL={op:"🔧 مصاريف التشغيل",personal:"🙋 المصاريف الشخصية",income:"💰 الإيرادات"};
+  const tile=(k,v,sub,cls)=>`<button type="button" class="spend-tile ${cls||""} ${kind===k?"on":""}" ${fixed?"disabled":""} data-wf-event="click" data-wf-code="setSpendKind('${k}')"><span>${k==="all"?"🧾 إجمالي الصرف":LBL[k]}</span><b>${money(v)}</b><small>${sub}</small></button>`;
+  const tiles=fixed?"":`<div class="spend-tiles">
+    ${tile("all",d.spend,`تشغيل + شخصي${delta(d.spend,pd&&pd.spend)}`)}
+    ${tile("op",d.tot.op,`${spendPct(d.tot.op,d.spend)}% من الصرف${delta(d.tot.op,pd&&pd.tot.op)}`)}
+    ${tile("personal",d.tot.personal,`${spendPct(d.tot.personal,d.spend)}% من الصرف${delta(d.tot.personal,pd&&pd.tot.personal)}`)}
+    ${tile("income",d.tot.income,`${d.tot.income>0?`الصرف = ${spendPct(d.spend,d.tot.income)}% منها`:"—"}${delta(d.tot.income,pd&&pd.tot.income)}`,"inc")}</div>`;
+  let rows=[],base=0,title="";
+  if(kind==="all"){["op","personal"].forEach(g=>d.groups[g].forEach((e,k)=>rows.push({key:g+"|"+k,label:k,tag:g==="op"?"تشغيل":"شخصي",e})));base=d.spend;title="كل المصروفات حسب البند — النسبة من إجمالي الصرف"}
+  else{d.groups[kind].forEach((e,k)=>rows.push({key:kind+"|"+k,label:k,e}));base=d.tot[kind];title=(LBL[kind]||"")+" حسب "+(kind==="income"?"المصدر":"البند")+" — النسبة من "+(kind==="income"?"إجمالي الإيرادات":"إجمالي المجموعة")+(kind!=="income"&&d.spend?` (والمجموعة ${spendPct(base,d.spend)}% من كل الصرف)`:"")}
+  rows=rows.filter(r=>Math.abs(r.e.amt)>0.004).sort((a,b)=>b.e.amt-a.e.amt);
+  const max=Math.max(1,...rows.map(r=>r.e.amt));
+  const list=rows.length?rows.map(r=>{const p=spendPct(r.e.amt,base),open=SPEND.open===r.key;
+    return `<div class="spend-row ${open?"open":""}"><button type="button" class="spend-row-btn" data-wf-event="click" data-wf-code="toggleSpendRow('${encodeURIComponent(r.key)}')"><span class="spend-name">${esc(r.label)}${r.tag?` <small class="spend-tag">${r.tag}</small>`:""}</span><b>${money(r.e.amt)}</b><em class="spend-pct">${p}%</em><i class="spend-bar" style="width:${Math.max(2,r.e.amt/max*100).toFixed(1)}%"></i><small class="spend-n">${r.e.n} حركة</small></button>
+    ${open?`<div class="spend-tx">${r.e.tx.slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))).map(x=>`<div class="spend-tx-row"><span>${esc(x.date||"")} • ${esc(x.reason||x.category||"")}<small> • 💳 ${esc(x.wallet||"—")}</small></span><b class="${x.type==="in"?"pos":"neg"}">${x.type==="in"?"+":"−"}${money(x.amount)}</b></div>`).join("")}</div>`:""}</div>`}).join(""):`<div class="hint">مفيش ${kind==="income"?"إيرادات":"مصروفات"} في ${esc(spendMonthLabel(m))}.</div>`;
+  return `<section class="panel spend-box" data-fixed="${fixed||""}" style="margin:10px 0">
+    <div class="page-head"><h2>📊 تحليل ${fixed==="income"?"الإيرادات":fixed?"المصروفات":"المصروفات والإيرادات"}</h2></div>
+    <div class="spend-period"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(-1)" ${m==="all"?"disabled":""}>‹ اللي قبله</button>
+      <input type="month" value="${m==="all"?"":esc(m)}" data-wf-event="change" data-wf-code="setSpendMonth(this.value)" aria-label="الشهر">
+      <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(1)" ${m==="all"?"disabled":""}>اللي بعده ›</button>
+      <button type="button" class="secondary mini-action ${m==="all"?"active-track":""}" data-wf-event="click" data-wf-code="setSpendMonth('all')">كل الوقت</button></div>
+    <div class="hint" style="margin:4px 0 8px">📅 ${esc(spendMonthLabel(m))}${pd?` • ▲▼ = مقارنة بـ ${esc(spendMonthLabel(prevKey))}`:""}</div>
+    ${tiles}
+    ${fixed?`<div class="treasury-balance"><span>${LBL[fixed]} — ${esc(spendMonthLabel(m))}</span><b>${money(base)}</b></div>${fixed!=="income"&&d.spend?`<div class="hint">= ${spendPct(base,d.spend)}% من إجمالي الصرف (تشغيل + شخصي) في الفترة${delta(base,pd&&pd.tot[fixed])}</div>`:""}`:""}
+    <h3 class="spend-h">${title}</h3>
+    <div class="spend-list">${list}</div>
+    <div class="hint">اضغط على أي بند تشوف حركاته. الأنواع الفرعية (وقود، مواصلات، أكل…) بتتعدل من ⚙️ الإعدادات ← الحسابات.</div>
   </section>`;
 }
+function rerenderSpend(){document.querySelectorAll(".spend-box").forEach(el=>{const t=document.createElement("div");t.innerHTML=renderSpendAnalysisHtml(el.dataset.fixed||"");el.replaceWith(t.firstElementChild)})}
+function setSpendMonth(v){SPEND.month=v==="all"?"all":(/^\d{4}-\d{2}$/.test(v||"")?v:"");SPEND.open="";spendSave();rerenderSpend()}
+function shiftSpendMonth(n){const m=spendMonth();if(m==="all")return;const t=new Date(m+"-01T12:00:00");t.setMonth(t.getMonth()+(+n||0));SPEND.month=monthKeyLocal(t);SPEND.open="";spendSave();rerenderSpend()}
+function setSpendKind(k){SPEND.kind=["all","op","personal","income"].includes(k)?k:"all";SPEND.open="";spendSave();rerenderSpend()}
+function toggleSpendRow(k){try{k=decodeURIComponent(k)}catch(e){}SPEND.open=SPEND.open===k?"":k;rerenderSpend()}
+(function(){try{if(document.getElementById("spendCss"))return;const st=document.createElement("style");st.id="spendCss";st.textContent=
+".spend-period{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.spend-period input{flex:1;min-width:130px}"+
+".spend-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0}.spend-tile{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:10px;border-radius:12px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text);font:inherit;text-align:start;cursor:pointer;min-height:0}.spend-tile span{font-size:12px;color:var(--text-muted)}.spend-tile b{font-size:18px}.spend-tile small{font-size:11.5px;color:var(--text-muted)}.spend-tile.on{border-color:var(--pri,var(--accent-text,#17324d));box-shadow:0 0 0 2px var(--pri,var(--accent-text,#17324d)) inset}.spend-tile.inc b{color:var(--success-text)}"+
+".spend-delta.up{color:var(--danger-text)}.spend-delta.down{color:var(--success-text)}.spend-tile.inc .spend-delta.up{color:var(--success-text)}.spend-tile.inc .spend-delta.down{color:var(--danger-text)}"+
+".spend-h{font-size:14px;margin:12px 0 6px}.spend-list{display:grid;gap:6px}.spend-row{border:1px solid var(--border);border-radius:10px;background:var(--bg-elevated);overflow:hidden}"+
+".spend-row-btn{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;width:100%;padding:9px 10px;border:0;background:transparent;color:var(--text);font:inherit;text-align:start;cursor:pointer;min-height:0}"+
+".spend-name{font-weight:700;font-size:14px}.spend-tag{font-size:10.5px;padding:1px 6px;border-radius:99px;background:var(--bg-sunken);color:var(--text-muted);font-weight:600}.spend-pct{font-style:normal;font-size:11.5px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--bg-sunken);color:var(--text-muted)}"+
+".spend-bar{grid-column:1/-1;display:block;height:6px;border-radius:6px;background:var(--pri,var(--accent-text,#17324d));opacity:.75}.spend-n{grid-column:1/-1;font-size:11px;color:var(--text-muted)}"+
+".spend-tx{border-top:1px dashed var(--border);padding:6px 10px;display:grid;gap:4px;background:var(--bg-sunken)}.spend-tx-row{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}.spend-tx-row small{color:var(--text-muted)}.spend-tx-row b{white-space:nowrap}.spend-tx-row .neg{color:var(--danger-text)}.spend-tx-row .pos{color:var(--success-text)}";
+document.head.appendChild(st)}catch(e){}})();
 function reportOrderLine(o,val){return `<a class="report-detail-row" href="request.html?id=${encodeURIComponent(String(o.id??""))}"><span>${esc(o.no||"—")} • ${esc(customerName(o.customerId))}${o.closed?" 🔒":""}</span><b>${(+val||0).toFixed(2)} ج</b></a>`}
 function reportClosedOrders(){let{start,end}=getReportRange();return arrCached(K.r).filter(x=>x.closed&&inRange(x.closedAt||x.createdAt,start,end))}
 function reportCompletedOrders(){let{start,end}=getReportRange();return arrCached(K.r).filter(x=>x.closed?inRange(x.closedAt||x.createdAt,start,end):x.status==="مكتمل"&&inRange(x.createdAt,start,end))}
