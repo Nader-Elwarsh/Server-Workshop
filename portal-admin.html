@@ -353,8 +353,8 @@ ACT.actReset=function(b){if(typeof window.wfResetCustomerPassword==="function")w
 ACT.actAll=function(){actList(acRows().filter(function(r){return r.s[0]==="none"}).map(function(r){return r.c}))};
 ACT.copyLink=function(){var l=$("acLink");l.select();try{navigator.clipboard.writeText(l.value)}catch(e){document.execCommand("copy")}};
 ACT.addWaTpl=addWaTpl;
-$("acLink").value=portalUrl();$("acTpl").value=tpl();
-$("acTpl").addEventListener("input",function(){try{WFStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
+$("acLink").value=portalUrl();$("acTpl").value=tpl();Promise.resolve(window.WFStorageReady).then(function(){var t=$("acTpl");if(t&&!t.dataset.touched)t.value=tpl()});
+$("acTpl").addEventListener("input",function(){this.dataset.touched="1";try{WFStorage.setItem(TPL_KEY,$("acTpl").value)}catch(e){}});
 $("acTpl").addEventListener("blur",rAc);$("acs").addEventListener("input",rAc);
 /* ---- محرر المقال: كاميرا/صور + معاينة حية ---- */
 var pUrl="",pRm=false;

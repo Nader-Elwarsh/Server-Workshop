@@ -34,7 +34,16 @@
     return st;
   }
   var st = loadSettings();
-  function saveSettings() { st.at = Date.now(); try { WFStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
+  /* الملف ده ممكن يتحمّل قبل ما تخزين الجهاز (IndexedDB) يجهز — ساعتها st كان بيتقري فاضي (من غير الأيقونة/الشعار المخصوصين)
+     فالصورة كانت بترجع للأصلية بعد فتح الصفحة، ولو حصل نشر من الجهاز ده كانت الأيقونة بتتمسح من السحابة كمان.
+     دلوقتي: أول ما التخزين يجهز بنعيد القراية ونرسم الصور من جديد، وأي تصدير/نشر بيستنى التخزين. */
+  var stTouched = false;
+  function storageIsReady() { try { return !window.WFStorage || !window.WFStorage.isReady || window.WFStorage.isReady(); } catch (e) { return true; } }
+  var stReadyP = storageIsReady() || !window.WFStorageReady ? Promise.resolve(true) : Promise.resolve(window.WFStorageReady).then(function () {
+    if (!stTouched) { st = loadSettings(); invalidate(); try { refresh().then(function () { setLinks(); emit(); }); } catch (e) {} }
+    return true;
+  }, function () { return true; });
+  function saveSettings() { stTouched = true; st.at = Date.now(); try { WFStorage.setItem(KEY, JSON.stringify(st)); return true; } catch (e) { return false; } }
   /* الألوان الفعلية للشعار/الأيقونة الافتراضيين: لون واحد للنظام كله. لو اتحدد «اللون الأساسي/المميز» من لوحة
      هوية النظام (white-label) بياخدهم، وإلا بيفضل على ألوانه القديمة (توافق مع الإعدادات اللي اتحفظت قبل كده). */
   function eff() {
@@ -271,11 +280,11 @@
   }
   function setCustom(kind, dataUrl) {
     var flag = kind === "logo" ? "hasLogo" : "hasIcon";
-    return idbSet(kind, dataUrl).then(function () { st[flag] = true; saveSettings(); invalidate(); return refresh().then(function () { setLinks(); emit(); }); });
+    return stReadyP.then(function () { return idbSet(kind, dataUrl); }).then(function () { st[flag] = true; saveSettings(); invalidate(); return refresh().then(function () { setLinks(); emit(); }); });
   }
   function clearCustom(kind) {
     var flag = kind === "logo" ? "hasLogo" : "hasIcon";
-    return idbDel(kind)["catch"](function () {}).then(function () { st[flag] = false; saveSettings(); invalidate(); return refresh().then(function (u) { resetLinks(); emit(); return u; }); });
+    return stReadyP.then(function () { return idbDel(kind); })["catch"](function () {}).then(function () { st[flag] = false; saveSettings(); invalidate(); return refresh().then(function (u) { resetLinks(); emit(); return u; }); });
   }
 
   /* ---------- واجهة API ---------- */
@@ -298,11 +307,14 @@
     });
   }
   function exportData() {
-    return Promise.all([st.hasLogo ? idbGet("logo") : null, st.hasIcon ? idbGet("icon") : null]).then(function (a) {
-      return { app: "workshop-branding", version: 1, settings: JSON.parse(JSON.stringify(st)), logo: a[0] || null, icon: a[1] || null };
-    });
+    /* الصور نفسها (في IndexedDB) هي المرجع: لو موجودة تتنشر حتى لو العلامة في الذاكرة قديمة (تبويب تاني غيّرها مثلًا) */
+    return stReadyP.then(function () { var safe = function (k) { return idbGet(k).then(function (v) { return v || null; }, function () { return null; }); }; return Promise.all([safe("logo"), safe("icon")]).then(function (a) {
+      var set = JSON.parse(JSON.stringify(st)); set.hasLogo = !!a[0]; set.hasIcon = !!a[1];
+      return { app: "workshop-branding", version: 1, settings: set, logo: a[0] || null, icon: a[1] || null };
+    }); });
   }
-  function importData(o) {
+  function importData(o) { return stReadyP.then(function () { return importData0(o); }); }
+  function importData0(o) {
     if (!o || o.app !== "workshop-branding" || !o.settings) return Promise.reject(new Error("الملف ده مش ملف هوية صالح"));
     var s = o.settings, ops = [];
     ["primary", "accent", "light"].forEach(function (k) { if (HEX.test(s[k] || "")) st[k] = String(s[k]).toUpperCase(); });
@@ -548,7 +560,7 @@
   if (window.WL && window.WL.onChange) window.WL.onChange(onWl);
 
   applyHeaderAndTheme();
-  if (customized() && (st.hasLogo || st.hasIcon || !colorsDefault())) {
+  if ((customized() && (st.hasLogo || st.hasIcon || !colorsDefault())) || !storageIsReady()) { // التخزين لسه مجهزش: مانعرضش الأيقونة الأصلية لحظة وبعدين تتبدل
     // نخفي الصور الافتراضية لحظات لحد ما النسخة الملوّنة تجهز عشان ما يحصلش وميض
     document.documentElement.classList.add("wfb-pending");
     var pst = document.createElement("style");

@@ -87,9 +87,11 @@ function renderSpendingStatsHtml(){return renderSpendAnalysisHtml()}
 const SPEND_EXP_CATS={"مصروف تشغيل":"op","مصروف شخصي":"personal"};
 const SPEND_NOT_INCOME_CATS=["سلفة / تحويل","تحويل","رصيد افتتاحي","مشتريات قطع غيار","أجور فنيين"];
 const SPEND_NOT_INCOME_SRC=["transfer","wallet-transfer","custody","custody-expense"];
-let SPEND=(function(){let o={};try{o=JSON.parse(WFStorage.getItem("wf_spend_view")||"{}")||{}}catch(e){}return{month:typeof o.month==="string"&&o.month?o.month:"",kind:o.kind||"all",open:""}})();
-function spendSave(){try{WFStorage.setItem("wf_spend_view",JSON.stringify({month:SPEND.month,kind:SPEND.kind}))}catch(e){}}
-function spendMonth(){return SPEND.month||monthKeyLocal(new Date())}
+let SPEND={month:"",kind:"all",open:""},spendLoaded=false;
+/* اختيار الشهر/النوع بيتقري من التخزين أول ما يتطلب (مش وقت تحميل الملف — التخزين ساعتها ممكن يكون لسه مجهزش) */
+function spendLoad(){if(spendLoaded)return;let o=null;try{o=JSON.parse(WFStorage.getItem("wf_spend_view")||"null")}catch(e){}if(!o&&window.WFStorage&&WFStorage.isReady&&!WFStorage.isReady())return;spendLoaded=true;o=o||{};SPEND.month=typeof o.month==="string"&&o.month?o.month:"";SPEND.kind=o.kind||"all"}
+function spendSave(){spendLoaded=true;try{WFStorage.setItem("wf_spend_view",JSON.stringify({month:SPEND.month,kind:SPEND.kind}))}catch(e){}}
+function spendMonth(){spendLoad();return SPEND.month||monthKeyLocal(new Date())}
 function spendData(month,wallet){
   const all=walletTxEntries().filter(x=>!wallet||String(x.wallet||"").trim()===wallet),inP=x=>month==="all"||String(x.date||"").slice(0,7)===month;
   const groups={op:new Map(),personal:new Map(),income:new Map()},tot={op:0,personal:0,income:0};

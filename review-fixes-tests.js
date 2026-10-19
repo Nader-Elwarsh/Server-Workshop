@@ -175,4 +175,8 @@ assert.ok(/class="rep-pct"/.test(rp) || /rep-pct/.test(read("reports.js")));
 assert.ok(/window\.listDraftAdd = function/.test(read("app-supplier-order.js")) && /listDraftAdd\('\$\{p\.id\}'\)/.test(read("workshop-mini-simple-ui.js")));
 assert.ok(/cust-phone:/.test(read("app-data-management.js")) && /custody-parts:/.test(read("app-data-management.js")));
 assert.ok(!/\$\{p\.use\} ج/.test(read("app-parts.js")), "سعر البيع مايظهرش undefined");
+// batch75/76: حاجات بتتقري من تخزين الجهاز قبل ما يجهز (صورة النظام اللي كانت بترجع للأصلية)
+{ const b = read("branding.js"); assert.ok(/var stReadyP = /.test(b) && /return stReadyP\.then\(function \(\) \{ return importData0\(o\); \}\)/.test(b) && /set\.hasIcon = !!a\[1\]/.test(b), "صورة النظام بتستنى التخزين وبتتنشر من الصورة نفسها"); }
+assert.ok(/function spendLoad\(\)/.test(dr) && !/let SPEND=\(function\(\)\{let o=\{\};try\{o=JSON\.parse\(WFStorage/.test(dr));
+assert.ok(/t\.dataset\.touched/.test(read("portal-admin.html")));
 console.log("review-fixes-tests: PASS (أوامر الشغل، خط السير، متابعة العملاء، المهام، الضمان، العملاء، الأجهزة، المخزن، الأكواد، الخزنة، الحسابات، التقارير، بوابة الفني، العهدة، التوزيع، الصلاحيات، الإعدادات، البوابة، إدارة البوابة)");
