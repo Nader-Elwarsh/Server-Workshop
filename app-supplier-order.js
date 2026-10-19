@@ -477,6 +477,9 @@
   }
   function refreshPartBox(pid) { var box = document.getElementById("partOrderBox"), p = arr(K.p).find(function (x) { return x.id === pid; }); if (box && p) { var t = document.createElement("div"); t.innerHTML = partOrderBoxHtml(p); box.replaceWith(t.firstElementChild); } }
   window.partOrderBoxHtml = partOrderBoxHtml;
+  /* من قايمة المخزن (الأصناف الناقصة): ضغطة تضيفه للمسودة على طول، وكل ضغطة تانية بتزوّد 1 */
+  window.draftQtyOf = function (pid) { var l = getDraft().lines.find(function (x) { return x.partId === pid; }); return l ? Math.round(num(l.qty)) : 0; };
+  window.listDraftAdd = function (pid) { var d = getDraft(); if (!addPartToDraft(d, pid)) { alert("المسودة مليانة (" + MAX_LINES + " صنف)."); return; } setDraft(d); var b = document.getElementById("pdb-" + pid); if (b) b.textContent = "✅ في الطلبية (" + window.draftQtyOf(pid) + ")"; };
   window.partDraftAdd = function (pid) { var d = getDraft(); if (!addPartToDraft(d, pid)) { alert("المسودة مليانة (" + MAX_LINES + " صنف)."); return; } setDraft(d); refreshPartBox(pid); };
   window.partDraftQty = function (pid, n) { var d = getDraft(), l = d.lines.find(function (x) { return x.partId === pid; }); if (!l) return; l.qty = Math.max(1, Math.round(num(l.qty)) + (+n || 0)); setDraft(d); refreshPartBox(pid); };
   window.partDraftRemove = function (pid) { var d = getDraft(); d.lines = d.lines.filter(function (x) { return x.partId !== pid; }); setDraft(d); refreshPartBox(pid); };
