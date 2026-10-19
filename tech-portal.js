@@ -434,6 +434,7 @@
       dc.appendChild(kv("الجهاز", devLabel(d) || "—"));
       if (d && (d.desc || d.notes)) dc.appendChild(kv("وصف", d.desc || d.notes));
       dc.appendChild(kv("العطل", r.fault || "—"));
+      if (r.status !== "ملغي") { var ais = el("div", "wf-ai-slot", ""); ais.setAttribute("data-ai-rid", r.id); ais.style.display = "none"; dc.appendChild(ais); }
       if (r.customerNote) dc.appendChild(kv("ملاحظة العميل", r.customerNote));
       if (window.WFMedia) {
         var mkey = "tp-" + r.id, ml = window.WFMedia.clean(r.media);
