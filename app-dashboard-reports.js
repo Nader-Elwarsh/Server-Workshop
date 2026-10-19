@@ -90,8 +90,8 @@ const SPEND_NOT_INCOME_SRC=["transfer","wallet-transfer","custody","custody-expe
 let SPEND=(function(){let o={};try{o=JSON.parse(WFStorage.getItem("wf_spend_view")||"{}")||{}}catch(e){}return{month:typeof o.month==="string"&&o.month?o.month:"",kind:o.kind||"all",open:""}})();
 function spendSave(){try{WFStorage.setItem("wf_spend_view",JSON.stringify({month:SPEND.month,kind:SPEND.kind}))}catch(e){}}
 function spendMonth(){return SPEND.month||monthKeyLocal(new Date())}
-function spendData(month){
-  const all=walletTxEntries(),inP=x=>month==="all"||String(x.date||"").slice(0,7)===month;
+function spendData(month,wallet){
+  const all=walletTxEntries().filter(x=>!wallet||String(x.wallet||"").trim()===wallet),inP=x=>month==="all"||String(x.date||"").slice(0,7)===month;
   const groups={op:new Map(),personal:new Map(),income:new Map()},tot={op:0,personal:0,income:0};
   all.forEach(x=>{
     if(!x||!inP(x))return;
@@ -104,9 +104,9 @@ function spendData(month){
 }
 function spendPct(a,b){return b>0?Math.round(a/b*1000)/10:0}
 function spendMonthLabel(m){if(m==="all")return"كل الوقت";try{return new Date(m+"-01T12:00:00").toLocaleDateString("ar-EG",{month:"long",year:"numeric"})}catch(e){return m}}
-function renderSpendAnalysisHtml(fixed){
-  const m=spendMonth(),d=spendData(m),kind=fixed||SPEND.kind,money=n=>(Math.round((+n||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ج";
-  const prevKey=m==="all"?"":(()=>{const t=new Date(m+"-01T12:00:00");t.setMonth(t.getMonth()-1);return monthKeyLocal(t)})(),pd=prevKey?spendData(prevKey):null;
+function renderSpendAnalysisHtml(fixed,wallet){
+  wallet=wallet||"";const m=spendMonth(),d=spendData(m,wallet),kind=fixed||SPEND.kind,money=n=>(Math.round((+n||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ج";
+  const prevKey=m==="all"?"":(()=>{const t=new Date(m+"-01T12:00:00");t.setMonth(t.getMonth()-1);return monthKeyLocal(t)})(),pd=prevKey?spendData(prevKey,wallet):null;
   const delta=(cur,prev)=>{if(!pd||!prev)return"";const p=(cur-prev)/prev*100;if(Math.abs(p)<0.5)return"";return ` <small class="spend-delta ${p>0?"up":"down"}">${p>0?"▲":"▼"}${Math.abs(Math.round(p))}%</small>`};
   const LBL={op:"🔧 مصاريف التشغيل",personal:"🙋 المصاريف الشخصية",income:"💰 الإيرادات"};
   const tile=(k,v,sub,cls)=>`<button type="button" class="spend-tile ${cls||""} ${kind===k?"on":""}" ${fixed?"disabled":""} data-wf-event="click" data-wf-code="setSpendKind('${k}')"><span>${k==="all"?"🧾 إجمالي الصرف":LBL[k]}</span><b>${money(v)}</b><small>${sub}</small></button>`;
@@ -123,8 +123,8 @@ function renderSpendAnalysisHtml(fixed){
   const list=rows.length?rows.map(r=>{const p=spendPct(r.e.amt,base),open=SPEND.open===r.key;
     return `<div class="spend-row ${open?"open":""}"><button type="button" class="spend-row-btn" data-wf-event="click" data-wf-code="toggleSpendRow('${encodeURIComponent(r.key)}')"><span class="spend-name">${esc(r.label)}${r.tag?` <small class="spend-tag">${r.tag}</small>`:""}</span><b>${money(r.e.amt)}</b><em class="spend-pct">${p}%</em><i class="spend-bar" style="width:${Math.max(2,r.e.amt/max*100).toFixed(1)}%"></i><small class="spend-n">${r.e.n} حركة</small></button>
     ${open?`<div class="spend-tx">${r.e.tx.slice().sort((a,b)=>String(b.date||"").localeCompare(String(a.date||""))).map(x=>`<div class="spend-tx-row"><span>${esc(x.date||"")} • ${esc(x.reason||x.category||"")}<small> • 💳 ${esc(x.wallet||"—")}</small></span><b class="${x.type==="in"?"pos":"neg"}">${x.type==="in"?"+":"−"}${money(x.amount)}</b></div>`).join("")}</div>`:""}</div>`}).join(""):`<div class="hint">مفيش ${kind==="income"?"إيرادات":"مصروفات"} في ${esc(spendMonthLabel(m))}.</div>`;
-  return `<section class="panel spend-box" data-fixed="${fixed||""}" style="margin:10px 0">
-    <div class="page-head"><h2>📊 تحليل ${fixed==="income"?"الإيرادات":fixed?"المصروفات":"المصروفات والإيرادات"}</h2></div>
+  return `<section class="panel spend-box" data-fixed="${fixed||""}" data-wallet="${esc(wallet)}" style="margin:10px 0">
+    <div class="page-head"><h2>📊 تحليل ${fixed==="income"?"الإيرادات":fixed?"المصروفات":"المصروفات والإيرادات"}${wallet?` — ${esc(wallet)}`:""}</h2></div>
     <div class="spend-period"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(-1)" ${m==="all"?"disabled":""}>‹ اللي قبله</button>
       <input type="month" value="${m==="all"?"":esc(m)}" data-wf-event="change" data-wf-code="setSpendMonth(this.value)" aria-label="الشهر">
       <button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(1)" ${m==="all"?"disabled":""}>اللي بعده ›</button>
@@ -137,7 +137,20 @@ function renderSpendAnalysisHtml(fixed){
     <div class="hint">اضغط على أي بند تشوف حركاته. الأنواع الفرعية (وقود، مواصلات، أكل…) بتتعدل من ⚙️ الإعدادات ← الحسابات.</div>
   </section>`;
 }
-function rerenderSpend(){document.querySelectorAll(".spend-box").forEach(el=>{const t=document.createElement("div");t.innerHTML=renderSpendAnalysisHtml(el.dataset.fixed||"");el.replaceWith(t.firstElementChild)})}
+/* الخزنة: نفس اختيار الشهر، والصرف والوارد حسب النوع (شخصي/تشغيل/سلفة…) وجنب كل نوع نسبته */
+function treasuryAnalysisHtml(){
+  const m=spendMonth(),inP=x=>m==="all"||String(x.date||"").slice(0,7)===m,money=n=>(Math.round((+n||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ج";
+  const rows={in:new Map(),out:new Map()},tot={in:0,out:0};
+  (typeof treasuryEntries==="function"?treasuryEntries():[]).forEach(x=>{if(!x||!inP(x)||x.refKey==="opening-balance")return;const t=x.type==="in"?"in":"out",k=x.category||"أخرى",a=+x.amount||0;const e=rows[t].get(k)||{amt:0,n:0};e.amt+=a;e.n++;rows[t].set(k,e);tot[t]+=a});
+  const list=t=>{const r=[...rows[t].entries()].sort((a,b)=>b[1].amt-a[1].amt);if(!r.length)return `<div class="hint">مفيش ${t==="in"?"وارد":"صرف"} في الفترة.</div>`;const mx=Math.max(1,...r.map(x=>x[1].amt));return r.map(([k,e])=>`<div class="spend-row"><div class="spend-row-btn" style="cursor:default"><span class="spend-name">${esc(k)}</span><b>${money(e.amt)}</b><em class="spend-pct">${spendPct(e.amt,tot[t])}%</em><i class="spend-bar" style="width:${Math.max(2,e.amt/mx*100).toFixed(1)}%"></i><small class="spend-n">${e.n} حركة</small></div></div>`).join("")};
+  return `<section class="tr-analysis spend-box-tr" style="margin:8px 0">
+    <div class="spend-period"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(-1)" ${m==="all"?"disabled":""}>‹ اللي قبله</button><input type="month" value="${m==="all"?"":esc(m)}" data-wf-event="change" data-wf-code="setSpendMonth(this.value)" aria-label="الشهر"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(1)" ${m==="all"?"disabled":""}>اللي بعده ›</button><button type="button" class="secondary mini-action ${m==="all"?"active-track":""}" data-wf-event="click" data-wf-code="setSpendMonth('all')">كل الوقت</button></div>
+    <div class="hint" style="margin:4px 0 8px">📅 ${esc(spendMonthLabel(m))}</div>
+    <div class="spend-tiles"><div class="spend-tile" style="cursor:default"><span>➕ الوارد</span><b>${money(tot.in)}</b></div><div class="spend-tile" style="cursor:default"><span>➖ الصرف</span><b>${money(tot.out)}</b><small>${tot.in>0?`= ${spendPct(tot.out,tot.in)}% من الوارد`:""}</small></div></div>
+    <h3 class="spend-h">➖ الصرف حسب النوع — النسبة من إجمالي الصرف</h3><div class="spend-list">${list("out")}</div>
+    <h3 class="spend-h">➕ الوارد حسب النوع — النسبة من إجمالي الوارد</h3><div class="spend-list">${list("in")}</div></section>`;
+}
+function rerenderSpend(){document.querySelectorAll(".tr-analysis").forEach(el=>{const t=document.createElement("div");t.innerHTML=treasuryAnalysisHtml();el.replaceWith(t.firstElementChild)});document.querySelectorAll(".spend-box").forEach(el=>{const t=document.createElement("div");t.innerHTML=renderSpendAnalysisHtml(el.dataset.fixed||"",el.dataset.wallet||"");el.replaceWith(t.firstElementChild)})}
 function setSpendMonth(v){SPEND.month=v==="all"?"all":(/^\d{4}-\d{2}$/.test(v||"")?v:"");SPEND.open="";spendSave();rerenderSpend()}
 function shiftSpendMonth(n){const m=spendMonth();if(m==="all")return;const t=new Date(m+"-01T12:00:00");t.setMonth(t.getMonth()+(+n||0));SPEND.month=monthKeyLocal(t);SPEND.open="";spendSave();rerenderSpend()}
 function setSpendKind(k){SPEND.kind=["all","op","personal","income"].includes(k)?k:"all";SPEND.open="";spendSave();rerenderSpend()}
@@ -182,7 +195,7 @@ function renderExpenseList(){
   if(!exp.length){el.innerHTML=`<div class="hint">لا توجد مصاريف مسجلة في هذه الفترة.</div>`;return}
   let breakdown=spendingBreakdownInRange(start,end),total=breakdown.reduce((a,x)=>a+x.amount,0),top=breakdown[0];
   let topHtml=top?`<div class="wallet-icon-card" style="display:flex;margin-bottom:10px"><i>🏆</i><b>الأكتر صرفًا في الفترة: ${esc(top.label)} (${top.catShort})</b><span>${top.amount.toFixed(2)} ج</span></div>`:"";
-  let summaryHtml=`${topHtml}<h3 class="expense-subtitle">🧯 تفاصيل المصاريف حسب النوع — تشغيل وشخصي (${exp.length} حركة، إجمالي ${total.toFixed(2)} ج)</h3><table class="month-table">${breakdown.map(x=>`<tr><td>${esc(x.label)} <small>(${x.catShort})</small></td><td>${x.amount.toFixed(2)} ج <small>(${x.count})</small></td></tr>`).join("")}</table>`;
+  let summaryHtml=`${topHtml}<h3 class="expense-subtitle">🧯 تفاصيل المصاريف حسب النوع — تشغيل وشخصي (${exp.length} حركة، إجمالي ${total.toFixed(2)} ج)</h3><table class="month-table">${breakdown.map(x=>`<tr><td>${esc(x.label)} <small>(${x.catShort})</small></td><td>${x.amount.toFixed(2)} ج <small>(${x.count})</small> <em class="spend-pct">${spendPct(x.amount,total)}%</em></td></tr>`).join("")}</table>`;
   let rowsHtml=exp.map(x=>`<div class="expense-row"><span>${esc(new Date(x.date).toLocaleDateString("ar-EG"))}</span><span>${esc(x.subCategory||"غير مصنف")} • ${esc(x.category==="مصروف شخصي"?"🙋 شخصي":"🔧 تشغيل")} • ${esc(x.reason||"")}</span><b>${x.type==="in"?"+":"−"}${(+x.amount||0).toFixed(2)} ج</b><span class="expense-note">💳 ${esc(x.wallet||"—")}${x.note?" • "+esc(x.note):""}</span><button type="button" class="mini-action" data-wf-event="click" data-wf-code="deleteExpense('${x.id}')">🗑️</button></div>`).join("");
   el.innerHTML=summaryHtml+rowsHtml;
 }

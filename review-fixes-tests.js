@@ -165,7 +165,14 @@ assert.ok(/useDev=same\.length===1/.test(read("portal-admin.html")) && /تحوي
 assert.ok(/async function remove\(uid, data\)/.test(read("functions/staff-admin.js")) && /exports\.staffDelete/.test(read("functions/index.js")) && /P\.call\("staffDelete"/.test(read("users-page.js")));
 assert.ok(/function openInvoiceLinker\(invId\)/.test(read("app-invoices.js")) && /function invoiceLinkSet\(invId, partId, on\)/.test(read("app-invoices.js")));
 assert.ok(/\.request-one-page \.receipt-actions-row,\.request-one-page \.wa-send-row\{display:grid/.test(read("style.css")));
-assert.ok(/function renderSpendAnalysisHtml\(fixed\)/.test(dr) && /SPEND_EXP_CATS\[name\]/.test(read("wallets.js")));
+assert.ok(/function renderSpendAnalysisHtml\(fixed,wallet\)/.test(dr) && /SPEND_EXP_CATS\[name\]/.test(read("wallets.js")));
 assert.ok(/function partOrderBoxHtml\(p\)/.test(read("app-supplier-order.js")) && /partOrderBoxHtml\(p\)/.test(read("app-parts.js")));
 assert.ok(/x\.source==="wallet-transfer"&&x\.transferId/.test(dm), "التحويل بين محفظتين مش «ناقص طرف الخزنة»");
+// batch74: تعميم — شكل ملفات العميل/الجهاز/الصنف، تحليل الخزنة والمحفظة بالشهر، النسب في التقارير، الطلبية من قايمة المخزن، فحص أرقام الموبايل والعهدة
+assert.ok(/\.profile \.profile-grid>\.kv:last-child:nth-child\(odd\)\{grid-column:1\/-1\}/.test(read("style.css")));
+assert.ok(/function treasuryAnalysisHtml\(\)/.test(dr) && /treasuryAnalysisHtml\(\)/.test(read("treasury.js")) && /renderSpendAnalysisHtml\("",name\)/.test(read("wallets.js")));
+assert.ok(/class="rep-pct"/.test(rp) || /rep-pct/.test(read("reports.js")));
+assert.ok(/window\.listDraftAdd = function/.test(read("app-supplier-order.js")) && /listDraftAdd\('\$\{p\.id\}'\)/.test(read("workshop-mini-simple-ui.js")));
+assert.ok(/cust-phone:/.test(read("app-data-management.js")) && /custody-parts:/.test(read("app-data-management.js")));
+assert.ok(!/\$\{p\.use\} ج/.test(read("app-parts.js")), "سعر البيع مايظهرش undefined");
 console.log("review-fixes-tests: PASS (أوامر الشغل، خط السير، متابعة العملاء، المهام، الضمان، العملاء، الأجهزة، المخزن، الأكواد، الخزنة، الحسابات، التقارير، بوابة الفني، العهدة، التوزيع، الصلاحيات، الإعدادات، البوابة، إدارة البوابة)");

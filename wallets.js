@@ -659,6 +659,8 @@ function renderWalletDetail(){dedupeWalletTxByRef();
   `;
   // صفحة «مصاريفي الشخصية»/«مصاريف التشغيل»: تحليل بالشهر والبند والنسبة بدل الرقم الإجمالي بس
   if(!isWallet&&typeof renderSpendAnalysisHtml==="function"&&typeof SPEND_EXP_CATS!=="undefined"&&SPEND_EXP_CATS[name]){const tb=el.querySelector(".treasury-balance");if(tb)tb.insertAdjacentHTML("afterend",renderSpendAnalysisHtml(SPEND_EXP_CATS[name]))}
+  // صفحة محفظة بعينها: نفس التحليل بالشهر لحركات المحفظة دي بس (مصروفاتها وإيراداتها ونسبة كل بند) — مقفول افتراضيًا
+  else if(isWallet&&typeof renderSpendAnalysisHtml==="function"){const tb=el.querySelector(".treasury-balance");if(tb)tb.insertAdjacentHTML("afterend",`<details class="expense-panel spend-wrap"><summary>📊 تحليل حركات «${esc(name)}» بالشهر والبند</summary>${renderSpendAnalysisHtml("",name)}</details>`)}
 }
 
 /* ---------------------------------------------------------------------

@@ -688,7 +688,7 @@
             <small>💰 إجمالي الصنف: ${itemTotal.toFixed(2)} ج • 🔁 استُخدم ${partUsageCount(p.id)} مرة</small>
           </div>
           <span class="simple-qty ${qty <= (+p.min||0) ? "low" : ""}">${qty}</span>
-          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a>${qty > 0 && typeof window.openPartSale === "function" ? `<button type="button" class="primary small-btn" data-wf-event="click" data-wf-code="openPartSale('${p.id}')">🛒 بيع</button>` : ""}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
+          <div class="simple-record-actions"><a class="secondary small-btn" href="part.html?id=${p.id}">فتح</a>${qty > 0 && typeof window.openPartSale === "function" ? `<button type="button" class="primary small-btn" data-wf-event="click" data-wf-code="openPartSale('${p.id}')">🛒 بيع</button>` : ""}${qty <= (+p.min||0) && typeof window.listDraftAdd === "function" ? (() => { const dq = window.draftQtyOf(p.id); return `<button type="button" class="secondary small-btn" id="pdb-${p.id}" data-wf-event="click" data-wf-code="listDraftAdd('${p.id}')">${dq ? `✅ في الطلبية (${dq})` : "📝 للطلبية"}</button>`; })() : ""}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deletePartRecord('${p.id}')">🗑️ حذف</button></div>
         </div>`;
       }, pgSig).html;
     }

@@ -178,6 +178,7 @@ function renderTreasury(){
       </div>
       <div class="hint">هذه الأرقام للعرض والمراجعة فقط. لا تُضاف ولا تُخصم من درج الخزنة.</div>
     </details>
+    ${typeof treasuryAnalysisHtml==="function"?`<details class="expense-panel"><summary>📊 تحليل الخزنة بالشهر والنوع (والنسبة)</summary>${treasuryAnalysisHtml()}</details>`:""}
     <h3 class="treasury-list-title">📋 كشف درج الخزنة</h3>
     ${list.length?WFPager.render("treasury-tx",list,x=>`<div class="treasury-row ${x.type}" id="tx-${x.id}">
       <div class="treasury-row-main">

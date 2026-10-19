@@ -803,3 +803,8 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .request-one-page .receipt-actions-row,.request-one-page .wa-send-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;width:100%}
 .request-one-page .receipt-actions-row>*,.request-one-page .wa-send-row>*{width:100%;justify-content:center;text-align:center;box-sizing:border-box;margin:0}
 .request-one-page .receipt-actions-row>:last-child:nth-child(odd),.request-one-page .wa-send-row>:last-child:nth-child(odd){grid-column:1/-1}
+/* ملفات العميل/الجهاز/الصنف: خانتين في السطر على الموبايل (زي صفحة الأمر) بدل عمود طويل، والخانة الفردية الأخيرة بتاخد السطر كله */
+@media(max-width:650px){.profile .profile-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.profile .profile-grid>.kv{padding:8px 9px;min-width:0;overflow-wrap:anywhere}}
+.profile .profile-grid>.kv:last-child:nth-child(odd){grid-column:1/-1}
+/* أزرار رأس الصفحة: سطر لوحدها بعرض الصفحة، والزرار بيكبر يملا مكانه (مفيش زرار واقف لوحده في الطرف) */
+@media(max-width:650px){.profile>.page-head{flex-wrap:wrap}.profile>.page-head>.compact-actions{width:100%;display:flex;flex-wrap:wrap;gap:6px}.profile>.page-head>.compact-actions>button,.profile>.page-head>.compact-actions>a{flex:1 1 auto;justify-content:center;text-align:center}.profile>.page-head>.compact-actions>.ps-inline-actions{flex:0 0 auto}}

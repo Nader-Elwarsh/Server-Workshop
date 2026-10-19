@@ -336,6 +336,8 @@ function dataIntegrityReport(){
     if(!Number.isFinite(+x.amount)||+x.amount<=0)push({key:`tr-amt:${x.id}`,message:`حركة خزنة ${desc}: المبلغ المسجل (${x.amount}) غير صالح. المفروض يكون رقم أكبر من صفر.`,link:tLink,linkLabel:"فتح الحركة نفسها",fix:null});
     if(x.type!=="in"&&x.type!=="out")push({key:`tr-type:${x.id}`,message:`حركة خزنة ${desc}: نوع الحركة (${x.type}) غير صالح. المفروض يكون "وارد" أو "صرف".`,link:tLink,linkLabel:"فتح الحركة نفسها",fix:null});
   });
+  // أرقام موبايل العملاء: لازم 11 رقم وتبدأ بـ 010/011/012/015 (القديم المتسجل قبل الشرط ده بيظهر هنا عشان يتصلح)
+  if(typeof wfEgMobile==="function")arr(K.c).forEach(c=>{if(c&&c.phone&&!wfEgMobile(c.phone))push({key:`cust-phone:${c.id}`,message:`العميل «${c.name||"بدون اسم"}»: رقم الموبايل «${c.phone}» مش رقم مصري صحيح (11 رقم ويبدأ بـ 010/011/012/015).`,link:`customers.html?edit=${encodeURIComponent(c.id)}`,linkLabel:"تعديل العميل",fix:null})});
   // تحويل بين محفظتين (من غير خزنة): طرفين في الحسابات (صرف + وارد) بنفس المبلغ — مالوش طرف في الخزنة أصلًا
   const w2w=new Set(activeWallet.filter(x=>x.source==="wallet-transfer"&&x.transferId).map(x=>x.transferId));
   w2w.forEach(tid=>{
@@ -343,6 +345,13 @@ function dataIntegrityReport(){
     const link=w[0]&&w[0].wallet?`wallet.html?type=wallet&name=${encodeURIComponent(w[0].wallet)}#tx-${w[0].id}`:"wallets.html";
     if(o.length!==1||n.length!==1)push({key:`w2w-parts:${tid}`,message:`تحويل بين محفظتين ${tid}: ناقص طرف (${o.length} صرف، ${n.length} وارد). المفروض صرف من محفظة ووارد في التانية.`,link,linkLabel:"فتح الحركة",fix:null});
     else if(Math.abs(+o[0].amount-+n[0].amount)>0.005)push({key:`w2w-amt:${tid}`,message:`تحويل بين محفظتين ${tid}: المبلغ مختلف بين الطرفين (${(+o[0].amount).toFixed(2)} مقابل ${(+n[0].amount).toFixed(2)} ج).`,link,linkLabel:"فتح الحركة",fix:null});
+  });
+  // إيداع/تسوية عهدة فني: نفس الفكرة — صرف من محفظة ووارد في التانية بنفس المبلغ (custodyId واحد)
+  new Set(activeWallet.filter(x=>x.source==="custody"&&x.custodyId).map(x=>x.custodyId)).forEach(cid=>{
+    const w=activeWallet.filter(x=>x.source==="custody"&&x.custodyId===cid),o=w.filter(x=>x.type==="out"),n=w.filter(x=>x.type==="in");
+    const link=w[0]&&w[0].wallet?`wallet.html?type=wallet&name=${encodeURIComponent(w[0].wallet)}#tx-${w[0].id}`:"custody.html";
+    if(o.length!==1||n.length!==1)push({key:`custody-parts:${cid}`,message:`حركة عهدة فني: ناقص طرف (${o.length} صرف، ${n.length} وارد) — رصيد الورشة أو العهدة هيطلع غلط.`,link,linkLabel:"فتح الحركة",fix:null});
+    else if(Math.abs(+o[0].amount-+n[0].amount)>0.005)push({key:`custody-amt:${cid}`,message:`حركة عهدة فني: المبلغ مختلف بين الطرفين (${(+o[0].amount).toFixed(2)} مقابل ${(+n[0].amount).toFixed(2)} ج).`,link,linkLabel:"فتح الحركة",fix:null});
   });
   const transferIds=new Set([...activeWallet.filter(x=>x.source!=="wallet-transfer"),...activeTreasury].map(x=>x.transferId).filter(Boolean));
   transferIds.forEach(tid=>{
