@@ -20,7 +20,6 @@
   function rj(k) { try { var v = w.WFStorage && w.WFStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
   function wj(k, v) { try { if (w.WFStorage) w.WFStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function usd(v) { v = +v || 0; return v === 0 ? "$0" : v < 0.01 ? "أقل من سنت" : "$" + (v < 10 ? v.toFixed(2) : v.toFixed(1)); }
-  function isOwner() { try { return !!(w.WFPerm && w.WFPerm.isOwner && w.WFPerm.isOwner()); } catch (e) { return false; } }
   function call(name, data) { if (!w.WFMedia || !w.WFMedia.call) return Promise.reject(new Error("الصفحة لسه بتحمّل — جرّب كمان ثانية.")); return w.WFMedia.call(name, data || {}); }
   function on(f) { return !!(cfg && cfg.enabled && cfg.features && cfg.features[f]); }
 
@@ -229,16 +228,19 @@
     box.innerHTML = "<div class='wf-ai' style='margin-bottom:10px'><b>🤖 الذكاء الاصطناعي</b> — " + (ownerData.enabled ? "شغال" : "مقفول") + "<div>الشهر ده: <b>" + usd(u.cost) + "</b> من حد " + usd(cap) + " • " + (u.calls || 0) + " مرة</div><div class='wf-ai-bar'><i style='width:" + Math.max(2, cap > 0 ? Math.min(100, (u.cost || 0) / cap * 100) : 100) + "%'></i></div></div>";
   }
   function loadOwner() {
-    if (!isOwner()) { if (!ownerData) { setMsg = "🔒 الجزء ده للمالك بس."; drawSettings(); } return; }
+    /* القرار للسيرفر (aiConfig بيرجّع owner) — صلاحيات الجهاز (WFPerm) بتتحمّل متأخر وممكن تبقى لسه مش جاهزة هنا. */
     if (ownerBusy || (ownerData && Date.now() - ownerAt < 60000)) return;
     ownerBusy = true;
     if (!ownerData) { setMsg = ""; drawSettings(); }
-    call("aiConfig").then(function (c) { if (c && c.owner) { ownerData = c; ownerAt = Date.now(); setMsg = ""; setCfg(c, true); } else if (!ownerData) setMsg = "🔒 الجزء ده للمالك بس."; },
+    call("aiConfig").then(function (c) { if (c && c.owner) { ownerData = c; ownerAt = Date.now(); setMsg = ""; setCfg(c, true); } else if (!ownerData) setMsg = "🔒 الجزء ده للمالك بس" + (c ? "." : " — مقدرناش نتأكد من الحساب، جرّب تاني."); },
       function (e) { if (!ownerData) setMsg = "⚠️ " + ((e && e.message) || "تعذّر التحميل"); }).then(function () { ownerBusy = false; if (!dirty) drawSettings(); drawUsageMini(); });
   }
   function wireSettings() {
     var opened = function () { var x = d.querySelectorAll("#ai-panel details, #media-cleanup-panel details"); for (var i = 0; i < x.length; i++) if (x[i].open) return true; return false; };
-    if (w.WFPerm && w.WFPerm.onChange) try { w.WFPerm.onChange(function () { if (opened()) loadOwner(); }); } catch (e) {}
+    (function hookPerm(n) {
+      if (w.WFPerm && w.WFPerm.onChange) { try { w.WFPerm.onChange(function () { if (opened() && !ownerData) { ownerAt = 0; loadOwner(); } }); } catch (e) {} return; }
+      if (n < 60) setTimeout(function () { hookPerm(n + 1); }, 500);
+    })(0);
     [["ai-panel"], ["media-cleanup-panel"]].forEach(function (x) {
       var p = d.getElementById(x[0]), det = p && p.querySelector("details");
       if (!det) return;
