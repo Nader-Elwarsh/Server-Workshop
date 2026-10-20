@@ -306,10 +306,11 @@
       var SR = w.SpeechRecognition || w.webkitSpeechRecognition;
       box.innerHTML = "<div class='wf-ai-row2'><b>🎙️ قول الأمر بالكلام</b>" + (SR ? "<button type='button' class='wf-ai-btn2 wf-ai-mic' data-v='mic'>🎙️ ابدأ الكلام</button>" : "") + "</div>" +
         "<textarea id='wfAiVoiceText' rows='3' placeholder='" + esc("مثال: الحاج محمود السيد 01012345678 من مركز طما قرية الشيخ زين الدين، غسالة توشيبا فوق أوتوماتيك مش بتعصر وبتطلع صوت عالي، عايز حد يجيله بكرة العصر") + "'></textarea>" +
-        "<div class='wf-ai-row2' style='margin-top:6px'><button type='button' class='wf-ai-btn' data-v='go'>🤖 املا الخانات</button><small class='hint'>" + (SR ? "دوس 🎙️ واتكلم، أو" : "استخدم 🎤 الميكروفون اللي في الكيبورد، أو") + " الصق رسالة العميل من واتساب.</small></div><div class='wf-ai-res' id='wfAiVoiceRes'></div>";
+        "<div class='wf-ai-row2' style='margin-top:6px'><button type='button' class='wf-ai-btn' data-v='go'>🤖 املا الخانات</button><button type='button' class='wf-ai-btn2' data-v='call'>📎 من تسجيل مكالمة</button><small class='hint'>" + (SR ? "دوس 🎙️ واتكلم، أو" : "استخدم 🎤 الميكروفون اللي في الكيبورد، أو") + " الصق رسالة العميل من واتساب.</small></div><div class='wf-ai-res' id='wfAiVoiceRes'></div>";
       body.insertBefore(box, body.firstChild);
       var mic = box.querySelector("[data-v=mic]"); if (mic) mic.onclick = function () { toggleMic(mic); };
       box.querySelector("[data-v=go]").onclick = function () { voiceFill(this); };
+      box.querySelector("[data-v=call]").onclick = function () { var b = this; pickAudio().then(function (f) { callFill(b, function () { return Promise.resolve(f); }, $("wfAiVoiceRes"), f.name); }, function (e) { fail(e, $("wfAiVoiceRes")); }); };
     }
     box.style.display = "";
   }
@@ -333,7 +334,7 @@
   }
   function openBox(id) { var b = $(id); if (b && b.classList.contains("hidden")) { if (typeof w.toggleQuickAdd === "function") w.toggleQuickAdd(id); else b.classList.remove("hidden"); } }
   /* ماركة الموديل رجّعها «خام» (زي LG) والنظام كاتبها «إل جي»؟ نوحّدها */
-  function fixBrand(o) { if (!o.brand && o.brandRaw) { var c = canonBrand(o.brandRaw); if (lists().brands.indexOf(c) > -1) { o.brand = c; o.brandRaw = ""; } } return o; }
+  function fixBrand(o) { if (o.brand) o.brand = canonBrand(o.brand); if (!o.brand && o.brandRaw) { var c = canonBrand(o.brandRaw); if (lists().brands.indexOf(c) > -1) { o.brand = c; o.brandRaw = ""; } } return o; }
   function applyOrder(o) {
     fixBrand(o);
     var out = [], warn = [];
@@ -365,11 +366,78 @@
       if (!o.deviceType && o.deviceTypeRaw) warn.push("🔧 النوع «" + esc(o.deviceTypeRaw) + "» مش في القايمة.");
       if (!o.brand && o.brandRaw) warn.push("🏷️ الماركة «" + esc(o.brandRaw) + "» مش في القايمة — اختارها أو ضيفها.");
     }
-    if (o.fault) { setVal("qoFault", o.fault + (o.visit ? " (الموعد: " + o.visit + ")" : "")); out.push("📝 العطل: " + esc(o.fault)); }
+    if (o.summary !== undefined) {
+      var ft = "📞 " + (o.fault || "بلاغ عن طريق مكالمة") + (o.summary ? "\n\n📝 ملخص المكالمة:\n" + o.summary : "") + (o.price ? "\n💰 مبلغ اتقال في المكالمة: " + o.price : "") + (o.visit ? "\n📅 الموعد: " + o.visit : "");
+      setVal("qoFault", ft); if (o.fault) out.push("📝 العطل: " + esc(o.fault));
+    } else if (o.fault) { setVal("qoFault", o.fault + (o.visit ? " (الموعد: " + o.visit + ")" : "")); out.push("📝 العطل: " + esc(o.fault)); }
     if (o.visit) out.push("📅 الموعد المذكور: <b>" + esc(o.visit) + "</b> — ظبطه من صفحة الأمر بعد الحفظ.");
     if (o.notes) out.push("🗒️ " + esc(o.notes));
     if (o.missing && o.missing.length) warn.push("ناقص: " + o.missing.map(esc).join("، "));
     return "<ul>" + out.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ul>" + (warn.length ? "<div class='wf-ai-warn'>" + warn.join("<br>") + "</div>" : "") + "<div class='hint'>✅ راجع الخانات تحت وبعدين احفظ الأمر زي العادي.</div>";
+  }
+
+  /* =====================================================================
+     📞 تسجيل مكالمة → بيانات العميل والجهاز والعطل
+     ===================================================================== */
+  var AUDIO_EXT = { m4a: "audio/mp4", mp4: "audio/mp4", aac: "audio/aac", mp3: "audio/mpeg", mpeg: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", opus: "audio/opus", webm: "audio/webm", flac: "audio/flac" };
+  var MAX_AUDIO = 12 * 1024 * 1024;
+  function audioMime(f) {
+    var t = String((f && f.type) || "").toLowerCase(), ext = String((f && f.name) || "").toLowerCase().split(".").pop();
+    if (/amr|3gp/.test(t) || ext === "amr" || ext === "3gp") return "";
+    if (AUDIO_EXT[ext]) return AUDIO_EXT[ext];
+    if (/m4a|mp4|aac/.test(t)) return "audio/mp4";
+    if (/mpeg|mp3/.test(t)) return "audio/mpeg";
+    if (/wav/.test(t)) return "audio/wav"; if (/ogg/.test(t)) return "audio/ogg"; if (/opus/.test(t)) return "audio/opus"; if (/webm/.test(t)) return "audio/webm"; if (/flac/.test(t)) return "audio/flac";
+    return "";
+  }
+  function pickAudio() {
+    return new Promise(function (resolve, reject) {
+      var inp = d.createElement("input"); inp.type = "file"; inp.accept = "audio/*,.m4a,.mp3,.aac,.wav,.ogg,.opus"; inp.style.display = "none"; d.body.appendChild(inp);
+      inp.onchange = function () { var f = inp.files && inp.files[0]; d.body.removeChild(inp); f ? resolve(f) : reject(new Error("cancel")); };
+      inp.click();
+    });
+  }
+  function audioPayload(f) {
+    return new Promise(function (resolve, reject) {
+      if (!f) return reject(new Error("مفيش تسجيل مرفق."));
+      var mime = audioMime(f);
+      if (!mime) return reject(new Error("صيغة التسجيل دي (" + (String(f.name || "").split(".").pop() || f.type || "؟") + ") مش مدعومة — من إعدادات تسجيل المكالمات في الموبايل خليها M4A أو MP3."));
+      if (f.size > MAX_AUDIO) return reject(new Error("التسجيل كبير (" + Math.round(f.size / 1048576) + " ميجا) — الحد 12 ميجا (حوالي 20 دقيقة)."));
+      var r = new FileReader();
+      r.onload = function () { resolve({ mime: mime, data: String(r.result || "").split(",")[1] || "" }); };
+      r.onerror = function () { reject(new Error("مقدرتش أقرا ملف التسجيل.")); };
+      r.readAsDataURL(f);
+    });
+  }
+  function callFill(btn, getFile, res, hint) {
+    var done = busyBtn(btn, "بيسمع المكالمة…"); res.innerHTML = "<div class='hint'>⏳ بيسمع المكالمة ويطلّع البيانات — ممكن ياخد لحد دقيقة حسب طولها.</div>";
+    getFile().then(audioPayload).then(function (au) { return task("callParse", { audio: au, lists: lists(), hint: hint || "" }); }).then(function (o) {
+      if (o.heard === false) { res.innerHTML = "<div class='wf-ai-err'>التسجيل مش واضح أو مش مكالمة صيانة" + (o.notes ? ": " + esc(o.notes) : "") + ".</div>" + foot(o); return; }
+      res.innerHTML = (o.summary ? "<div class='wf-ai-hist'>📝 " + esc(o.summary).replace(/\n/g, "<br>") + (o.price ? "<br>💰 " + esc(o.price) : "") + "</div>" : "") + applyOrder(o) + foot(o);
+    }, function (e) { fail(e, res); }).then(done);
+  }
+  function shareAudioFile() {
+    if (w.__wfShareAudio) return Promise.resolve(w.__wfShareAudio);
+    var ref = w.__wfShareAudioRef;
+    if (!ref || !w.ImageStore || !w.ImageStore.resolveSrc) return Promise.reject(new Error("مفيش تسجيل مرفق بالمكالمة دي."));
+    return Promise.resolve(w.ImageStore.resolveSrc(ref)).then(function (src) { if (!src) throw new Error("التسجيل مش موجود على الجهاز."); return fetch(src).then(function (r) { return r.blob(); }); }).then(function (b) {
+      var nm = String((w.__wfShareHint || "").split(" — ").pop() || "call");
+      try { return new File([b], /\.[a-z0-9]{2,4}$/i.test(nm) ? nm : nm + ".m4a", { type: b.type || "" }); } catch (e) { b.name = nm; return b; }
+    });
+  }
+  function callSharePanel() {
+    var anchor = $("shareAudioPreview"), box = $("wfAiCall");
+    if (!anchor || !$("qoFault")) return;
+    var has = !!(w.__wfShareAudio || w.__wfShareAudioRef);
+    if (!on("voice") || !can("requests.add") || !has) { if (box) box.style.display = "none"; return; }
+    css();
+    if (!box) {
+      box = d.createElement("div"); box.id = "wfAiCall"; box.className = "wf-ai-tool";
+      box.innerHTML = "<div class='wf-ai-row2'><b>🤖 اسمع المكالمة واملا البيانات</b><button type='button' class='wf-ai-btn'>🎧 حلّل التسجيل</button></div><small class='hint'>بيطلّع اسم العميل والعنوان والجهاز والعطل وملخص اللي اتفقتوا عليه، وانت تراجع قبل الإنشاء.</small><div class='wf-ai-res'></div>";
+      anchor.parentNode.insertBefore(box, anchor.nextSibling);
+      box.querySelector("button").onclick = function () { callFill(this, shareAudioFile, box.querySelector(".wf-ai-res"), w.__wfShareHint || ""); };
+    }
+    box.style.display = "";
   }
 
   /* =====================================================================
@@ -603,16 +671,16 @@
   }
 
   /* ---------- البداية ---------- */
-  function all() { try { codesPage(); codeProfileBtn(); msgSlots(); voicePanel(); plateButtons(); inventoryButtons(); summaryPanel(); } catch (e) { try { console.warn("[ai-tools]", e); } catch (x) {} } }
+  function all() { try { codesPage(); codeProfileBtn(); msgSlots(); voicePanel(); callSharePanel(); plateButtons(); inventoryButtons(); summaryPanel(); } catch (e) { try { console.warn("[ai-tools]", e); } catch (x) {} } }
   var tm = null;
   function soon() { clearTimeout(tm); tm = setTimeout(all, 120); }
   function start() {
     if (!AI()) return setTimeout(start, 200);
     AI().onChange(function () { var s = d.querySelectorAll(".wf-ai-msg-slot"); for (var i = 0; i < s.length; i++) s[i].setAttribute("data-ai-done", "0"); soon(); });
-    var need = $("faultForm") || $("faultCodeProfile") || $("quickOrderBody") || $("deviceForm") || $("restockBox") || $("reportsHost") || d.querySelector(".wf-ai-msg-slot");
+    var need = $("faultForm") || $("faultCodeProfile") || $("quickOrderBody") || $("shareSummaryBox") || $("deviceForm") || $("restockBox") || $("reportsHost") || d.querySelector(".wf-ai-msg-slot");
     if (need) setTimeout(function () { AI().refresh(false); }, 1200);
     all();
-    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest(".wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
+    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
     var ap = $("repApply"); if (ap) ap.addEventListener("click", function () { setTimeout(summaryPanel, 400); });
   }
   w.WFAITools = { compactStats: compactStats, applyOrder: applyOrder, _all: all };

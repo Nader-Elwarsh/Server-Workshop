@@ -86,6 +86,15 @@ const PARTS = [
   assert.strictEqual(r.category, "فوق أوتوماتيك"); assert.strictEqual(r.brand, ""); assert.strictEqual(r.brandRaw, "توشيبا العربي", "ماركة مش في القايمة بترجع خام");
   assert.ok(/- طما: الشيخ زين الدين/.test(calls[calls.length - 1].contents[0].parts[0].text));
 
+  // 📞 تسجيل مكالمة: الصيغة لازم تبقى مدعومة، والصوت بيتبعت inline، والتكلفة بسعر الصوت
+  await assert.rejects(ai.task("tech", { task: "callParse", audio: { mime: "audio/amr", data: "A".repeat(5000) }, lists }), /bad_audio/);
+  await assert.rejects(ai.task("tech", { task: "callParse", audio: { mime: "audio/mp4", data: "A".repeat(17000000) }, lists }), /bad_audio/);
+  reply = { heard: true, customerName: "أم أحمد", phone: "", center: "طما", village: "", villageRaw: "", street: "", deviceType: "غسالات", category: "أمامي أوتوماتيك", brand: "إل جي", model: "", fault: "بتفصل في نص الغسيل", visit: "السبت الصبح", price: "100 جنيه معاينة", summary: "الغسالة بتفصل في نص الغسيل\nاتفقنا على زيارة السبت الصبح", notes: "", missing: ["التليفون"] };
+  r = await ai.task("tech", { task: "callParse", audio: { mime: "audio/mp4", data: "A".repeat(5000) }, lists, hint: "Call recording 01098765432_20261020.m4a" });
+  assert.strictEqual(r.customerName, "أم أحمد"); assert.strictEqual(r.price, "100 جنيه معاينة"); assert.ok(/زيارة السبت/.test(r.summary)); assert.strictEqual(r.brand, "إل جي");
+  const cp = calls[calls.length - 1].contents[0].parts;
+  assert.strictEqual(cp[0].inlineData.mimeType, "audio/mp4"); assert.ok(/01098765432/.test(cp[1].text), "اسم الملف بيتبعت كتلميح");
+
   // 🏷️ لوحة البيانات
   actors.tech.perms["devices.add"] = 1;
   reply = { readable: true, type: "غسالات", typeRaw: "", category: "أمامي أوتوماتيك", brand: "إل جي", brandRaw: "", model: "F4J6TY0W", serial: "123ABC", specs: "7kg 220V", note: "" };
@@ -119,15 +128,18 @@ const PARTS = [
 
   // العدّاد بيتسجل لكل ميزة
   const u = db.docs["serverConfig/aiUsage-2026-10"];
+  const { costOf } = require("./functions/ai");
+  assert.ok(Math.abs(costOf("gemini-2.5-flash", { promptTokenCount: 10000, candidatesTokenCount: 0, promptTokensDetails: [{ modality: "AUDIO", tokenCount: 9600 }] }).usd - (400 * 0.3 + 9600 * 1.0) / 1e6) < 1e-12, "الصوت بسعره");
   ["codes", "msg", "voice", "plate", "invoice", "stock", "summary"].forEach((k) => assert.ok(u.byFeature[k] && u.byFeature[k].calls >= 1, k));
 
   // الواجهة
   const read = (f) => fs.readFileSync(f, "utf8");
-  ["faultcodes.html", "faultcode.html", "index.html", "devices.html", "inventory.html", "reports.html", "request.html"].forEach((f) => assert.ok(read(f).includes('src="app-ai-tools.js"') && read(f).includes('src="app-ai.js"') && read(f).includes('src="wf-media.js"'), f));
+  ["faultcodes.html", "faultcode.html", "index.html", "devices.html", "inventory.html", "reports.html", "request.html", "share-target.html"].forEach((f) => assert.ok(read(f).includes('src="app-ai-tools.js"') && read(f).includes('src="app-ai.js"') && read(f).includes('src="wf-media.js"'), f));
   assert.ok(read("service-worker.js").includes('"./app-ai-tools.js"'));
   assert.ok(read("functions/index.js").includes("exports.aiTask ="));
   assert.ok(/window\.WFReportData=/.test(read("reports.js")));
   assert.ok(read("app-requests.js").includes('wf-ai-msg-slot no-print" data-ai-rid="${esc(r.id)}"'));
+  assert.ok(/window\.__wfShareAudio = payload\.file/.test(read("share-target.js")) && /window\.__wfShareAudioRef = audioRef/.test(read("share-target.js")));
   const tools = read("app-ai-tools.js");
   const genMsg = tools.slice(tools.indexOf("function genMsg"), tools.indexOf("function msgSlots0"));
   assert.ok(!/customerName|cust\.name|\.phone/.test(genMsg), "الرسالة مش بتبعت اسم أو تليفون العميل");
