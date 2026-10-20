@@ -520,6 +520,6 @@
   window.exportReportSummaryCSV=exportSummaryCSV;
   window.exportPurchaseList=exportPurchaseList;
   window.sharePurchaseList=sharePurchaseList;
-  window.setReportMonthlyTarget=setMonthlyTarget;
+  window.setReportMonthlyTarget=setMonthlyTarget;window.WFReportData=function(){try{const r=range();if(!r.valid)return null;return reportData()}catch(e){return null}};window.WFReportRange=function(){try{return range()}catch(e){return null}};
   document.addEventListener('DOMContentLoaded',()=>{if(!document.getElementById('reportsHost'))return;addPresets();const nf=window.WFNavState?.getParam('from'),nt=window.WFNavState?.getParam('to');if(nf&&nt&&validDateKey(nf)&&validDateKey(nt)){document.getElementById('repFrom').value=nf;document.getElementById('repTo').value=nt;render()}else preset('month');const apply=document.getElementById('repApply'),today=document.getElementById('repToday'),week=document.getElementById('repWeek'),month=document.getElementById('repMonth');if(apply)apply.addEventListener('click',render);if(today)today.addEventListener('click',()=>preset('today'));if(week)week.addEventListener('click',()=>preset('week'));if(month)month.addEventListener('click',()=>preset('month'));});
 })();
