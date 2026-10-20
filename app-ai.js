@@ -10,9 +10,17 @@
 (function (w) {
   "use strict";
   var d = w.document, CFG_KEY = "wf_ai_cfg", CACHE_KEY = "wf_ai_diag";
-  var cfg = null, cfgAt = 0, lastTry = 0, cfgBusy = false, ownerData = null, busy = {}, errs = {}, open = {};
-  var FEAT = { diag: { name: "🩺 مساعد التشخيص والقطع", desc: "يقترح الأسباب المحتملة وإزاي تتأكد منها، والقطع اللي تاخدها معاك، وأسئلة للعميل — من وصف العطل وسجل الورشة." } };
-  var SOON = [["🎙️ أمر الشغل بالصوت", "تتكلم والأمر يتملي لوحده"], ["🧾 صورة فاتورة المورد", "تصوّر الفاتورة والأصناف والأسعار تتسجل"]];
+  var listeners = [], cfg = null, cfgAt = 0, lastTry = 0, cfgBusy = false, ownerData = null, busy = {}, errs = {}, open = {}, notes = {}, peeked = {};
+  var FEAT = {
+    diag: { name: "🩺 مساعد التشخيص والقطع", desc: "في أمر الشغل: الأسباب المحتملة وإزاي تتأكد منها، خطوات الفحص، والقطع اللي تاخدها معاك من المخزن." },
+    codes: { name: "🧯 أكواد الأعطال", desc: "معنى كود مش متسجّل، تكملة السبب والحل للأكواد الناقصة، وقراية الكود من صورة شاشة الجهاز." },
+    msg: { name: "💬 رسايل واتساب للعميل", desc: "رسالة جاهزة بأسلوب محترم (تكلفة، تأخير، الجهاز جاهز، موعد، متابعة…) وبيانات العميل بتتملي على جهازك." },
+    voice: { name: "🎙️ أمر الشغل بالكلام", desc: "تتكلم أو تلزق كلام العميل، وخانات الأمر السريع (العميل، العنوان، الجهاز، العطل) تتملي لوحدها." },
+    plate: { name: "🏷️ صورة لوحة بيانات الجهاز", desc: "تصوّر الملصق، والماركة والموديل والمسلسل والمواصفات يتكتبوا لوحدهم." },
+    invoice: { name: "🧾 توريد من صورة فاتورة المورد", desc: "تصوّر الفاتورة، والأصناف والكميات والأسعار تتربط بالمخزن وتراجعها قبل التسجيل." },
+    stock: { name: "🧹 تنظيف أسماء المخزن", desc: "يلاقي الأصناف المتكررة بأسماء مختلفة والأسماء اللي محتاجة توضيح." },
+    summary: { name: "📊 ملخص التقارير بالكلام", desc: "في صفحة التقارير: الفترة ماشية إزاي، إيه اللي محتاج انتباه، وخطوات عملية." }
+  };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function A(k) { try { return (typeof w.arr === "function" && k ? w.arr(k) : []) || []; } catch (e) { return []; } }
@@ -28,7 +36,7 @@
     var before = JSON.stringify(cfg && { e: cfg.enabled, f: cfg.features, c: cfg.capReached });
     cfg = { enabled: !!c.enabled, features: c.features || {}, capReached: !!c.capReached };
     if (fromServer) { cfgAt = Date.now(); wj(CFG_KEY, { enabled: cfg.enabled, features: cfg.features, capReached: cfg.capReached, at: cfgAt }); }
-    if (JSON.stringify({ e: cfg.enabled, f: cfg.features, c: cfg.capReached }) !== before) fillAll(true);
+    if (JSON.stringify({ e: cfg.enabled, f: cfg.features, c: cfg.capReached }) !== before) { fillAll(true); listeners.forEach(function (fn) { try { fn(cfg); } catch (e) {} }); }
   }
   function refreshCfg(force) {
     if (cfgBusy || (!force && (Date.now() - cfgAt < 10 * 60000 || Date.now() - lastTry < 60000))) return Promise.resolve(cfg);
@@ -44,23 +52,42 @@
   function overlap(a, b) { var n = 0; Object.keys(a).forEach(function (x) { if (b[x]) n++; }); return n; }
   function clip(s, n) { s = String(s || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n) + "…" : s; }
   function devOf(id, map) { return map[id] || {}; }
+  function dayMs(v) { var t = v ? Date.parse(v) : NaN; return isNaN(t) ? 0 : t; }
+  /* أكواد الأعطال المكتوبة في الوصف (E1، F-05…) ومعناها من «أكواد أعطال الأجهزة» لنفس النوع/الماركة */
+  function faultCodes(r, dv) {
+    var txt = String(r.fault || "") + " " + String(r.work || ""), toks = (txt.match(/[A-Za-z]{1,3}\s?-?\s?\d{1,3}/g) || []).map(function (t) { return t.toLowerCase().replace(/[\s-]/g, ""); });
+    if (!toks.length) return [];
+    var n = function (v) { return String(v || "").toLowerCase().replace(/[\s\-_.]/g, ""); };
+    return A(K().fc).filter(function (f) { return f && toks.indexOf(n(f.code)) > -1 && (!f.deviceType || f.deviceType === dv.type) && (!f.brand || n(f.brand) === n(dv.brand)); }).slice(0, 4)
+      .map(function (f) { return { code: clip(f.code, 20), title: clip(f.title, 120), cause: clip(f.cause, 200), fix: clip(f.fix, 200) }; });
+  }
+  /* أكواد مكتوبة في العطل ومش متسجّلة في دليل الأكواد لنفس النوع/الماركة */
+  function unknownCodes(r) {
+    var dv = A(K().d).filter(function (x) { return x && x.id === r.deviceId; })[0] || {};
+    var raw = (String(r.fault || "") + " " + String(r.work || "")).match(/[A-Za-z]{1,3}\s?-?\s?\d{1,3}/g) || [], n = function (v) { return String(v || "").toLowerCase().replace(/[\s\-_.]/g, ""); };
+    var known = faultCodes(r, dv).map(function (c) { return n(c.code); }), out = [];
+    var NOT = /^(lg|kg|hp|w|v|a|cm|mm|ml|l|no|sn|bar|psi|btu|mah)\d/; // «LG 7» أو «7 KG» مش أكواد
+    raw.forEach(function (t) { var k = n(t); if (NOT.test(k)) return; if (known.indexOf(k) < 0 && out.map(n).indexOf(k) < 0) out.push(t.replace(/\s+/g, "").toUpperCase()); });
+    return out.slice(0, 3).map(function (c) { return { code: c, href: "faultcodes.html?ai=1&code=" + encodeURIComponent(c) + "&type=" + encodeURIComponent(dv.type || "") + "&brand=" + encodeURIComponent(dv.brand || "") + "&model=" + encodeURIComponent(dv.model || "") }; });
+  }
   function context(r) {
-    var devs = {}, parts = {}, returned = {};
+    var devs = {}, parts = {}, returned = {}, byId = {};
     A(K().d).forEach(function (x) { if (x) devs[x.id] = x; });
     A(K().p).forEach(function (x) { if (x) parts[x.id] = x; });
     var all = A(K().r);
-    all.forEach(function (o) { if (o && o.warrantyOf) returned[o.warrantyOf] = 1; });
-    var dv = devOf(r.deviceId, devs), fw = words(r.fault + " " + (r.work || "")), same = [], sim = [];
-    function item(o) {
-      return { fault: clip(o.fault, 200), work: clip(o.work, 300), when: String(o.createdAt || "").slice(0, 10), returned: !!returned[o.id],
-        parts: (o.parts || []).map(function (x) { return x.external ? x.name : (parts[x.partId] || {}).name; }).filter(Boolean).slice(0, 8) };
-    }
+    all.forEach(function (o) { if (o) { byId[o.id] = o; if (o.warrantyOf) returned[o.warrantyOf] = 1; } });
+    var dv = devOf(r.deviceId, devs), fw = words(r.fault + " " + (r.work || "")), same = [], sim = [], prefer = {};
+    function names(o) { return (o.parts || []).map(function (x) { return x.external ? x.name : (parts[x.partId] || {}).name; }).filter(Boolean).slice(0, 8); }
+    function item(o) { return { fault: clip(o.fault, 200), work: clip(o.work, 300), when: String(o.createdAt || "").slice(0, 10), returned: !!returned[o.id], parts: names(o) }; }
+    function sameKind(od) { return !(dv.type && od.type && od.type !== dv.type) && !(dv.category && od.category && od.category !== dv.category); } // أمامي ≠ علوي، سبليت ≠ شباك…
     all.forEach(function (o) {
-      if (!o || o.id === r.id || o.status === "ملغي" || (!o.fault && !o.work)) return;
-      if (r.deviceId && o.deviceId === r.deviceId) { same.push(o); return; }
-      if (!o.work && !(o.parts || []).length) return;
+      if (!o || o.id === r.id || o.status === "ملغي") return;
       var od = devOf(o.deviceId, devs);
-      if (dv.type && od.type && od.type !== dv.type) return;
+      if (sameKind(od)) (o.parts || []).forEach(function (x) { if (x.partId) prefer[x.partId] = 1; });
+      if (!o.fault && !o.work) return;
+      if (r.deviceId && o.deviceId === r.deviceId) { if (o.id !== r.warrantyOf) same.push(o); return; }
+      if (!o.work && !(o.parts || []).length) return;
+      if (!sameKind(od)) return;
       var s = overlap(fw, words(o.fault + " " + (o.work || "")));
       if (!s) return;
       if (dv.brand && od.brand === dv.brand) s += 0.5;
@@ -70,79 +97,98 @@
     });
     same.sort(function (a, b) { return String(b.createdAt || "").localeCompare(String(a.createdAt || "")); });
     sim.sort(function (a, b) { return b.s - a.s || String(b.o.createdAt || "").localeCompare(String(a.o.createdAt || "")); });
+    var prev = r.warrantyOf ? byId[r.warrantyOf] : null, warranty = null;
+    if (prev) { var t0 = dayMs(prev.closedAt || prev.completedAt || prev.createdAt), t1 = dayMs(r.createdAt) || Date.now(); warranty = { fault: clip(prev.fault, 200), work: clip(prev.work, 300), parts: names(prev), days: t0 ? Math.max(0, Math.round((t1 - t0) / 864e5)) : 0 }; }
+    else if (r.warrantyOf) warranty = { fault: "", work: "", parts: [], days: 0 };
     return {
-      device: { type: dv.type || "", brand: dv.brand || "", model: dv.model || "", desc: clip(dv.desc || "", 150) },
-      fault: clip(r.fault, 600), work: clip(r.work, 600),
-      sameDevice: same.slice(0, 5).map(item), similar: sim.slice(0, 12).map(function (x) { return item(x.o); })
+      orderId: String(r.id || ""),
+      device: { type: dv.type || "", category: dv.category || "", brand: dv.brand || "", model: dv.model || "", desc: clip(dv.desc || "", 150) },
+      fault: clip(r.fault, 600), work: clip(r.work, 600), note: clip(r.customerNote, 300),
+      codes: faultCodes(r, dv), warranty: warranty,
+      sameDevice: same.slice(0, 5).map(item), similar: sim.slice(0, 12).map(function (x) { return item(x.o); }),
+      preferIds: Object.keys(prefer).slice(0, 150)
     };
   }
-  function keyOf(ctx) { var s = JSON.stringify([ctx.device, ctx.fault, ctx.work]), h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); }
-  function cacheGet(id) { var c = rj(CACHE_KEY) || {}; return c[id] || null; }
+  /* الكاش على الجهاز: نتيجة التحليل + الوصف اللي اتحلل (عشان نعرف لو العطل اتغيّر). نسخ قديمة (قبل v3) بتتجاهل. */
+  function cacheGet(id) { var c = rj(CACHE_KEY) || {}, x = c[id]; return x && x.v === 3 ? x : null; }
   function cachePut(id, v) {
-    var c = rj(CACHE_KEY) || {}; c[id] = v;
+    var c = rj(CACHE_KEY) || {}; v.v = 3; c[id] = v;
     var ids = Object.keys(c); if (ids.length > 150) ids.sort(function (a, b) { return (c[a].at || 0) - (c[b].at || 0); }).slice(0, ids.length - 150).forEach(function (k) { delete c[k]; });
     wj(CACHE_KEY, c);
   }
-  /* القطعة المقترحة موجودة في المخزن؟ (مطابقة كلمات الاسم) */
-  function stockMatch(name) {
-    var nw = words(name), need = Object.keys(nw).length, best = null, bs = 0;
-    if (!need) return null;
-    A(K().p).forEach(function (p) {
-      if (!p || !p.name) return;
-      var pw = words(p.name), ov = overlap(nw, pw), s = ov / need + 0.01 * ov / Math.max(1, Object.keys(pw).length);
-      if (s > bs || (s === bs && best && (+p.qty || 0) > (+best.qty || 0))) { bs = s; best = p; }
-    });
-    return bs >= 0.5 ? best : null;
-  }
+  function isFresh(cached, ctx) { var s = (cached && cached.src) || {}; return clip(s.fault, 600) === ctx.fault && clip(s.work, 600) === ctx.work; }
+  function liveQty(st) { var p = st && A(K().p).filter(function (x) { return x && String(x.id) === String(st.id); })[0]; return p ? +p.qty || 0 : (+(st && st.qty) || 0); }
 
   /* ---------- صندوق التشخيص ---------- */
   function css() {
     if (d.getElementById("wfAiCss")) return;
     var s = d.createElement("style"); s.id = "wfAiCss";
-    s.textContent = ".wf-ai{margin-top:8px;border:1px dashed rgba(124,58,237,.45);border-radius:12px;padding:10px 12px;background:rgba(124,58,237,.05)}" +
-      ".wf-ai-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}.wf-ai-top small{opacity:.7;font-size:12px}" +
+    s.textContent = ".wf-ai{margin-top:8px;border:1px dashed rgba(124,58,237,.45);border-radius:12px;padding:10px 12px;background:rgba(124,58,237,.05);overflow-wrap:anywhere}" +
+      ".wf-ai-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between}.wf-ai-acts{display:flex;gap:6px;flex-wrap:wrap}" +
       ".wf-ai-btn{background:#6d28d9;color:#fff;border:0;border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}.wf-ai-btn[disabled]{opacity:.6}" +
-      ".wf-ai-btn2{background:transparent;border:1px solid rgba(124,58,237,.5);color:inherit;border-radius:9px;padding:5px 9px;font-size:13px;cursor:pointer}" +
-      ".wf-ai h4{margin:10px 0 4px;font-size:14.5px}.wf-ai ol,.wf-ai ul{margin:0;padding-inline-start:20px}.wf-ai li{margin:4px 0;line-height:1.6}" +
-      ".wf-ai-chip{display:inline-block;font-size:11.5px;border-radius:8px;padding:1px 7px;margin-inline-start:6px;font-weight:700}.wf-ai-hi{background:#fde2e2;color:#991b1b}.wf-ai-md{background:#fef3c7;color:#92400e}.wf-ai-lo{background:#e5e7eb;color:#374151}" +
-      ".wf-ai-ok{background:#dcfce7;color:#166534}.wf-ai-no{background:#f3f4f6;color:#6b7280}.wf-ai-chk{display:block;font-size:13px;opacity:.85}" +
-      ".wf-ai-warn{margin-top:8px;padding:7px 9px;border-radius:9px;background:#fff7ed;color:#9a3412;font-size:13.5px}.wf-ai-hist{margin-top:8px;padding:7px 9px;border-radius:9px;background:rgba(21,101,192,.08);font-size:13.5px}" +
-      ".wf-ai-foot{margin-top:8px;font-size:12px;opacity:.7}.wf-ai-err{color:#b91c1c;font-size:13.5px;margin-top:6px}" +
+      ".wf-ai-btn2{background:transparent;border:1px solid rgba(124,58,237,.5);color:inherit;border-radius:9px;padding:5px 9px;font-size:13px;cursor:pointer}.wf-ai-btn2.on{background:#6d28d9;color:#fff;border-color:#6d28d9}" +
+      ".wf-ai h4{margin:12px 0 4px;font-size:14.5px}.wf-ai ol,.wf-ai ul{margin:0;padding-inline-start:20px}.wf-ai li{margin:5px 0;line-height:1.6}" +
+      ".wf-ai-chip{display:inline-block;font-size:11.5px;border-radius:8px;padding:1px 7px;margin-inline-start:6px;font-weight:700;text-decoration:none;vertical-align:middle}.wf-ai-hi{background:#fde2e2;color:#991b1b}.wf-ai-md{background:#fef3c7;color:#92400e}.wf-ai-lo{background:#e5e7eb;color:#374151}" +
+      ".wf-ai-ok{background:#dcfce7;color:#166534}.wf-ai-no{background:#f3f4f6;color:#6b7280}.wf-ai-np{background:#dbeafe;color:#1e40af}.wf-ai-chk{display:block;font-size:13px;opacity:.85}" +
+      ".wf-ai-conf{margin-top:8px;font-size:13px}.wf-ai-warn{margin-top:8px;padding:7px 9px;border-radius:9px;background:#fff7ed;color:#9a3412;font-size:13.5px}.wf-ai-hist{margin-top:8px;padding:7px 9px;border-radius:9px;background:rgba(21,101,192,.08);font-size:13.5px}" +
+      ".wf-ai-foot{margin-top:10px;font-size:12px;opacity:.75;display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:space-between}.wf-ai-err{color:#b91c1c;font-size:13.5px;margin-top:6px}" +
       ".wf-ai-set label.wf-ai-row{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(127,127,127,.15);cursor:pointer}.wf-ai-set label.wf-ai-row input{width:20px;height:20px;flex:none;margin-top:2px}" +
       ".wf-ai-set .wf-ai-soon{opacity:.55;cursor:default}.wf-ai-set .wf-ai-g{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}.wf-ai-set input[type=number]{width:90px}" +
       ".wf-ai-bar{height:9px;border-radius:6px;background:rgba(127,127,127,.18);overflow:hidden;margin:4px 0}.wf-ai-bar i{display:block;height:100%;background:#6d28d9}" +
       ".wf-ai-cmd{direction:ltr;text-align:left;font:12px/1.5 monospace;background:rgba(127,127,127,.12);padding:8px;border-radius:8px;white-space:pre-wrap;word-break:break-all;margin:6px 0;user-select:all}" +
-      "[data-theme=dark] .wf-ai-warn{background:#3b2310;color:#fdba74}[data-theme=dark] .wf-ai-hi{background:#4c1d1d;color:#fca5a5}[data-theme=dark] .wf-ai-md{background:#422c0b;color:#fcd34d}[data-theme=dark] .wf-ai-lo,[data-theme=dark] .wf-ai-no{background:#2a2f3a;color:#cbd5e1}[data-theme=dark] .wf-ai-ok{background:#12351f;color:#86efac}";
+      "[data-theme=dark] .wf-ai-warn{background:#3b2310;color:#fdba74}[data-theme=dark] .wf-ai-hi{background:#4c1d1d;color:#fca5a5}[data-theme=dark] .wf-ai-md{background:#422c0b;color:#fcd34d}[data-theme=dark] .wf-ai-lo,[data-theme=dark] .wf-ai-no{background:#2a2f3a;color:#cbd5e1}[data-theme=dark] .wf-ai-ok{background:#12351f;color:#86efac}[data-theme=dark] .wf-ai-np{background:#172554;color:#93c5fd}";
     (d.head || d.documentElement).appendChild(s);
   }
   function lkCls(l) { return l === "عالي" ? "wf-ai-hi" : l === "ضعيف" ? "wf-ai-lo" : "wf-ai-md"; }
+  function stockChip(st) {
+    if (!st) return "<span class='wf-ai-chip wf-ai-no'>مش في المخزن</span>";
+    var q = liveQty(st), href = "part.html?id=" + encodeURIComponent(st.id);
+    return q > 0 ? "<a class='wf-ai-chip wf-ai-ok' href='" + esc(href) + "'>في المخزن: " + esc(st.name) + " (" + q + ")</a>" : "<a class='wf-ai-chip wf-ai-no' href='" + esc(href) + "'>خلصانة: " + esc(st.name) + " — اطلبها</a>";
+  }
   function resultHtml(res) {
     var h = "";
-    if (res.summary) h += "<div style='margin-top:8px'><b>" + esc(res.summary) + "</b></div>";
+    h += "<div class='wf-ai-conf'>درجة الثقة:<span class='wf-ai-chip " + lkCls(res.confidence) + "'>" + esc(res.confidence || "متوسط") + "</span>" + (res.confidenceNote ? " <small>" + esc(res.confidenceNote) + "</small>" : "") + "</div>";
+    if (res.summary) h += "<div style='margin-top:6px'><b>" + esc(res.summary) + "</b></div>";
     if (res.fromHistory) h += "<div class='wf-ai-hist'>📚 من سجل الورشة: " + esc(res.fromHistory) + "</div>";
-    if (res.causes && res.causes.length) h += "<h4>🔎 الأسباب المحتملة</h4><ol>" + res.causes.map(function (c) { return "<li><b>" + esc(c.title) + "</b><span class='wf-ai-chip " + lkCls(c.likelihood) + "'>" + esc(c.likelihood) + "</span>" + (c.checks ? "<span class='wf-ai-chk'>✔️ " + esc(c.checks) + "</span>" : "") + "</li>"; }).join("") + "</ol>";
+    if (res.steps && res.steps.length) h += "<h4>🧭 ابدأ الفحص بالترتيب ده</h4><ol>" + res.steps.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
+    if (res.causes && res.causes.length) h += "<h4>🔎 الأسباب المحتملة</h4><ol>" + res.causes.map(function (c) { return "<li><b>" + esc(c.title) + "</b><span class='wf-ai-chip " + lkCls(c.likelihood) + "'>" + esc(c.likelihood) + "</span>" + (c.noPart ? "<span class='wf-ai-chip wf-ai-np'>من غير قطع</span>" : "") + (c.checks ? "<span class='wf-ai-chk'>✔️ " + esc(c.checks) + "</span>" : "") + "</li>"; }).join("") + "</ol>";
     if (res.parts && res.parts.length) h += "<h4>🧰 خد معاك</h4><ul>" + res.parts.map(function (p) {
-      var m = stockMatch(p.name), q = m ? +m.qty || 0 : 0;
-      var chip = m ? (q > 0 ? "<span class='wf-ai-chip wf-ai-ok'>في المخزن: " + esc(m.name) + " (" + q + ")</span>" : "<span class='wf-ai-chip wf-ai-no'>خلصانة: " + esc(m.name) + "</span>") : "<span class='wf-ai-chip wf-ai-no'>مش في المخزن</span>";
-      return "<li><b>" + esc(p.name) + "</b>" + chip + (p.why ? "<span class='wf-ai-chk'>" + esc(p.why) + "</span>" : "") + "</li>";
+      return "<li><b>" + esc(p.name) + "</b><span class='wf-ai-chip " + (p.priority === "احتياطي" ? "wf-ai-lo" : "wf-ai-md") + "'>" + esc(p.priority || "أساسي") + "</span>" + stockChip(p.stock) + (p.why ? "<span class='wf-ai-chk'>" + esc(p.why) + "</span>" : "") + "</li>";
     }).join("") + "</ul>";
     if (res.questions && res.questions.length) h += "<h4>📞 اسأل العميل</h4><ul>" + res.questions.map(function (q) { return "<li>" + esc(q) + "</li>"; }).join("") + "</ul>";
     if (res.safety) h += "<div class='wf-ai-warn'>⚠️ " + esc(res.safety) + "</div>";
     return h;
   }
+  function plainText(r, res) {
+    var L = ["🤖 تشخيص مقترح — أمر " + (r.no || ""), "العطل: " + (r.fault || "—")];
+    if (res.summary) L.push("الخلاصة: " + res.summary);
+    if (res.steps && res.steps.length) { L.push("", "خطوات الفحص:"); res.steps.forEach(function (s, i) { L.push((i + 1) + ") " + s); }); }
+    if (res.causes && res.causes.length) { L.push("", "الأسباب:"); res.causes.forEach(function (c, i) { L.push((i + 1) + ") " + c.title + " [" + c.likelihood + "]" + (c.checks ? " — " + c.checks : "")); }); }
+    if (res.parts && res.parts.length) { L.push("", "خد معاك:"); res.parts.forEach(function (p) { L.push("- " + p.name + " (" + (p.priority || "أساسي") + ")" + (p.stock ? " ✓ في المخزن: " + p.stock.name : "")); }); }
+    if (res.questions && res.questions.length) { L.push("", "اسأل العميل:"); res.questions.forEach(function (q) { L.push("- " + q); }); }
+    if (res.safety) L.push("", "⚠️ " + res.safety);
+    return L.join("\n");
+  }
   function boxHtml(r) {
-    var id = r.id, cached = cacheGet(id), ctx = context(r), fresh = cached && cached.key === keyOf(ctx), b = busy[id];
-    var h = "<div class='wf-ai'><div class='wf-ai-top'><b>🤖 مساعد التشخيص</b>";
+    var id = r.id, cached = cacheGet(id), ctx = context(r), fresh = cached && isFresh(cached, ctx), b = busy[id], shown = cached && !b && open[id] !== false;
+    var h = "<div class='wf-ai'><div class='wf-ai-top'><b>🤖 مساعد التشخيص</b><span class='wf-ai-acts'>";
     if (b) h += "<button type='button' class='wf-ai-btn' disabled>⏳ بيحلّل…</button>";
-    else if (cached && open[id] !== false) h += "<span><button type='button' class='wf-ai-btn2' data-ai-act='run'>🔄 " + (fresh ? "تحليل من جديد" : "العطل اتغيّر — حلّل تاني") + "</button> <button type='button' class='wf-ai-btn2' data-ai-act='hide'>إخفاء</button></span>";
+    else if (shown) h += "<button type='button' class='wf-ai-btn2' data-ai-act='" + (fresh ? "rerun" : "run") + "'>🔄 " + (fresh ? "تحليل من جديد" : "العطل اتغيّر — حلّل تاني") + "</button><button type='button' class='wf-ai-btn2' data-ai-act='hide'>إخفاء</button>";
     else if (cached) h += "<button type='button' class='wf-ai-btn2' data-ai-act='show'>📋 عرض آخر تحليل</button>";
     else h += "<button type='button' class='wf-ai-btn' data-ai-act='run'>🤖 اقترح تشخيص وقطع</button>";
-    h += "</div>";
-    if (!cached && !b) h += "<small style='display:block;opacity:.7;font-size:12px;margin-top:4px'>بيتبعت الجهاز والعطل وسجل الورشة بس — من غير اسم أو تليفون العميل." + (cfg && cfg.capReached ? " ⚠️ حد الصرف الشهري اتعدّى." : "") + "</small>";
+    h += "</span></div>";
+    if (!cached && !b) h += "<small style='display:block;opacity:.7;font-size:12px;margin-top:4px'>كل ما العطل يتكتب بتفاصيل أكتر (إمتى بيحصل، صوت، كود على الشاشة) كل ما الاقتراح يبقى أدق. بيتبعت الجهاز والعطل وسجل الورشة بس — من غير اسم أو تليفون العميل." + (cfg && cfg.capReached ? " ⚠️ حد الصرف الشهري اتعدّى." : "") + "</small>";
+    if (on("codes")) unknownCodes(r).forEach(function (c) { h += "<div class='hint' style='margin-top:4px'>🧯 الكود <b>" + esc(c.code) + "</b> مش متسجّل في دليل الأكواد — <a href='" + esc(c.href) + "'>🤖 اعرف معناه وسجّله</a></div>"; });
     if (errs[id]) h += "<div class='wf-ai-err'>⚠️ " + esc(errs[id]) + "</div>";
-    if (cached && !b && open[id] !== false) {
+    if (shown) {
+      if (!fresh) h += "<div class='wf-ai-warn'>العطل أو الأعمال اتعدّلت بعد التحليل ده — ممكن يكون مش مناسب دلوقتي.</div>";
       h += resultHtml(cached.res);
-      h += "<div class='wf-ai-foot'>اقتراح مساعد — القرار النهائي للفني بعد الفحص • " + esc(new Date(cached.at).toLocaleString("ar-EG")) + (ctx.similar.length || ctx.sameDevice.length ? " • استفاد من " + (ctx.similar.length + ctx.sameDevice.length) + " أمر قديم" : "") + "</div>";
+      var vote = cached.vote || "";
+      h += "<div class='wf-ai-foot'><span>اقتراح مساعد — القرار للفني بعد الفحص • " + esc(new Date(cached.at || Date.now()).toLocaleString("ar-EG")) + "</span><span class='wf-ai-acts'>" +
+        "<button type='button' class='wf-ai-btn2" + (vote === "up" ? " on" : "") + "' data-ai-act='up' title='الاقتراح كان مفيد'>👍 مفيد</button>" +
+        "<button type='button' class='wf-ai-btn2" + (vote === "down" ? " on" : "") + "' data-ai-act='down' title='الاقتراح كان غلط أو مش مفيد'>👎 مش دقيق</button>" +
+        "<button type='button' class='wf-ai-btn2' data-ai-act='copy'>📋 نسخ</button></span></div>";
+      if (notes[id]) h += "<div class='hint' style='margin-top:4px'>" + esc(notes[id]) + "</div>";
     }
     return h + "</div>";
   }
@@ -155,27 +201,58 @@
     refreshCfg(false);
     if (!r || !on("diag") || r.status === "ملغي") { slot.innerHTML = ""; slot.style.display = "none"; return; }
     css(); slot.style.display = ""; slot.innerHTML = boxHtml(r);
+    peek(r);
   }
   function fillAll(force) { var s = d.querySelectorAll(".wf-ai-slot[data-ai-rid]"); for (var i = 0; i < s.length; i++) fill(s[i], force); }
-  function run(id) {
+  /* لو حد تاني (المالك/فني) حلّل الأمر ده قبل كده، بنجيب نتيجته من السيرفر من غير أي تكلفة */
+  function peek(r) {
+    var id = r.id;
+    if (peeked[id] || cacheGet(id) || busy[id] || navigator.onLine === false) return;
+    peeked[id] = 1;
+    call("aiDiagnose", { action: "peek", orderId: String(id) }).then(function (res) {
+      if (!res || res.none || cacheGet(id)) return;
+      cachePut(id, { at: res.at || Date.now(), src: res.src || {}, vote: res.vote || "", res: res }); open[id] = false; fillAll(true);
+    }, function () {});
+  }
+  function run(id, force) {
     var r = findOrder(id); if (!r || busy[id]) return;
     if (navigator.onLine === false) { errs[id] = "مفيش إنترنت — التحليل محتاج نت."; return fillAll(true); }
     var ctx = context(r);
     if (!ctx.fault && !ctx.work) { errs[id] = "اكتب العطل الأول."; return fillAll(true); }
-    busy[id] = 1; errs[id] = ""; fillAll(true);
-    call("aiDiagnose", ctx).then(function (res) {
-      cachePut(id, { key: keyOf(ctx), at: Date.now(), res: res }); open[id] = true;
+    if (ctx.fault.length < 8 && !ctx.work && !ctx.codes.length && !w.confirm("وصف العطل قصير جدًا («" + ctx.fault + "») — الاقتراح هيبقى عام. تكمّل؟ (الأفضل تكتب بيحصل إمتى وإيه اللي بيظهر)")) return;
+    busy[id] = 1; errs[id] = ""; notes[id] = ""; fillAll(true);
+    call("aiDiagnose", Object.assign({ force: !!force }, ctx)).then(function (res) {
+      cachePut(id, { at: res.at || Date.now(), src: res.src || { fault: ctx.fault, work: ctx.work }, vote: res.vote || "", res: res }); open[id] = true;
+      if (res.cached) notes[id] = "النتيجة دي محفوظة لنفس الوصف — من غير تكلفة. «تحليل من جديد» لو عايز رأي تاني.";
     }, function (e) {
       errs[id] = (e && e.message) || "تعذّر — جرّب تاني.";
       if (/مقفول|الحد الأقصى/.test(errs[id])) refreshCfg(true);
     }).then(function () { delete busy[id]; fillAll(true); });
+  }
+  function vote(id, v) {
+    var c = cacheGet(id); if (!c) return;
+    var note = "";
+    if (v === "down") { note = w.prompt("إيه اللي ماكانش دقيق؟ (اختياري — بيساعدنا نعرف الميزة بتفيد ولا لأ)", "") ; if (note === null) return; }
+    var prev = c.vote; c.vote = c.vote === v ? "" : v; cachePut(id, c); fillAll(true);
+    call("aiDiagnose", { action: "feedback", orderId: String(id), vote: c.vote, note: note || "" }).then(function () { notes[id] = c.vote ? "✅ شكرًا — اتسجّل رأيك." : ""; fillAll(true); },
+      function () { c.vote = prev; cachePut(id, c); notes[id] = "⚠️ ماتسجّلش — جرّب تاني."; fillAll(true); });
+  }
+  function copy(id) {
+    var c = cacheGet(id), r = findOrder(id); if (!c || !r) return;
+    var t = plainText(r, c.res);
+    var done = function () { notes[id] = "✅ اتنسخ — تقدر تلزقه على واتساب للفني."; fillAll(true); };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(done, function () { fallback(); }); } catch (e) {}
+    fallback();
+    function fallback() { var ta = d.createElement("textarea"); ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0"; d.body.appendChild(ta); ta.select(); try { d.execCommand("copy"); done(); } catch (e) { notes[id] = "مقدرتش أنسخ."; fillAll(true); } d.body.removeChild(ta); }
   }
   d.addEventListener("click", function (ev) {
     var b = ev.target && ev.target.closest ? ev.target.closest("[data-ai-act]") : null; if (!b) return;
     var slot = b.closest(".wf-ai-slot"); if (!slot) return;
     ev.preventDefault(); ev.stopPropagation();
     var id = slot.getAttribute("data-ai-rid"), act = b.getAttribute("data-ai-act");
-    if (act === "run") run(id); else { open[id] = act === "show"; fillAll(true); }
+    if (act === "run") run(id, false); else if (act === "rerun") run(id, true);
+    else if (act === "up" || act === "down") vote(id, act); else if (act === "copy") copy(id);
+    else { open[id] = act === "show"; fillAll(true); }
   }, true);
 
   /* ---------- إعدادات المالك ---------- */
@@ -186,13 +263,13 @@
     h += "<p class='hint'>الدفع على قد الاستخدام بس: لو محدش داس على زرار ذكاء اصطناعي، الشهر بيعدّي بـ $0. التكلفة بتتخصم من نفس حساب Google Cloud (والكريدت المجاني لو موجود).</p>";
     h += "<label class='wf-ai-row'><input type='checkbox' id='aiOn'" + (c.enabled ? " checked" : "") + "><span><b>تشغيل الذكاء الاصطناعي</b><br><small>لو اتقفل: كل الأزرار تختفي ومفيش أي طلب يتبعت.</small></span></label>";
     Object.keys(FEAT).forEach(function (k) { h += "<label class='wf-ai-row'><input type='checkbox' data-ai-feat='" + k + "'" + (c.features && c.features[k] ? " checked" : "") + "><span><b>" + esc(FEAT[k].name) + "</b><br><small>" + esc(FEAT[k].desc) + "</small></span></label>"; });
-    SOON.forEach(function (s) { h += "<label class='wf-ai-row wf-ai-soon'><input type='checkbox' disabled><span><b>" + esc(s[0]) + "</b> <small>(قريبًا)</small><br><small>" + esc(s[1]) + "</small></span></label>"; });
     h += "<div class='wf-ai-g'><label>💵 أقصى صرف في الشهر ($): <input type='number' id='aiCap' min='0' max='500' step='0.5' value='" + esc(cap) + "'></label>";
     h += "<label>الموديل: <select id='aiModel'>" + (c.models || ["auto"]).map(function (m) { return "<option value='" + esc(m) + "'" + (m === c.model ? " selected" : "") + ">" + (m === "auto" ? "تلقائي (مُقترح)" : esc(m)) + "</option>"; }).join("") + "</select></label>";
     h += "<button type='button' class='primary' id='aiSave'" + (setBusy ? " disabled" : "") + ">💾 حفظ</button></div>";
     if (setMsg) h += "<div class='hint'>" + esc(setMsg) + "</div>";
     h += "<h3 style='margin:12px 0 4px'>📊 استهلاك الشهر (" + esc(u.month || "") + ")</h3>";
     h += "<div><b>" + usd(u.cost) + "</b> من " + usd(cap) + " • " + (u.calls || 0) + " مرة</div><div class='wf-ai-bar'><i style='width:" + Math.max(2, pct) + "%'></i></div>";
+    var fb = u.feedback || {}; if ((fb.up || 0) + (fb.down || 0) + (u.cacheHits || 0) > 0) h += "<div class='hint'>رأي الفنيين: 👍 " + (fb.up || 0) + " مفيد • 👎 " + (fb.down || 0) + " مش دقيق" + (u.cacheHits ? " • ♻️ " + u.cacheHits + " مرة اتعرضت نتيجة محفوظة من غير تكلفة" : "") + "</div>";
     var bf = Object.keys(u.byFeature || {}); if (bf.length) h += "<div class='hint'>" + bf.map(function (k) { var x = u.byFeature[k] || {}; return esc((FEAT[k] || { name: k }).name) + ": " + (x.calls || 0) + " مرة (" + usd(x.cost) + ")"; }).join(" • ") + "</div>";
     var bu = Object.keys(u.byUser || {}); if (bu.length) h += "<div class='hint'>👤 " + bu.map(function (k) { var x = u.byUser[k] || {}; return esc((c.names && c.names[k]) || "مستخدم") + ": " + (x.calls || 0); }).join(" • ") + "</div>";
     var p = encodeURIComponent(c.project || "");
@@ -257,7 +334,7 @@
     if (cfg) setTimeout(function () { refreshCfg(false); }, 2500);
     wireSettings();
   }
-  w.WFAI = { context: context, stockMatch: stockMatch, isOn: on, refresh: refreshCfg, _boxHtml: boxHtml, _settingsHtml: settingsHtml, _setCfg: setCfg };
+  w.WFAI = { context: context, isOn: on, refresh: refreshCfg, call: call, esc: esc, css: css, onChange: function (fn) { listeners.push(fn); if (cfg) try { fn(cfg); } catch (e) {} }, cfg: function () { return cfg; }, _boxHtml: boxHtml, _settingsHtml: settingsHtml, _setCfg: setCfg };
   function boot() { Promise.resolve(w.WFStorageReady).then(start, start); }
   if (d.readyState === "loading") d.addEventListener("DOMContentLoaded", boot); else boot();
 })(window);
