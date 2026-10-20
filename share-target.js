@@ -82,7 +82,10 @@ async function initShareTarget() {
     entryId = id();
     // نحفظ المكالمة المعلّقة ونملا الفورم فورًا؛ رفع التسجيل ما بقاش بيعطّل التحقق من الرقم.
     savePendingCall({ id: entryId, title, text, url, fileName, audioRef: null, phone: phone0, at: Date.now() });
+    // للذكاء الاصطناعي (app-ai-tools.js): «اسمع المكالمة واملا البيانات»
+    window.__wfShareHint = [title, text, fileName].filter(Boolean).join(" — ");
     if (payload.file) {
+      window.__wfShareAudio = payload.file;
       let audioBox = document.getElementById("shareAudioPreview");
       if (audioBox) {
         try {
@@ -112,6 +115,8 @@ async function initShareTarget() {
       return;
     }
     title = pending.title; text = pending.text; url = pending.url; fileName = pending.fileName; audioRef = pending.audioRef; entryId = pending.id;
+    window.__wfShareHint = [title, text, fileName].filter(Boolean).join(" — ");
+    if (audioRef) window.__wfShareAudioRef = audioRef;
     if (audioRef && window.ImageStore) {
       let audioBox = document.getElementById("shareAudioPreview");
       try {
