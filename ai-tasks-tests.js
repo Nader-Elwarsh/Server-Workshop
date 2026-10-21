@@ -177,6 +177,24 @@ const PARTS = [
   assert.strictEqual((await ai5.config("own")).precise, false);
   await ai5.saveConfig("own", { precise: true });
 
+  // 🏷️ كتاب فيه كذا ماركة (زي مجموعة العربي): كل كود بماركاته وتصنيفه وموديلاته، والكود نظيف
+  reply = { deviceType: "غسالات", brand: "", model: "", unclear: "", testModes: [{ title: "تيست مود تورنيدو DDM", brands: ["تورنيدو"], brandsRaw: [], category: "فوق أوتوماتيك", models: "TWT-TLD", enter: "1) ON + Rinse", tests: "x", exit: "افصل", note: "", unsure: false }],
+    codes: [{ code: "E1", alsoShows: "E11", brands: ["توشيبا", "تورنيدو"], brandsRaw: ["العربي"], category: "فوق أوتوماتيك", models: "", title: "صرف", cause: "", fix: "", causeFromPage: true, fixFromPage: true, note: "", unsure: false },
+            { code: "E01 (Front Load)", alsoShows: "", brands: ["شارب", "مش موجودة"], brandsRaw: [], category: "أمامي أوتوماتيك", models: "ES-FP", title: "باب", cause: "", fix: "", causeFromPage: true, fixFromPage: true, note: "", unsure: false },
+            { code: "E01", alsoShows: "", brands: ["شارب"], brandsRaw: [], category: "غلط", models: "ES-DP102", title: "مية", cause: "", fix: "", causeFromPage: true, fixFromPage: true, note: "", unsure: false }] };
+  r = await ai.task("tech", { task: "codesBook", pdf: { data: "JVBERi" + "A".repeat(2000) }, deviceType: "غسالات", types: ["غسالات"], categories: { "غسالات": ["فوق أوتوماتيك", "أمامي أوتوماتيك"] }, brands: ["توشيبا", "تورنيدو", "شارب"] });
+  assert.deepStrictEqual(r.codes[0].brands, ["توشيبا", "تورنيدو"]); assert.deepStrictEqual(r.codes[0].brandsRaw, ["العربي"]); assert.strictEqual(r.codes[0].category, "فوق أوتوماتيك");
+  assert.strictEqual(r.codes[1].code, "E01", "(Front Load) بيتشال"); assert.deepStrictEqual(r.codes[1].brands, ["شارب"], "ماركة مش في القايمة بتتشال");
+  assert.strictEqual(r.codes.length, 3, "نفس الكود لسلسلتين مختلفين = عنصرين"); assert.strictEqual(r.codes[2].category, "", "تصنيف غلط بيتشال");
+  assert.deepStrictEqual(r.testModes[0].brands, ["تورنيدو"]);
+  assert.ok(/- غسالات: فوق أوتوماتيك، أمامي أوتوماتيك/.test(calls[calls.length - 1].contents[0].parts[1].text));
+  // تصنيف القديم: id مش من المبعوت بيتشال، والكود بيتنضف
+  actors.tech.perms["faultcodes.edit"] = 1;
+  reply = { items: [{ id: "a1", brands: ["شارب", "تورنيدو"], category: "أمامي أوتوماتيك", models: "ES-FP", code: "E01", confidence: "عالي", why: "مكتوب شارب وتورنيدو" }, { id: "zz", brands: ["شارب"], category: "", models: "", code: "", confidence: "عالي", why: "" }, { id: "t1", brands: ["توشيبا"], category: "", models: "AEW", code: "X", confidence: "متوسط", why: "" }] };
+  r = await ai.task("tech", { task: "codesClassify", items: [{ id: "a1", code: "E01 (Front Load)", title: "باب", note: "شارب وتورنيدو تحميل أمامي\n📚 من كتاب «x»", deviceType: "غسالات" }, { id: "t1", kind: "test", title: "تيست موود توشيبا", model: "AEW-8460", deviceType: "غسالات" }], types: ["غسالات"], categories: { "غسالات": ["أمامي أوتوماتيك"] }, brands: ["شارب", "تورنيدو", "توشيبا"] });
+  assert.deepStrictEqual(r.items.map((x) => x.id), ["a1", "t1"]); assert.deepStrictEqual(r.items[0].brands, ["شارب", "تورنيدو"]); assert.strictEqual(r.items[0].code, "E01"); assert.strictEqual(r.items[1].code, "", "التيست مود مالوش كود");
+  assert.ok(!/📚/.test(calls[calls.length - 1].contents[0].parts[0].text), "علامة المصدر مش بتتبعت");
+
   // ⏱️ لو جوجل اتأخر: رسالة واضحة (ai_timeout) بدل ما الدالة تتقفل والمتصفح يشوف «مقدرتش أوصل»
   const ai6 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
     fetchImpl: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } });
