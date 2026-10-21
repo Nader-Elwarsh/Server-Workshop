@@ -222,6 +222,19 @@ const PARTS = [
   await ai9.task("own", { task: "codesBook", images: [IMG] });
   assert.strictEqual(seen9[seen9.length - 1], "gemini-2.5-flash", "رجع للعادي بعد فشل الـ Pro");
 
+  // ❌ 400 من جوجل بسبب الطلب (حتى لو الرسالة فيها كلمة model): بيشيل الإعدادات واحدة واحدة، وآخرها شكل الرد يتكتب في الطلب
+  const b10 = [];
+  const ai10 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async (url, opt) => { const b = JSON.parse(opt.body); b10.push({ m: url.match(/models\/([^:]+):/)[1], b }); if (b.generationConfig.responseSchema) return { status: 400, ok: false, json: async () => ({ error: { message: "The specified schema produces a constraint that has too many states for serving the model." } }) };
+      return { status: 200, ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ codes: [{ code: "E9", title: "x" }], testModes: [] }) }] } }], usageMetadata: {} }) }; } });
+  r = await ai10.task("own", { task: "codesBook", images: [IMG] });
+  assert.strictEqual(r.codes[0].code, "E9"); assert.ok(b10.every((x) => x.m === "gemini-2.5-pro"), "فضل على الـ Pro");
+  const last10 = b10[b10.length - 1].b; assert.ok(!last10.generationConfig.responseSchema && /رجّع JSON بس بالشكل ده/.test(last10.contents[0].parts[last10.contents[0].parts.length - 1].text));
+  // 400 في كل حاجة → الرسالة فيها نص جوجل
+  const ai11 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async () => ({ status: 400, ok: false, json: async () => ({ error: { message: "Request payload size exceeds the limit" } }) }) });
+  await assert.rejects(ai11.task("own", { task: "codesBook", images: [IMG] }), /ai_failed\|HTTP 400 Request payload size/);
+
   // ⏱️ لو جوجل اتأخر: رسالة واضحة (ai_timeout) بدل ما الدالة تتقفل والمتصفح يشوف «مقدرتش أوصل»
   const ai6 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
     fetchImpl: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } });
