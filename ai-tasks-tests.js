@@ -89,9 +89,9 @@ const PARTS = [
   // 📞 تسجيل مكالمة: الصيغة لازم تبقى مدعومة، والصوت بيتبعت inline، والتكلفة بسعر الصوت
   await assert.rejects(ai.task("tech", { task: "callParse", audio: { mime: "audio/amr", data: "A".repeat(5000) }, lists }), /bad_audio/);
   await assert.rejects(ai.task("tech", { task: "callParse", audio: { mime: "audio/mp4", data: "A".repeat(17000000) }, lists }), /bad_audio/);
-  reply = { heard: true, customerName: "أم أحمد", phone: "", center: "طما", village: "", villageRaw: "", street: "", deviceType: "غسالات", category: "أمامي أوتوماتيك", brand: "إل جي", model: "", fault: "بتفصل في نص الغسيل", visit: "السبت الصبح", price: "100 جنيه معاينة", summary: "الغسالة بتفصل في نص الغسيل\nاتفقنا على زيارة السبت الصبح", notes: "", missing: ["التليفون"] };
+  reply = { transcript: [{ who: "العميل", text: "الغسالة بتفصل" }, { who: "حد", text: "تمام" }], heard: true, customerName: "أم أحمد", phone: "", center: "طما", village: "", villageRaw: "", street: "", deviceType: "غسالات", category: "أمامي أوتوماتيك", brand: "إل جي", model: "", fault: "بتفصل في نص الغسيل", visit: "السبت الصبح", price: "100 جنيه معاينة", summary: "الغسالة بتفصل في نص الغسيل\nاتفقنا على زيارة السبت الصبح", notes: "", missing: ["التليفون"] };
   r = await ai.task("tech", { task: "callParse", audio: { mime: "audio/mp4", data: "A".repeat(5000) }, lists, hint: "Call recording 01098765432_20261020.m4a" });
-  assert.strictEqual(r.customerName, "أم أحمد"); assert.strictEqual(r.price, "100 جنيه معاينة"); assert.ok(/زيارة السبت/.test(r.summary)); assert.strictEqual(r.brand, "إل جي");
+  assert.strictEqual(r.customerName, "أم أحمد"); assert.strictEqual(r.price, "100 جنيه معاينة"); assert.ok(Array.isArray(r.transcript)); assert.ok(/زيارة السبت/.test(r.summary)); assert.strictEqual(r.brand, "إل جي");
   const cp = calls[calls.length - 1].contents[0].parts;
   assert.strictEqual(cp[0].inlineData.mimeType, "audio/mp4"); assert.ok(/01098765432/.test(cp[1].text), "اسم الملف بيتبعت كتلميح");
 
@@ -101,17 +101,40 @@ const PARTS = [
   r = await ai.task("tech", { task: "plate", image: IMG, lists });
   assert.strictEqual(r.model, "F4J6TY0W"); assert.strictEqual(r.category, "أمامي أوتوماتيك");
 
-  // 🧾 الفاتورة: الربط بالمخزن بالكود، المؤرشف مش بيظهر، والمجموع بيتراجع
+  // 🧾 الفاتورة: خطوتين — قراية بموديل قوي ودقة عالية من غير المخزن، وبعدين ربط بالمخزن (نص بس)
+  let step = 0, invBodies = [];
   reply = (body) => {
-    const t = body.contents[0].parts[1].text;
-    assert.ok(!/قديم/.test(t), "المؤرشف مش في القايمة");
-    const code = (t.match(/(S\d+): طلمبة طرد/) || [])[1];
-    return { supplier: "النور", date: "2026-10-19", invoiceNo: "55", total: 600, lines: [{ text: "طلمبة طرد فريرة", qty: 2, unitPrice: 0, lineTotal: 380, stock: code, newName: "", category: "" }, { text: "ريلاي", qty: 4, unitPrice: 25, lineTotal: 100, stock: "S99", newName: "ريلاي بدء", category: "غسالات" }] };
+    invBodies.push(body); step++;
+    if (step === 1) return { layout: "م | البيان | العدد | الفئة | القيمة", supplier: "النور", date: "2026-10-19", invoiceNo: "55", subtotal: 600, discount: 0, total: 600, unclear: "",
+      lines: [{ raw: "طلمبه طرد فريره", item: "طلمبة طرد فريرة", specs: "30 وات", unit: "قطعة", qty: 2, unitPrice: 0, lineTotal: 380, unsure: [], confidence: "عالي" },
+              { raw: "ريلاى", item: "ريلاي بدء", specs: "", unit: "قطعة", qty: 4, unitPrice: 25, lineTotal: 150, unsure: [], confidence: "متوسط" }] };
+    const t = body.contents[0].parts[0].text, code = (t.match(/(S\d+): طلمبة طرد/) || [])[1];
+    return { lines: [{ index: 0, stock: code, matchConfidence: "عالي", newName: "", category: "", why: "نفس القطعة" }, { index: 1, stock: "S99", matchConfidence: "ضعيف", newName: "ريلاي بدء تلاجة", category: "غسالات", why: "" }] };
   };
-  r = await ai.task("store", { task: "invoice", image: IMG, partCats: ["غسالات", "تكييف"] });
+  await assert.rejects(ai.task("tech", { task: "invoice", image: IMG }), /not_allowed/);
+  r = await ai.task("store", { task: "invoice", images: [IMG, IMG], partCats: ["غسالات", "تكييف"], aliases: [{ text: "ريلاى", part: "ريلاي قديم" }] });
+  assert.strictEqual(invBodies.length, 2);
+  assert.strictEqual(invBodies[0].contents[0].parts.length, 3, "صورتين + النص");
+  assert.ok(!/مخزن الورشة/.test(invBodies[0].contents[0].parts[2].text), "خطوة القراية من غير المخزن");
+  assert.strictEqual(invBodies[0].generationConfig.mediaResolution, "MEDIA_RESOLUTION_HIGH");
+  assert.strictEqual(invBodies[0].generationConfig.temperature, 0);
+  assert.ok(/ربط سابق/.test(invBodies[1].contents[0].parts[0].text) && /«ريلاى» ← ريلاي قديم/.test(invBodies[1].contents[0].parts[0].text));
+  assert.ok(!/قديم\]/.test(invBodies[1].contents[0].parts[0].text) && !/S\d+: قديم/.test(invBodies[1].contents[0].parts[0].text), "المؤرشف مش في القايمة");
   assert.strictEqual(r.lines[0].part.id, "p1"); assert.strictEqual(r.lines[0].unitPrice, 190, "سعر الوحدة من الإجمالي");
-  assert.strictEqual(r.lines[1].part, null, "كود مش موجود = صنف جديد"); assert.strictEqual(r.lines[1].newName, "ريلاي بدء");
-  assert.strictEqual(r.sum, 480); assert.strictEqual(r.mismatch, true);
+  assert.strictEqual(r.lines[1].part, null); assert.strictEqual(r.lines[1].newName, "ريلاي بدء تلاجة");
+  assert.strictEqual(r.lines[1].mathOk, false, "4 × 25 ≠ 150"); assert.ok(r.lines[1].unsure.includes("lineTotal"));
+  assert.strictEqual(r.sum, 530); assert.strictEqual(r.mismatch, true);
+  assert.ok(/ \+ /.test(r.aiModel), "خطوتين متسجلين");
+
+  // 📚 كتالوج الأكواد: موديل قوي، ومن غير «كمّل الناقص» الكلام اللي مش من الصفحة بيتشال
+  actors.tech.perms["faultcodes.add"] = 1;
+  reply = { deviceType: "غسالات", brand: "إل جي", model: "F4J6", unclear: "", codes: [{ code: "OE", title: "مشكلة صرف", cause: "فلتر مسدود", fix: "1) نضف", causeFromPage: true, fixFromPage: true, note: "", unsure: false }, { code: "o e", title: "مكرر", cause: "", fix: "", causeFromPage: false, fixFromPage: false, note: "", unsure: false }, { code: "IE", title: "مية مش داخلة", cause: "محبس مقفول", fix: "افتح المحبس", causeFromPage: false, fixFromPage: true, note: "", unsure: true }] };
+  r = await ai.task("tech", { task: "codesBook", images: [IMG], types: ["غسالات"], brands: ["إل جي"] });
+  assert.strictEqual(r.codes.length, 2, "الكود المكرر بيتشال"); assert.strictEqual(r.codes[1].cause, "", "السبب مش من الصفحة"); assert.strictEqual(r.codes[1].fix, "افتح المحبس");
+  assert.strictEqual(r.brand, "إل جي"); assert.ok(r.codes[1].unsure);
+  r = await ai.task("tech", { task: "codesBook", images: [IMG], types: ["غسالات"], brands: ["إل جي"], fillMissing: true });
+  assert.strictEqual(r.codes[1].cause, "محبس مقفول"); assert.strictEqual(r.codes[1].aiCause, true);
+  assert.strictEqual(calls[calls.length - 1].generationConfig.mediaResolution, "MEDIA_RESOLUTION_HIGH");
 
   // 🧹 المخزن: صنف واحد في مجموعة واحدة بس، والمجموعة لازم صنفين
   reply = (body) => { const t = body.contents[0].parts[0].text; const c1 = t.match(/(S\d+): طلمبة/)[1], c2 = t.match(/(S\d+): طرمبة/)[1], c3 = t.match(/(S\d+): كابستور/)[1]; return { groups: [{ codes: [c1, c2], keep: c1, name: "طلمبة صرف غسالة 30 وات ايطالي", reason: "نفس القطعة" }, { codes: [c1, c3], keep: c3, name: "x", reason: "" }], renames: [{ code: c3, name: "كابستور 10 مايكرو", reason: "" }, { code: c3, name: "كابستور تكييف 10 مايكرو", reason: "أوضح" }] }; };
@@ -125,6 +148,22 @@ const PARTS = [
   r = await ai.task("own", { task: "monthSummary", label: "أكتوبر", stats: { now: { revenue: 1000 }, previous: { revenue: 800 } } });
   assert.strictEqual(r.headline, "شهر كويس");
   await assert.rejects(ai.task("own", { task: "monthSummary", stats: {} }), /no_stats/);
+
+  // 🎯 الدقة الأعلى: Pro الأول، ولو مش متاح بيرجع للعادي؛ ولو المالك قفلها بيروح للعادي على طول
+  calls.length = 0;
+  const seen = [];
+  const ai4 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), listParts: async () => PARTS, now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async (url, opt) => { const m = url.match(/models\/([^:]+):/)[1]; seen.push(m); if (/pro/.test(m)) return { status: 404, ok: false, json: async () => ({ error: { message: "not found" } }) }; return { status: 200, ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ deviceType: "", brand: "", model: "", codes: [], unclear: "" }) }] } }], usageMetadata: {} }) }; } });
+  await ai4.task("own", { task: "codesBook", images: [IMG] });
+  assert.deepStrictEqual(seen.slice(0, 4), ["gemini-2.5-pro", "gemini-3.1-pro-preview", "gemini-3-pro-preview", "gemini-2.5-flash"]);
+  seen.length = 0; await ai4.task("own", { task: "codesBook", images: [IMG] });
+  assert.strictEqual(seen[0], "gemini-2.5-flash", "الـ Pro اللي مش متاح ميتجربش تاني");
+  await ai4.saveConfig("own", { precise: false });
+  const ai5 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9), fetchImpl: async (url) => { seen.push(url.match(/models\/([^:]+):/)[1]); return { status: 200, ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "{}" }] } }], usageMetadata: {} }) }; } });
+  seen.length = 0; await ai5.task("own", { task: "codesBook", images: [IMG] });
+  assert.strictEqual(seen[0], "gemini-2.5-flash", "الدقة الأعلى مقفولة");
+  assert.strictEqual((await ai5.config("own")).precise, false);
+  await ai5.saveConfig("own", { precise: true });
 
   // العدّاد بيتسجل لكل ميزة
   const u = db.docs["serverConfig/aiUsage-2026-10"];

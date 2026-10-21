@@ -21,7 +21,7 @@
   function S() { try { return typeof w.settings === "function" ? w.settings() || {} : {}; } catch (e) { return {}; } }
   function task(name, data) { if (!AI()) return Promise.reject(new Error("الصفحة لسه بتحمّل — جرّب كمان ثانية.")); if (navigator.onLine === false) return Promise.reject(new Error("مفيش إنترنت — الأداة دي محتاجة نت.")); return AI().call("aiTask", Object.assign({ task: name }, data || {})); }
   function can(p) { try { return !w.WFPerm || !w.WFPerm.can || w.WFPerm.can(p); } catch (e) { return true; } }
-  function conf(c) { var m = { "عالي": "wf-ai-hi", "متوسط": "wf-ai-md", "ضعيف": "wf-ai-lo" }; return "<span class='wf-ai-chip " + (m[c] || "wf-ai-md") + "'>ثقة: " + esc(c || "متوسط") + "</span>"; }
+  function conf(c) { var m = { "عالي": "wf-ai-ok", "متوسط": "wf-ai-md", "ضعيف": "wf-ai-hi" }; /* الثقة: أخضر = واضح، أحمر = راجعه */ return "<span class='wf-ai-chip " + (m[c] || "wf-ai-md") + "'>ثقة: " + esc(c || "متوسط") + "</span>"; }
   function setVal(id, v) { var e = $(id); if (e && v != null) { e.value = v; try { e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); } catch (x) {} } }
   /* الماركة بالكتابة الموحدة بتاعة النظام (LG → إل جي) */
   function canonBrand(v) { try { if (v && typeof w.wfCanonicalBrand === "function") return w.wfCanonicalBrand(v) || v; } catch (e) {} return v; }
@@ -45,6 +45,8 @@
       "[data-theme=dark] .wf-ai-modal{background:#121a2b}.wf-ai-modal h3{margin:0 0 8px;display:flex;justify-content:space-between;gap:8px;align-items:center}.wf-ai-x{background:transparent;border:0;font-size:22px;cursor:pointer;color:inherit}" +
       ".wf-ai-card{border:1px solid rgba(127,127,127,.25);border-radius:12px;padding:9px 10px;margin:8px 0}.wf-ai-card.off{opacity:.5}.wf-ai-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:6px}.wf-ai-grid label{font-size:12.5px;display:block}.wf-ai-grid input,.wf-ai-grid select{width:100%;box-sizing:border-box}" +
       ".wf-ai-kinds{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.wf-ai-kinds button.on{background:#6d28d9;color:#fff;border-color:#6d28d9}.wf-ai-sum{padding:10px 0 0;border-top:1px solid rgba(127,127,127,.2);margin-top:10px}" +
+      ".wf-ai-shots{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.wf-ai-shot{position:relative;width:96px;height:120px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.3)}.wf-ai-shot img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}.wf-ai-shot .wf-ai-x{position:absolute;top:0;inset-inline-end:2px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:26px;height:26px;font-size:18px;line-height:24px;padding:0}" +
+      ".wf-ai-unsure{outline:2px solid #f59e0b!important;background:rgba(245,158,11,.12)!important}" +
       ".wf-ai-mic.rec{background:#b91c1c!important;color:#fff;border-color:#b91c1c!important;animation:wfaipulse 1.2s infinite}@keyframes wfaipulse{50%{opacity:.6}}";
     (d.head || d.documentElement).appendChild(st);
   }
@@ -60,18 +62,18 @@
     return { body: box.querySelector(".wf-ai-body"), close: close, box: box };
   }
   /* اختيار صورة (كاميرا أو معرض) وتصغيرها لـ 1600 بكسل JPEG — الصورة مش بتتخزن، بتتبعت للتحليل بس */
-  function pickImage(max) {
+  function pickImage(max, limit) {
     return new Promise(function (resolve, reject) {
       var inp = d.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.style.display = "none"; d.body.appendChild(inp);
       inp.onchange = function () {
         var f = inp.files && inp.files[0]; d.body.removeChild(inp);
         if (!f) return reject(new Error("cancel"));
-        shrink(f, max || 1600).then(resolve, reject);
+        shrink(f, max || 1600, limit).then(resolve, reject);
       };
       inp.click();
     });
   }
-  function shrink(f, max) {
+  function shrink(f, max, limit) {
     return new Promise(function (resolve, reject) {
       var url = URL.createObjectURL(f), img = new Image();
       img.onload = function () {
@@ -79,7 +81,8 @@
         c.width = Math.max(1, Math.round(img.width * sc)); c.height = Math.max(1, Math.round(img.height * sc));
         c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
         var q = 0.85, du = c.toDataURL("image/jpeg", q);
-        while (du.length > 2000000 && q > 0.4) { q -= 0.15; du = c.toDataURL("image/jpeg", q); }
+        if (limit) { q = 0.9; du = c.toDataURL("image/jpeg", q); }
+        while (du.length > (limit || 2000000) && q > 0.4) { q -= 0.15; du = c.toDataURL("image/jpeg", q); }
         resolve({ mime: "image/jpeg", data: du.split(",")[1], dataURL: du });
       };
       img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("الملف ده مش صورة أو مش مدعوم.")); };
@@ -96,7 +99,7 @@
   function codesPage() {
     var form = $("faultForm"); if (!form || !$("fcCode")) return;
     var bar = $("wfAiCodeBar");
-    if (!on("codes")) { if (bar) bar.style.display = "none"; codesFillBtn(); return; }
+    if (!on("codes")) { if (bar) bar.style.display = "none"; codesFillBtn(); bookBtn(); return; }
     css();
     if (!bar) {
       bar = d.createElement("div"); bar.id = "wfAiCodeBar"; bar.className = "wf-ai-tool wide";
@@ -106,7 +109,7 @@
       bar.querySelector("[data-x=photo]").onclick = function () { codePhoto(this); };
     }
     bar.style.display = "";
-    codesFillBtn();
+    codesFillBtn(); bookBtn();
     var q = new URLSearchParams(location.search);
     if (q.get("ai") === "1" && q.get("code") && !codesPage._auto) {
       codesPage._auto = 1;
@@ -161,6 +164,88 @@
       Array.prototype.forEach.call(res.querySelectorAll("[data-code]"), function (b) { b.onclick = function () { choose(b.getAttribute("data-code")); }; });
       choose(r.codes[0]);
     }, function (e) { fail(e, res); }).then(function () { done(); });
+  }
+  /* 📚 صفحة كتالوج/كتاب/جدول → أكواد منظمة بنفس شكل الدليل */
+  function bookBtn() {
+    var list = $("faultList"), b = $("wfAiBook"); if (!list) return;
+    if (!on("codes") || !can("faultcodes.add")) { if (b) b.style.display = "none"; return; }
+    css();
+    if (!b) {
+      b = d.createElement("div"); b.id = "wfAiBook"; b.className = "wf-ai-tool";
+      b.innerHTML = "<div class='wf-ai-row2'><span>📚 عندك كتالوج خدمة أو كتاب أو جدول أكواد؟</span><button type='button' class='wf-ai-btn'>📚 استورد أكواد من صورة</button></div><small class='hint'>صوّر الصفحة (أو كذا صفحة) والأكواد تتنظم بنفس شكل الدليل: الكود، الوصف، السبب، الحل — وتراجعها قبل الحفظ.</small>";
+      list.parentNode.insertBefore(b, $("wfAiCodeFill") || list);
+      b.querySelector("button").onclick = bookFlow;
+    }
+    b.style.display = "";
+  }
+  function bookFlow() {
+    var L = lists(), opt = function (arr, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option>" + esc(x) + "</option>"; }).join(""); };
+    var extra = "<div class='wf-ai-grid'><label>نوع الجهاز<select data-keep='type'>" + opt(L.types, "— من الصورة / عام —") + "</select></label><label>الماركة<select data-keep='brand'>" + opt(L.brands, "— من الصورة / عام —") + "</select></label></div>" +
+      "<label style='display:block;margin-top:6px'><input type='checkbox' data-keep='fill'> لو السبب أو الحل مش مكتوب في الصفحة، كمّله من خبرة الذكاء الاصطناعي (هيتعلّم عليه)</label>";
+    collectPhotos("📚 أكواد من صورة كتالوج أو كتاب", "📸 صوّر الصفحة كلها مفرودة وفي نور كويس. جدول طويل؟ صوّره على أجزاء. لحد 4 صور في المرة.<br>⏱️ بياخد من نص دقيقة لدقيقة ونص لأنه بيقرا كل كود بدقة.", "🤖 طلّع الأكواد", function (shots, go, res, m, body) {
+      var type = body.querySelector("[data-keep=type]").value, brand = body.querySelector("[data-keep=brand]").value, fill = body.querySelector("[data-keep=fill]").checked;
+      var done = busyBtn(go, "بيقرا الأكواد…"); res.innerHTML = "";
+      task("codesBook", { images: shots.map(function (x) { return { mime: x.mime, data: x.data }; }), deviceType: type, brand: brand, fillMissing: fill, types: L.types, brands: L.brands }).then(function (r) {
+        done(); m.close(); if (!r.deviceType && type) r.deviceType = type; if (type) r.deviceType = type; if (brand) r.brand = brand; bookReview(r, shots);
+      }, function (e) { done(); fail(e, res); });
+    }, extra);
+  }
+  function bookReview(r, shots) {
+    var m = modal("📚 مراجعة الأكواد قبل الحفظ"), body = m.body, L = lists();
+    if (!r.codes || !r.codes.length) { body.innerHTML = "<div class='wf-ai-err'>مالقيتش أكواد واضحة في الصور.</div>" + (r.unclear ? "<div class='hint'>" + esc(r.unclear) + "</div>" : "") + foot(r); return; }
+    var opt = function (arr, v, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option" + (x === v ? " selected" : "") + ">" + esc(x) + "</option>"; }).join(""); };
+    body.innerHTML = "<div class='wf-ai-shots'>" + (shots || []).map(function (s2) { return "<div class='wf-ai-shot'><img src='" + s2.dataURL + "' data-zoom alt='الصفحة'></div>"; }).join("") + "</div>" +
+      "<div class='wf-ai-grid'><label>نوع الجهاز لكل الأكواد<select id='wfAiBkType'>" + opt(L.types, r.deviceType, "كل الأنواع (عام)") + "</select></label><label>الماركة<select id='wfAiBkBrand'>" + opt(L.brands, r.brand, "كل الماركات (عام)") + "</select></label></div>" +
+      (r.brandRaw ? "<div class='hint'>الماركة في الصورة «" + esc(r.brandRaw) + "» مش في قايمتك — ضيفها من الإعدادات لو عايزها.</div>" : "") + (r.model ? "<div class='hint'>📄 الموديلات: " + esc(r.model) + "</div>" : "") + (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "") +
+      "<div class='hint' id='wfAiBkCount'></div>" +
+      r.codes.map(function (c, i) {
+        return "<div class='wf-ai-card' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b data-codehead>" + esc(c.code) + "</b></label> " + (c.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" +
+          "<div class='wf-ai-grid'><label>الكود<input data-code value='" + esc(c.code) + "'" + (c.unsure ? " class='wf-ai-unsure'" : "") + "></label><label>الوصف<input data-title value='" + esc(c.title) + "'></label></div>" +
+          "<label>🔍 السبب" + (c.aiCause ? " <span class='wf-ai-chip wf-ai-np'>🤖 من خبرة الذكاء الاصطناعي</span>" : "") + "<textarea data-cause rows='2'>" + esc(c.cause) + "</textarea></label>" +
+          "<label>🛠️ الحل" + (c.aiFix ? " <span class='wf-ai-chip wf-ai-np'>🤖 من خبرة الذكاء الاصطناعي</span>" : "") + "<textarea data-fix rows='3'>" + esc(c.fix) + "</textarea></label>" + (c.note ? "<div class='hint'>📝 " + esc(c.note) + "</div>" : "") + "</div>";
+      }).join("") + "<div class='wf-ai-sum'><button type='button' class='primary' id='wfAiBkSave'>💾 احفظ الأكواد المختارة</button> " + foot(r) + "</div>";
+    Array.prototype.forEach.call(body.querySelectorAll("[data-zoom]"), function (im) { im.onclick = function () { zoomImg(im.src); }; });
+    function dupOf(c) { var type = $("wfAiBkType").value, brand = $("wfAiBkBrand").value; return typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, c) : null; }
+    function refresh() {
+      var n = 0, dn = 0;
+      Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card"), function (card) {
+        var code = card.querySelector("[data-code]").value.trim(), dup = code ? dupOf(code) : null, ok = card.querySelector("[data-ok]").checked;
+        card.querySelector("[data-codehead]").textContent = code || "—";
+        card.querySelector("[data-dup]").innerHTML = dup ? " <span class='wf-ai-chip wf-ai-lo'>متسجّل قبل كده — هيتكمّل الناقص فيه بس</span>" : "";
+        card.classList.toggle("off", !ok); if (ok) { n++; if (dup) dn++; }
+      });
+      $("wfAiBkCount").textContent = "هيتحفظ " + n + " كود" + (dn ? " (" + dn + " منهم موجودين وهيتكمّل الناقص فيهم بس)" : "") + ".";
+    }
+    body.addEventListener("input", refresh); body.addEventListener("change", refresh); refresh();
+    $("wfAiBkSave").onclick = function () {
+      var type = $("wfAiBkType").value, brand = $("wfAiBkBrand").value, all = A(K().fc), at = new Date().toISOString(), added = 0, filled = 0, seen = {};
+      Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card"), function (card) {
+        if (!card.querySelector("[data-ok]").checked) return;
+        var c = r.codes[+card.getAttribute("data-i")], code = card.querySelector("[data-code]").value.trim(), title = card.querySelector("[data-title]").value.trim();
+        if (!code) return;
+        var key = (typeof w.normalizeFaultText === "function" ? w.normalizeFaultText(code) : code.toLowerCase()); if (seen[key]) return; seen[key] = 1;
+        var cause = card.querySelector("[data-cause]").value.trim(), fix = card.querySelector("[data-fix]").value.trim();
+        var tag = "📚 من صورة " + (r.model ? "كتالوج (" + r.model + ")" : "كتالوج/كتاب") + " — 🤖" + (c.aiCause || c.aiFix ? " (فيه أجزاء من خبرة الذكاء الاصطناعي)" : "") + " — راجعه.";
+        var dup = dupOf(code), ex = dup && all.filter(function (f) { return f.id === dup.id; })[0];
+        if (ex) {
+          var ch = false;
+          if (!String(ex.title || "").trim() && title) { ex.title = title; ch = true; }
+          if (!String(ex.cause || "").trim() && cause) { ex.cause = cause; ch = true; }
+          if (!String(ex.fix || "").trim() && fix) { ex.fix = fix; ch = true; }
+          if (ch) { if (String(ex.note || "").indexOf("📚") < 0) ex.note = (ex.note ? ex.note + "\n" : "") + tag; ex.updatedAt = at; filled++; }
+          return;
+        }
+        all.push({ id: w.id(), source: "ai-book", deviceType: type, brand: brand, code: code, title: title || code, cause: cause, fix: fix, note: (c.note ? c.note + "\n" : "") + tag, addedBy: "", createdAt: at, updatedAt: at });
+        added++;
+      });
+      if (!added && !filled) return w.alert("مفيش جديد يتحفظ.");
+      var okSave = typeof w.saveFaultCodesRecords === "function" ? w.saveFaultCodesRecords(all) : false;
+      if (!okSave) return;
+      m.close();
+      try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); } catch (e) {}
+      codesFillBtn();
+      w.alert("✅ اتضاف " + added + " كود جديد" + (filled ? " واتكمّل " + filled + " كود موجود" : "") + ".");
+    };
   }
   function missingCodes() { return A(K().fc).filter(function (f) { return f && f.code && (!String(f.cause || "").trim() || !String(f.fix || "").trim()); }); }
   function codesFillBtn() {
@@ -410,10 +495,13 @@
     });
   }
   function callFill(btn, getFile, res, hint) {
-    var done = busyBtn(btn, "بيسمع المكالمة…"); res.innerHTML = "<div class='hint'>⏳ بيسمع المكالمة ويطلّع البيانات — ممكن ياخد لحد دقيقة حسب طولها.</div>";
+    var done = busyBtn(btn, "بيسمع المكالمة…"); res.innerHTML = "<div class='hint'>⏳ بيسمع المكالمة كلها ويكتبها الأول وبعدين يطلّع البيانات — ممكن ياخد دقيقة أو اتنين حسب طولها.</div>";
     getFile().then(audioPayload).then(function (au) { return task("callParse", { audio: au, lists: lists(), hint: hint || "" }); }).then(function (o) {
       if (o.heard === false) { res.innerHTML = "<div class='wf-ai-err'>التسجيل مش واضح أو مش مكالمة صيانة" + (o.notes ? ": " + esc(o.notes) : "") + ".</div>" + foot(o); return; }
-      res.innerHTML = (o.summary ? "<div class='wf-ai-hist'>📝 " + esc(o.summary).replace(/\n/g, "<br>") + (o.price ? "<br>💰 " + esc(o.price) : "") + "</div>" : "") + applyOrder(o) + foot(o);
+      var tr = (o.transcript || []).map(function (t) { return "<div><b>" + (t.who === "العميل" ? "👤 العميل" : t.who === "الورشة" ? "🛠️ الورشة" : "❔") + ":</b> " + esc(t.text) + "</div>"; }).join("");
+      res.innerHTML = (o.summary ? "<div class='wf-ai-hist'>📝 " + esc(o.summary).replace(/\n/g, "<br>") + (o.price ? "<br>💰 " + esc(o.price) : "") + "</div>" : "") + applyOrder(o) +
+        (tr ? "<details style='margin-top:8px'><summary>📜 نص المكالمة زي ما اتسمع (" + o.transcript.length + " مقطع) — لو فيه حاجة غلط اتأكد منها هنا</summary><div class='wf-ai-res' style='max-height:260px;overflow:auto'>" + tr + "</div><button type='button' class='wf-ai-btn2' data-tr>📋 نسخ النص</button></details>" : "") + foot(o);
+      var cb = res.querySelector("[data-tr]"); if (cb) cb.onclick = function () { copyText(o.transcript.map(function (t) { return t.who + ": " + t.text; }).join("\n")).then(function () { cb.textContent = "✅ اتنسخ"; }); };
     }, function (e) { fail(e, res); }).then(done);
   }
   function shareAudioFile() {
@@ -492,52 +580,93 @@
     if (bi) bi.onclick = function () { invoiceFlow(bi); };
     if (bc) bc.onclick = function () { stockClean(bc); };
   }
-  function invoiceFlow(btn) {
-    var shot = null, done = function () {};
-    pickImage(2000).then(function (im) {
-      shot = im; done = busyBtn(btn, "بيقرا الفاتورة…");
-      return task("invoice", { image: { mime: im.mime, data: im.data }, partCats: S().partCats || [] });
-    }).then(function (r) { done(); if (r) invoiceReview(r, shot); }, function (e) { done(); fail(e); });
+  /* جمع صور (لحد 4): الفاتورة الطويلة أو الخط الصغير أحسن تتصوّر على أجزاء قريبة */
+  function collectPhotos(title, tips, goLabel, onGo, extraHtml) {
+    var m = modal(title), body = m.body, shots = [];
+    function draw() {
+      body.innerHTML = "<div class='hint'>" + tips + "</div>" + (extraHtml || "") +
+        "<div class='wf-ai-shots'>" + shots.map(function (s, i) { return "<div class='wf-ai-shot'><img src='" + s.dataURL + "' alt='صورة " + (i + 1) + "'><button type='button' class='wf-ai-x' data-rm='" + i + "' aria-label='شيل الصورة'>×</button></div>"; }).join("") + "</div>" +
+        "<div class='wf-ai-row2' style='margin-top:8px'>" + (shots.length < 4 ? "<button type='button' class='wf-ai-btn2' data-add>📷 " + (shots.length ? "ضيف صورة كمان (جزء تاني)" : "صوّر / اختار صورة") + "</button>" : "") +
+        (shots.length ? "<button type='button' class='wf-ai-btn' data-go>" + goLabel + "</button>" : "") + "</div><div class='wf-ai-res' data-res></div>";
+      var add = body.querySelector("[data-add]"); if (add) add.onclick = function () { pickImage(2400, 3400000).then(function (im) { shots.push(im); keepExtra(); draw(); }, function (e) { fail(e, body.querySelector("[data-res]")); }); };
+      Array.prototype.forEach.call(body.querySelectorAll("[data-rm]"), function (b) { b.onclick = function () { keepExtra(); shots.splice(+b.getAttribute("data-rm"), 1); draw(); }; });
+      var go = body.querySelector("[data-go]"); if (go) go.onclick = function () { onGo(shots, go, body.querySelector("[data-res]"), m, body); };
+      restoreExtra();
+    }
+    var extraVals = {};
+    function keepExtra() { Array.prototype.forEach.call(body.querySelectorAll("[data-keep]"), function (e) { extraVals[e.getAttribute("data-keep")] = e.type === "checkbox" ? e.checked : e.value; }); }
+    function restoreExtra() { Array.prototype.forEach.call(body.querySelectorAll("[data-keep]"), function (e) { var v = extraVals[e.getAttribute("data-keep")]; if (v === undefined) return; if (e.type === "checkbox") e.checked = v; else e.value = v; }); }
+    draw();
+    return m;
   }
-  function invoiceReview(r, shot) {
+  function zoomImg(src) { var z = modal("🔍 الصورة"); z.body.innerHTML = "<div style='overflow:auto;max-height:80vh'><img src='" + src + "' style='width:180%;max-width:none;display:block'></div><small class='hint'>اسحب يمين وشمال عشان تقرا.</small>"; }
+  function normT(s) { return String(s || "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْـ]/g, "").replace(/\s+/g, " ").trim(); }
+  /* الربط اللي اتعلمه النظام من مراجعاتك: «كلام الفاتورة» ← صنف المخزن (متزامن مع الإعدادات) */
+  function invAliases() { var a = S().aiInvAliases; return Array.isArray(a) ? a : []; }
+  function invoiceFlow(btn) {
+    collectPhotos("🧾 توريد من صورة فاتورة", "📸 صوّر الفاتورة كلها في نور كويس ومن فوقها على طول (من غير ميل أو ظل). لو طويلة أو الخط صغير: صوّرها على جزئين أو تلاتة قريبين — هيجمعهم لوحده.<br>⏱️ القراية بتاخد من نص دقيقة لدقيقة لأنه بيقرا بدقة ويراجع الحسابات.", "🤖 اقرا الفاتورة", function (shots, go, res, m) {
+      var parts = A(K().p), byId = {}; parts.forEach(function (p) { byId[p.id] = p; });
+      var aliases = invAliases().filter(function (a) { return byId[a.id]; }).slice(-250).map(function (a) { return { text: a.t, part: byId[a.id].name }; });
+      var done = busyBtn(go, "بيقرا ويراجع الحسابات…"); res.innerHTML = "";
+      task("invoice", { images: shots.map(function (s) { return { mime: s.mime, data: s.data }; }), partCats: S().partCats || [], aliases: aliases }).then(function (r) { done(); m.close(); invoiceReview(r, shots); }, function (e) { done(); fail(e, res); });
+    });
+  }
+  function invoiceReview(r, shots) {
     var m = modal("🧾 مراجعة الفاتورة قبل التوريد"), body = m.body, parts = A(K().p).filter(function (p) { return p && !p.archived; });
-    var cats = S().partCats || [], wallets = S().wallets || [];
+    var cats = S().partCats || [], wallets = S().wallets || [], al = invAliases(), byIdAll = {};
+    parts.forEach(function (p) { byIdAll[p.id] = p; });
+    // ربط اتعلمناه قبل كده بيكسب لو الموديل ماربطش
+    (r.lines || []).forEach(function (l) {
+      if (l.part) return;
+      var keys = [normT(l.raw), normT(l.item)], hit = al.filter(function (a) { return keys.indexOf(normT(a.t)) > -1 && byIdAll[a.id]; }).pop();
+      if (hit) { var p = byIdAll[hit.id]; l.part = { id: p.id, name: p.name, qty: p.qty, buy: p.buy }; l.matchConfidence = "عالي"; l.why = "اتربط كده قبل كده"; }
+    });
     var dl = "<datalist id='wfAiPartsDl'>" + parts.map(function (p) { return "<option value='" + esc(p.name) + "'>"; }).join("") + "</datalist>";
-    var head = "<div class='hint'>" + [r.supplier ? "🏪 " + esc(r.supplier) : "", r.invoiceNo ? "رقم " + esc(r.invoiceNo) : "", r.date ? "📅 " + esc(r.date) : ""].filter(Boolean).join(" • ") + "</div>" +
-      (r.mismatch ? "<div class='wf-ai-warn'>⚠️ مجموع السطور (" + r.sum + " ج) مش زي إجمالي الفاتورة (" + r.total + " ج) — فيه سطر غلط أو ناقص، راجع.</div>" : "") + (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "");
+    var flags = (r.lines || []).filter(function (l) { return l.unsure && l.unsure.length; }).length;
+    var head = "<div class='wf-ai-shots'>" + (shots || []).map(function (s, i) { return "<div class='wf-ai-shot'><img src='" + s.dataURL + "' data-zoom='" + i + "' alt='الفاتورة'></div>"; }).join("") + "</div><small class='hint'>دوس على الصورة تكبّرها وتقارن.</small>" +
+      "<div class='hint'>" + [r.supplier ? "🏪 " + esc(r.supplier) : "", r.invoiceNo ? "رقم " + esc(r.invoiceNo) : "", r.date ? "📅 " + esc(r.date) : "", (r.lines || []).length + " سطر"].filter(Boolean).join(" • ") + "</div>" +
+      (flags ? "<div class='wf-ai-warn'>🟧 فيه " + flags + " سطر عليهم علامة — الخانات البرتقالي اتقرت بصعوبة أو الحساب فيها مش مظبوط، قارنها بالصورة.</div>" : "<div class='hint'>✅ كل السطور حسابها مظبوط (الكمية × الفئة = القيمة).</div>") +
+      (r.mismatch ? "<div class='wf-ai-warn'>⚠️ مجموع السطور (" + r.sum + " ج) مش زي مجموع الفاتورة (" + (r.subtotal || r.total) + " ج) — غالبًا فيه سطر ناقص أو رقم غلط.</div>" : "") + (r.discount ? "<div class='hint'>🏷️ خصم: " + r.discount + " ج — الصافي " + r.total + " ج</div>" : "") +
+      (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "") + (r.matchError ? "<div class='wf-ai-warn'>الربط بالمخزن ماتمّش — اختار الأصناف بنفسك.</div>" : "");
+    var U = function (l, f) { return l.unsure && l.unsure.indexOf(f) > -1 ? " wf-ai-unsure" : ""; };
     var rows = (r.lines || []).map(function (l, i) {
       var mode = l.part ? "ex" : "new";
-      return "<div class='wf-ai-card' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b>" + esc(l.text) + "</b></label>" +
-        "<div class='wf-ai-grid'><label>الصنف في المخزن<input list='wfAiPartsDl' data-part value='" + esc(l.part ? l.part.name : "") + "' placeholder='اختار صنف موجود أو سيبه فاضي = صنف جديد'></label>" +
-        "<label>لو جديد: الاسم<input data-new value='" + esc(l.newName || l.text) + "'" + (mode === "ex" ? " disabled" : "") + "></label>" +
+      return "<div class='wf-ai-card' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b>" + esc(l.item) + "</b>" + (l.specs ? " <small>(" + esc(l.specs) + ")</small>" : "") + "</label> " + (l.confidence ? conf(l.confidence) : "") +
+        (l.raw && normT(l.raw) !== normT(l.item) ? "<div class='hint'>✍️ مكتوب: «" + esc(l.raw) + "»</div>" : "") + (l.mathOk === false ? "<div class='wf-ai-err'>الحساب مش مظبوط: " + l.qty + " × " + l.unitPrice + " ≠ " + l.lineTotal + " — راجع الأرقام من الصورة.</div>" : "") +
+        "<div class='wf-ai-grid'><label>الصنف في المخزن" + (l.part && l.matchConfidence ? " " + conf(l.matchConfidence) : "") + "<input list='wfAiPartsDl' data-part value='" + esc(l.part ? l.part.name : "") + "' placeholder='اختار صنف موجود أو سيبه فاضي = صنف جديد'></label>" +
+        "<label>لو جديد: الاسم<input data-new value='" + esc(l.newName || l.item) + "'" + (mode === "ex" ? " disabled" : "") + "></label>" +
         "<label>التصنيف (للجديد)<select data-cat" + (mode === "ex" ? " disabled" : "") + "><option value=''>— اختار —</option>" + cats.map(function (c) { return "<option" + (c === l.category ? " selected" : "") + ">" + esc(c) + "</option>"; }).join("") + "</select></label>" +
-        "<label>الكمية<input type='number' min='1' step='1' data-qty value='" + (l.qty || 1) + "'></label><label>سعر الشراء للوحدة<input type='number' min='0' step='0.01' data-buy value='" + (l.unitPrice || "") + "'></label><label data-hint class='hint'></label></div></div>";
+        "<label>الكمية" + (l.unit && l.unit !== "قطعة" ? " <small>(" + esc(l.unit) + ")</small>" : "") + "<input type='number' min='1' step='1' data-qty class='" + U(l, "qty") + "' value='" + (l.qty || 1) + "'></label><label>سعر الشراء للوحدة<input type='number' min='0' step='0.01' data-buy class='" + U(l, "unitPrice") + "' value='" + (l.unitPrice || "") + "'></label><label data-hint class='hint'></label></div>" +
+        (l.why ? "<div class='hint'>🔗 " + esc(l.why) + "</div>" : "") + "</div>";
     }).join("");
-    body.innerHTML = head + dl + (rows || "<div class='wf-ai-err'>مالقيتش أصناف في الصورة.</div>") +
+    body.innerHTML = head + dl + (rows || "<div class='wf-ai-err'>مالقيتش أصناف في الصورة — جرّب صورة أوضح.</div>") +
       "<div class='wf-ai-sum'><label><input type='checkbox' id='wfAiInvPhoto' checked> احفظ صورة الفاتورة في «فواتير المخزن»</label><br>" +
       (can("wallets.add") ? "<label>💳 دفعتها من: <select id='wfAiInvWallet'><option value=''>— مش هسجّل دفع دلوقتي (آجل)</option>" + wallets.map(function (x) { return "<option>" + esc(x) + "</option>"; }).join("") + "</select></label><br>" : "") +
       "<b id='wfAiInvTotal'></b><div style='margin-top:8px'><button type='button' class='primary' id='wfAiInvSave'>📦 سجّل التوريد</button></div>" + foot(r) + "</div>";
+    Array.prototype.forEach.call(body.querySelectorAll("[data-zoom]"), function (im) { im.onclick = function () { zoomImg(im.src); }; });
     var byName = {}; parts.forEach(function (p) { byName[String(p.name).trim()] = p; });
     function rowInfo(c) {
-      var nm = c.querySelector("[data-part]").value.trim(), p = byName[nm] || null;
-      return { c: c, ok: c.querySelector("[data-ok]").checked, p: p, typed: nm, newName: c.querySelector("[data-new]").value.trim(), cat: c.querySelector("[data-cat]").value, qty: +c.querySelector("[data-qty]").value, buy: c.querySelector("[data-buy]").value === "" ? null : +c.querySelector("[data-buy]").value };
+      var nm = c.querySelector("[data-part]").value.trim(), p = byName[nm] || null, l = (r.lines || [])[+c.getAttribute("data-i")] || {};
+      return { c: c, l: l, ok: c.querySelector("[data-ok]").checked, p: p, typed: nm, newName: c.querySelector("[data-new]").value.trim(), cat: c.querySelector("[data-cat]").value, qty: +c.querySelector("[data-qty]").value, buy: c.querySelector("[data-buy]").value === "" ? null : +c.querySelector("[data-buy]").value };
     }
-    function refresh() {
+    function refresh(ev) {
+      if (ev && ev.target && ev.target.classList) ev.target.classList.remove("wf-ai-unsure");
       var tot = 0;
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card"), function (c) {
         var x = rowInfo(c); c.classList.toggle("off", !x.ok);
         c.querySelector("[data-new]").disabled = !!x.p; c.querySelector("[data-cat]").disabled = !!x.p;
-        var hint = c.querySelector("[data-hint]");
-        hint.innerHTML = x.p ? "✅ موجود — الكمية دلوقتي " + (+x.p.qty || 0) + "، شراء " + (+x.p.buy || 0) + " ج" + (x.buy != null && +x.p.buy && x.buy > +x.p.buy ? " <b>📈 السعر زاد</b>" : "") : x.typed ? "⚠️ «" + esc(x.typed) + "» مش موجود بالاسم ده — هيتعمل صنف جديد" : "➕ هيتضاف صنف جديد";
-        if (x.ok && x.qty > 0) tot += x.qty * (x.buy != null ? x.buy : (x.p ? +x.p.buy || 0 : 0));
+        var lineSum = x.qty > 0 ? Math.round(x.qty * (x.buy != null ? x.buy : (x.p ? +x.p.buy || 0 : 0)) * 100) / 100 : 0;
+        c.querySelector("[data-hint]").innerHTML = (x.p ? "✅ موجود — الكمية دلوقتي " + (+x.p.qty || 0) + "، شراء " + (+x.p.buy || 0) + " ج" + (x.buy != null && +x.p.buy && x.buy > +x.p.buy ? " <b>📈 السعر زاد</b>" : "") : x.typed ? "⚠️ «" + esc(x.typed) + "» مش موجود بالاسم ده — هيتعمل صنف جديد" : "➕ هيتضاف صنف جديد") + "<br>= " + lineSum + " ج";
+        if (x.ok) tot += lineSum;
       });
-      $("wfAiInvTotal").textContent = "الإجمالي: " + (Math.round(tot * 100) / 100) + " ج" + (r.total ? " (الفاتورة: " + r.total + " ج)" : "");
+      var ref = r.subtotal || r.total;
+      $("wfAiInvTotal").innerHTML = "الإجمالي: " + (Math.round(tot * 100) / 100) + " ج" + (ref ? " (الفاتورة: " + ref + " ج)" + (Math.abs(ref - tot) > Math.max(1, ref * 0.01) ? " ⚠️" : " ✅") : "");
     }
     body.addEventListener("input", refresh); body.addEventListener("change", refresh); refresh();
-    $("wfAiInvSave").onclick = function () { saveInvoice(body, rowInfo, r, shot, m); };
+    $("wfAiInvSave").onclick = function () { saveInvoice(body, rowInfo, r, shots, m); };
   }
   var invBusy = false;
-  function saveInvoice(body, rowInfo, r, shot, m) {
+  function saveInvoice(body, rowInfo, r, shots, m) {
     if (invBusy) return;
     var lines = Array.prototype.map.call(body.querySelectorAll(".wf-ai-card"), rowInfo).filter(function (x) { return x.ok; });
     if (!lines.length) return w.alert("مفيش أصناف متعلّم عليها.");
@@ -556,10 +685,11 @@
     var wallet = ($("wfAiInvWallet") || {}).value || "";
     if (!w.confirm("هيتسجل توريد " + lines.length + " صنف" + (wallet ? " ويتسجل صرف من «" + wallet + "»" : "") + ". تمام؟")) return;
     invBusy = true;
-    var photoP = $("wfAiInvPhoto") && $("wfAiInvPhoto").checked && shot ? (w.ImageStore ? w.ImageStore.save(shot.dataURL) : Promise.resolve(shot.dataURL)) : Promise.resolve("");
-    var stored = "", committed = false;
-    Promise.resolve(photoP).then(function (inv) {
-      stored = inv || "";
+    var keepPhotos = $("wfAiInvPhoto") && $("wfAiInvPhoto").checked && shots && shots.length;
+    var photoP = keepPhotos ? Promise.all(shots.map(function (sh) { return w.ImageStore ? w.ImageStore.save(sh.dataURL) : sh.dataURL; })) : Promise.resolve([]);
+    var stored = "", allStored = [], committed = false;
+    Promise.resolve(photoP).then(function (list) {
+      allStored = (list || []).filter(Boolean); stored = allStored[0] || "";
       var all = A(K().p), moves = A(K().m), now = new Date(), at = now.toISOString(), ids = [], total = 0, sellNotes = [];
       var label = "فاتورة" + (r.supplier ? " " + r.supplier : "") + (r.invoiceNo ? " رقم " + r.invoiceNo : "");
       lines.forEach(function (x) {
@@ -573,8 +703,21 @@
       });
       total = Math.round(total * 100) / 100;
       var values = {}; values[K().p] = all; values[K().m] = moves;
-      if (stored) values[K().inv] = A(K().inv).concat({ id: w.id(), photo: stored, note: "🤖 " + label + " — " + lines.length + " صنف", partIds: ids, at: at });
+      if (allStored.length) values[K().inv] = A(K().inv).concat(allStored.map(function (ph, i) { return { id: w.id(), photo: ph, note: "🤖 " + label + " — " + lines.length + " صنف" + (allStored.length > 1 ? " (صورة " + (i + 1) + " من " + allStored.length + ")" : ""), partIds: ids, at: at }; }));
       if (wallet && total > 0) values[K().wtx] = A(K().wtx).concat({ id: w.id(), refKey: null, manualOverride: true, deleted: false, type: "out", amount: total, wallet: wallet, category: "مشتريات قطع غيار", reason: "📦 " + label + " (" + lines.length + " صنف)", note: "", date: typeof w.localDateKey === "function" ? w.localDateKey(now) : at.slice(0, 10), time: now.toTimeString().slice(0, 5), source: "restock", createdAt: at });
+      // نتعلم من مراجعتك: الكلام اللي في الفاتورة ← الصنف اللي اخترته (المرة الجاية يتربط لوحده)
+      var learned = 0;
+      try {
+        var st = S(), al = Array.isArray(st.aiInvAliases) ? st.aiInvAliases.slice() : [];
+        lines.forEach(function (x) {
+          var pid = x.p ? x.p.id : null; if (!pid || !x.l) return;
+          [x.l.raw, x.l.item].forEach(function (t) {
+            var k = normT(t); if (!k || k === normT(x.p.name) || k.length < 3) return;
+            al = al.filter(function (a) { return a.t !== k; }); al.push({ t: k, id: pid }); learned++;
+          });
+        });
+        if (learned) { st.aiInvAliases = al.slice(-400); values[K().s] = st; }
+      } catch (e) {}
       return (typeof w.commitStorageAsync === "function" ? w.commitStorageAsync(values) : Promise.resolve(false)).then(function (ok) {
         if (!ok) return;
         committed = true; m.close();
@@ -582,7 +725,7 @@
         w.alert("✅ اتسجل توريد " + lines.length + " صنف." + (values[K().wtx] ? "\n💳 واتسجل صرف " + total + " ج من «" + wallet + "»." : "") + (sellNotes.length ? "\n📈 سعر البيع اتزوّد بنفس نسبة زيادة الشراء:\n" + sellNotes.join("\n") : ""));
       });
     }).catch(function (e) { w.alert("تعذّر التسجيل: " + ((e && e.message) || "")); }).then(function () {
-      if (stored && !committed && w.ImageStore && w.ImageStore.delete) try { w.ImageStore.delete(stored); } catch (e) {}
+      if (!committed && w.ImageStore && w.ImageStore.delete) allStored.forEach(function (ph) { try { w.ImageStore.delete(ph); } catch (e) {} });
       invBusy = false;
     });
   }
@@ -680,7 +823,7 @@
     var need = $("faultForm") || $("faultCodeProfile") || $("quickOrderBody") || $("shareSummaryBox") || $("deviceForm") || $("restockBox") || $("reportsHost") || d.querySelector(".wf-ai-msg-slot");
     if (need) setTimeout(function () { AI().refresh(false); }, 1200);
     all();
-    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
+    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,#wfAiBook,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
     var ap = $("repApply"); if (ap) ap.addEventListener("click", function () { setTimeout(summaryPanel, 400); });
   }
   w.WFAITools = { compactStats: compactStats, applyOrder: applyOrder, _all: all };

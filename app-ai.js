@@ -147,7 +147,7 @@
   }
   function resultHtml(res) {
     var h = "";
-    h += "<div class='wf-ai-conf'>درجة الثقة:<span class='wf-ai-chip " + lkCls(res.confidence) + "'>" + esc(res.confidence || "متوسط") + "</span>" + (res.confidenceNote ? " <small>" + esc(res.confidenceNote) + "</small>" : "") + "</div>";
+    h += "<div class='wf-ai-conf'>درجة الثقة:<span class='wf-ai-chip " + ({ "عالي": "wf-ai-ok", "ضعيف": "wf-ai-hi" }[res.confidence] || "wf-ai-md") + "'>" + esc(res.confidence || "متوسط") + "</span>" + (res.confidenceNote ? " <small>" + esc(res.confidenceNote) + "</small>" : "") + "</div>";
     if (res.summary) h += "<div style='margin-top:6px'><b>" + esc(res.summary) + "</b></div>";
     if (res.fromHistory) h += "<div class='wf-ai-hist'>📚 من سجل الورشة: " + esc(res.fromHistory) + "</div>";
     if (res.steps && res.steps.length) h += "<h4>🧭 ابدأ الفحص بالترتيب ده</h4><ol>" + res.steps.map(function (s) { return "<li>" + esc(s) + "</li>"; }).join("") + "</ol>";
@@ -263,6 +263,7 @@
     h += "<p class='hint'>الدفع على قد الاستخدام بس: لو محدش داس على زرار ذكاء اصطناعي، الشهر بيعدّي بـ $0. التكلفة بتتخصم من نفس حساب Google Cloud (والكريدت المجاني لو موجود).</p>";
     h += "<label class='wf-ai-row'><input type='checkbox' id='aiOn'" + (c.enabled ? " checked" : "") + "><span><b>تشغيل الذكاء الاصطناعي</b><br><small>لو اتقفل: كل الأزرار تختفي ومفيش أي طلب يتبعت.</small></span></label>";
     Object.keys(FEAT).forEach(function (k) { h += "<label class='wf-ai-row'><input type='checkbox' data-ai-feat='" + k + "'" + (c.features && c.features[k] ? " checked" : "") + "><span><b>" + esc(FEAT[k].name) + "</b><br><small>" + esc(FEAT[k].desc) + "</small></span></label>"; });
+    h += "<label class='wf-ai-row'><input type='checkbox' id='aiPrecise'" + (c.precise !== false ? " checked" : "") + "><span><b>🎯 دقة أعلى للحاجات الصعبة</b><br><small>الفاتورة، صفحات الكتالوج، وتسجيل المكالمات: بيستخدم موديل أقوى (Pro) ويفكّر ويراجع أكتر. المرة بتتكلف حوالي 3 لـ 8 سنت بدل سنت. لو قفلته بيرجع للموديل العادي.</small></span></label>";
     h += "<div class='wf-ai-g'><label>💵 أقصى صرف في الشهر ($): <input type='number' id='aiCap' min='0' max='500' step='0.5' value='" + esc(cap) + "'></label>";
     h += "<label>الموديل: <select id='aiModel'>" + (c.models || ["auto"]).map(function (m) { return "<option value='" + esc(m) + "'" + (m === c.model ? " selected" : "") + ">" + (m === "auto" ? "تلقائي (مُقترح)" : esc(m)) + "</option>"; }).join("") + "</select></label>";
     h += "<button type='button' class='primary' id='aiSave'" + (setBusy ? " disabled" : "") + ">💾 حفظ</button></div>";
@@ -290,7 +291,7 @@
       var feats = {}; var fs = box.querySelectorAll("[data-ai-feat]"); for (var i = 0; i < fs.length; i++) feats[fs[i].getAttribute("data-ai-feat")] = fs[i].checked;
       var cap = +d.getElementById("aiCap").value;
       if (!(cap >= 0 && cap <= 500)) { setMsg = "الحد لازم يكون بين 0 و 500 دولار."; return drawSettings(); }
-      var body = { enabled: d.getElementById("aiOn").checked, features: feats, capUsd: cap, model: d.getElementById("aiModel").value };
+      var body = { enabled: d.getElementById("aiOn").checked, features: feats, capUsd: cap, model: d.getElementById("aiModel").value, precise: !!(d.getElementById("aiPrecise") && d.getElementById("aiPrecise").checked) };
       setBusy = true; setMsg = "⏳ بنحفظ…"; drawSettings();
       call("aiConfigSave", body).then(function (c) {
         ownerData = c; ownerAt = Date.now(); setCfg(c, true); setMsg = "✅ اتحفظ" + (c.enabled ? "." : " — الذكاء الاصطناعي مقفول.");
