@@ -175,10 +175,58 @@
       b.innerHTML = "<div class='wf-ai-row2'><span>📚 عندك كتالوج خدمة أو كتاب (PDF أو صور)؟</span><button type='button' class='wf-ai-btn'>📚 استورد أكواد وتيست مود</button></div><small class='hint'>بيطلّع أكواد الأعطال والتيست مود كل واحد لوحده بنفس شكل الدليل، وتراجعهم قبل الحفظ.</small>";
       list.parentNode.insertBefore(b, $("wfAiCodeFill") || list);
       b.querySelector("button").onclick = bookFlow;
+      b.appendChild(d.createElement("div")).className = "wf-ai-books";
     }
     b.style.display = "";
+    var bl = b.querySelector(".wf-ai-books"), books = importedBooks(), sig = JSON.stringify(books);
+    if (bl && bl.getAttribute("data-sig") !== sig) {
+      bl.setAttribute("data-sig", sig);
+      bl.innerHTML = books.length ? "<div class='hint' style='margin-top:6px'>📚 اتستورد قبل كده من:</div>" + books.map(function (x, i) { return "<div class='wf-ai-row2' style='font-size:13.5px'><span>«" + esc(x.name) + "» — " + x.codes + " كود، " + x.tests + " تيست مود</span>" + (can("faultcodes.delete") ? "<button type='button' class='danger-btn small-btn' data-delbook='" + i + "'>🗑️ امسحهم</button>" : "") + "</div>"; }).join("") : "";
+      Array.prototype.forEach.call(bl.querySelectorAll("[data-delbook]"), function (btn) { btn.onclick = function () { var x = books[+btn.getAttribute("data-delbook")]; if (deleteImported(x.name)) { try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); if (w.WFTestModes) w.WFTestModes.render(); } catch (e) {} bl.setAttribute("data-sig", ""); bookBtn(); classifyBtn(); codesFillBtn(); w.alert("✅ اتمسح المستورد من «" + x.name + "»."); } }; });
+    }
   }
   var MAX_PDF = 13.5 * 1024 * 1024;
+  var BOOK_CHUNK = 15; /* كل جزء بيتقرا من نفس الملف بس بيركّز على صفحاته — 15 صفحة بتخلّص في وقت أمان وبتطلّع الجداول كاملة */
+  /* بنقرا الملف ونعدّ صفحاته من غير مكتبة (بنعد /Type /Page — بيشتغل مع أغلب ملفات الـ PDF) */
+  function readPdf(f) {
+    return new Promise(function (ok, no) {
+      var r = new FileReader();
+      r.onload = function () {
+        var buf = new Uint8Array(r.result), bin = "", CH = 32768;
+        for (var i = 0; i < buf.length; i += CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+        var pages = (bin.match(/\/Type\s*\/Page(?![a-zA-Z])/g) || []).length;
+        ok({ data: btoa(bin), pages: pages, bytes: buf.length });
+      };
+      r.onerror = function () { no(new Error("مقدرتش أقرا الملف.")); };
+      r.readAsArrayBuffer(f);
+    });
+  }
+  /* الكتاب على أجزاء: جزء ورا جزء (كل جزء لوحده ميعدّيش حد الوقت)، ولو جزء فشل بنجرّبه تاني مرة، وبعدين نكمّل */
+  function runBookParts(data, parts, base, res) {
+    var all = { codes: [], testModes: [], sections: [], unclear: [], cost: 0, deviceType: "", brand: "", model: "" }, failed = [], k = 0;
+    function show(msg) { res.innerHTML = "<div class='hint'>⏳ " + msg + "</div><div class='wf-ai-bar'><i style='width:" + Math.round(k / parts.length * 100) + "%'></i></div><small class='hint'>لقى لحد دلوقتي: " + all.codes.length + " كود و" + all.testModes.length + " تيست مود" + (failed.length ? " • ⚠️ " + failed.length + " جزء فشل" : "") + "</small>"; }
+    function one(pr, tries) {
+      show("بيقرا الصفحات " + pr[0] + "–" + pr[1] + " (جزء " + (k + 1) + " من " + parts.length + ")" + (tries ? " — محاولة تانية" : "") + "…");
+      return task("codesBook", Object.assign({ pdf: { data: data }, pageFrom: pr[0], pageTo: pr[1] }, base)).then(function (r) {
+        all.cost += +r.cost || 0;
+        ["deviceType", "brand", "model"].forEach(function (f) { if (!all[f] && r[f]) all[f] = r[f]; });
+        all.codes = all.codes.concat(r.codes || []); all.testModes = all.testModes.concat(r.testModes || []);
+        all.sections = all.sections.concat((r.sections || []).map(function (x) { return x; }));
+        if (r.unclear) all.unclear.push("ص " + pr[0] + "–" + pr[1] + ": " + r.unclear);
+      }, function (e) { if (!tries && !/مقفول|الحد الأقصى|صلاحية/.test((e && e.message) || "")) return one(pr, 1); failed.push(pr); if (/مقفول|الحد الأقصى/.test((e && e.message) || "")) throw e; });
+    }
+    function next() { if (k >= parts.length) return Promise.resolve(); return one(parts[k], 0).then(function () { k++; return next(); }); }
+    return next().then(function () {
+      var nfx = function (v) { return String(v || "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[\s\-_.()]/g, ""); };
+      var seen = {}, codes = [];
+      all.codes.forEach(function (c) { var key = [nfx(c.code), (c.brands || []).slice().sort().join(","), nfx(c.models)].join("|"); if (seen[key]) { var o = seen[key]; if (!o.cause && c.cause) o.cause = c.cause; if (!o.fix && c.fix) o.fix = c.fix; return; } seen[key] = c; codes.push(c); });
+      var seenT = {}, tms = [];
+      all.testModes.forEach(function (t) { var key = nfx(t.title); if (seenT[key]) { var o = seenT[key]; if ((t.tests || "").length > (o.tests || "").length) { o.tests = t.tests; o.enter = t.enter || o.enter; } return; } seenT[key] = t; tms.push(t); });
+      var unc = all.unclear.slice(); if (failed.length) unc.unshift("⚠️ الصفحات دي مااتقرتش (فشلت مرتين): " + failed.map(function (p) { return p[0] + "–" + p[1]; }).join("، ") + " — استوردها تاني لوحدها.");
+      if (!codes.length && !tms.length && failed.length === parts.length) throw new Error("مقدرتش أقرا الكتاب — جرّب تاني أو قسّمه.");
+      return { codes: codes, testModes: tms, sections: all.sections, unclear: unc.join("\n"), cost: all.cost, deviceType: all.deviceType, brand: all.brand, model: all.model };
+    });
+  }
   function bookFlow() {
     var L = lists(), m = modal("📚 أكواد وتيست مود من كتالوج أو كتاب"), body = m.body, shots = [], pdf = null;
     var opt = function (arr, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option>" + esc(x) + "</option>"; }).join(""); };
@@ -216,18 +264,29 @@
       var go = this, type = q("[data-k=type]").value, brand = q("[data-k=brand]").value, want = q("[data-k=want]").value, fill = q("[data-k=fill]").checked;
       var from = q("[data-k=from]") ? +q("[data-k=from]").value || 0 : 0, to = q("[data-k=to]") ? +q("[data-k=to]").value || 0 : 0;
       if (from && to && to < from) return fail(new Error("«لحد صفحة» لازم تبقى بعد «من صفحة»."), res);
-      var done = busyBtn(go, pdf ? "بيقرا الكتاب…" : "بيقرا الصفحات…");
-      res.innerHTML = "<div class='hint'>⏳ بيقرا بدقة ويفصل الأكواد عن التيست مود — ممكن ياخد من دقيقة لـ 3 دقايق حسب حجم " + (pdf ? "الكتاب" : "الصفحات") + ". سيب الصفحة مفتوحة.</div>";
-      var src = pdf ? new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok({ pdf: { data: String(r.result || "").split(",")[1] || "" } }); }; r.onerror = function () { no(new Error("مقدرتش أقرا الملف.")); }; r.readAsDataURL(pdf); })
-        : Promise.resolve({ images: shots.map(function (x) { return { mime: x.mime, data: x.data }; }) });
-      src.then(function (s) {
-        return task("codesBook", Object.assign(s, { deviceType: type, brand: brand, want: want, fillMissing: fill, pageFrom: from, pageTo: to, types: L.types, categories: L.categories, brands: L.brands }));
-      }).then(function (r) {
-        done(); m.close(); if (type) r.deviceType = type;
+      var base = { deviceType: type, brand: brand, want: want, fillMissing: fill, types: L.types, categories: L.categories, brands: L.brands };
+      var finish = function (r) {
+        m.close(); if (type) r.deviceType = type;
         // الماركة المختارة فوق = لكل العناصر اللي الكتاب ماحددلهاش ماركة
         if (brand) (r.codes || []).concat(r.testModes || []).forEach(function (x) { if (!(x.brands || []).length) x.brands = [brand]; });
         bookReview(r, shots, pdf ? pdf.name : "");
-      }, function (e) { done(); fail(e, res); });
+      };
+      if (!pdf) {
+        var done = busyBtn(go, "بيقرا الصفحات…");
+        res.innerHTML = "<div class='hint'>⏳ بيقرا بدقة ويفصل الأكواد عن التيست مود — ممكن ياخد دقيقة أو اتنين. سيب الصفحة مفتوحة.</div>";
+        return task("codesBook", Object.assign({ images: shots.map(function (x) { return { mime: x.mime, data: x.data }; }) }, base)).then(function (r) { done(); finish(r); }, function (e) { done(); fail(e, res); });
+      }
+      var done2 = busyBtn(go, "بيجهّز الكتاب…");
+      readPdf(pdf).then(function (pd) {
+        done2();
+        var pages = pd.pages, a = from || 1, b = to || pages;
+        if (!b) { var n = +w.prompt("مقدرتش أعرف عدد صفحات الكتاب — اكتب عدد الصفحات (من آخر صفحة في الكتاب):", ""); if (!(n > 0)) return; b = n; }
+        var parts = [];
+        for (var p0 = a; p0 <= b; p0 += BOOK_CHUNK) parts.push([p0, Math.min(b, p0 + BOOK_CHUNK - 1)]);
+        if (parts.length > 1 && !w.confirm("📚 " + (b - a + 1) + " صفحة — هيتقرا على " + parts.length + " أجزاء (" + BOOK_CHUNK + " صفحة في كل جزء) عشان ميسيبش حاجة.\n⏱️ حوالي " + Math.ceil(parts.length * 1.5) + " دقيقة — سيب الصفحة مفتوحة والموبايل منوّر.\n💵 التكلفة التقريبية: " + (Math.round(parts.length * ((pd.pages || b) * 0.00035 + 0.08) * 100) / 100) + " دولار.\nتكمل؟")) return;
+        go.disabled = true;
+        runBookParts(pd.data, parts, base, res).then(function (r) { go.disabled = false; finish(r); }, function (e) { go.disabled = false; fail(e, res); });
+      }, function (e) { done2(); fail(e, res); });
     };
     drawSrc();
   }
@@ -258,6 +317,7 @@
     var meta = function (x) { return "<div class='wf-ai-grid'><label>التصنيف<select data-cat>" + catOptions(r.deviceType, x.category) + "</select></label><label>الموديلات / السلسلة<input data-models value='" + esc(x.models || "") + "'></label></div>" + brandPickerHtml(x.brands, x.brandsRaw); };
     body.innerHTML = ((shots || []).length ? "<div class='wf-ai-shots'>" + shots.map(function (s2) { return "<div class='wf-ai-shot'><img src='" + s2.dataURL + "' data-zoom alt='الصفحة'></div>"; }).join("") + "</div>" : pdfName ? "<div class='hint'>📄 " + esc(pdfName) + "</div>" : "") +
       "<div class='wf-ai-grid'><label>نوع الجهاز للكل<select id='wfAiBkType'>" + opt(L.types, r.deviceType, "كل الأنواع (عام)") + "</select></label><div class='hint' style='align-self:end'>" + (brandCount ? "🏷️ الكتاب فيه " + brandCount + " ماركة — كل عنصر متعلّم بماركته، ولو العنصر لأكتر من ماركة بيتحفظ لكل ماركة لوحدها." : "الماركة لكل عنصر تحت (فاضي = عام).") + "</div></div>" +
+      ((r.sections || []).length ? "<details class='wf-ai-card'" + ((r.sections.length > codes.length + tms.length) ? " open" : "") + "><summary>📑 العناوين اللي لقاها في المصدر (" + r.sections.length + ") — اتطلّع " + tms.length + " تيست مود و" + codes.length + " كود" + (r.sections.length > tms.length + (codes.length ? 1 : 0) + 1 ? " ⚠️ قارن" : "") + "</summary><ul>" + r.sections.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul><small class='hint'>لو فيه عنوان مالوش عنصر تحت، شغّل الاستيراد تاني على صفحته بس.</small></details>" : "") +
       (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "") + "<div class='hint' id='wfAiBkCount'></div>" +
       (codes.length ? "<h4>🧯 أكواد الأعطال (" + codes.length + ")</h4>" + codes.map(function (c, i) {
         return "<div class='wf-ai-card' data-kind='code' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b data-codehead>" + esc(c.code) + "</b></label> " + (c.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" + meta(c) +
@@ -271,13 +331,17 @@
           "<label>🔑 طريقة الدخول<textarea data-enter rows='4'>" + esc(t.enter) + "</textarea></label><label>🧪 الخطوات / بيختبر إيه<textarea data-tests rows='5'>" + esc(t.tests) + "</textarea></label>" +
           "<label>🚪 الخروج<textarea data-exit rows='2'>" + esc(t.exit) + "</textarea></label>" + (t.note ? "<label>📝 ملاحظات<textarea data-tnote rows='2'>" + esc(t.note) + "</textarea></label>" : "") + "</div>";
       }).join("") : "") +
+      (pdfName && importedFrom(pdfName).length ? "<label class='wf-ai-card' style='display:block'><input type='checkbox' id='wfAiBkReplace' checked> 🗑️ <b>امسح اللي اتستورد قبل كده من «" + esc(pdfName) + "»</b> (" + importedFrom(pdfName).length + " عنصر) واستبدله بالجديد — اللي ضفته بإيدك مش هيتلمس.</label>" : "") +
       "<div class='wf-ai-sum'><button type='button' class='primary' id='wfAiBkSave'>💾 احفظ المختار</button> <small class='hint'>الصور بتتضاف بعد كده من صفحة كل كود أو تيست مود.</small> " + foot(r) + "</div>";
     Array.prototype.forEach.call(body.querySelectorAll("[data-zoom]"), function (im) { im.onclick = function () { zoomImg(im.src); }; });
     bindBrandPickers(body);
+    var rp = $("wfAiBkReplace"); if (rp) rp.addEventListener("change", refreshLater);
+    function refreshLater() { setTimeout(refresh, 0); }
     $("wfAiBkType").addEventListener("change", function () { var t = this.value; Array.prototype.forEach.call(body.querySelectorAll("[data-cat]"), function (s) { s.innerHTML = catOptions(t, s.value); }); });
     var v = function (card, sel) { var e = card.querySelector(sel); return e ? e.value.trim() : ""; };
-    function dupCode(type, brand, code, model) { return typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, code, null, model) : null; }
-    function dupTest(type, brand, title) { var k = [type, brand, title].map(nfx).join("|"); return A(K().fc).filter(function (f) { return f && f.kind === "test" && [f.deviceType, f.brand, f.title].map(nfx).join("|") === k; })[0] || null; }
+    var replacing = function () { var e = $("wfAiBkReplace"); return !!(e && e.checked); };
+    function dupCode(type, brand, code, model) { var x = typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, code, null, model) : null; return x && replacing() && bookOf(x) === pdfName ? null : x; }
+    function dupTest(type, brand, title) { var k = [type, brand, title].map(nfx).join("|"); return A(K().fc).filter(function (f) { return f && f.kind === "test" && [f.deviceType, f.brand, f.title].map(nfx).join("|") === k && !(replacing() && bookOf(f) === pdfName); })[0] || null; }
     function refresh() {
       var type = $("wfAiBkType").value, nNew = 0, nFill = 0, tNew = 0, tDup = 0;
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card[data-kind]"), function (card) {
@@ -298,6 +362,8 @@
     }
     body.addEventListener("input", refresh); body.addEventListener("change", refresh); refresh();
     $("wfAiBkSave").onclick = function () {
+      // استبدال: نشيل القديم من نفس الكتاب الأول، وبعدين نضيف الجديد
+      if (replacing()) { var keep = A(K().fc).filter(function (f) { return bookOf(f) !== pdfName; }); if (!(typeof w.saveFaultCodesRecords === "function" && w.saveFaultCodesRecords(keep))) return; }
       var type = $("wfAiBkType").value, all = A(K().fc), at = new Date().toISOString(), added = 0, filled = 0, addedT = 0, seen = {};
       var src = pdfName ? "كتاب «" + pdfName + "»" : "صورة " + (r.model ? "كتالوج (" + r.model + ")" : "كتالوج/كتاب");
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card[data-kind]"), function (card) {
@@ -341,6 +407,19 @@
   }
 
   /* 🏷️ أكواد/تيست مود اتسجلوا «عام» من استيراد قديم → الماركة والتصنيف من العنوان والملاحظات اللي معاهم */
+  /* الكتب اللي اتستورد منها قبل كده (من علامة «📚 من كتاب «…»» في الملاحظات) */
+  function bookOf(f) { var m = /📚 من كتاب «([^»]+)»/.exec(String((f && f.note) || "")); return m ? m[1] : ""; }
+  function importedFrom(name) { return A(K().fc).filter(function (f) { return f && bookOf(f) === name; }); }
+  function importedBooks() { var by = {}; A(K().fc).forEach(function (f) { var b = bookOf(f); if (!b) return; by[b] = by[b] || { name: b, codes: 0, tests: 0 }; by[b][f.kind === "test" ? "tests" : "codes"]++; }); return Object.keys(by).map(function (k) { return by[k]; }); }
+  function deleteImported(name) {
+    var list = importedFrom(name); if (!list.length) return false;
+    var nT = list.filter(function (f) { return f.kind === "test"; }).length;
+    if (!w.confirm("هتمسح كل اللي اتستورد من «" + name + "»: " + (list.length - nT) + " كود و" + nT + " تيست مود (حتى اللي اتصنّف بالماركة بعد كده).\n\nأي كود أو تيست مود ضفته بإيدك مش هيتلمس. تمام؟")) return false;
+    var ids = {}; list.forEach(function (f) { ids[f.id] = 1; });
+    var withMedia = list.filter(function (f) { return (f.media || []).length; }).length;
+    if (withMedia && !w.confirm("⚠️ فيه " + withMedia + " منهم عليه صور/فيديو هتتشال معاه. متأكد؟")) return false;
+    return typeof w.saveFaultCodesRecords === "function" && w.saveFaultCodesRecords(A(K().fc).filter(function (f) { return !ids[f.id]; }));
+  }
   function unclassified() { return A(K().fc).filter(function (f) { return f && !f.brand && (f.source === "ai-book" || f.source === "imported") && (f.note || f.model || f.title); }); }
   function classifyBtn() {
     var list = $("faultList"), b = $("wfAiClassify"); if (!list) return;
@@ -979,7 +1058,7 @@
     var need = $("faultForm") || $("faultCodeProfile") || $("quickOrderBody") || $("shareSummaryBox") || $("deviceForm") || $("restockBox") || $("reportsHost") || d.querySelector(".wf-ai-msg-slot");
     if (need) setTimeout(function () { AI().refresh(false); }, 1200);
     all();
-    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,#wfAiBook,#wfAiClassify,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
+    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,.wf-ai-books,#wfAiBook,#wfAiClassify,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
     var ap = $("repApply"); if (ap) ap.addEventListener("click", function () { setTimeout(summaryPanel, 400); });
   }
   w.WFAITools = { compactStats: compactStats, applyOrder: applyOrder, _all: all };
