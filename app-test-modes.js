@@ -15,6 +15,12 @@
   function S() { try { return typeof w.settings === "function" ? w.settings() || {} : {}; } catch (e) { return {}; } }
   function can(p) { try { return !w.WFPerm || !w.WFPerm.can || w.WFPerm.can(p); } catch (e) { return true; } }
   function nl(s) { return esc(s).replace(/\n/g, "<br>"); }
+  /* كل خطوة في سطر لوحده (حتى لو اتكتبت «1) … 2) …» في سطر واحد)، واتجاه كل سطر حسب أوله عشان العربي والإنجليزي ميتلخبطوش */
+  function lines(v) {
+    var t = String(v || "");
+    if (t.indexOf("\n") < 0 && (t.match(/(^|\s)\d{1,2}[).\-]\s/g) || []).length >= 2) t = t.replace(/\s+(?=\d{1,2}[).\-]\s)/g, "\n");
+    return t.split("\n").filter(function (x) { return x.trim(); }).map(function (x) { return "<div class='tm-line' dir='rtl'>" + esc(x.trim()) + "</div>"; }).join("");
+  }
   function save(all) { return typeof w.saveFaultCodesRecords === "function" ? w.saveFaultCodesRecords(all) : false; }
   function isTest(f) { return !!(f && f.kind === "test"); }
   function tests() { return A().filter(isTest); }
@@ -29,7 +35,7 @@
     var st = d.createElement("style"); st.id = "wfTmCss";
     st.textContent = ".tm-tabs{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}.tm-tabs button{flex:1;min-width:140px;padding:10px;border-radius:12px;border:1px solid var(--border,#d5dbe8);background:var(--bg-elevated,#fff);color:inherit;font-weight:700;cursor:pointer}.tm-tabs button.on{background:#0b2a66;color:#fff;border-color:#0b2a66}" +
       "main.tm-on>#bulkFaultBox,main.tm-on>#faultForm,main.tm-on>.filters,main.tm-on>#faultList,main.tm-on>details.danger-zone,main.tm-on>#wfAiCodeFill,main.tm-on .page-head .section-actions,main.tm-on>p.hint.tm-codes-hint{display:none!important}main:not(.tm-on)>#tmSection{display:none}" +
-      ".tm-steps{white-space:normal;line-height:1.8}.tm-item .tm-sub{font-size:13px;opacity:.8}.tm-badge{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:8px;background:rgba(124,58,237,.12);margin-inline-start:6px}";
+      ".tm-steps{white-space:normal;line-height:1.8}.tm-line{unicode-bidi:plaintext;text-align:right;padding:3px 0;border-bottom:1px dashed rgba(127,127,127,.18)}.tm-line:last-child{border-bottom:0}.tm-item .tm-sub{font-size:13px;opacity:.8}.tm-badge{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:8px;background:rgba(124,58,237,.12);margin-inline-start:6px}";
     (d.head || d.documentElement).appendChild(st);
   }
 
@@ -121,7 +127,7 @@
   function profile(f, el) {
     el.classList.add("ps-context-target"); el.setAttribute("data-ps-title", "تيست مود " + (f.title || ""));
     var ps = typeof w.psActions === "function" ? w.psActions("تيست مود " + (f.title || "")) : "";
-    var sec = function (icon, t, v) { return v ? "<h3 class='expense-subtitle'>" + icon + " " + t + "</h3><div class='item tm-steps'>" + nl(v) + "</div>" : ""; };
+    var sec = function (icon, t, v) { return v ? "<h3 class='expense-subtitle'>" + icon + " " + t + "</h3><div class='item tm-steps'>" + lines(v) + "</div>" : ""; };
     el.innerHTML = "<div class='profile'><div class='page-head'><h1 class='profile-title'>🧪 " + esc(f.title) + "</h1><div class='compact-actions'>" +
       (can("faultcodes.edit") ? "<a class='secondary' href='faultcodes.html?tab=test&tmedit=" + encodeURIComponent(f.id) + "'>✏️ تعديل</a>" : "") +
       (can("faultcodes.delete") ? "<button class='danger-btn' data-wf-event='click' data-wf-code=\"deleteFaultCodeRecord('" + esc(f.id) + "')\">🗑️ حذف</button>" : "") + ps + "</div></div>" +

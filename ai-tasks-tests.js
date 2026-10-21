@@ -195,6 +195,15 @@ const PARTS = [
   assert.deepStrictEqual(r.items.map((x) => x.id), ["a1", "t1"]); assert.deepStrictEqual(r.items[0].brands, ["شارب", "تورنيدو"]); assert.strictEqual(r.items[0].code, "E01"); assert.strictEqual(r.items[1].code, "", "التيست مود مالوش كود");
   assert.ok(!/📚/.test(calls[calls.length - 1].contents[0].parts[0].text), "علامة المصدر مش بتتبعت");
 
+  // 📑 فهرس المصدر + كل خطوة في سطر + الإجراءات المنفصلة متتدمجش
+  reply = { deviceType: "غسالات", brand: "", model: "", unclear: "", sections: ["تيست مود ES-TD", "اختبار c0", "تيست مود أعطال الموتور", "اختبار MEMS", "اختبار الفرامل"], codes: [],
+    testModes: ["تيست مود المهندس", "اختبار c0", "أعطال الموتور", "MEMS", "الفرامل والمروحة"].map((t) => ({ title: "شارب ES-TD — " + t, brands: ["شارب"], brandsRaw: [], category: "", models: "ES-TD", enter: "1) ON 3 ثواني. 2) Water Level + Super Spin Dry مرتين", tests: "1) Start/Pause ← بيظهر: فلاش ← الليدات 2) Delicate ← بيظهر: 41 12 ← الليفيل 3) Delay Start ← بيظهر: dP ← طلمبة الصرف", exit: "افصل", note: "", unsure: false })) };
+  r = await ai.task("tech", { task: "codesBook", pdf: { data: "JVBERi" + "A".repeat(2000) }, types: ["غسالات"], brands: ["شارب"] });
+  assert.strictEqual(r.sections.length, 5); assert.strictEqual(r.testModes.length, 5, "5 إجراءات منفصلة");
+  assert.strictEqual(r.testModes[0].tests.split("\n").length, 3, "كل صف في سطر"); assert.ok(/41 12/.test(r.testModes[0].tests), "الأرقام اللي في الجدول متتقسمش");
+  assert.strictEqual(r.testModes[0].enter.split("\n").length, 2);
+  assert.ok(/كل إجراء ليه طريقة دخول مختلفة = عنصر لوحده/.test(calls[calls.length - 1].systemInstruction.parts[0].text));
+
   // ⏱️ لو جوجل اتأخر: رسالة واضحة (ai_timeout) بدل ما الدالة تتقفل والمتصفح يشوف «مقدرتش أوصل»
   const ai6 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
     fetchImpl: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } });
