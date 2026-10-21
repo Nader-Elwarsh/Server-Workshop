@@ -179,13 +179,17 @@
       return (w.WFAppCheck && w.WFAppCheck.headers ? w.WFAppCheck.headers().catch(function () { return {}; }) : Promise.resolve({})).then(function (h) {
         var hdr = { "Content-Type": "application/json", Authorization: "Bearer " + tok };
         Object.keys(h || {}).forEach(function (k) { hdr[k] = h[k]; });
+        var t0 = Date.now();
         return fetch(url, { method: "POST", headers: hdr, body: JSON.stringify({ data: data || {} }) }).catch(function () {
-          throw new Error(navigator.onLine === false ? "مفيش إنترنت." : "مقدرتش أوصل للسيرفر (" + name + ") — غالبًا الدالة دي لسه ما اتنشرتش أو فشلت. جرّب تاني بعد دقيقة.");
+          if (navigator.onLine === false) throw new Error("مفيش إنترنت.");
+          // اتقطع بعد وقت طويل = السيرفر/النت قفل الطلب (مش إن الدالة مش موجودة)
+          if (Date.now() - t0 > 60000) throw new Error("الاتصال اتقطع بعد " + Math.round((Date.now() - t0) / 1000) + " ثانية قبل ما النتيجة توصل — الملف كبير أو النت فصل. جرّب صفحات أقل أو جرّب تاني.");
+          throw new Error("مقدرتش أوصل للسيرفر (" + name + ") — غالبًا الدالة دي لسه ما اتنشرتش أو فشلت. جرّب تاني بعد دقيقة.");
         }).then(function (r) {
           return r.json().catch(function () { return {}; }).then(function (j) {
             if (r.ok && j && j.result !== undefined) return j.result;
             var m = (j && j.error && j.error.message) || ("HTTP " + r.status);
-            var M = { media_rate_limited: "وصلت لأقصى عدد ملفات النهارده — جرّب بكره.", upload_not_authorized: "حسابك مش مسموح له يرفع ملفات.", owner_only: "الجزء ده للمالك بس.", not_allowed: "مش مسموح لك بالعملية دي.", ai_off: "الذكاء الاصطناعي مقفول من الإعدادات.", feature_off: "الميزة دي مقفولة من إعدادات الذكاء الاصطناعي.", ai_cap: "وصلت للحد الأقصى لصرف الذكاء الاصطناعي الشهر ده — هيرجع أول الشهر الجاي، أو المالك يزوّد الحد من الإعدادات.", ai_not_setup: "خدمة Vertex AI لسه مش متفعّلة على Google Cloud — شوف الإعدادات ← 🤖 الذكاء الاصطناعي.", ai_no_model: "مفيش موديل ذكاء اصطناعي متاح دلوقتي على المشروع — جرّب «تلقائي» من الإعدادات.", ai_busy: "خدمة الذكاء الاصطناعي مشغولة — جرّب بعد دقيقة.", ai_failed: "خدمة الذكاء الاصطناعي ما ردّتش — جرّب تاني.", ai_bad_reply: "الرد ماكانش مفهوم — جرّب تاني.", no_fault: "اكتب العطل الأول." };
+            var M = { media_rate_limited: "وصلت لأقصى عدد ملفات النهارده — جرّب بكره.", upload_not_authorized: "حسابك مش مسموح له يرفع ملفات.", owner_only: "الجزء ده للمالك بس.", not_allowed: "مش مسموح لك بالعملية دي.", ai_off: "الذكاء الاصطناعي مقفول من الإعدادات.", feature_off: "الميزة دي مقفولة من إعدادات الذكاء الاصطناعي.", ai_cap: "وصلت للحد الأقصى لصرف الذكاء الاصطناعي الشهر ده — هيرجع أول الشهر الجاي، أو المالك يزوّد الحد من الإعدادات.", ai_not_setup: "خدمة Vertex AI لسه مش متفعّلة على Google Cloud — شوف الإعدادات ← 🤖 الذكاء الاصطناعي.", ai_no_model: "مفيش موديل ذكاء اصطناعي متاح دلوقتي على المشروع — جرّب «تلقائي» من الإعدادات.", ai_busy: "خدمة الذكاء الاصطناعي مشغولة — جرّب بعد دقيقة.", ai_failed: "خدمة الذكاء الاصطناعي ما ردّتش — جرّب تاني.", ai_bad_reply: "الرد ماكانش مفهوم — جرّب تاني.", no_fault: "اكتب العطل الأول.", ai_timeout: "التحليل أخد وقت أطول من المسموح — الملف أو التسجيل طويل. جرّب صفحات أقل (من صفحة / لحد صفحة) أو جزء أقصر.", bad_image: "الملف أو الصورة مش مقروءة أو أكبر من المسموح.", bad_audio: "صيغة أو حجم التسجيل مش مدعوم." };
             if (r.status === 404) throw new Error("الخدمة دي لسه ما اتنشرتش على السيرفر — انشر الدوال من Cloud Shell.");
             throw new Error(M[m] || (name === "mediaSign" ? "تعذّر تجهيز الرفع — جرّب تاني." : "تعذّر الاتصال بالسيرفر — جرّب تاني."));
           });
