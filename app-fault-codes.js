@@ -28,6 +28,7 @@ function findDuplicateFaultCode(deviceType,brand,code,excludeId){
   let nc=normalizeFaultText(code);if(!nc)return null;
   let nt=normalizeFaultText(deviceType),nb=normalizeFaultText(brand);
   return arr(K.fc).find(f=>String(f.id)!==String(excludeId||"")
+    &&f.kind!=="test"
     &&normalizeFaultText(f.code)===nc
     &&normalizeFaultText(f.deviceType)===nt
     &&normalizeFaultText(f.brand)===nb)||null;
@@ -112,11 +113,11 @@ function deleteFaultCodeRecord(fid){
   if(document.getElementById("faultCodeProfile")){if(typeof wfLeaveTo==="function")wfLeaveTo("faultcodes.html",false);else location.href="faultcodes.html"}
 }
 function deleteAllFaultCodes(){
-  let a=arr(K.fc);
+  let all=arr(K.fc),a=all.filter(f=>f.kind!=="test"),tests=all.filter(f=>f.kind==="test");
   if(!a.length)return alert("لا توجد أكواد أعطال مسجّلة أصلًا.");
-  if(!confirm(`حذف جميع أكواد الأعطال (${a.length}) نهائيًا؟ (كل الأنواع والماركات)`))return;
+  if(!confirm(`حذف جميع أكواد الأعطال (${a.length}) نهائيًا؟ (كل الأنواع والماركات — التيست مود مش هيتمسح)`))return;
   if(!confirm("تأكيد نهائي: لا يمكن التراجع عن الحذف."))return;
-  if(!saveFaultCodesRecords([]))return;
+  if(!saveFaultCodesRecords(tests))return;
   renderFaultCodes?.();
   alert("تم حذف جميع أكواد الأعطال.");
 }
@@ -129,7 +130,7 @@ function deleteFilteredFaultCodes(){
   let brandFilter=document.getElementById("fcFilterBrand")?.value||"";
   if(!typeFilter&&!brandFilter)return alert("اختار نوع الجهاز أو الماركة فوق (فلتر القائمة) الأول، عشان تحدد الدفعة اللي عايز تمسحها. لحذف كل الأكواد من غير فلتر، استخدم زرار «حذف كل الأكواد».");
   let a=arr(K.fc);
-  let matches=a.filter(f=>(!typeFilter||f.deviceType===typeFilter)&&(!brandFilter||f.brand===brandFilter));
+  let matches=a.filter(f=>f.kind!=="test"&&(!typeFilter||f.deviceType===typeFilter)&&(!brandFilter||f.brand===brandFilter));
   if(!matches.length)return alert("لا توجد أكواد مطابقة لهذا الفلتر.");
   let label=[typeFilter,brandFilter].filter(Boolean).join(" • ")||"الفلتر الحالي";
   if(!confirm(`حذف ${matches.length} كود مطابق لـ (${label}) نهائيًا؟`))return;
@@ -249,6 +250,7 @@ function renderFaultCodes(){
   let typeFilter=document.getElementById("fcFilterType")?.value||"";
   let brandFilter=document.getElementById("fcFilterBrand")?.value||"";
   let a=arr(K.fc)
+    .filter(f=>f.kind!=="test")
     .filter(f=>!typeFilter||f.deviceType===typeFilter)
     .filter(f=>!brandFilter||f.brand===brandFilter)
     .filter(f=>!q||(typeof wfMatch==="function"?wfMatch([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand],q):normalizeFaultText([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand].join(" ")).includes(normalizeFaultText(q))))
@@ -267,7 +269,8 @@ function faultCodeProfile(){
   let el=document.getElementById("faultCodeProfile");if(!el)return;
   let f=arr(K.fc).find(x=>x.id===new URLSearchParams(location.search).get("id"));
   if(!f){el.innerHTML="<div class='item'>الكود غير موجود.</div>";return}
-  el.classList.add("ps-context-target");el.setAttribute("data-ps-title",`كود عطل ${f.code}`);
+  // التيست مود متخزن في نفس المكان (kind:"test") وليه صفحة عرض خاصة (app-test-modes.js)
+  if(f.kind==="test"&&typeof window.wfTestModeProfile==="function")return window.wfTestModeProfile(f,el);el.setAttribute("data-ps-title",`كود عطل ${f.code}`);
   el.innerHTML=`<div class="profile">
     <div class="page-head"><h1 class="profile-title">🧯 ${esc(f.code)} — ${esc(f.title)}</h1>
       <div class="compact-actions"><a class="secondary" href="faultcodes.html?edit=${f.id}">✏️ تعديل</a><button class="danger-btn" data-wf-event="click" data-wf-code="deleteFaultCodeRecord('${f.id}')">🗑️ حذف</button>${psActions("كود عطل "+f.code)}</div>
@@ -280,7 +283,9 @@ function faultCodeProfile(){
     ${f.cause?`<h3 class="expense-subtitle">🔍 السبب المحتمل</h3><div class="item">${esc(f.cause).replace(/\n/g,"<br>")}</div>`:""}
     ${f.fix?`<h3 class="expense-subtitle">🛠️ خطوات الفحص/الحل</h3><div class="item">${esc(f.fix).replace(/\n/g,"<br>")}</div>`:""}
     ${f.note?`<h3 class="expense-subtitle">📝 ملاحظات إضافية</h3><div class="item">${esc(f.note).replace(/\n/g,"<br>")}</div>`:""}
+    <div id="fcMediaBox"></div>
   </div>`;
+  if(typeof window.wfFaultMedia==="function")window.wfFaultMedia(f,document.getElementById("fcMediaBox"));
 }
 
 /* ---------------------------------------------------------------------
@@ -309,6 +314,15 @@ function importFaultCodesFile(input){
       if(!incoming)throw new Error("bad");
       let existing=arr(K.fc),added=0,skipped=0;
       const seenImport=new Set();incoming.forEach(raw=>{
+        // التيست مود: مكرر لو نفس النوع/الماركة/العنوان
+        if(raw&&raw.kind==="test"){
+          if(!raw.title||!raw.enter)return;
+          let tk=["test",raw.deviceType,raw.brand,raw.title].map(normalizeFaultText).join("|");
+          if(seenImport.has(tk)||existing.some(f=>f.kind==="test"&&["test",f.deviceType,f.brand,f.title].map(normalizeFaultText).join("|")===tk)){skipped++;return}
+          seenImport.add(tk);
+          existing.push({id:id(),kind:"test",deviceType:raw.deviceType||"",brand:raw.brand||"",model:raw.model||"",title:raw.title,enter:raw.enter||"",tests:raw.tests||"",exit:raw.exit||"",note:raw.note||"",media:Array.isArray(raw.media)?raw.media.slice(0,10):[],source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          added++;return;
+        }
         if(!raw||!raw.code)return;
         // مكرر عندك أو مكرر جوه نفس الملف (قبل كده التكرار جوه الملف كان بيدخل مرتين)
         let key=[raw.deviceType,raw.brand,raw.code].map(normalizeFaultText).join("|");
@@ -318,12 +332,12 @@ function importFaultCodesFile(input){
         existing.push({
           id:id(),deviceType:raw.deviceType||"",brand:raw.brand||"",code:raw.code||"",
           title:raw.title||"",cause:raw.cause||"",fix:raw.fix||"",note:raw.note||"",
-          addedBy:raw.addedBy||"",source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+          addedBy:raw.addedBy||"",media:Array.isArray(raw.media)?raw.media.slice(0,10):[],source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
         });
         added++;
       });
       saveFaultCodesRecords(existing);
-      alert(`تم استيراد ${added} كود جديد.${skipped?` (اتجاهل ${skipped} كود مكرر — موجود عندك أو متكرر في الملف).`:""}`);
+      alert(`تم استيراد ${added} (كود/تيست مود) جديد.${skipped?` (اتجاهل ${skipped} كود مكرر — موجود عندك أو متكرر في الملف).`:""}`);
       renderFaultCodes?.();
     }catch(err){alert("⚠️ ملف غير صالح. تأكد إنه ملف أكواد أعطال مُصدَّر من نفس النظام.")}
     input.value="";

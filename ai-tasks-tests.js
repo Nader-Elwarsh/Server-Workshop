@@ -135,6 +135,18 @@ const PARTS = [
   r = await ai.task("tech", { task: "codesBook", images: [IMG], types: ["غسالات"], brands: ["إل جي"], fillMissing: true });
   assert.strictEqual(r.codes[1].cause, "محبس مقفول"); assert.strictEqual(r.codes[1].aiCause, true);
   assert.strictEqual(calls[calls.length - 1].generationConfig.mediaResolution, "MEDIA_RESOLUTION_HIGH");
+  // 📄 كتاب PDF: بيتبعت inline كـ application/pdf، والأكواد والتيست مود بيرجعوا منفصلين
+  await assert.rejects(ai.task("tech", { task: "codesBook", pdf: { data: "QUJD" + "A".repeat(600) } }), /bad_image/, "مش PDF حقيقي");
+  await assert.rejects(ai.task("tech", { task: "codesBook", pdf: { data: "JVBERi" + "A".repeat(19000000) } }), /bad_image/, "أكبر من الحد");
+  reply = { deviceType: "غسالات", brand: "إل جي", model: "F4J6", unclear: "", codes: [{ code: "OE", title: "صرف", cause: "", fix: "", causeFromPage: true, fixFromPage: true, note: "", unsure: false }],
+    testModes: [{ title: "تيست مود الغسالة", models: "F4J6", enter: "1) افصل\n2) دوس Spin + Temp", tests: "1) الموتور يلف", exit: "افصل", note: "", unsure: false }, { title: "تيست مود الغسالة", models: "", enter: "مكرر", tests: "", exit: "", note: "", unsure: false }, { title: "من غير طريقة دخول", models: "", enter: "", tests: "x", exit: "", note: "", unsure: false }] };
+  r = await ai.task("tech", { task: "codesBook", pdf: { data: "JVBERi" + "A".repeat(2000) }, pageFrom: 40, pageTo: 55, types: ["غسالات"], brands: ["إل جي"] });
+  const pb = calls[calls.length - 1].contents[0].parts;
+  assert.strictEqual(pb[0].inlineData.mimeType, "application/pdf"); assert.ok(/من 40 لحد 55/.test(pb[1].text));
+  assert.strictEqual(r.codes.length, 1); assert.strictEqual(r.testModes.length, 1, "المكرر واللي من غير طريقة دخول بيتشالوا");
+  assert.ok(/\n2\) دوس/.test(r.testModes[0].enter), "السطور محفوظة");
+  r = await ai.task("tech", { task: "codesBook", pdf: { data: "JVBERi" + "A".repeat(2000) }, want: "tests", types: ["غسالات"], brands: ["إل جي"] });
+  assert.strictEqual(r.codes.length, 0, "طالب التيست مود بس"); assert.ok(/التيست مود بس/.test(calls[calls.length - 1].contents[0].parts[1].text));
 
   // 🧹 المخزن: صنف واحد في مجموعة واحدة بس، والمجموعة لازم صنفين
   reply = (body) => { const t = body.contents[0].parts[0].text; const c1 = t.match(/(S\d+): طلمبة/)[1], c2 = t.match(/(S\d+): طرمبة/)[1], c3 = t.match(/(S\d+): كابستور/)[1]; return { groups: [{ codes: [c1, c2], keep: c1, name: "طلمبة صرف غسالة 30 وات ايطالي", reason: "نفس القطعة" }, { codes: [c1, c3], keep: c3, name: "x", reason: "" }], renames: [{ code: c3, name: "كابستور 10 مايكرو", reason: "" }, { code: c3, name: "كابستور تكييف 10 مايكرو", reason: "أوضح" }] }; };

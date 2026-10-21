@@ -33,7 +33,7 @@
     treasury: "💵 الخزنة",
     wallet: "💳 الحسابات والمحافظ",
     route: "🗺️ خط السير",
-    faultcode: "🧯 أكواد الأعطال",
+    faultcode: "🧯 أكواد الأعطال والتيست مود",
     compressor: "🧊 أكواد الكباسات",
     settings: "⚙️ الإعدادات"
   };
@@ -179,11 +179,12 @@
     // أكواد أعطال الأجهزة: قسم مرجعي مستقل (مش مربوط بعميل/جهاز/أمر
     // شغل) — بندوّر بالكود والوصف والسبب والحل ونوع الجهاز والماركة.
     faultCodes.forEach(function (f) {
-      if (!hit([f.code, f.title, f.cause, f.fix, f.deviceType, f.brand])) return;
+      var tm = f && f.kind === "test"; // التيست مود متخزن مع الأكواد
+      if (!hit(tm ? ["تيست مود test mode", f.title, f.model, f.enter, f.tests, f.deviceType, f.brand] : [f.code, f.title, f.cause, f.fix, f.deviceType, f.brand])) return;
       results.push({
-        cat: "faultcode", icon: "🧯",
-        title: (f.code || "") + (f.title ? " — " + f.title : ""),
-        sub: [f.deviceType, f.brand].filter(Boolean).join(" • "),
+        cat: "faultcode", icon: tm ? "🧪" : "🧯",
+        title: tm ? "تيست مود — " + (f.title || "") : (f.code || "") + (f.title ? " — " + f.title : ""),
+        sub: [f.deviceType, f.brand, tm ? f.model : ""].filter(Boolean).join(" • "),
         href: "faultcode.html?id=" + encodeURIComponent(f.id)
       });
     });
