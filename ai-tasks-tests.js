@@ -204,6 +204,24 @@ const PARTS = [
   assert.strictEqual(r.testModes[0].enter.split("\n").length, 2);
   assert.ok(/كل إجراء ليه طريقة دخول مختلفة = عنصر لوحده/.test(calls[calls.length - 1].systemInstruction.parts[0].text));
 
+  // 📖 RECITATION (نقل حرفي من كتاب): بيعيد مرة بطلب صياغة، وتكلفة المرتين بتتحسب
+  let rc = 0; const rec = [];
+  const ai7 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async (url, opt) => { rc++; const b = JSON.parse(opt.body); rec.push(b); if (rc === 1) return { status: 200, ok: true, json: async () => ({ candidates: [{ finishReason: "RECITATION", content: { parts: [] } }], usageMetadata: { promptTokenCount: 100 } }) };
+      return { status: 200, ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ deviceType: "", brand: "", model: "", sections: [], codes: [{ code: "E1", title: "x", cause: "", fix: "", causeFromPage: true, fixFromPage: true, note: "", unsure: false, brands: [], brandsRaw: [], category: "", models: "", alsoShows: "" }], testModes: [], unclear: "" }) }] } }], usageMetadata: { promptTokenCount: 100 } }) }; } });
+  r = await ai7.task("own", { task: "codesBook", images: [IMG] });
+  assert.strictEqual(rc, 2); assert.strictEqual(r.codes.length, 1); assert.ok(/متنقلش أي فقرة/.test(rec[1].systemInstruction.parts[0].text));
+  // RECITATION تاني → رسالة فيها السبب
+  const ai8 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async () => ({ status: 200, ok: true, json: async () => ({ candidates: [{ finishReason: "RECITATION", content: { parts: [] } }], usageMetadata: {} }) }) });
+  await assert.rejects(ai8.task("own", { task: "codesBook", images: [IMG] }), /ai_bad_reply\|RECITATION/);
+  // الموديل القوي رجّع 500 → بيكمّل بالعادي
+  const seen9 = [];
+  const ai9 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async (url) => { const m = url.match(/models\/([^:]+):/)[1]; seen9.push(m); if (/pro/.test(m)) return { status: 500, ok: false, json: async () => ({ error: { message: "internal" } }) }; return { status: 200, ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: "{}" }] } }], usageMetadata: {} }) }; } });
+  await ai9.task("own", { task: "codesBook", images: [IMG] });
+  assert.strictEqual(seen9[seen9.length - 1], "gemini-2.5-flash", "رجع للعادي بعد فشل الـ Pro");
+
   // ⏱️ لو جوجل اتأخر: رسالة واضحة (ai_timeout) بدل ما الدالة تتقفل والمتصفح يشوف «مقدرتش أوصل»
   const ai6 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
     fetchImpl: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } });

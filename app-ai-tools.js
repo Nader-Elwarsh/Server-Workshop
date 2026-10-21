@@ -214,7 +214,7 @@
   function jobsWrite(j) { try { var ks = Object.keys(j); if (ks.length > 3) ks.sort(function (a, b) { return (j[a].at || 0) - (j[b].at || 0); }).slice(0, ks.length - 3).forEach(function (k) { delete j[k]; }); if (w.WFStorage) w.WFStorage.setItem(JOBS, JSON.stringify(j)); } catch (e) {} }
   function jobClear(key) { var j = jobsRead(); if (j[key]) { delete j[key]; jobsWrite(j); } }
   function runBookParts(data, parts, base, res, jobKey) {
-    var all = { codes: [], testModes: [], sections: [], unclear: [], cost: 0, deviceType: "", brand: "", model: "" }, failed = [], k = 0;
+    var all = { codes: [], testModes: [], sections: [], unclear: [], cost: 0, deviceType: "", brand: "", model: "" }, failed = [], k = 0, lastErr = "";
     /* الأجزاء اللي خلصت بتتحفظ على الجهاز: لو النافذة أو الصفحة اتقفلت، نفس الاستيراد بيكمل من مكانه من غير ما تدفع تاني (لحد 3 أيام) */
     var jobs = jobsRead(), job = jobKey && jobs[jobKey] && Date.now() - (jobs[jobKey].at || 0) < 3 * 864e5 ? jobs[jobKey] : null, doneParts = (job && job.done) || {};
     var nDone = Object.keys(doneParts).length;
@@ -234,7 +234,7 @@
         all.cost += +r.cost || 0;
         remember(k, { codes: r.codes, testModes: r.testModes, sections: r.sections, unclear: r.unclear, deviceType: r.deviceType, brand: r.brand, model: r.model });
         absorb(r, pr);
-      }, function (e) { if (!tries && !/مقفول|الحد الأقصى|صلاحية/.test((e && e.message) || "")) return one(pr, 1); failed.push(pr); if (/مقفول|الحد الأقصى/.test((e && e.message) || "")) throw e; });
+      }, function (e) { lastErr = (e && e.message) || ""; if (!tries && !/مقفول|الحد الأقصى|صلاحية|اتنشرت/.test(lastErr)) return one(pr, 1); failed.push(pr); if (/مقفول|الحد الأقصى|صلاحية|اتنشرت/.test(lastErr)) throw e; });
     }
     function next() { if (k >= parts.length) return Promise.resolve(); return one(parts[k], 0).then(function () { k++; return next(); }); }
     return next().then(function () {
@@ -243,8 +243,8 @@
       all.codes.forEach(function (c) { var key = [nfx(c.code), (c.brands || []).slice().sort().join(","), nfx(c.models)].join("|"); if (seen[key]) { var o = seen[key]; if (!o.cause && c.cause) o.cause = c.cause; if (!o.fix && c.fix) o.fix = c.fix; return; } seen[key] = c; codes.push(c); });
       var seenT = {}, tms = [];
       all.testModes.forEach(function (t) { var key = nfx(t.title); if (seenT[key]) { var o = seenT[key]; if ((t.tests || "").length > (o.tests || "").length) { o.tests = t.tests; o.enter = t.enter || o.enter; } return; } seenT[key] = t; tms.push(t); });
-      var unc = all.unclear.slice(); if (failed.length) unc.unshift("⚠️ الصفحات دي مااتقرتش (فشلت مرتين): " + failed.map(function (p) { return p[0] + "–" + p[1]; }).join("، ") + " — استوردها تاني لوحدها.");
-      if (!codes.length && !tms.length && failed.length === parts.length) throw new Error("مقدرتش أقرا الكتاب — جرّب تاني أو قسّمه.");
+      var unc = all.unclear.slice(); if (failed.length) unc.unshift("⚠️ الصفحات دي مااتقرتش (فشلت مرتين): " + failed.map(function (p) { return p[0] + "–" + p[1]; }).join("، ") + " — استوردها تاني لوحدها." + (lastErr ? " السبب: " + lastErr : ""));
+      if (!codes.length && !tms.length && failed.length === parts.length) throw new Error("مقدرتش أقرا الكتاب — " + (lastErr || "جرّب تاني أو قسّمه."));
       return { codes: codes, testModes: tms, sections: all.sections, unclear: unc.join("\n"), cost: all.cost, deviceType: all.deviceType, brand: all.brand, model: all.model };
     });
   }
