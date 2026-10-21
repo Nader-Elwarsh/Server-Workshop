@@ -177,6 +177,13 @@ const PARTS = [
   assert.strictEqual((await ai5.config("own")).precise, false);
   await ai5.saveConfig("own", { precise: true });
 
+  // ⏱️ لو جوجل اتأخر: رسالة واضحة (ai_timeout) بدل ما الدالة تتقفل والمتصفح يشوف «مقدرتش أوصل»
+  const ai6 = createAI({ db, getToken: async () => "t", projectId: "p", actor: async (u) => actors[u], inc: (n) => ({ __inc: n }), now: () => Date.UTC(2026, 9, 20, 9),
+    fetchImpl: async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; } });
+  await assert.rejects(ai6.task("own", { task: "codesBook", images: [IMG] }), /ai_timeout/);
+  const idx = fs.readFileSync("functions/index.js", "utf8");
+  assert.ok(/exports\.aiTask = aiCallable\("aiTask"[^\n]*timeoutSeconds: 540/.test(idx), "الدالة ليها 9 دقايق");
+
   // العدّاد بيتسجل لكل ميزة
   const u = db.docs["serverConfig/aiUsage-2026-10"];
   const { costOf } = require("./functions/ai");
