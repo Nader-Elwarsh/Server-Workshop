@@ -47,18 +47,25 @@
       ".wf-ai-kinds{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.wf-ai-kinds button.on{background:#6d28d9;color:#fff;border-color:#6d28d9}.wf-ai-sum{padding:10px 0 0;border-top:1px solid rgba(127,127,127,.2);margin-top:10px}" +
       ".wf-ai-shots{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.wf-ai-shot{position:relative;width:96px;height:120px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.3)}.wf-ai-shot img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}.wf-ai-shot .wf-ai-x{position:absolute;top:0;inset-inline-end:2px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:26px;height:26px;font-size:18px;line-height:24px;padding:0}" +
       ".wf-ai-unsure{outline:2px solid #f59e0b!important;background:rgba(245,158,11,.12)!important}" +
-      ".wf-ai-brs{margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.wf-ai-brs label.wf-ai-chip{cursor:pointer;padding:3px 8px}.wf-ai-brs select{max-width:150px}.wf-ai-mic.rec{background:#b91c1c!important;color:#fff;border-color:#b91c1c!important;animation:wfaipulse 1.2s infinite}@keyframes wfaipulse{50%{opacity:.6}}";
+      ".wf-ai-brs{margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.wf-ai-brs label.wf-ai-chip{cursor:pointer;padding:3px 8px}.wf-ai-brs select{max-width:150px}@keyframes wfainudge{0%,100%{transform:none}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}.wf-ai-nudge{animation:wfainudge .25s 2}.wf-ai-mic.rec{background:#b91c1c!important;color:#fff;border-color:#b91c1c!important;animation:wfaipulse 1.2s infinite}@keyframes wfaipulse{50%{opacity:.6}}";
     (d.head || d.documentElement).appendChild(st);
   }
-  function modal(title) {
+  /* نوافذ الذكاء الاصطناعي: الدوسة برة النافذة مش بتقفلها (كانت بتضيّع شغل طويل زي استيراد كتاب)، والقفل من × بس.
+     opts.confirmClose: دالة بترجّع رسالة تأكيد لو فيه شغل شغال أو نتيجة لسه ماتحفظتش. */
+  function modal(title, opts) {
+    opts = opts || {};
     css();
     var mask = d.createElement("div"); mask.className = "wf-ai-mask";
     var box = d.createElement("div"); box.className = "wf-ai-modal"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
     box.innerHTML = "<h3><span>" + esc(title) + "</span><button type='button' class='wf-ai-x' aria-label='إغلاق'>×</button></h3><div class='wf-ai-body'></div>";
     mask.appendChild(box); d.body.appendChild(mask);
     var close = function () { if (mask.parentNode) mask.parentNode.removeChild(mask); };
-    box.querySelector(".wf-ai-x").onclick = close;
-    mask.addEventListener("click", function (e) { if (e.target === mask) close(); });
+    box.querySelector(".wf-ai-x").onclick = function () { var msg = typeof opts.confirmClose === "function" ? opts.confirmClose() : ""; if (msg && !w.confirm(msg)) return; close(); };
+    mask.addEventListener("click", function (e) {
+      if (e.target !== mask) return;
+      if (opts.easyClose) return close();
+      box.classList.remove("wf-ai-nudge"); void box.offsetWidth; box.classList.add("wf-ai-nudge");
+    });
     return { body: box.querySelector(".wf-ai-body"), close: close, box: box };
   }
   /* اختيار صورة (كاميرا أو معرض) وتصغيرها لـ 1600 بكسل JPEG — الصورة مش بتتخزن، بتتبعت للتحليل بس */
@@ -202,17 +209,31 @@
     });
   }
   /* الكتاب على أجزاء: جزء ورا جزء (كل جزء لوحده ميعدّيش حد الوقت)، ولو جزء فشل بنجرّبه تاني مرة، وبعدين نكمّل */
-  function runBookParts(data, parts, base, res) {
+  var JOBS = "wf_ai_bookjobs";
+  function jobsRead() { try { var v = w.WFStorage && w.WFStorage.getItem(JOBS); return v ? JSON.parse(v) || {} : {}; } catch (e) { return {}; } }
+  function jobsWrite(j) { try { var ks = Object.keys(j); if (ks.length > 3) ks.sort(function (a, b) { return (j[a].at || 0) - (j[b].at || 0); }).slice(0, ks.length - 3).forEach(function (k) { delete j[k]; }); if (w.WFStorage) w.WFStorage.setItem(JOBS, JSON.stringify(j)); } catch (e) {} }
+  function jobClear(key) { var j = jobsRead(); if (j[key]) { delete j[key]; jobsWrite(j); } }
+  function runBookParts(data, parts, base, res, jobKey) {
     var all = { codes: [], testModes: [], sections: [], unclear: [], cost: 0, deviceType: "", brand: "", model: "" }, failed = [], k = 0;
+    /* الأجزاء اللي خلصت بتتحفظ على الجهاز: لو النافذة أو الصفحة اتقفلت، نفس الاستيراد بيكمل من مكانه من غير ما تدفع تاني (لحد 3 أيام) */
+    var jobs = jobsRead(), job = jobKey && jobs[jobKey] && Date.now() - (jobs[jobKey].at || 0) < 3 * 864e5 ? jobs[jobKey] : null, doneParts = (job && job.done) || {};
+    var nDone = Object.keys(doneParts).length;
+    if (nDone && !w.confirm("📚 لقيت استيراد سابق لنفس الملف: " + nDone + " من " + parts.length + " جزء خلصوا ومحفوظين.\n\nموافق = أكمّل من مكانه (الأجزاء اللي خلصت مش هتتحسب تاني).\nإلغاء = أبدأ من الأول.")) doneParts = {};
+    function remember(i, r) { if (!jobKey) return; doneParts[i] = r; var j = jobsRead(); j[jobKey] = { at: Date.now(), done: doneParts }; jobsWrite(j); }
+    function absorb(r, pr) {
+      ["deviceType", "brand", "model"].forEach(function (f) { if (!all[f] && r[f]) all[f] = r[f]; });
+      all.codes = all.codes.concat(r.codes || []); all.testModes = all.testModes.concat(r.testModes || []);
+      all.sections = all.sections.concat(r.sections || []);
+      if (r.unclear) all.unclear.push("ص " + pr[0] + "–" + pr[1] + ": " + r.unclear);
+    }
     function show(msg) { res.innerHTML = "<div class='hint'>⏳ " + msg + "</div><div class='wf-ai-bar'><i style='width:" + Math.round(k / parts.length * 100) + "%'></i></div><small class='hint'>لقى لحد دلوقتي: " + all.codes.length + " كود و" + all.testModes.length + " تيست مود" + (failed.length ? " • ⚠️ " + failed.length + " جزء فشل" : "") + "</small>"; }
     function one(pr, tries) {
       show("بيقرا الصفحات " + pr[0] + "–" + pr[1] + " (جزء " + (k + 1) + " من " + parts.length + ")" + (tries ? " — محاولة تانية" : "") + "…");
+      if (doneParts[k]) { absorb(doneParts[k], pr); return Promise.resolve(); }
       return task("codesBook", Object.assign({ pdf: { data: data }, pageFrom: pr[0], pageTo: pr[1] }, base)).then(function (r) {
         all.cost += +r.cost || 0;
-        ["deviceType", "brand", "model"].forEach(function (f) { if (!all[f] && r[f]) all[f] = r[f]; });
-        all.codes = all.codes.concat(r.codes || []); all.testModes = all.testModes.concat(r.testModes || []);
-        all.sections = all.sections.concat((r.sections || []).map(function (x) { return x; }));
-        if (r.unclear) all.unclear.push("ص " + pr[0] + "–" + pr[1] + ": " + r.unclear);
+        remember(k, { codes: r.codes, testModes: r.testModes, sections: r.sections, unclear: r.unclear, deviceType: r.deviceType, brand: r.brand, model: r.model });
+        absorb(r, pr);
       }, function (e) { if (!tries && !/مقفول|الحد الأقصى|صلاحية/.test((e && e.message) || "")) return one(pr, 1); failed.push(pr); if (/مقفول|الحد الأقصى/.test((e && e.message) || "")) throw e; });
     }
     function next() { if (k >= parts.length) return Promise.resolve(); return one(parts[k], 0).then(function () { k++; return next(); }); }
@@ -228,7 +249,7 @@
     });
   }
   function bookFlow() {
-    var L = lists(), m = modal("📚 أكواد وتيست مود من كتالوج أو كتاب"), body = m.body, shots = [], pdf = null;
+    var running = false, L = lists(), m = modal("📚 أكواد وتيست مود من كتالوج أو كتاب", { confirmClose: function () { return running ? "الاستيراد شغال. لو قفلت النافذة هيكمل في الخلفية وشاشة المراجعة هتفتح لوحدها لما يخلص (سيب الصفحة مفتوحة). والأجزاء اللي خلصت محفوظة — لو الصفحة اتقفلت، استورد نفس الملف تاني وهيكمل من مكانه من غير ما تدفع عليهم تاني.\n\nأقفل النافذة؟" : ""; } }), body = m.body, shots = [], pdf = null;
     var opt = function (arr, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option>" + esc(x) + "</option>"; }).join(""); };
     body.innerHTML = "<div class='hint'>📄 ملف PDF (كتالوج خدمة / كتاب) أو 📷 صور صفحات. هيطلّع <b>أكواد الأعطال</b> و<b>التيست مود</b> كل واحد لوحده، وتراجعهم قبل الحفظ.</div>" +
       "<div class='wf-ai-grid'><label>نوع الجهاز<select data-k='type'>" + opt(L.types, "— من المصدر / عام —") + "</select></label><label>الماركة<select data-k='brand'>" + opt(L.brands, "— من المصدر / عام —") + "</select></label>" +
@@ -284,8 +305,9 @@
         var parts = [];
         for (var p0 = a; p0 <= b; p0 += BOOK_CHUNK) parts.push([p0, Math.min(b, p0 + BOOK_CHUNK - 1)]);
         if (parts.length > 1 && !w.confirm("📚 " + (b - a + 1) + " صفحة — هيتقرا على " + parts.length + " أجزاء (" + BOOK_CHUNK + " صفحة في كل جزء) عشان ميسيبش حاجة.\n⏱️ حوالي " + Math.ceil(parts.length * 1.5) + " دقيقة — سيب الصفحة مفتوحة والموبايل منوّر.\n💵 التكلفة التقريبية: " + (Math.round(parts.length * ((pd.pages || b) * 0.00035 + 0.08) * 100) / 100) + " دولار.\nتكمل؟")) return;
-        go.disabled = true;
-        runBookParts(pd.data, parts, base, res).then(function (r) { go.disabled = false; finish(r); }, function (e) { go.disabled = false; fail(e, res); });
+        go.disabled = true; running = true;
+        var jobKey = [pdf.name, pdf.size, a, b, want, fill ? 1 : 0, type, brand].join("|");
+        runBookParts(pd.data, parts, base, res, jobKey).then(function (r) { running = false; go.disabled = false; r.jobKey = jobKey; finish(r); }, function (e) { running = false; go.disabled = false; fail(e, res); });
       }, function (e) { done2(); fail(e, res); });
     };
     drawSrc();
@@ -308,7 +330,7 @@
   function pickedBrands(card) { var out = []; Array.prototype.forEach.call(card.querySelectorAll("[data-br]"), function (c) { if (c.checked && out.indexOf(c.value) < 0) out.push(c.value); }); return out; }
   function catOptions(type, v) { var cs = (lists().categories[type] || []); return "<option value=''>— التصنيف —</option>" + cs.concat(v && cs.indexOf(v) < 0 ? [v] : []).map(function (c) { return "<option" + (c === v ? " selected" : "") + ">" + esc(c) + "</option>"; }).join(""); }
   function bookReview(r, shots, pdfName) {
-    var m = modal("📚 مراجعة قبل الحفظ"), body = m.body, L = lists(), codes = r.codes || [], tms = r.testModes || [];
+    var m = modal("📚 مراجعة قبل الحفظ", { confirmClose: function () { return "لسه ماحفظتش. لو قفلت، النتيجة محفوظة على الجهاز — استورد نفس الملف تاني بنفس الاختيارات وهتفتحلك المراجعة دي على طول من غير تكلفة.\n\nأقفل؟"; } }), body = m.body, L = lists(), codes = r.codes || [], tms = r.testModes || [];
     if (!codes.length && !tms.length) { body.innerHTML = "<div class='wf-ai-err'>مالقيتش أكواد أو تيست مود واضحين.</div>" + (r.unclear ? "<div class='hint'>" + esc(r.unclear) + "</div>" : "") + foot(r); return; }
     var opt = function (arr, v, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option" + (x === v ? " selected" : "") + ">" + esc(x) + "</option>"; }).join(""); };
     var nfx = function (v) { return typeof w.normalizeFaultText === "function" ? w.normalizeFaultText(v) : String(v || "").toLowerCase().trim(); };
@@ -399,6 +421,7 @@
       });
       if (!added && !filled && !addedT) return w.alert("مفيش جديد يتحفظ.");
       if (!(typeof w.saveFaultCodesRecords === "function" && w.saveFaultCodesRecords(all))) return;
+      if (r.jobKey) jobClear(r.jobKey);
       m.close();
       try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); if (w.WFTestModes) w.WFTestModes.render(); } catch (e) {}
       codesFillBtn(); classifyBtn();
@@ -443,7 +466,7 @@
     next(0).catch(function (e) { done(); fail(e); });
   }
   function classifyReview(rows, items, meta) {
-    var m = modal("🏷️ تصنيف الأكواد بالماركة"), body = m.body, by = {};
+    var m = modal("🏷️ تصنيف الأكواد بالماركة", { confirmClose: function () { return "لسه ماطبقتش التصنيف. أقفل؟"; } }), body = m.body, by = {};
     items.forEach(function (f) { by[f.id] = f; });
     rows = rows.filter(function (r) { return by[r.id]; });
     if (!rows.length) { body.innerHTML = "<div class='wf-ai-err'>مارجعش تصنيف — جرّب تاني.</div>"; return; }
@@ -494,7 +517,7 @@
     b.querySelector("button").onclick = function () { fillCodes(miss.slice(0, 10)); };
   }
   function fillCodes(items) {
-    var m = modal("🤖 تكملة السبب والحل"), body = m.body;
+    var m = modal("🤖 تكملة السبب والحل", { confirmClose: function () { return "لسه ماحفظتش. أقفل؟"; } }), body = m.body;
     body.innerHTML = "<div class='hint'>⏳ بيكتب السبب والحل لـ " + items.length + " كود…</div>";
     task("codeFill", { items: items.map(function (f) { return { id: f.id, code: f.code, title: f.title, deviceType: f.deviceType, brand: f.brand, cause: f.cause, fix: f.fix }; }) }).then(function (r) {
       var by = {}; items.forEach(function (f) { by[f.id] = f; });
@@ -834,7 +857,7 @@
     draw();
     return m;
   }
-  function zoomImg(src) { var z = modal("🔍 الصورة"); z.body.innerHTML = "<div style='overflow:auto;max-height:80vh'><img src='" + src + "' style='width:180%;max-width:none;display:block'></div><small class='hint'>اسحب يمين وشمال عشان تقرا.</small>"; }
+  function zoomImg(src) { var z = modal("🔍 الصورة", { easyClose: true }); z.body.innerHTML = "<div style='overflow:auto;max-height:80vh'><img src='" + src + "' style='width:180%;max-width:none;display:block'></div><small class='hint'>اسحب يمين وشمال عشان تقرا.</small>"; }
   function normT(s) { return String(s || "").toLowerCase().replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/[ً-ْـ]/g, "").replace(/\s+/g, " ").trim(); }
   /* الربط اللي اتعلمه النظام من مراجعاتك: «كلام الفاتورة» ← صنف المخزن (متزامن مع الإعدادات) */
   function invAliases() { var a = S().aiInvAliases; return Array.isArray(a) ? a : []; }
@@ -847,7 +870,7 @@
     });
   }
   function invoiceReview(r, shots) {
-    var m = modal("🧾 مراجعة الفاتورة قبل التوريد"), body = m.body, parts = A(K().p).filter(function (p) { return p && !p.archived; });
+    var m = modal("🧾 مراجعة الفاتورة قبل التوريد", { confirmClose: function () { return "لسه ماسجلتش التوريد — لو قفلت هتحتاج تقرا الفاتورة تاني. أقفل؟"; } }), body = m.body, parts = A(K().p).filter(function (p) { return p && !p.archived; });
     var cats = S().partCats || [], wallets = S().wallets || [], al = invAliases(), byIdAll = {};
     parts.forEach(function (p) { byIdAll[p.id] = p; });
     // ربط اتعلمناه قبل كده بيكسب لو الموديل ماربطش
