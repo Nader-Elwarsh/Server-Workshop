@@ -87,7 +87,7 @@
     }).sort(function (x, y) { return (x.deviceType || "").localeCompare(y.deviceType || "", "ar") || (x.brand || "").localeCompare(y.brand || "", "ar") || (x.title || "").localeCompare(y.title || "", "ar"); });
     var row = function (f) {
       var n = (w.WFMedia ? w.WFMedia.clean(f.media) : []).length;
-      return "<div class='item tm-item'><div class='item-head'><a href='faultcode.html?id=" + encodeURIComponent(f.id) + "'><b>🧪 " + esc(f.title) + "</b></a>" + (n ? "<span class='tm-badge'>📷 " + n + "</span>" : "") + "</div><div class='tm-sub'>" + esc(f.deviceType || "كل الأنواع") + " • 🏷️ " + esc(f.brand || "كل الماركات") + (f.model ? " • " + esc(f.model) : "") + "</div>" + (f.enter ? "<div class='tm-sub'>🔑 " + esc(String(f.enter).split("\n")[0]).slice(0, 140) + "</div>" : "") + "</div>";
+      return "<div class='item tm-item'><div class='item-head'><a href='faultcode.html?id=" + encodeURIComponent(f.id) + "'><b>🧪 " + esc(f.title) + "</b></a>" + (n ? "<span class='tm-badge'>📷 " + n + "</span>" : "") + "</div><div class='tm-sub'>" + esc(f.deviceType || "كل الأنواع") + (f.category ? " (" + esc(f.category) + ")" : "") + " • 🏷️ " + esc(f.brand || "كل الماركات") + (f.model ? " • " + esc(f.model) : "") + "</div>" + (f.enter ? "<div class='tm-sub'>🔑 " + esc(String(f.enter).split("\n")[0]).slice(0, 140) + "</div>" : "") + "</div>";
     };
     el.innerHTML = list.length ? (w.WFPager ? w.WFPager.render("testmodes", list, row, [t, b, q].join("|")).html : list.map(row).join("")) : "<div class='item'>" + (tests().length ? "مفيش تيست مود بالفلتر ده." : "لسه مفيش تيست مود متسجّل — دوس «➕ تيست مود جديد»، أو استورد من كتالوج PDF أو صورة بالذكاء الاصطناعي.") + "</div>";
     drawTabs();
@@ -125,7 +125,7 @@
     el.innerHTML = "<div class='profile'><div class='page-head'><h1 class='profile-title'>🧪 " + esc(f.title) + "</h1><div class='compact-actions'>" +
       (can("faultcodes.edit") ? "<a class='secondary' href='faultcodes.html?tab=test&tmedit=" + encodeURIComponent(f.id) + "'>✏️ تعديل</a>" : "") +
       (can("faultcodes.delete") ? "<button class='danger-btn' data-wf-event='click' data-wf-code=\"deleteFaultCodeRecord('" + esc(f.id) + "')\">🗑️ حذف</button>" : "") + ps + "</div></div>" +
-      "<div class='profile-grid'><div class='kv'><b>نوع الجهاز</b>" + (esc(f.deviceType) || "كل الأنواع (عام)") + "</div><div class='kv'><b>الماركة</b>" + (esc(f.brand) || "كل الماركات (عام)") + "</div>" + (f.model ? "<div class='kv'><b>الموديلات</b>" + esc(f.model) + "</div>" : "") + "</div>" +
+      "<div class='profile-grid'><div class='kv'><b>نوع الجهاز</b>" + (esc(f.deviceType) || "كل الأنواع (عام)") + "</div><div class='kv'><b>الماركة</b>" + (esc(f.brand) || "كل الماركات (عام)") + "</div>" + (f.category ? "<div class='kv'><b>التصنيف</b>" + esc(f.category) + "</div>" : "") + (f.model ? "<div class='kv'><b>الموديلات</b>" + esc(f.model) + "</div>" : "") + "</div>" +
       sec("🔑", "طريقة الدخول", f.enter) + sec("🧪", "الخطوات / بيختبر إيه", f.tests) + sec("🚪", "الخروج", f.exit) + sec("📝", "ملاحظات", f.note) +
       "<div id='fcMediaBox'></div><p><a href='faultcodes.html?tab=test'>← كل التيست مود</a></p></div>";
     media(f, $("fcMediaBox"));

@@ -24,11 +24,13 @@ function normalizeFaultText(v){
     .replace(/[۰-۹]/g,d=>String(d.charCodeAt(0)-0x06F0))
     .replace(/[\s\-_./\\]+/g,"").trim();
 }
-function findDuplicateFaultCode(deviceType,brand,code,excludeId){
+/* model (اختياري): نفس الكود لنفس الماركة بس لسلسلة/موديلات مختلفة (زي شارب ES-TN وشارب أمامي) = مش مكرر */
+function findDuplicateFaultCode(deviceType,brand,code,excludeId,model){
   let nc=normalizeFaultText(code);if(!nc)return null;
-  let nt=normalizeFaultText(deviceType),nb=normalizeFaultText(brand);
+  let nt=normalizeFaultText(deviceType),nb=normalizeFaultText(brand),nm=normalizeFaultText(model);
   return arr(K.fc).find(f=>String(f.id)!==String(excludeId||"")
     &&f.kind!=="test"
+    &&(!nm||!normalizeFaultText(f.model)||normalizeFaultText(f.model)===nm)
     &&normalizeFaultText(f.code)===nc
     &&normalizeFaultText(f.deviceType)===nt
     &&normalizeFaultText(f.brand)===nb)||null;
@@ -253,11 +255,11 @@ function renderFaultCodes(){
     .filter(f=>f.kind!=="test")
     .filter(f=>!typeFilter||f.deviceType===typeFilter)
     .filter(f=>!brandFilter||f.brand===brandFilter)
-    .filter(f=>!q||(typeof wfMatch==="function"?wfMatch([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand],q):normalizeFaultText([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand].join(" ")).includes(normalizeFaultText(q))))
+    .filter(f=>!q||(typeof wfMatch==="function"?wfMatch([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand,f.model,f.category],q):normalizeFaultText([f.code,f.title,f.cause,f.fix,f.deviceType,f.brand].join(" ")).includes(normalizeFaultText(q))))
     .sort((x,y)=>(x.deviceType||"").localeCompare(y.deviceType||"","ar")||(x.brand||"").localeCompare(y.brand||"","ar")||(x.code||"").localeCompare(y.code||"","ar"));
   el.innerHTML=a.length?WFPager.render("faultcodes",a,f=>`<div class="item ps-context-target" data-ps-title="كود عطل ${esc(f.code)}">
     <div class="item-head"><a href="faultcode.html?id=${f.id}"><b>🧯 ${esc(f.code)} — ${esc(f.title)}</b></a>${psActions("كود عطل "+f.code)}<button type="button" class="danger-btn small-btn" data-wf-event="click" data-wf-code="deleteFaultCodeRecord('${f.id}')">🗑️ حذف</button></div>
-    <div>${esc(f.deviceType)||"كل الأنواع"} • 🏷️ ${esc(f.brand)||"كل الماركات"}</div>
+    <div>${esc(f.deviceType)||"كل الأنواع"}${f.category?` (${esc(f.category)})`:""} • 🏷️ ${esc(f.brand)||"كل الماركات"}${f.model?` • ${esc(f.model)}`:""}</div>
     ${f.cause?`<div>السبب: ${esc(f.cause)}</div>`:""}
   </div>`,[q,typeFilter,brandFilter].join("|")).html:'<div class="item">لا توجد أكواد مسجّلة بهذا الفلتر بعد.</div>';
 }
@@ -278,6 +280,8 @@ function faultCodeProfile(){
     <div class="profile-grid">
       <div class="kv"><b>نوع الجهاز</b>${esc(f.deviceType)||"كل الأنواع (عام)"}</div>
       <div class="kv"><b>الماركة</b>${esc(f.brand)||"كل الماركات (عام)"}</div>
+      ${f.category?`<div class="kv"><b>التصنيف</b>${esc(f.category)}</div>`:""}
+      ${f.model?`<div class="kv"><b>الموديلات / السلسلة</b>${esc(f.model)}</div>`:""}
       ${f.addedBy?`<div class="kv"><b>أضافه</b>${esc(f.addedBy)}</div>`:""}
     </div>
     ${f.cause?`<h3 class="expense-subtitle">🔍 السبب المحتمل</h3><div class="item">${esc(f.cause).replace(/\n/g,"<br>")}</div>`:""}

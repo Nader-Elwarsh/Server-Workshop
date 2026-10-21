@@ -47,7 +47,7 @@
       ".wf-ai-kinds{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.wf-ai-kinds button.on{background:#6d28d9;color:#fff;border-color:#6d28d9}.wf-ai-sum{padding:10px 0 0;border-top:1px solid rgba(127,127,127,.2);margin-top:10px}" +
       ".wf-ai-shots{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.wf-ai-shot{position:relative;width:96px;height:120px;border-radius:10px;overflow:hidden;border:1px solid rgba(127,127,127,.3)}.wf-ai-shot img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}.wf-ai-shot .wf-ai-x{position:absolute;top:0;inset-inline-end:2px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:26px;height:26px;font-size:18px;line-height:24px;padding:0}" +
       ".wf-ai-unsure{outline:2px solid #f59e0b!important;background:rgba(245,158,11,.12)!important}" +
-      ".wf-ai-mic.rec{background:#b91c1c!important;color:#fff;border-color:#b91c1c!important;animation:wfaipulse 1.2s infinite}@keyframes wfaipulse{50%{opacity:.6}}";
+      ".wf-ai-brs{margin:6px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.wf-ai-brs label.wf-ai-chip{cursor:pointer;padding:3px 8px}.wf-ai-brs select{max-width:150px}.wf-ai-mic.rec{background:#b91c1c!important;color:#fff;border-color:#b91c1c!important;animation:wfaipulse 1.2s infinite}@keyframes wfaipulse{50%{opacity:.6}}";
     (d.head || d.documentElement).appendChild(st);
   }
   function modal(title) {
@@ -99,7 +99,7 @@
   function codesPage() {
     var form = $("faultForm"); if (!form || !$("fcCode")) return;
     var bar = $("wfAiCodeBar");
-    if (!on("codes")) { if (bar) bar.style.display = "none"; codesFillBtn(); bookBtn(); return; }
+    if (!on("codes")) { if (bar) bar.style.display = "none"; codesFillBtn(); bookBtn(); classifyBtn(); return; }
     css();
     if (!bar) {
       bar = d.createElement("div"); bar.id = "wfAiCodeBar"; bar.className = "wf-ai-tool wide";
@@ -109,7 +109,7 @@
       bar.querySelector("[data-x=photo]").onclick = function () { codePhoto(this); };
     }
     bar.style.display = "";
-    codesFillBtn(); bookBtn();
+    codesFillBtn(); bookBtn(); classifyBtn();
     var q = new URLSearchParams(location.search);
     if (q.get("ai") === "1" && q.get("code") && !codesPage._auto) {
       codesPage._auto = 1;
@@ -221,89 +221,186 @@
       var src = pdf ? new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok({ pdf: { data: String(r.result || "").split(",")[1] || "" } }); }; r.onerror = function () { no(new Error("مقدرتش أقرا الملف.")); }; r.readAsDataURL(pdf); })
         : Promise.resolve({ images: shots.map(function (x) { return { mime: x.mime, data: x.data }; }) });
       src.then(function (s) {
-        return task("codesBook", Object.assign(s, { deviceType: type, brand: brand, want: want, fillMissing: fill, pageFrom: from, pageTo: to, types: L.types, brands: L.brands }));
-      }).then(function (r) { done(); m.close(); if (type) r.deviceType = type; if (brand) r.brand = brand; bookReview(r, shots, pdf ? pdf.name : ""); }, function (e) { done(); fail(e, res); });
+        return task("codesBook", Object.assign(s, { deviceType: type, brand: brand, want: want, fillMissing: fill, pageFrom: from, pageTo: to, types: L.types, categories: L.categories, brands: L.brands }));
+      }).then(function (r) {
+        done(); m.close(); if (type) r.deviceType = type;
+        // الماركة المختارة فوق = لكل العناصر اللي الكتاب ماحددلهاش ماركة
+        if (brand) (r.codes || []).concat(r.testModes || []).forEach(function (x) { if (!(x.brands || []).length) x.brands = [brand]; });
+        bookReview(r, shots, pdf ? pdf.name : "");
+      }, function (e) { done(); fail(e, res); });
     };
     drawSrc();
   }
+  /* اختيار ماركة أو أكتر لكل عنصر: chips + «➕ ماركة» */
+  function brandPickerHtml(sel, raw) {
+    var L = lists();
+    return "<div class='wf-ai-brs' data-brs>🏷️ " + (sel || []).map(function (b) { return "<label class='wf-ai-chip wf-ai-np'><input type='checkbox' checked data-br value='" + esc(b) + "'> " + esc(b) + "</label>"; }).join(" ") +
+      " <select data-addbr><option value=''>➕ ماركة</option>" + L.brands.filter(function (b) { return (sel || []).indexOf(b) < 0; }).map(function (b) { return "<option>" + esc(b) + "</option>"; }).join("") + "</select>" +
+      ((sel || []).length ? "" : " <small class='hint' data-general>عام (كل الماركات)</small>") + ((raw || []).length ? "<div class='hint'>مكتوب كمان: «" + raw.map(esc).join("، ") + "» ومش في قايمة الماركات — ضيفها من الإعدادات ← الماركات لو عايزها.</div>" : "") + "</div>";
+  }
+  function bindBrandPickers(root) {
+    root.addEventListener("change", function (e) {
+      var s = e.target; if (!s || !s.matches || !s.matches("[data-addbr]") || !s.value) return;
+      var v = s.value, lab = d.createElement("label"); lab.className = "wf-ai-chip wf-ai-np"; lab.innerHTML = "<input type='checkbox' checked data-br value='" + esc(v) + "'> " + esc(v);
+      s.parentNode.insertBefore(lab, s); Array.prototype.slice.call(s.options).forEach(function (o) { if (o.value === v) s.removeChild(o); }); s.value = "";
+      var g = s.parentNode.querySelector("[data-general]"); if (g) g.remove();
+    });
+  }
+  function pickedBrands(card) { var out = []; Array.prototype.forEach.call(card.querySelectorAll("[data-br]"), function (c) { if (c.checked && out.indexOf(c.value) < 0) out.push(c.value); }); return out; }
+  function catOptions(type, v) { var cs = (lists().categories[type] || []); return "<option value=''>— التصنيف —</option>" + cs.concat(v && cs.indexOf(v) < 0 ? [v] : []).map(function (c) { return "<option" + (c === v ? " selected" : "") + ">" + esc(c) + "</option>"; }).join(""); }
   function bookReview(r, shots, pdfName) {
     var m = modal("📚 مراجعة قبل الحفظ"), body = m.body, L = lists(), codes = r.codes || [], tms = r.testModes || [];
     if (!codes.length && !tms.length) { body.innerHTML = "<div class='wf-ai-err'>مالقيتش أكواد أو تيست مود واضحين.</div>" + (r.unclear ? "<div class='hint'>" + esc(r.unclear) + "</div>" : "") + foot(r); return; }
     var opt = function (arr, v, ph) { return "<option value=''>" + ph + "</option>" + arr.map(function (x) { return "<option" + (x === v ? " selected" : "") + ">" + esc(x) + "</option>"; }).join(""); };
     var nfx = function (v) { return typeof w.normalizeFaultText === "function" ? w.normalizeFaultText(v) : String(v || "").toLowerCase().trim(); };
+    var multi = {}; codes.concat(tms).forEach(function (x) { (x.brands || []).forEach(function (b) { multi[b] = 1; }); });
+    var brandCount = Object.keys(multi).length;
+    var meta = function (x) { return "<div class='wf-ai-grid'><label>التصنيف<select data-cat>" + catOptions(r.deviceType, x.category) + "</select></label><label>الموديلات / السلسلة<input data-models value='" + esc(x.models || "") + "'></label></div>" + brandPickerHtml(x.brands, x.brandsRaw); };
     body.innerHTML = ((shots || []).length ? "<div class='wf-ai-shots'>" + shots.map(function (s2) { return "<div class='wf-ai-shot'><img src='" + s2.dataURL + "' data-zoom alt='الصفحة'></div>"; }).join("") + "</div>" : pdfName ? "<div class='hint'>📄 " + esc(pdfName) + "</div>" : "") +
-      "<div class='wf-ai-grid'><label>نوع الجهاز للكل<select id='wfAiBkType'>" + opt(L.types, r.deviceType, "كل الأنواع (عام)") + "</select></label><label>الماركة<select id='wfAiBkBrand'>" + opt(L.brands, r.brand, "كل الماركات (عام)") + "</select></label></div>" +
-      (r.brandRaw ? "<div class='hint'>الماركة في المصدر «" + esc(r.brandRaw) + "» مش في قايمتك — ضيفها من الإعدادات لو عايزها.</div>" : "") + (r.model ? "<div class='hint'>📄 الموديلات: " + esc(r.model) + "</div>" : "") + (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "") +
-      "<div class='hint' id='wfAiBkCount'></div>" +
+      "<div class='wf-ai-grid'><label>نوع الجهاز للكل<select id='wfAiBkType'>" + opt(L.types, r.deviceType, "كل الأنواع (عام)") + "</select></label><div class='hint' style='align-self:end'>" + (brandCount ? "🏷️ الكتاب فيه " + brandCount + " ماركة — كل عنصر متعلّم بماركته، ولو العنصر لأكتر من ماركة بيتحفظ لكل ماركة لوحدها." : "الماركة لكل عنصر تحت (فاضي = عام).") + "</div></div>" +
+      (r.unclear ? "<div class='wf-ai-warn'>👀 " + esc(r.unclear) + "</div>" : "") + "<div class='hint' id='wfAiBkCount'></div>" +
       (codes.length ? "<h4>🧯 أكواد الأعطال (" + codes.length + ")</h4>" + codes.map(function (c, i) {
-        return "<div class='wf-ai-card' data-kind='code' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b data-codehead>" + esc(c.code) + "</b></label> " + (c.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" +
-          "<div class='wf-ai-grid'><label>الكود<input data-code value='" + esc(c.code) + "'" + (c.unsure ? " class='wf-ai-unsure'" : "") + "></label><label>الوصف<input data-title value='" + esc(c.title) + "'></label></div>" +
+        return "<div class='wf-ai-card' data-kind='code' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b data-codehead>" + esc(c.code) + "</b></label> " + (c.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" + meta(c) +
+          "<div class='wf-ai-grid'><label>الكود<input data-code value='" + esc(c.code) + "'" + (c.unsure ? " class='wf-ai-unsure'" : "") + "></label><label>الوصف<input data-title value='" + esc(c.title) + "'></label></div>" + (c.alsoShows ? "<div class='hint'>بيظهر كمان: " + esc(c.alsoShows) + "</div>" : "") +
           "<label>🔍 السبب" + (c.aiCause ? " <span class='wf-ai-chip wf-ai-np'>🤖 من خبرة الذكاء الاصطناعي</span>" : "") + "<textarea data-cause rows='2'>" + esc(c.cause) + "</textarea></label>" +
           "<label>🛠️ الحل" + (c.aiFix ? " <span class='wf-ai-chip wf-ai-np'>🤖 من خبرة الذكاء الاصطناعي</span>" : "") + "<textarea data-fix rows='3'>" + esc(c.fix) + "</textarea></label>" + (c.note ? "<div class='hint'>📝 " + esc(c.note) + "</div>" : "") + "</div>";
       }).join("") : "") +
       (tms.length ? "<h4>🧪 التيست مود (" + tms.length + ")</h4>" + tms.map(function (t, i) {
-        return "<div class='wf-ai-card' data-kind='test' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b>🧪</b></label> " + (t.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" +
-          "<div class='wf-ai-grid'><label>العنوان<input data-title value='" + esc(t.title) + "'></label><label>الموديلات<input data-models value='" + esc(t.models) + "'></label></div>" +
+        return "<div class='wf-ai-card' data-kind='test' data-i='" + i + "'><label><input type='checkbox' checked data-ok> <b>🧪</b></label> " + (t.unsure ? "<span class='wf-ai-chip wf-ai-md'>مش واضح — راجعه</span>" : "") + "<span data-dup></span>" + meta(t) +
+          "<label>العنوان<input data-title value='" + esc(t.title) + "'></label>" +
           "<label>🔑 طريقة الدخول<textarea data-enter rows='4'>" + esc(t.enter) + "</textarea></label><label>🧪 الخطوات / بيختبر إيه<textarea data-tests rows='5'>" + esc(t.tests) + "</textarea></label>" +
           "<label>🚪 الخروج<textarea data-exit rows='2'>" + esc(t.exit) + "</textarea></label>" + (t.note ? "<label>📝 ملاحظات<textarea data-tnote rows='2'>" + esc(t.note) + "</textarea></label>" : "") + "</div>";
       }).join("") : "") +
       "<div class='wf-ai-sum'><button type='button' class='primary' id='wfAiBkSave'>💾 احفظ المختار</button> <small class='hint'>الصور بتتضاف بعد كده من صفحة كل كود أو تيست مود.</small> " + foot(r) + "</div>";
     Array.prototype.forEach.call(body.querySelectorAll("[data-zoom]"), function (im) { im.onclick = function () { zoomImg(im.src); }; });
-    function dupCode(c) { var type = $("wfAiBkType").value, brand = $("wfAiBkBrand").value; return typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, c) : null; }
-    function dupTest(title) { var k = [$("wfAiBkType").value, $("wfAiBkBrand").value, title].map(nfx).join("|"); return A(K().fc).filter(function (f) { return f && f.kind === "test" && [f.deviceType, f.brand, f.title].map(nfx).join("|") === k; })[0] || null; }
+    bindBrandPickers(body);
+    $("wfAiBkType").addEventListener("change", function () { var t = this.value; Array.prototype.forEach.call(body.querySelectorAll("[data-cat]"), function (s) { s.innerHTML = catOptions(t, s.value); }); });
+    var v = function (card, sel) { var e = card.querySelector(sel); return e ? e.value.trim() : ""; };
+    function dupCode(type, brand, code, model) { return typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, code, null, model) : null; }
+    function dupTest(type, brand, title) { var k = [type, brand, title].map(nfx).join("|"); return A(K().fc).filter(function (f) { return f && f.kind === "test" && [f.deviceType, f.brand, f.title].map(nfx).join("|") === k; })[0] || null; }
     function refresh() {
-      var n = 0, dn = 0, nt = 0, dt = 0;
+      var type = $("wfAiBkType").value, nNew = 0, nFill = 0, tNew = 0, tDup = 0;
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card[data-kind]"), function (card) {
-        var ok = card.querySelector("[data-ok]").checked, kind = card.getAttribute("data-kind");
-        if (kind === "code") {
-          var code = card.querySelector("[data-code]").value.trim(), dup = code ? dupCode(code) : null;
-          card.querySelector("[data-codehead]").textContent = code || "—";
-          card.querySelector("[data-dup]").innerHTML = dup ? " <span class='wf-ai-chip wf-ai-lo'>متسجّل قبل كده — هيتكمّل الناقص فيه بس</span>" : "";
-          if (ok) { n++; if (dup) dn++; }
+        var ok = card.querySelector("[data-ok]").checked, brs = pickedBrands(card), list = brs.length ? brs : [""], dups = 0;
+        if (card.getAttribute("data-kind") === "code") {
+          var code = v(card, "[data-code]"); card.querySelector("[data-codehead]").textContent = (code || "—") + (brs.length ? " — " + brs.join(" + ") : " — عام");
+          list.forEach(function (b) { if (code && dupCode(type, b, code, v(card, "[data-models]"))) dups++; });
+          card.querySelector("[data-dup]").innerHTML = dups ? " <span class='wf-ai-chip wf-ai-lo'>" + (dups === list.length ? "متسجّل قبل كده — هيتكمّل الناقص بس" : dups + " من " + list.length + " متسجّلين") + "</span>" : "";
+          if (ok) { nFill += dups; nNew += list.length - dups; }
         } else {
-          var dupT = dupTest(card.querySelector("[data-title]").value.trim());
-          card.querySelector("[data-dup]").innerHTML = dupT ? " <span class='wf-ai-chip wf-ai-lo'>نفس العنوان موجود — مش هيتكرر</span>" : "";
-          if (ok) { nt++; if (dupT) dt++; }
+          list.forEach(function (b) { if (dupTest(type, b, v(card, "[data-title]"))) dups++; });
+          card.querySelector("[data-dup]").innerHTML = dups ? " <span class='wf-ai-chip wf-ai-lo'>نفس العنوان موجود — مش هيتكرر</span>" : "";
+          if (ok) { tDup += dups; tNew += list.length - dups; }
         }
         card.classList.toggle("off", !ok);
       });
-      $("wfAiBkCount").textContent = "هيتحفظ: " + (n - dn) + " كود جديد" + (dn ? " + تكملة " + dn + " موجود" : "") + " • " + (nt - dt) + " تيست مود جديد" + (dt ? " (" + dt + " متكرر هيتساب)" : "") + ".";
+      $("wfAiBkCount").textContent = "هيتحفظ: " + nNew + " كود جديد" + (nFill ? " + تكملة " + nFill + " موجود" : "") + " • " + tNew + " تيست مود جديد" + (tDup ? " (" + tDup + " متكرر هيتساب)" : "") + ".";
     }
     body.addEventListener("input", refresh); body.addEventListener("change", refresh); refresh();
     $("wfAiBkSave").onclick = function () {
-      var type = $("wfAiBkType").value, brand = $("wfAiBkBrand").value, all = A(K().fc), at = new Date().toISOString(), added = 0, filled = 0, addedT = 0, seen = {}, seenT = {};
+      var type = $("wfAiBkType").value, all = A(K().fc), at = new Date().toISOString(), added = 0, filled = 0, addedT = 0, seen = {};
       var src = pdfName ? "كتاب «" + pdfName + "»" : "صورة " + (r.model ? "كتالوج (" + r.model + ")" : "كتالوج/كتاب");
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card[data-kind]"), function (card) {
         if (!card.querySelector("[data-ok]").checked) return;
-        var i = +card.getAttribute("data-i"), v = function (s) { var e = card.querySelector(s); return e ? e.value.trim() : ""; };
+        var i = +card.getAttribute("data-i"), brs = pickedBrands(card), list = brs.length ? brs : [""], cat = v(card, "[data-cat]"), models = v(card, "[data-models]");
         if (card.getAttribute("data-kind") === "test") {
-          var t = tms[i], title = v("[data-title]"), enter = v("[data-enter]"); if (!title || !enter) return;
-          var tk = nfx(title); if (seenT[tk] || dupTest(title)) return; seenT[tk] = 1;
-          all.push({ id: w.id(), kind: "test", source: "ai-book", deviceType: type, brand: brand, model: v("[data-models]") || r.model || "", title: title, enter: enter, tests: v("[data-tests]"), exit: v("[data-exit]"), note: [v("[data-tnote]"), "📚 من " + src + " — 🤖 راجعه."].filter(Boolean).join("\n"), media: [], createdAt: at, updatedAt: at });
-          addedT++; return;
-        }
-        var c = codes[i], code = v("[data-code]"), title2 = v("[data-title]"); if (!code) return;
-        var key = nfx(code); if (seen[key]) return; seen[key] = 1;
-        var cause = v("[data-cause]"), fix = v("[data-fix]");
-        var tag = "📚 من " + src + " — 🤖" + (c.aiCause || c.aiFix ? " (فيه أجزاء من خبرة الذكاء الاصطناعي)" : "") + " — راجعه.";
-        var dup = dupCode(code), ex = dup && all.filter(function (f) { return f.id === dup.id; })[0];
-        if (ex) {
-          var ch = false;
-          if (!String(ex.title || "").trim() && title2) { ex.title = title2; ch = true; }
-          if (!String(ex.cause || "").trim() && cause) { ex.cause = cause; ch = true; }
-          if (!String(ex.fix || "").trim() && fix) { ex.fix = fix; ch = true; }
-          if (ch) { if (String(ex.note || "").indexOf("📚") < 0) ex.note = (ex.note ? ex.note + "\n" : "") + tag; ex.updatedAt = at; filled++; }
+          var t = tms[i], title = v(card, "[data-title]"), enter = v(card, "[data-enter]"); if (!title || !enter) return;
+          list.forEach(function (b) {
+            var tk = ["t", b, title].map(nfx).join("|"); if (seen[tk] || dupTest(type, b, title)) return; seen[tk] = 1;
+            all.push({ id: w.id(), kind: "test", source: "ai-book", deviceType: type, category: cat, brand: b, model: models, title: title, enter: enter, tests: v(card, "[data-tests]"), exit: v(card, "[data-exit]"), note: [v(card, "[data-tnote]"), "📚 من " + src + " — 🤖 راجعه."].filter(Boolean).join("\n"), media: [], createdAt: at, updatedAt: at });
+            addedT++;
+          });
           return;
         }
-        all.push({ id: w.id(), source: "ai-book", deviceType: type, brand: brand, code: code, title: title2 || code, cause: cause, fix: fix, note: (c.note ? c.note + "\n" : "") + tag, addedBy: "", media: [], createdAt: at, updatedAt: at });
-        added++;
+        var c = codes[i], code = v(card, "[data-code]"), title2 = v(card, "[data-title]"); if (!code) return;
+        var cause = v(card, "[data-cause]"), fix = v(card, "[data-fix]");
+        var tag = "📚 من " + src + " — 🤖" + (c.aiCause || c.aiFix ? " (فيه أجزاء من خبرة الذكاء الاصطناعي)" : "") + " — راجعه.";
+        list.forEach(function (b) {
+          var key = ["c", b, models, code].map(nfx).join("|"); if (seen[key]) return; seen[key] = 1;
+          var dup = dupCode(type, b, code, models), ex = dup && all.filter(function (f) { return f.id === dup.id; })[0];
+          if (ex) {
+            var ch = false;
+            if (!String(ex.title || "").trim() && title2) { ex.title = title2; ch = true; }
+            if (!String(ex.cause || "").trim() && cause) { ex.cause = cause; ch = true; }
+            if (!String(ex.fix || "").trim() && fix) { ex.fix = fix; ch = true; }
+            if (!ex.category && cat) { ex.category = cat; ch = true; } if (!ex.model && models) { ex.model = models; ch = true; }
+            if (ch) { if (String(ex.note || "").indexOf("📚") < 0) ex.note = (ex.note ? ex.note + "\n" : "") + tag; ex.updatedAt = at; filled++; }
+            return;
+          }
+          all.push({ id: w.id(), source: "ai-book", deviceType: type, category: cat, brand: b, model: models, code: code, title: title2 || code, cause: cause, fix: fix, note: [c.alsoShows ? "بيظهر كمان: " + c.alsoShows : "", c.note, tag].filter(Boolean).join("\n"), addedBy: "", media: [], createdAt: at, updatedAt: at });
+          added++;
+        });
       });
       if (!added && !filled && !addedT) return w.alert("مفيش جديد يتحفظ.");
       if (!(typeof w.saveFaultCodesRecords === "function" && w.saveFaultCodesRecords(all))) return;
       m.close();
       try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); if (w.WFTestModes) w.WFTestModes.render(); } catch (e) {}
-      codesFillBtn();
+      codesFillBtn(); classifyBtn();
       w.alert("✅ اتضاف " + added + " كود" + (filled ? " واتكمّل " + filled + " كود موجود" : "") + (addedT ? " و" + addedT + " تيست مود" : "") + ".");
+    };
+  }
+
+  /* 🏷️ أكواد/تيست مود اتسجلوا «عام» من استيراد قديم → الماركة والتصنيف من العنوان والملاحظات اللي معاهم */
+  function unclassified() { return A(K().fc).filter(function (f) { return f && !f.brand && (f.source === "ai-book" || f.source === "imported") && (f.note || f.model || f.title); }); }
+  function classifyBtn() {
+    var list = $("faultList"), b = $("wfAiClassify"); if (!list) return;
+    var items = on("codes") && can("faultcodes.edit") ? unclassified() : [];
+    if (!items.length) { if (b) b.style.display = "none"; return; }
+    css();
+    if (!b) { b = d.createElement("div"); b.id = "wfAiClassify"; b.className = "wf-ai-tool"; list.parentNode.insertBefore(b, $("wfAiBook") || list); }
+    b.style.display = "";
+    var nT = items.filter(function (f) { return f.kind === "test"; }).length;
+    b.innerHTML = "<div class='wf-ai-row2'><span>🏷️ فيه <b>" + (items.length - nT) + "</b> كود" + (nT ? " و<b>" + nT + "</b> تيست مود" : "") + " مستوردين من غير ماركة.</span><button type='button' class='wf-ai-btn2'>🤖 صنّفهم بالماركة</button></div><small class='hint'>بيعرف الماركة والتصنيف والموديلات من العنوان والملاحظات اللي اتسجلت معاهم، وتراجع قبل التطبيق. الكود اللي لأكتر من ماركة بيتعمل منه نسخة لكل ماركة.</small>";
+    b.querySelector("button").onclick = function () { classifyRun(this, items); };
+  }
+  function classifyRun(btn, items) {
+    var L = lists(), done = busyBtn(btn, "بيصنّف…"), chunks = [], out = [], cost = 0;
+    for (var i = 0; i < items.length; i += 100) chunks.push(items.slice(i, i + 100));
+    var next = function (k) {
+      if (k >= chunks.length) { done(); return classifyReview(out, items, { cost: cost }); }
+      return task("codesClassify", { items: chunks[k].map(function (f) { return { id: f.id, kind: f.kind || "", code: f.code, title: f.title, model: f.model, note: f.note, deviceType: f.deviceType }; }), types: L.types, categories: L.categories, brands: L.brands })
+        .then(function (r) { out = out.concat(r.items || []); cost += +r.cost || 0; return next(k + 1); });
+    };
+    next(0).catch(function (e) { done(); fail(e); });
+  }
+  function classifyReview(rows, items, meta) {
+    var m = modal("🏷️ تصنيف الأكواد بالماركة"), body = m.body, by = {};
+    items.forEach(function (f) { by[f.id] = f; });
+    rows = rows.filter(function (r) { return by[r.id]; });
+    if (!rows.length) { body.innerHTML = "<div class='wf-ai-err'>مارجعش تصنيف — جرّب تاني.</div>"; return; }
+    var withB = rows.filter(function (r) { return r.brands.length; }).length;
+    body.innerHTML = "<div class='hint'>اتعرفت الماركة لـ " + withB + " من " + rows.length + ". راجع، وشيل العلامة من اللي مش متأكد منه (هيفضل عام).</div><div class='wf-ai-row2'><button type='button' class='wf-ai-btn2' data-all='1'>✔️ علّم الكل</button><button type='button' class='wf-ai-btn2' data-all='0'>✖️ شيل الكل</button></div>" +
+      rows.map(function (r, i) {
+        var f = by[r.id];
+        return "<div class='wf-ai-card' data-i='" + i + "'><label><input type='checkbox' data-ok" + (r.brands.length ? " checked" : "") + "> <b>" + (f.kind === "test" ? "🧪 " + esc(f.title) : "🧯 " + esc(f.code) + " — " + esc(f.title)) + "</b></label> " + conf(r.confidence) +
+          (r.why ? "<div class='hint'>" + esc(r.why) + "</div>" : "") + brandPickerHtml(r.brands, []) +
+          "<div class='wf-ai-grid'><label>التصنيف<select data-cat>" + catOptions(f.deviceType, r.category) + "</select></label><label>الموديلات / السلسلة<input data-models value='" + esc(r.models || f.model || "") + "'></label>" + (f.kind === "test" ? "" : "<label>الكود<input data-code value='" + esc(r.code || f.code) + "'></label>") + "</div></div>";
+      }).join("") + "<div class='wf-ai-sum'><button type='button' class='primary' data-apply>✅ طبّق على المختار</button> " + foot(meta) + "</div>";
+    bindBrandPickers(body);
+    Array.prototype.forEach.call(body.querySelectorAll("[data-all]"), function (b) { b.onclick = function () { var on1 = b.getAttribute("data-all") === "1"; Array.prototype.forEach.call(body.querySelectorAll("[data-ok]"), function (c) { c.checked = on1; }); }; });
+    body.querySelector("[data-apply]").onclick = function () {
+      var all = A(K().fc), at = new Date().toISOString(), upd = 0, cloned = 0, skip = 0;
+      Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card"), function (card) {
+        if (!card.querySelector("[data-ok]").checked) return;
+        var r = rows[+card.getAttribute("data-i")], f = all.filter(function (x) { return x.id === r.id; })[0]; if (!f) return;
+        var brs = pickedBrands(card), cat = (card.querySelector("[data-cat]") || {}).value || "", models = (card.querySelector("[data-models]") || {}).value || "", codeEl = card.querySelector("[data-code]");
+        if (!brs.length && !cat && !models) return;
+        if (codeEl && codeEl.value.trim()) f.code = codeEl.value.trim();
+        if (cat) f.category = cat; if (models.trim()) f.model = models.trim();
+        brs.forEach(function (b, j) {
+          if (j === 0) { f.brand = b; f.updatedAt = at; upd++; return; }
+          var dup = f.kind === "test" ? null : (typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(f.deviceType, b, f.code, null, f.model) : null);
+          if (dup) { skip++; return; }
+          var copy = JSON.parse(JSON.stringify(f)); copy.id = w.id(); copy.brand = b; copy.createdAt = at; copy.updatedAt = at; all.push(copy); cloned++;
+        });
+        if (!brs.length) { f.updatedAt = at; upd++; }
+      });
+      if (!upd && !cloned) return w.alert("مفيش حاجة اتعلّم عليها.");
+      if (!(typeof w.saveFaultCodesRecords === "function" && w.saveFaultCodesRecords(all))) return;
+      m.close();
+      try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); if (w.WFTestModes) w.WFTestModes.render(); } catch (e) {}
+      classifyBtn();
+      w.alert("✅ اتصنّف " + upd + (cloned ? " واتعمل " + cloned + " نسخة لماركات تانية" : "") + (skip ? " (" + skip + " نسخة كانت موجودة)" : "") + ".");
     };
   }
   function missingCodes() { return A(K().fc).filter(function (f) { return f && f.code && (!String(f.cause || "").trim() || !String(f.fix || "").trim()); }); }
@@ -882,7 +979,7 @@
     var need = $("faultForm") || $("faultCodeProfile") || $("quickOrderBody") || $("shareSummaryBox") || $("deviceForm") || $("restockBox") || $("reportsHost") || d.querySelector(".wf-ai-msg-slot");
     if (need) setTimeout(function () { AI().refresh(false); }, 1200);
     all();
-    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,#wfAiBook,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
+    try { new MutationObserver(function (ms) { for (var i = 0; i < ms.length; i++) { var t = ms[i].target; if (t && t.closest && t.closest("audio,#wfAiBook,#wfAiClassify,.wf-ai-tool,.wf-ai-modal,.wf-ai-mask,.wf-ai-msg-slot,#wfAiSummary,#wfAiInvBar,#wfAiCodeOne")) continue; return soon(); } }).observe(d.body, { childList: true, subtree: true }); } catch (e) {}
     var ap = $("repApply"); if (ap) ap.addEventListener("click", function () { setTimeout(summaryPanel, 400); });
   }
   w.WFAITools = { compactStats: compactStats, applyOrder: applyOrder, _all: all };
