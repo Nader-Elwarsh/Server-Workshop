@@ -180,7 +180,8 @@
     var note = document.createElement("p"); note.textContent = "لم يُستبدل أي سجل أحدث. اختر الاحتفاظ بنسخة السحابة أو اعتماد نسخة هذا الجهاز لكل تعارض."; box.appendChild(note);
     rows.forEach(function (item) {
       var row = document.createElement("div"); row.style.cssText = "border-top:1px solid #ddd;padding:10px 0";
-      var label = document.createElement("b"); label.textContent = item.key + " / " + item.id; row.appendChild(label);
+      var label = document.createElement("b"); label.textContent = conflictLabel(item); row.appendChild(label);
+      var diff = conflictDiff(item.value); if (diff) { var dv = document.createElement("div"); dv.style.cssText = "font-size:13px;color:#555;margin-top:4px;white-space:pre-line"; dv.textContent = diff; row.appendChild(dv); }
       var localBtn = document.createElement("button"), cloudBtn = document.createElement("button");
       localBtn.type = cloudBtn.type = "button"; localBtn.textContent = "اعتماد نسخة هذا الجهاز"; cloudBtn.textContent = "اعتماد نسخة السحابة";
       localBtn.style.cssText = cloudBtn.style.cssText = "margin:8px 6px 0 0;padding:7px;border:0;border-radius:7px;background:#0b57d0;color:white";
@@ -190,6 +191,33 @@
     });
     var close = document.createElement("button"); close.type = "button"; close.textContent = "إغلاق"; close.onclick = function () { modal.remove(); }; box.appendChild(close); modal.appendChild(box); document.body.appendChild(modal);
   }
+  var COL_AR = { wf_c: "عميل", wf_d: "جهاز", wf_r: "أمر شغل", wf_p: "قطعة", wf_tr: "حركة خزنة", wf_tasks: "مهمة", wf_wallet_tx: "حركة محفظة", wf_fault_codes: "كود عطل", wf_inv: "فاتورة", wf_m: "حركة مخزن" };
+  function conflictLabel(row) {
+    var v = row.value || {}, r = v.local || v.remote || {};
+    var name = r.no || r.name || r.code || r.title || r.reason || row.id;
+    return (COL_AR[row.key] || row.key) + " — " + name;
+  }
+  var DEP_FIELDS = ["deposit", "depositWallet", "depositExtra"];
+  function depNum(r) { return Math.round((+(r && r.deposit) || 0) * 100) / 100; }
+  /* الفلوس اللي اتسجل استلامها على الجهاز ماتضيعش لو اخترت نسخة السحابة: لو عربون الجهاز أكبر، بيتنقل للنسخة اللي هتتحفظ */
+  function keepLocalDeposit(k, local, remote) {
+    if (k !== "wf_r" || !local || !remote) return remote;
+    if (!(depNum(local) > depNum(remote) + 0.004)) return remote;
+    var m = Object.assign({}, remote);
+    DEP_FIELDS.forEach(function (f) { if (local[f] !== undefined) m[f] = local[f]; });
+    m.remain = Math.max(0, Math.round(((+m.total || 0) - (+m.deposit || 0)) * 100) / 100);
+    return m;
+  }
+  function conflictDiff(v) {
+    if (!v || !v.local || !v.remote) return "";
+    var skip = { _ts: 1, _by: 1, updatedAt: 1 }, keys = {}, out = [];
+    Object.keys(v.local).concat(Object.keys(v.remote)).forEach(function (f) { if (!skip[f]) keys[f] = 1; });
+    Object.keys(keys).forEach(function (f) { if (JSON.stringify(v.local[f]) !== JSON.stringify(v.remote[f])) out.push(f); });
+    var t = out.length ? "الحقول المختلفة: " + out.slice(0, 12).join("، ") : "";
+    if (depNum(v.local) !== depNum(v.remote)) t += "\n💵 العربون: على الجهاز " + depNum(v.local).toFixed(2) + " — في السحابة " + depNum(v.remote).toFixed(2) + (depNum(v.local) > depNum(v.remote) ? " (لو اخترت السحابة، عربون الجهاز هيفضل محفوظ)" : "");
+    return t;
+  }
+  window.wfKeepLocalDeposit = keepLocalDeposit;
   function resolveSyncConflict(k, id, choice, modal) {
     var item = conflicts[k] && conflicts[k][id]; if (!item) return;
     if (k === SETTINGS) {
@@ -206,7 +234,8 @@
     }
     if (choice === "cloud") {
       var records = local(k), list = Array.isArray(records) ? records.slice() : [], at = list.findIndex(function (r) { return r && r.id === id; });
-      if (item.remote) { if (at < 0) list.push(item.remote); else list[at] = item.remote; }
+      var keep = keepLocalDeposit(k, item.local, item.remote);
+      if (keep) { if (at < 0) list.push(keep); else list[at] = keep; }
       else if (at >= 0) list.splice(at, 1);
       origSet.call(ls, k, JSON.stringify(list));
       SB.c[k] = SB.c[k] || {}; if (item.remoteHash) SB.c[k][id] = item.remoteHash; else delete SB.c[k][id]; saveBase();
