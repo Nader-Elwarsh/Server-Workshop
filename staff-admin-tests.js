@@ -23,7 +23,7 @@ function makeEnv(seedStaff) {
     doc(path) {
       return {
         async get() { return docs.has(path) ? { exists: true, data: () => JSON.parse(JSON.stringify(docs.get(path))) } : { exists: false }; },
-        async set(data, opts) { docs.set(path, opts && opts.merge ? Object.assign({}, docs.get(path) || {}, data) : data); },
+        async set(data, opts) { docs.set(path, opts && (opts.merge || opts.mergeFields) ? Object.assign({}, docs.get(path) || {}, data) : data); },
         async delete() { docs.delete(path); }
       };
     },
@@ -58,6 +58,9 @@ async function rejects(promise, code, msg) {
   // ---- create: المالك فقط، تحقق من المدخلات، الإيميل المكرر ----
   const mk = await t.admin.create('boss', { email: ' Tech@Example.com ', name: 'أحمد الفني', password: 'secret123', role: 'tech', deny: ['devices.add', 'nonsense.key'], allow: ['reports.view'] });
   assert.strictEqual(mk.email, 'tech@example.com');
+  // نسخة الصلاحيات في مستند الموظف (اللي قواعد Firestore بتقراها): own + p بالصلاحيات الفعلية بس
+  assert.strictEqual(t.docs.get('staff/boss').own, true); assert.strictEqual(Object.keys(t.docs.get('staff/boss').p).length, core.KEYS.length);
+  { const d = t.docs.get('staff/' + mk.uid); assert.strictEqual(d.own, false); assert.strictEqual(d.p['reports.view'], true); assert.ok(!d.p['devices.add'], 'deny اتشال'); assert.ok(!d.p['wallets.view']); }
   const sd = t.docs.get('staff/' + mk.uid);
   assert.deepStrictEqual([sd.role, sd.allow, sd.deny, sd.disabled], ['tech', ['reports.view'], ['devices.add'], false]);
   const techPerms = core.fromMask(t.claims[mk.uid].pm);

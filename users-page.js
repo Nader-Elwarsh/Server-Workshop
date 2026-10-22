@@ -300,7 +300,18 @@
     if (state.stale) root.appendChild(h("p", { class: "hint", style: "margin:0 0 6px", text: "⏳ دي آخر نسخة محفوظة — بتتحدّث من السيرفر…" }));
     root.appendChild(h("h2", { text: "👤 المستخدمون (" + state.users.length + ")" }));
     state.users.forEach(function (u) { root.appendChild(userCard(u)); });
-    root.appendChild(addPanel()); root.appendChild(rolesPanel()); root.appendChild(auditPanel());
+    root.appendChild(addPanel()); root.appendChild(rolesPanel()); root.appendChild(techPolicyPanel()); root.appendChild(auditPanel());
+  }
+  /* سياسة الفنيين (بيطبّقها السيرفر على أي تعديل من جهاز الفني): قطع المخزن من السيرفر دايمًا، والمصنعية حسب الاختيار ده */
+  function techPolicyPanel() {
+    var o = settingsObj(), box = h("details", { class: "panel" });
+    box.appendChild(h("summary", { text: "🧰 قواعد الفنيين" }));
+    var cb = h("input", { type: "checkbox" }); cb.checked = o.techLaborLocked !== true;
+    cb.addEventListener("change", function () { var s2 = settingsObj(); s2.techLaborLocked = !cb.checked; try { window.WFStorage.setItem("wf_s", JSON.stringify(s2)); say(cb.checked ? "✅ الفني يقدر يحدد المصنعية." : "✅ المصنعية بقت من الإدارة بس — أي تغيير من الفني بيترجع.", false); } catch (e) { say("تعذر الحفظ.", true); } });
+    var lab = h("label", { class: "toggle-inline" }); lab.appendChild(cb); lab.appendChild(document.createTextNode(" الفني يقدر يحدد/يغيّر المصنعية في أمره"));
+    box.appendChild(lab);
+    box.appendChild(h("p", { class: "hint", text: "ثابت دايمًا (من السيرفر): قطع المخزن بتتضاف وترجع من «إضافة من المخزن» بس وبسعر المخزن، والإجمالي = المصنعية + القطع، والعربون والقفل والتحصيل من الإدارة أو من «تحصيل وقفل الأمر». تاريخ التحصيل النهارده أو امبارح بس. القطع اللي من بره بتتسجل بسعر الفني ومصروفها بيستنى موافقتك." }));
+    return box;
   }
   function loadAudit() {
     try {

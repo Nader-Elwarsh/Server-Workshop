@@ -363,6 +363,17 @@
   function myUidSafe() { try { var u = firebase.auth().currentUser; return u ? u.uid : ""; } catch (e) { return ""; } }
   function stamp(o) { o._ts = stampTs(); var u = myUidSafe(); if (u) o._by = u; return o; }
   function tsMs(d) { try { var t = d.get ? d.get("_ts") : (d.data() || {})._ts; return t && typeof t.toMillis === "function" ? t.toMillis() : 0; } catch (e) { return 0; } }
+  /* ---------- صلاحيات الموظف من السيرفر ----------
+     القواعد بترفض أي قراءة/كتابة مش في صلاحياته. القسم اللي مايقدرش يقراه بيتساب (من غير ما المزامنة تقف)،
+     والتعديل اللي اترفض بيترجع لآخر نسخة متزامنة، مع رسالة واضحة بدل ما يفضل يحاول للأبد. */
+  var NOACC = {}, deniedShown = {};
+  function isDenied(e) { return !SCOPED && !!e && (e.code === "permission-denied" || /permission/i.test(String(e.code || ""))); }
+  function deniedNote(k, n) {
+    var key = k + ":" + Math.floor(Date.now() / 60000); if (deniedShown[key]) return; deniedShown[key] = 1;
+    var msg = "🔒 مالكش صلاحية تحفظ " + (COL_AR[k] ? "(" + COL_AR[k] + ")" : "التعديل ده") + (n > 1 ? " — " + n + " تعديل" : "") + "، فرجع زي ما هو في السحابة. اطلب الصلاحية من المالك.";
+    lastSyncError = msg; try { origSet.call(ls, "wf_sync_last_error", msg); } catch (e) {}
+    try { window.alert(msg); } catch (e) {}
+  }
   function tombRef(k, id) { return db.collection("syncDeletes").doc(COLS[k] + "__" + id); }
   /* شاهد الحذف بقى فيه نسخة من السجل المحذوف (30 يوم) عشان أي مسح بالغلط يترجع من «المحذوف من السحابة» */
   function tombData(k, id, rec) {
@@ -409,6 +420,7 @@
 
   function push(k, interactive) {
     if (SCOPED && k !== "wf_r") { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // المحدود النطاق: مفيش رفع غير أوامره
+    if (COLS[k] && NOACC[k]) { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // قسم مالوش صلاحية عليه أصلًا
     if (COLS[k] && !pushing[k]) { try { captureBases(k); } catch (e) {} } // أصل السجلات المتعدّلة بيتحفظ حتى لو أوفلاين (عشان الدمج بعدين)
     if (!online() || pushing[k]) return Promise.resolve(false);
     pushing[k] = true;
@@ -432,7 +444,7 @@
         if (!interactive) { pushing[k] = false; badge(); return Promise.resolve(false); }
         if (!window.confirm("⚠️ هيتم حذف " + dels + " " + (COL_AR[k] ? "(" + COL_AR[k] + ")" : "سجل") + " من السحابة ومن كل الأجهزة.\nلو انت اللي مسحتهم بقصد اضغط موافق.\nلو مش انت (ممكن بيانات الجهاز ناقصة) اضغط إلغاء وهيرجعوا من السحابة.")) { SB.c[k] = {}; saveBase(); pushing[k] = false; hydrateFull(true).then(function () { location.reload(); }); return Promise.resolve(false); }
       }
-      var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [], rejectedNew = [], mergedRecs = [];
+      var wrote = false, hasConflict = false, chain = Promise.resolve(), goneIds = [], closedIds = [], rejectedNew = [], mergedRecs = [], deniedJobs = [];
       // الرفع كان سجل ورا سجل (معاملة لكل سجل بالتتابع): 3000 عميل اتعدّلوا مرة واحدة كانوا بياخدوا دقايق.
       // دلوقتي 8 معاملات في نفس الوقت (كل واحدة على سجل مختلف)، ولو واحدة فشلت الباقي بيقف ونعيد المحاولة بعدين.
       function runJob(job) {
@@ -474,8 +486,10 @@
             if (SCOPED && e && e.code === "permission-denied") { // الأمر اتقفل/اتنقل لفني تاني؟ لو لسه مقروء يبقى السيرفر رفض التعديل نفسه
               return withTimeout(job.ref.get()).then(function () { throw new Error("السيرفر رفض تعديل الأمر " + ((job.record && job.record.no) || "") + " (الحقول: " + ((job.patchKeys || []).join("، ") || "؟") + ") — انشر قواعد Firestore الأخيرة"); }, function () { return { state: "gone", remote: null, remoteHash: null }; });
             }
+            if (isDenied(e)) return { state: "denied" };
             throw e;
           }).then(function (result) {
+            if (result.state === "denied") { deniedJobs.push(job); if (job.baseHash === undefined) delete next[job.id]; else next[job.id] = job.baseHash; return; }
             if (result.state === "gone") { goneIds.push(job.id); delete next[job.id]; return; }
             if (SCOPED && job.record && job.record.closed === true && result.state === "written") closedIds.push(job.id);
             if (result.state === "conflict") {
@@ -505,6 +519,19 @@
           snapshotRaw = ls.getItem("wf_r");
           if (rejectedNew.length) { try { window.alert("حساب الفني مايقدرش ينشئ أوامر جديدة، فاتشال " + rejectedNew.length + " أمر اتعمل من الجهاز ده. اطلب من المسؤول ينشئه ويعيّنه ليك."); } catch (e) {} }
           if (closedIds.length) setTimeout(function () { hydrateScoped().then(function () { if (closedIds.some(function (id) { return location.search.indexOf(id) > -1; })) location.replace("tech.html"); else banner(); }).catch(function () {}); }, 50);
+        }
+        if (deniedJobs.length) { // اترفض من السيرفر (صلاحيات): رجّع السجل لآخر نسخة متزامنة، والجديد يتشال
+          var lm = lastMap(k) || {}, curD = (local(k) || []).slice(), posD = {};
+          curD.forEach(function (r, i) { if (r && r.id) posD[r.id] = i; });
+          deniedJobs.forEach(function (j) {
+            var old = lm[j.id] || baseRec(k, j.id), i = posD[j.id];
+            if (old && (j.baseHash === undefined || hr(old) === j.baseHash)) { if (i === undefined) curD.push(old); else curD[i] = old; }
+            else if (i !== undefined && j.baseHash === undefined) curD[i] = null;
+            dropBase(k, j.id);
+          });
+          curD = curD.filter(Boolean); raw(k, JSON.stringify(curD)); snapshotRaw = ls.getItem(k);
+          try { if (window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function") { var mvD = {}; mvD[k] = curD; window.WorkshopDB.replaceMany(mvD).catch(function () {}); } } catch (e) {}
+          deniedNote(k, deniedJobs.length);
         }
         if (mergedRecs.length) { // اللي اتدمج في السحابة يتحط على الجهاز كمان (لو السجل ما اتعدّلش تاني وإحنا بنرفع)
           var curL = local(k) || [], at = {}; curL.forEach(function (r, i) { if (r && r.id) at[r.id] = i; });
@@ -559,7 +586,10 @@
         raw(k, mergedRaw); SB.x[k] = h(mergedRaw); saveBase(); setSettingsBase(mergedRaw);
         publishPortalConfig(); projectOrders();
         return touchMeta(false, true).then(function () { return done(true); });
-      }).catch(function (e) { return done(false, e); });
+      }).catch(function (e) {
+        if (isDenied(e) && typeof baseRaw === "string") { raw(k, baseRaw); SB.x[k] = h(baseRaw); saveBase(); setSettingsBase(baseRaw); deniedNote(k, 1); return done(true); }
+        return done(false, e);
+      });
     }
     var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
     if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
@@ -569,7 +599,10 @@
     ops.push(function (bt) { n ? bt.set(db.collection("settings").doc(id), { n: n, dev: DEV, ts: Date.now() }) : bt.delete(db.collection("settings").doc(id)); });
     parts.forEach(function (p, i) { ops.push(function (bt) { bt.set(db.collection("settings").doc(id + "~" + i), { v: p }); }); });
     for (var j = n; j < old; j++) (function (j) { ops.push(function (bt) { bt.delete(db.collection("settings").doc(id + "~" + j)); }); })(j);
-    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(false, true); }).then(function () { return done(true); }).catch(function (e) { return done(false, e); });
+    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(false, true); }).then(function () { return done(true); }).catch(function (e) {
+      if (isDenied(e)) { if (typeof lastRaw[k] === "string") raw(k, lastRaw[k]); else lastRaw[k] = snapshotRaw; deniedNote(k, 1); return done(true); }
+      return done(false, e);
+    });
   }
   function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
 
@@ -646,7 +679,7 @@
     Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });
     if (!ops.length) { clearRetry("remote:portalOrders"); return Promise.resolve(true); }
     poBusy = true;
-    return commitOps(ops).then(function () { SB.po = next; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
+    return commitOps(ops).then(function () { SB.po = next; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); if (isDenied(e)) { clearRetry("remote:portalOrders"); return false; } retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
   }
   /* نسخة العرض للفنيين: لكل أمر مفتوح ومعيّن لفني → techOrders/{id} فيها بيانات العميل والجهاز كاملة.
      بتتكتب من أجهزة الإدارة بس، والفني بيقراها هي وأمره المعيّن له فقط (قواعد Firestore). بتتمسح لما الأمر يتقفل أو يتسحب من الفني. */
@@ -676,7 +709,7 @@
     // حساب عهدة الفني (الرصيد والحركات وسجل أوامره المقفولة) بقى بيتحسب على السيرفر (دالة techAccount) مش من الأجهزة.
     if (!ops.length) { clearRetry("remote:techOrders"); return Promise.resolve(true); }
     tpBusy = true;
-    return commitOps(ops).then(function () { SB.tp = next; delete SB.tw; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
+    return commitOps(ops).then(function () { SB.tp = next; delete SB.tw; saveBase(); clearRetry("remote:techOrders"); return true; }).catch(function (e) { console.warn("tech projection pending", e && e.message); if (isDenied(e)) { clearRetry("remote:techOrders"); return false; } retryLater("remote:techOrders"); return false; }).then(function (ok) { tpBusy = false; return ok; });
   }
   function publishPortalConfig() { // قوائم عامة للبوابة (من غير أي بيانات حساسة)
     if (SCOPED) return Promise.resolve(true);
@@ -690,7 +723,7 @@
     publishTicker(c.ticker); // لها بصمة مستقلة: تتنشر حتى لو بقية إعدادات البوابة ماتغيّرتش
     if (SB.x.pc === x) { clearRetry("remote:portalConfig"); return Promise.resolve(true); }
     // mergeFields: نستبدل الحقول اللي بنبعتها بالكامل (زي set القديمة بالظبط) من غير ما نلمس أي حقل تاني في المستند.
-    return db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); clearRetry("remote:portalConfig"); return true; }).catch(function (e) { console.warn("portal config publish pending", e && e.message); retryLater("remote:portalConfig"); return false; });
+    return db.collection("portal").doc("config").set(c, { mergeFields: Object.keys(c) }).then(function () { SB.x.pc = x; saveBase(); clearRetry("remote:portalConfig"); return true; }).catch(function (e) { console.warn("portal config publish pending", e && e.message); if (isDenied(e)) { clearRetry("remote:portalConfig"); return false; } retryLater("remote:portalConfig"); return false; });
   }
   // الشريط الإعلاني لازم يظهر للزوار قبل تسجيل الدخول كمان: portal/config ممكن يكون مقفول على المسجّلين،
   // فبننشره كمان في portalPosts (نفس المكان اللي الزوار بيقروا منه المقالات أصلًا) بمعرّف ثابت وبيتفلتر بره قايمة المقالات.
@@ -702,7 +735,7 @@
     var x = h(stable(t));
     if (SB.x.pt === x) { clearRetry("remote:portalTicker"); return Promise.resolve(true); }
     return db.collection("portalPosts").doc("wf-ticker").set({ title: "شريط إعلانات", category: "ticker", body: "", image: "", pinned: false, published: true, ticker: t, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      .then(function () { SB.x.pt = x; saveBase(); clearRetry("remote:portalTicker"); return true; }).catch(function (e) { console.warn("ticker publish pending", e && e.message); retryLater("remote:portalTicker"); return false; });
+      .then(function () { SB.x.pt = x; saveBase(); clearRetry("remote:portalTicker"); return true; }).catch(function (e) { console.warn("ticker publish pending", e && e.message); if (isDenied(e)) { clearRetry("remote:portalTicker"); return false; } retryLater("remote:portalTicker"); return false; });
   }
   var inboxN = { a: 0, b: 0, c: 0, q: 0, g: 0 }; // g = طلبات الزوار (guestRequests)
   window.wfPortalInbox = inboxN;
@@ -816,11 +849,12 @@
     if (hydrating) return Promise.resolve(false); hydrating = true;
     var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
     keys.forEach(function (k) { try { captureBases(k); } catch (e) {} }); // قبل ما نسحب: أصل أي تعديل محلي عشان الدمج
-    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get(); }).concat([db.collection("settings").get()]))).then(function (res) {
+    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get().then(function (r) { delete NOACC[k]; return r; }, function (e) { if (isDenied(e)) { NOACC[k] = 1; return null; } throw e; }); }).concat([db.collection("settings").get()]))).then(function (res) {
       var changedAny = false, maxTs = 0; changedKeys = {};
       var sSnap = res[keys.length], st = applySettingsSnap(sSnap, first);
-      var cloudEmpty = !st.g && !Object.keys(st.ex).length && keys.every(function (k, i) { return !res[i].docs.length; });
+      var cloudEmpty = !st.g && !Object.keys(st.ex).length && keys.every(function (k, i) { return !res[i] || !res[i].docs.length; });
       keys.forEach(function (k, i) {
+        if (!res[i]) { if ((local(k) || []).length) { raw(k, "[]"); changedAny = true; changedKeys[k] = 1; } SB.c[k] = {}; return; } // قسم مالوش صلاحية يشوفه
         res[i].docs.forEach(function (d) { var t = tsMs(d); if (t > maxTs) maxTs = t; });
         var merged = mergeColWithBase(k, res[i].docs.map(fromDoc).map(cleanPortal), first, SB.c[k]);
         if (stable(local(k) || []) !== stable(merged.arr)) { raw(k, JSON.stringify(merged.arr)); changedAny = true; changedKeys[k] = 1; }
@@ -894,12 +928,13 @@
     if (hydrating) return Promise.resolve(false); hydrating = true;
     Object.keys(COLS).forEach(function (k) { try { captureBases(k); } catch (e) {} });
     var keys = Object.keys(COLS), since = firebase.firestore.Timestamp.fromMillis(Math.max(0, cur - DELTA_OVERLAP));
-    var qs = keys.map(function (k) { return db.collection(COLS[k]).where("_ts", ">", since).get(); });
+    var qs = keys.map(function (k) { return NOACC[k] ? Promise.resolve(null) : db.collection(COLS[k]).where("_ts", ">", since).get().catch(function (e) { if (isDenied(e)) { NOACC[k] = 1; return null; } throw e; }); });
     qs.push(db.collection("syncDeletes").where("_ts", ">", since).get(), skipS ? Promise.resolve(null) : db.collection("settings").get());
     return withTimeout(Promise.all(qs)).then(function (res) {
       var changedAny = false, maxTs = cur, found = 0; changedKeys = {};
       var tombs = {}; res[keys.length].docs.forEach(function (d) { var x = d.data() || {}, t = tsMs(d); if (t > cur) found++; if (t > maxTs) maxTs = t; var k = keys.filter(function (kk) { return COLS[kk] === x.c; })[0]; if (k && x.id) (tombs[k] = tombs[k] || {})[x.id] = t; });
       keys.forEach(function (k, i) {
+        if (!res[i]) return;
         var ups = res[i].docs.map(function (d) { var t = tsMs(d); if (t > cur) found++; if (t > maxTs) maxTs = t; return { rec: cleanPortal(fromDoc(d)), ts: t }; });
         if ((ups.length || tombs[k]) && applyDelta(k, ups, tombs[k])) changedAny = true;
       });

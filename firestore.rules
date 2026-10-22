@@ -22,6 +22,34 @@ service cloud.firestore {
     // isStaff = موظف بنطاق كامل. كل القواعد القديمة تحت بتستخدمه، فالموظف المحدود النطاق ما بياخدش منها حاجة.
     function isStaff() { return anyStaff() && scopeOfStaff() != 'a'; }
 
+    // ---- الصلاحيات من السيرفر (المرحلة 2): مستند الموظف فيه own (مالك) و p (خريطة صلاحياته الفعلية) — بتكتبهم دالة staffSync/الأدوار بس ----
+    // مستند قديم من غير own: نفس منطق roles-core (مش «مُدار» أو من غير دور أو دوره owner = مالك).
+    function me() { return get(/databases/$(database)/documents/staff/$(request.auth.uid)).data; }
+    function ownerS() {
+      return me().get('own', !(me().get('acl', 0) == 1 || me().get('createdBy', '') != '') || me().get('role', '') == '' || me().get('role', '') == 'owner') == true;
+    }
+    function can(ks) { return ownerS() || me().get('p', {}).keys().hasAny(ks); }
+    // اللي بيمسح سجل لازم يكون ليه صلاحية مسح القسم ده (شاهد الحذف بيخلّي الأجهزة التانية تشيله)
+    function canDelCol(c) {
+      return (c == 'customers' && can(['customers.delete', 'customers.merge', 'data.wipe']))
+        || (c == 'devices' && can(['devices.delete', 'customers.merge', 'data.wipe']))
+        || (c == 'requests' && can(['requests.delete', 'data.wipe']))
+        || (c == 'parts' && can(['inventory.delete', 'data.wipe']))
+        || (c == 'partMoves' && can(['inventory.delete', 'requests.delete', 'data.wipe']))
+        || (c == 'treasury' && can(['treasury.delete', 'data.wipe']))
+        || (c == 'tasks' && can(['tasks.delete', 'data.wipe']))
+        || (c == 'walletTx' && can(['wallets.delete', 'requests.delete', 'data.wipe']))
+        || (c == 'faultCodes' && can(['faultcodes.delete', 'data.wipe']))
+        || (c == 'invoices' && can(['invoices.delete', 'data.wipe']));
+    }
+    // حركة محفظة من غير صلاحية المحافظ: مسموحة بس لو جاية من شغلانة الموظف نفسه (عربون/تحصيل أمر، توريد، عهدة، أجور)
+    function txSrcOk(d) {
+      return (can(['requests.add', 'requests.edit', 'requests.close', 'requests.delete']) && d.get('source', '') in ['order-link', 'order-part', 'ext-part', 'admin-part'])
+        || (can(['inventory.add', 'inventory.edit']) && d.get('source', '') in ['restock', 'part-sale'])
+        || (can(['custody.approve', 'custody.settle']) && d.get('source', '') in ['custody', 'custody-expense'])
+        || (can(['techpay.manage']) && d.get('source', '') == 'techpay');
+    }
+
     // الفني يقدر يعدّل أي حاجة في أمره المعيّن له ما عدا: الهوية (رقم الأمر/العميل/الجهاز/تاريخ الإنشاء/المصدر)،
     // التعيين (الفني/محفظته/من عيّنه)، والعربون وبيانات البوابة. (قايمة منع مش قايمة سماح: عشان أي حقل جديد يضيفه التطبيق لشغل الأمر ما يتوقفش.)
     // لوكيشن: إحداثيات (lat/lng أرقام) أو لينك خرائط قصير.
@@ -95,17 +123,17 @@ service cloud.firestore {
       allow read: if anyStaff();
     }
     match /staffAudit/{doc} {
-      allow read: if isStaff() && request.auth.token.get('role', 'owner') == 'owner';
+      allow read: if isStaff() && ownerS();
     }
 
     match /portal/{doc} {
       // portal/branding = هوية النظام (الاسم والألوان والشعار) وبتتقرأ قبل تسجيل الدخول؛ مفيش فيها بيانات خاصة.
       allow read: if signedIn() || doc == 'branding';
-      allow write: if isStaff();
+      allow write: if isStaff() && can(['portal.manage', 'branding.manage', 'settings.edit']);
     }
 
     match /portalLinks/{uid} {
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'customers.merge', 'customers.edit']);
       allow read: if signedIn() && request.auth.uid == uid;
       // العميل يستطيع فقط إنهاء تغيير كلمة المرور الإجباري، ولا يغيّر هوية الربط أو تعطيله.
       allow update: if signedIn() && request.auth.uid == uid
@@ -117,7 +145,7 @@ service cloud.firestore {
       // المرحلة 2: ما ينفعش تنشر الملف ده إلا بعد نشر دوال portalLoginLookup / portalPhoneAvailable
       // وتحديث الواجهة (portal.html + app-check.js). القراءة بقت للموظفين وصاحب الحساب بس؛
       // أي حد تاني بيستخدم الدالة (محدودة العدد ومحمية بـ App Check).
-      allow get: if isStaff() || (signedIn() && resource != null && resource.data.uid == request.auth.uid);
+      allow get: if (isStaff() && can(['portal.manage', 'customers.merge', 'customers.edit', 'customers.view'])) || (signedIn() && resource != null && resource.data.uid == request.auth.uid);
       allow list: if false;
       // الإنشاء: مفتاح المستند لازم يكون رقم موبايل مصري صحيح، والإيميل المسجّل لازم يكون
       // إيميل حساب المستخدم نفسه (يمنع توجيه رقم لإيميل شخص تاني أو مفاتيح عشوائية).
@@ -128,11 +156,14 @@ service cloud.firestore {
         && request.resource.data.email is string
         && 'email' in request.auth.token
         && request.resource.data.email.lower() == request.auth.token.email.lower();
-      allow update, delete: if isStaff();
+      allow update, delete: if isStaff() && can(['portal.manage', 'customers.merge']);
     }
 
     match /customers/{id} {
-      allow read, write: if isStaff();
+      allow read: if isStaff() && can(['customers.view', 'customers.merge', 'requests.view', 'devices.view', 'route.view', 'followup.view', 'warranty.view', 'portal.manage', 'requests.assign']);
+      allow create: if isStaff() && can(['customers.add', 'customers.merge', 'requests.add', 'portal.manage']);
+      allow update: if isStaff() && can(['customers.edit', 'customers.merge', 'requests.add', 'requests.edit', 'portal.manage']);
+      allow delete: if isStaff() && can(['customers.delete', 'customers.merge', 'data.wipe']);
       allow read: if own(id);
       allow create: if own(id) && request.resource.data.portal == true
         && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'mainAddress', 'extraAddress', 'portal', 'createdAt', 'updatedAt']);
@@ -141,7 +172,10 @@ service cloud.firestore {
     }
 
     match /devices/{id} {
-      allow read, write: if isStaff();
+      allow read: if isStaff() && can(['devices.view', 'customers.view', 'customers.merge', 'requests.view', 'route.view', 'followup.view', 'warranty.view', 'portal.manage', 'requests.assign']);
+      allow create: if isStaff() && can(['devices.add', 'requests.add', 'portal.manage', 'customers.merge']);
+      allow update: if isStaff() && can(['devices.edit', 'devices.add', 'customers.merge', 'requests.add', 'requests.edit', 'portal.manage']);
+      allow delete: if isStaff() && can(['devices.delete', 'customers.merge', 'data.wipe']);
       allow read: if own(resource.data.customerId);
       allow create: if own(request.resource.data.customerId) && request.resource.data.portal == true
         && request.resource.data.keys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt']);
@@ -150,7 +184,7 @@ service cloud.firestore {
     }
 
     match /portalRequests/{id} {
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'requests.add', 'customers.merge']);
       allow read: if own(resource.data.customerId);
       allow create: if own(request.resource.data.customerId)
         && request.resource.data.handled == false && request.resource.data.portal == true
@@ -163,12 +197,12 @@ service cloud.firestore {
 
     match /portalOrders/{id} {
       // نسخة عرض من أمر الشغل؛ العميل قراءة فقط، والتطبيق (عميل الويب) لا ينشئها ولا يغيّرها.
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'requests.add', 'requests.edit', 'requests.close', 'customers.merge']);
       allow read: if own(resource.data.customerId);
     }
 
     match /portalComplaints/{id} {
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'customers.merge']);
       allow read: if own(resource.data.customerId);
       allow create: if own(request.resource.data.customerId)
         && request.resource.data.status == 'جديد' && request.resource.data.portal == true
@@ -182,7 +216,7 @@ service cloud.firestore {
     }
 
     match /portalQuestions/{id} {
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'customers.merge']);
       allow read: if own(resource.data.customerId);
       allow create: if own(request.resource.data.customerId) && request.resource.data.portal == true
         && request.resource.data.status == 'جديد'
@@ -195,7 +229,7 @@ service cloud.firestore {
     }
 
     match /portalSuggestions/{id} {
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage', 'customers.merge']);
       allow read: if own(resource.data.by);
       allow create: if own(request.resource.data.by) && request.resource.data.status == 'pending'
         && request.resource.data.keys().hasOnly(['kind', 'value', 'parent', 'by', 'status', 'createdAt']);
@@ -205,14 +239,14 @@ service cloud.firestore {
     // الزائر يقدر ينشئ مستند بس بحقول محددة وأطوال محدودة، ومفيش له قراءة ولا تعديل ولا حذف.
     // الموظفون وحدهم يقرؤون الطلبات ويحوّلونها لأوامر شغل (من لوحة بوابة العملاء).
     match /guestRequests/{id} {
-      allow read, update, delete: if isStaff();
+      allow read, update, delete: if isStaff() && can(['portal.manage', 'requests.add']);
       // الزائر بيبعت الطلب عن طريق دالة السيرفر portalGuestRequest (محدودة العدد لكل IP ولكل رقم) — مفيش كتابة مباشرة.
       allow create: if false;
     }
 
     match /portalPosts/{id} {
       allow read: if resource.data.published == true;
-      allow read, write: if isStaff();
+      allow read, write: if isStaff() && can(['portal.manage']);
     }
 
     // ---- الموظف المحدود النطاق (فني): يشوف ويعدّل أوامره المعيّنة له وهي مفتوحة بس ----
@@ -220,17 +254,23 @@ service cloud.firestore {
     match /requests/{id} {
       allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.closed == false;
       allow update: if scopedStaff() && techOrderPatch();
+      allow read: if isStaff() && can(['requests.view', 'route.view', 'followup.view', 'warranty.view', 'requests.assign', 'custody.approve', 'custody.settle', 'reports.view', 'portal.manage']);
+      allow create: if isStaff() && can(['requests.add', 'portal.manage']);
+      allow update: if isStaff() && can(['requests.add', 'requests.edit', 'requests.close', 'requests.assign', 'portal.manage', 'techpay.manage', 'custody.approve', 'custody.settle', 'customers.merge']);
+      allow delete: if isStaff() && can(['requests.delete', 'data.wipe']);
     }
 
     // نسخة عرض (من أجهزة الإدارة) فيها العميل والجهاز بتوع كل أمر معيّن: الفني يقرأ بتاعته بس ويمسحها لما يقفل الأمر.
     match /techOrders/{id} {
       allow get, list: if scopedStaff() && resource.data.techId == request.auth.uid;
       allow delete: if scopedStaff() && resource.data.techId == request.auth.uid;
+      allow read, write: if isStaff() && can(['requests.assign', 'requests.add', 'requests.edit', 'requests.close']);
     }
 
     // نسخة قديمة من حساب عهدة الفني (قبل دالة techAccount على السيرفر). القراءة بس، ومحدش بيكتبها من الأجهزة دلوقتي.
     match /techWallets/{uid} {
       allow get: if scopedStaff() && uid == request.auth.uid;
+      allow read, write: if isStaff() && can(['custody.approve', 'custody.settle']);
     }
 
     // مصروفات الفني: بينشئها «معلّقة» وبيشوف بتاعته بس وبيلغي المعلّقة منها. الاعتماد/الرفض من أجهزة الإدارة (قاعدة الموظف الكامل).
@@ -245,6 +285,7 @@ service cloud.firestore {
         && request.resource.data.amount is number && request.resource.data.amount > 0 && request.resource.data.amount <= 1000000
         && request.resource.data.note is string && request.resource.data.note.size() >= 2 && request.resource.data.note.size() <= 300;
       allow delete: if scopedStaff() && resource.data.techId == request.auth.uid && resource.data.status == 'pending';
+      allow read, write: if isStaff() && can(['custody.approve', 'custody.settle']);
     }
 
     // الإعدادات: المحدود يقرأ الإعدادات العامة وعلامة التحديث بس (مفيش أي wfkv_* = مصروفات/سلة/…)، ويكتب علامة التحديث.
@@ -252,6 +293,70 @@ service cloud.firestore {
       allow get: if scopedStaff() && (doc == 'global' || doc == 'wf_meta');
       allow create, update: if scopedStaff() && doc == 'wf_meta'
         && request.resource.data.keys().hasOnly(['ts', 'dev']);
+      // موظف كامل: يقرأ الإعدادات كلها، ويكتب حسب صلاحياته (wfkv_* = قوايم إضافية متقسمة أجزاء ~0 ~1 ...)
+      allow read: if isStaff();
+      allow write: if isStaff() && (
+        doc == 'wf_meta'
+        || (doc == 'global' && (can(['settings.edit', 'branding.manage'])
+              || (can(['inventory.add', 'inventory.edit']) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['aiInvAliases']))))
+        || (doc.matches('^wfkv_wf_e(~[0-9]+)?$') && can(['wallets.add', 'wallets.edit', 'wallets.delete']))
+        || doc.matches('^wfkv_wf_trash(~[0-9]+)?$')
+        || (doc.matches('^wfkv_wf_followup_log(~[0-9]+)?$') && can(['followup.view', 'requests.add', 'requests.edit']))
+        || (doc.matches('^wfkv_wf_pending_calls(~[0-9]+)?$') && can(['requests.add', 'requests.edit']))
+        || (doc.matches('^wfkv_wf_comp_(custom|fav)(~[0-9]+)?$') && can(['faultcodes.view', 'faultcodes.add', 'faultcodes.edit']))
+        || (doc.matches('^wfkv_wf_techpay(~[0-9]+)?$') && can(['techpay.manage']))
+        || can(['settings.edit']));
+    }
+
+    // ---- بيانات الورشة: كل قسم بصلاحياته ----
+    match /parts/{id} {
+      allow read: if isStaff() && can(['inventory.view', 'requests.add', 'requests.edit', 'requests.close', 'reports.view', 'invoices.add']);
+      allow create: if isStaff() && can(['inventory.add']);
+      allow update: if isStaff() && can(['inventory.add', 'inventory.edit', 'requests.add', 'requests.edit', 'requests.close', 'requests.delete', 'invoices.add']);
+      allow delete: if isStaff() && can(['inventory.delete', 'data.wipe']);
+    }
+    match /partMoves/{id} {
+      allow read: if isStaff() && can(['inventory.view', 'requests.add', 'requests.edit', 'requests.close', 'reports.view']);
+      allow create: if isStaff() && can(['inventory.add', 'inventory.edit', 'requests.add', 'requests.edit', 'requests.close', 'requests.delete', 'invoices.add']);
+      allow update: if isStaff() && can(['inventory.edit']);
+      allow delete: if isStaff() && can(['inventory.delete', 'requests.delete', 'data.wipe']);
+    }
+    match /invoices/{id} {
+      allow read: if isStaff() && can(['inventory.view', 'invoices.add', 'invoices.edit', 'invoices.delete', 'reports.view']);
+      allow create, update: if isStaff() && can(['invoices.add', 'invoices.edit', 'inventory.add']);
+      allow delete: if isStaff() && can(['invoices.delete', 'data.wipe']);
+    }
+    match /walletTx/{id} {
+      allow read: if isStaff() && can(['wallets.view', 'reports.view', 'requests.add', 'requests.edit', 'requests.close', 'custody.approve', 'custody.settle', 'inventory.add', 'inventory.edit', 'techpay.manage']);
+      allow create: if isStaff() && (can(['wallets.add']) || txSrcOk(request.resource.data));
+      allow update: if isStaff() && (can(['wallets.edit']) || (txSrcOk(request.resource.data) && txSrcOk(resource.data)));
+      allow delete: if isStaff() && (can(['wallets.delete', 'data.wipe']) || (can(['requests.delete']) && resource.data.get('source', '') in ['order-link', 'order-part', 'ext-part']));
+    }
+    match /treasury/{id} {
+      allow read: if isStaff() && can(['treasury.view', 'reports.view']);
+      allow create: if isStaff() && (can(['treasury.add']) || (can(['wallets.add']) && request.resource.data.get('source', '') == 'transfer'));
+      allow update: if isStaff() && can(['treasury.edit']);
+      allow delete: if isStaff() && can(['treasury.delete', 'data.wipe']);
+    }
+    match /tasks/{id} {
+      allow read: if isStaff() && can(['tasks.view', 'followup.view']);
+      allow create, update: if isStaff() && can(['tasks.add', 'tasks.edit', 'requests.add', 'requests.edit', 'followup.view']);
+      allow delete: if isStaff() && can(['tasks.delete', 'data.wipe']);
+    }
+    match /faultCodes/{id} {
+      allow read: if isStaff() && can(['faultcodes.view', 'requests.view']);
+      allow create: if isStaff() && can(['faultcodes.add']);
+      allow update: if isStaff() && can(['faultcodes.edit']);
+      allow delete: if isStaff() && can(['faultcodes.delete', 'data.wipe']);
+    }
+    match /syncDeletes/{id} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() && canDelCol(request.resource.data.get('c', ''));
+      allow delete: if isStaff() && ownerS();
+    }
+    match /clientErrors/{id} {
+      allow create, update: if isStaff();
+      allow read, delete: if isStaff() && ownerS();
     }
 
     // ---- الإشعارات الداخلية: صندوق لكل مستخدم (موظف أو عميل). الإشعارات بتتكتب من السيرفر بس (دوال notify*). ----
@@ -273,7 +378,7 @@ service cloud.firestore {
     // تحكم المالك في الإشعارات للنظام كله (أنواع مقفولة + مواعيد التذكيرات). أي حد مسجّل يقرأ، والمالك بس يكتب.
     match /notifConfig/{doc} {
       allow read: if signedIn();
-      allow write: if isStaff() && request.auth.token.get('role', 'owner') == 'owner' && doc == 'global'
+      allow write: if isStaff() && ownerS() && doc == 'global'
         && request.resource.data.keys().hasOnly(['off', 'remindMin', 'overdueHours', 'digestHour', 'custodyMax', 'feedbackDays', 'warrantyDays', 'at', 'by'])
         && request.resource.data.off is list && request.resource.data.off.size() <= 80;
     }
@@ -282,7 +387,8 @@ service cloud.firestore {
     // قواعد الموظفين الشاملة لباقي بيانات التطبيق لا تشمل staff؛ يمنع ذلك أي موظف من
     // تصعيد صلاحياته أو إضافة موظف آخر عبر القاعدة العامة.
     match /{collection}/{document=**} {
-      allow read, write: if isStaff() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit'
+      // أي مجموعة تانية (قديمة/مستقبلية) للمالك بس — الموظف بياخد اللي صلاحياته بتسمح بيه من القواعد اللي فوق.
+      allow read, write: if isStaff() && ownerS() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit'
         && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig' && collection != 'mediaFiles' && collection != 'rateLimits';
     }
   }
