@@ -113,6 +113,7 @@ const dashboardElements = {
   expenseList: element('expenseList')
 };
 const dashboardContext = {
+  orderRemainAmt: (o) => Math.max(0, Math.round(((+o.total || 0) - ((+o.deposit || 0) - (+o.depositRefunded || 0))) * 100) / 100),
   K,
   document: { getElementById(id) { return dashboardElements[id] || null; } },
   arrCached(storageKey) { return records[storageKey] || []; },

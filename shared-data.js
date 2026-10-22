@@ -601,6 +601,10 @@ var WFStorage = window.WFStorage;
   window.duplicateCustomerByPhone = duplicateCustomerByPhone;
   window.customerName = customerName;
   window.deviceName = deviceName;
+  /* المتبقي على العميل = الإجمالي − (العربون − اللي اترد منه). نفس معادلة السيرفر (tech-ledger netDeposit/collectedOf) — مكان واحد لكل الحسابات */
+  var orderNetDeposit = function (o) { return Math.round(((+(o && o.deposit) || 0) - (+(o && o.depositRefunded) || 0)) * 100) / 100; };
+  var orderRemainAmt = function (o) { return Math.max(0, Math.round(((+(o && o.total) || 0) - orderNetDeposit(o)) * 100) / 100); };
+  [window, typeof globalThis !== "undefined" ? globalThis : window].forEach(function (g) { g.orderNetDeposit = orderNetDeposit; g.orderRemainAmt = orderRemainAmt; });
   window.addresses = addresses;
   window.addressText = addressText;
   window.defineOverride = defineOverride;

@@ -205,7 +205,7 @@
     if (!(depNum(local) > depNum(remote) + 0.004)) return remote;
     var m = Object.assign({}, remote);
     DEP_FIELDS.forEach(function (f) { if (local[f] !== undefined) m[f] = local[f]; });
-    m.remain = Math.max(0, Math.round(((+m.total || 0) - (+m.deposit || 0)) * 100) / 100);
+    m.remain = Math.max(0, Math.round(((+m.total || 0) - ((+m.deposit || 0) - (+m.depositRefunded || 0))) * 100) / 100);
     return m;
   }
   function conflictDiff(v) {

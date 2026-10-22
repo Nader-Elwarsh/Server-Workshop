@@ -236,7 +236,7 @@
   }
 
   /* «عليه فلوس مستحقة» = أمر خلص (مكتمل) ولسه ماتقفلش بالتحصيل. الأوامر اللي لسه شغالة إجماليها تقديري ومش مستحق لسه. */
-  function orderDueNow(r) { return !!r && !r.closed && r.status === "مكتمل" && Math.max(0, Math.round(((+r.total || 0) - (+r.deposit || 0)) * 100) / 100) > 0; }
+  function orderDueNow(r) { return !!r && !r.closed && r.status === "مكتمل" && orderRemainAmt(r) > 0; }
   function customerHasUnpaid(cid) {
     return ordersOfCustomer(cid).some(orderDueNow);
   }
@@ -276,7 +276,7 @@
 
   function customerRemainingTotal(cid) {
     return ordersOfCustomer(cid).filter(orderDueNow)
-      .reduce((a, r) => a + Math.max(0,Math.round(((+r.total || 0) - (+r.deposit || 0))*100)/100), 0);
+      .reduce((a, r) => a + orderRemainAmt(r), 0);
   }
 
   function customerLastContactDate(cid) {

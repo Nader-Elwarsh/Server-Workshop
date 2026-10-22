@@ -322,6 +322,34 @@ function dedupeWalletTxByRef(){
 // تسجيل تلقائي لأي عربون/تحصيل نهائي على أمر ليه محفظة محددة لكن حركته ناقصة من المحفظة
 // (حفظ اتقطع، مزامنة، أمر اتعدّل من جهاز تاني...). بيتخطى أي حركة انت مسحتها بإيدك
 // (userDeleted) وأي أمر ملغي أو اتفتح تاني، فمفيش حاجة بتتسجل مرتين أو بتتعاد بعد حذفك.
+/* أرقام الأوامر بتتعمل على الجهاز، فجهازين أوفلاين (أو في نفس اللحظة) ممكن يدّوا نفس الرقم لأمرين.
+   بعد المزامنة: الأقدم (وقت الإنشاء ثم المعرّف) بياخد الرقم، والباقي بياخدوا أول رقم فاضي في نفس اليوم.
+   الحساب ثابت (نفس النتيجة على أي جهاز) فلو جهازين صلّحوا في نفس الوقت، النسختين متطابقين ومفيش تعارض.
+   أسباب حركات المحافظ المربوطة بالأمر بتتحدث بالرقم الجديد. */
+let _dupNoAt=0;
+function fixDuplicateOrderNumbers(force){
+  try{
+    if(typeof arr!=="function"||typeof K==="undefined"||!K.r||window.wfSyncMode==="scoped")return 0;
+    const nowMs=Date.now();if(!force&&nowMs-_dupNoAt<60000)return 0;_dupNoAt=nowMs;
+    const orders=arr(K.r),groups={};
+    orders.forEach(r=>{if(r&&r.id&&r.no)(groups[r.no]=groups[r.no]||[]).push(r)});
+    const dups=Object.keys(groups).filter(n=>groups[n].length>1).sort();
+    if(!dups.length)return 0;
+    const used=new Set(orders.map(r=>r&&r.no).filter(Boolean)),changed={};
+    dups.forEach(no=>{
+      const m=String(no).match(/^(W\d+-\d+-\d+-)(\d+)$/);if(!m)return;
+      const g=groups[no].slice().sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.id).localeCompare(String(b.id)));
+      g.slice(1).forEach(r=>{let n=+m[2]+1;while(used.has(m[1]+n))n++;const nn=m[1]+n;used.add(nn);changed[r.id]={from:r.no,to:nn}});
+    });
+    const ids=Object.keys(changed);if(!ids.length)return 0;
+    const os=orders.map(r=>r&&changed[r.id]?Object.assign({},r,{no:changed[r.id].to,renumberedFrom:changed[r.id].from}):r);
+    const tx=arr(K.wtx).map(x=>{if(!x)return x;const m=String(x.refKey||"").match(/^order-(?:deposit|final)-(.+)$/),oid=m?m[1]:(x.source==="order-part"?String(x.orderId||""):"");const c=oid&&changed[oid];
+      if(!c||!x.reason||String(x.reason).indexOf(c.from)<0)return x;return Object.assign({},x,{reason:String(x.reason).split(c.from).join(c.to)})});
+    if(!put(K.r,os)||!put(K.wtx,tx))return 0;
+    ids.forEach(id=>window.auditLog?.("تغيير رقم أمر مكرر","أمر شغل",id,changed[id].from+" ← "+changed[id].to));
+    return ids.length;
+  }catch(e){console.warn("[orders] fix duplicate numbers",e);return 0}
+}
 let _autoHealAt=0;
 function _orderTxDate(v){const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?localDateKey(d):localDateKey(new Date())}
 function autoHealOrderWalletTx(force){
@@ -341,7 +369,7 @@ function autoHealOrderWalletTx(force){
       const dRef="order-deposit-"+r.id,fRef="order-final-"+r.id;
       const dw=String(r.depositWallet||"").trim(),dAmt=orderMainDeposit(r);
       if(dAmt>0&&dw&&wallets.has(dw)&&!active.has(dRef)&&!userDel.has(dRef))todo.push({ref:dRef,date:_orderTxDate(r.createdAt),amount:dAmt,wallet:dw,reason:`💵 عربون أمر الشغل ${r.no}`});
-      const cw=String(r.closeWallet||"").trim(),coll=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+      const cw=String(r.closeWallet||"").trim(),coll=orderRemainAmt(r);
       // أمر قفله الفني: السيرفر بيسجل حركته مع القفل نفسه (techCloseOrder) — الجهاز ما يعملهاش عشان ماتتعارضش معاها
       if(r.closed&&r.paid&&!r.closedByTech&&coll>0&&cw&&wallets.has(cw)&&!active.has(fRef)&&!userDel.has(fRef))todo.push({ref:fRef,date:_orderTxDate(r.closedAt||r.paidAt),amount:coll,wallet:cw,reason:`💳 تحصيل نهائي أمر الشغل ${r.no}`});
     });
@@ -741,7 +769,7 @@ function walletAudit(){
     if(!r){add({kind:"order-missing",dir:isIn?"up":"down",tx:x,amount:amt,text:"حركة مربوطة بأمر شغل مش موجود (اتحذف؟) — لسه محسوبة في الرصيد."});return}
     if(r.status==="ملغي")add({kind:"order-cancelled",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" ملغي لكن حركته لسه محسوبة. لو رجّعت الفلوس للعميل لازم تسجّل صرف."});
     if(kind==="final"&&!r.closed)add({kind:"final-on-open",dir:isIn?"up":"down",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+" اتفتح تاني (مرتجع/تعديل) وتحصيله النهائي لسه محسوب. لو رجّعت الفلوس سجّل صرف، ولو لأ سيبه لحد ما تقفله تاني."});
-    const expect=kind==="deposit"?orderMainDeposit(r):Math.max(0,money(r.total)-money(r.deposit));
+    const expect=kind==="deposit"?orderMainDeposit(r):orderRemainAmt(r);
     if(Math.abs(expect-amt)>0.005)add({kind:"amount-mismatch",dir:amt>expect?"up":"down",tx:x,order:r,amount:amt-expect,fix:kind==="deposit"&&isIn&&amt>expect&&!r.closed&&!r.paid&&r.status!=="ملغي"?{type:"to-order",orderId:r.id,label:"↩️ رجّع "+amt.toFixed(2)+" للأمر"}:null,text:"أمر "+(r.no||"")+": الحركة "+amt.toFixed(2)+" لكن "+(kind==="deposit"?"العربون":"المتبقي (الإجمالي − العربون)")+" على الأمر "+expect.toFixed(2)+(x.manualOverride?" (انت معدّل الحركة بإيدك).":".")});
     const w=String((kind==="deposit"?r.depositWallet:r.closeWallet)||"").trim();
     if(w&&w!==x.wallet)add({kind:"wallet-mismatch",dir:"info",tx:x,order:r,amount:amt,text:"أمر "+(r.no||"")+": المحفظة على الأمر «"+w+"» لكن الحركة على «"+(x.wallet||"—")+"»."});
@@ -759,7 +787,7 @@ function walletAudit(){
       // اللي اتحذف منك بقصد (tombstone) مابيتعدّش ناقص.
       if(!byUser)add({kind:"missing-deposit",dir:"down",order:r,amount:mainDep,fix:{type:"deposit",orderId:r.id},text:"أمر "+(r.no||"")+": عربون "+mainDep.toFixed(2)+" على الأمر ومحفظته «"+String(r.depositWallet).trim()+"»، لكن "+(g.length?"حركته في المحفظة اتشالت تلقائيًا (مش محسوبة في الرصيد).":"مفيش حركة في المحفظة.")});
     }
-    const coll=Math.max(0,money(r.total)-money(r.deposit));
+    const coll=orderRemainAmt(r);
     if(r.closed&&coll>0&&String(r.closeWallet||"").trim()&&!has("order-final-"+r.id)){
       const g=gone("order-final-"+r.id),byUser=g.some(x=>x.userDeleted);
       if(!byUser)add({kind:"missing-final",dir:"down",order:r,amount:coll,fix:{type:"final",orderId:r.id},text:"أمر "+(r.no||"")+": اتقفل بتحصيل "+coll.toFixed(2)+" في «"+String(r.closeWallet).trim()+"» لكن "+(g.length?"حركة التحصيل اتشالت تلقائيًا (مش محسوبة في الرصيد).":"مفيش حركة تحصيل في المحفظة.")});
@@ -806,7 +834,7 @@ const WALLET_AUDIT_TITLES={"order-missing":"حركات مربوطة بأوامر
 function restoreOrderWalletTx(orderId,kind){
   const r=arr(K.r).find(x=>String(x.id)===String(orderId));if(!r)return alert("الأمر مش موجود.");
   const isDep=kind==="deposit";
-  const amount=isDep?orderMainDeposit(r):Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+  const amount=isDep?orderMainDeposit(r):orderRemainAmt(r);
   const wallet=String((isDep?r.depositWallet:r.closeWallet)||"").trim();
   if(!(amount>0)||!wallet)return alert("مفيش مبلغ أو محفظة على الأمر لتسجيلهم.");
   if(!confirm(`هتتسجل ${isDep?"عربون":"تحصيل"} أمر ${r.no||""} بمبلغ ${amount.toFixed(2)} ج كوارد في «${wallet}». لو الفلوس دي اتسجلت عندك بطريقة تانية (وارد يدوي مثلًا) هتتحسب مرتين. تأكيد؟`))return;
@@ -824,7 +852,7 @@ async function restoreOrderDepositFromTx(orderId){
   if(r0.closed||r0.paid)return alert("الأمر متقفل — افتحه الأول لو محتاج تعدّل العربون.");
   const amt=+tx.amount||0;if(!(amt>0))return;
   if(!confirm(`هيترجع عربون ${amt.toFixed(2)} ج («${tx.wallet||"—"}») على أمر ${r0.no||""} زي ما هو متسجل في الحسابات. الحركة نفسها مش هتتغير، فمش هيتحسب مرتين. تأكيد؟`))return;
-  const upd=(_,r)=>{const extra=typeof orderDepositExtra==="function"?orderDepositExtra(r):(+r.depositExtra||0);r.deposit=Math.round((extra+amt)*100)/100;r.depositWallet=String(tx.wallet||"").trim();r.remain=Math.max(0,Math.round(((+r.total||0)-r.deposit)*100)/100);return true};
+  const upd=(_,r)=>{const extra=typeof orderDepositExtra==="function"?orderDepositExtra(r):(+r.depositExtra||0);r.deposit=Math.round((extra+amt)*100)/100;r.depositWallet=String(tx.wallet||"").trim();r.remain=orderRemainAmt(r);return true};
   const ok=typeof updateRequestRecordAsync==="function"?await updateRequestRecordAsync(orderId,upd):(()=>{const a=arr(K.r),r=a.find(x=>String(x.id)===String(orderId));upd(a,r);return put(K.r,a)})();
   if(!ok)return alert("تعذر حفظ الأمر.");
   window.auditLog?.("استرجاع عربون للأمر","أمر شغل",orderId,`${tx.wallet||""} ${amt.toFixed(2)} ج`);

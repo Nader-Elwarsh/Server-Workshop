@@ -194,6 +194,19 @@ async function decryptBackupData(envelope,password){
 const BACKUP_SECTION_LABELS={d:"الأجهزة",r:"أوامر الشغل",p:"قطع الغيار",m:"حركات المخزن",e:"المصاريف",tr:"الخزنة",tasks:"المهام",wtx:"حركات الحسابات",fc:"أكواد الأعطال",pc:"المكالمات المعلّقة",inv:"الفواتير",trash:"سلة المهملات",followupLog:"سجل المتابعة"};
 function backupMissingSections(data){return Object.entries(K).filter(([name,k])=>k!==K.s&&!(k in data)).map(([name,k])=>({key:k,label:BACKUP_SECTION_LABELS[name]||name}))}
 function backupSummary(data){const n=k=>Array.isArray(data[k])?data[k].length:0;return `المخطط: ${data._meta?.schemaVersion||1} — العملاء: ${n(K.c)} — الأجهزة: ${n(K.d)} — أوامر الشغل: ${n(K.r)} — قطع المخزن: ${n(K.p)} — حركات المخزن: ${n(K.m)} — حركات الحسابات: ${n(K.wtx)} — حركات الخزنة: ${n(K.tr)} — الصور/التسجيلات: ${data.images&&typeof data.images==="object"?Object.keys(data.images).length:0}`}
+/* سجلات موجودة دلوقتي ومش في النسخة = هتتمسح لو اخترت «استبدال كامل» */
+function backupReplaceLoss(data){
+  const lines=[];let total=0;
+  Object.entries(K).forEach(([name,k])=>{const cur=arr(k);if(!Array.isArray(cur)||!cur.length||!cur.every(x=>x&&typeof x==="object"))return;const ids=new Set((Array.isArray(data[k])?data[k]:[]).map(x=>x&&x.id));const n=cur.filter(x=>x.id&&!x.deleted&&!ids.has(x.id)).length;if(n){total+=n;lines.push(`• ${BACKUP_SECTION_LABELS[name]||name}: ${n}`)}});
+  return{total,lines};
+}
+/* «دمج»: لكل قايمة سجلات، اللي موجود يفضل زي ما هو، ويتضاف من النسخة اللي معرّفه مش موجود بس. الإعدادات ما بتتلمسش. */
+function backupMergeStaged(data){
+  const staged={};
+  Object.values(K).forEach(k=>{if(k===K.s||!Array.isArray(data[k]))return;const cur=arr(k);if(!Array.isArray(cur))return;const ids=new Set(cur.map(x=>x&&x.id).filter(Boolean));const add=data[k].filter(x=>x&&typeof x==="object"&&x.id&&!ids.has(x.id));if(add.length)staged[k]=cur.concat(add)});
+  return staged;
+}
+function backupMergeAdds(data){const st=backupMergeStaged(data);return Object.keys(st).reduce((n,k)=>n+st[k].length-arr(k).length,0)}
 function validateBackupData(data){
   if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("bad");
   // متطلب مرن: النسخة لازم تكون فيها على الأقل مفتاح أساسي واحد قديم (زي
@@ -241,7 +254,19 @@ async function restoreBackupFile(input){
       // ملف أمان مستقل يُنزّل قبل أي استبدال، ليظل متاحًا حتى لو حدث فشل غير متوقع.
       safetyDownloaded=downloadBackupData(oldData,"نسخة-أمان-قبل-الاسترجاع");
       if(!safetyDownloaded)throw new Error("safety-download");
-      if(!confirm(`سيتم استبدال البيانات الحالية بالنسخة المختارة.\n\nمحتوى النسخة:\n${summary}\n\nتم تنزيل نسخة أمان تلقائية من الحالة الحالية قبل الاسترجاع. هل تريد المتابعة؟`)){input.value="";backupBusy=false;return} /* قبل كده الإلغاء هنا كان بيسيب backupBusy=true فالنسخ والاسترجاع بيتجمّدوا لحد ما الصفحة تتعمل لها تحديث */
+      /* الاختيار الآمن الأول: «دمج» بيضيف اللي ناقص بس من غير ما يمسح أو يغيّر أي حاجة موجودة.
+         «استبدال كامل» بيخلي السحابة زي النسخة بالظبط — يعني أي حاجة اتعملت بعد تاريخ النسخة بتتمسح عند كل الأجهزة. */
+      const loss=backupReplaceLoss(data),plusN=backupMergeAdds(data);
+      if(confirm(`محتوى النسخة:\n${summary}\n\n✅ «دمج» (الأأمن): هيضيف من النسخة ${plusN} سجل مش موجود دلوقتي، ومن غير ما يمسح أو يغيّر أي حاجة موجودة.\n(لو فيه حاجة اتمسحت بقصد بعد تاريخ النسخة هترجع.)\n\nموافق = دمج — إلغاء = اختيارات تانية`)){
+        const staged=backupMergeStaged(data);
+        if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");
+        if(!await commitStorageAsync(staged))throw new Error("storage-failed");
+        window.auditLog?.("دمج نسخة احتياطية","نسخة احتياطية","",plusN+" سجل");
+        alert(`✅ اتضاف ${plusN} سجل من النسخة. هيترفعوا للسحابة مع المزامنة العادية.`);location.href="index.html";return;
+      }
+      const lossTxt=loss.total?`\n\n⛔ في بيانات دلوقتي مش موجودة في النسخة وهتتمسح من السحابة ومن كل الأجهزة:\n${loss.lines.join("\n")}`:"";
+      if(!confirm(`⚠️ استبدال كامل: كل البيانات (هنا وفي السحابة وعند كل الأجهزة) هتبقى زي النسخة بالظبط.${lossTxt}\n\nتم تنزيل نسخة أمان تلقائية من الحالة الحالية. تكمّل؟`)){input.value="";backupBusy=false;return}
+      if(loss.total&&String(prompt(`للتأكيد اكتب كلمة: استبدال\n(هيتمسح ${loss.total} سجل)`)||"").trim()!=="استبدال"){alert("ما اتغيرش حاجة.");input.value="";backupBusy=false;return} /* قبل كده الإلغاء هنا كان بيسيب backupBusy=true فالنسخ والاسترجاع بيتجمّدوا لحد ما الصفحة تتعمل لها تحديث */
       const staged={},keys=Object.values(K);keys.forEach(k=>{if(k in data)staged[k]=data[k]});missing.forEach(x=>{staged[x.key]=[]});
       if(window.ImageStore?.clearAll&&!await window.ImageStore.clearAll())throw new Error("clear-images");
       if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");

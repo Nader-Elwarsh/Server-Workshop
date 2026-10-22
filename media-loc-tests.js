@@ -47,7 +47,7 @@ assert.ok(portal.includes('WFLoc.field("g_loc"') && portal.includes('WFLoc.field
 assert.ok(/WFBack\.owns\(\)\)return;/.test(portal), "closing a sheet must not re-render the portal form");
 for (const r of [rules, rulesP]) {
   assert.ok(/'createdAt', 'media', 'loc'\]\)/.test(r) && /media\.size\(\) <= 6/.test(r) && /function locOk/.test(r), "rules allow validated media/loc on portal requests");
-  assert.ok(/'guest', 'createdAt', 'loc'\]\)/.test(r), "rules allow loc on guest requests");
+  assert.ok(/match \/guestRequests\/\{id\} \{[\s\S]*?allow create: if false;/.test(r), "guest requests go through the rate-limited server function only");
 }
 assert.ok(/exports\.mediaSign = mediaCallable/.test(fn) && /exports\.mediaDelete/.test(fn) && /exports\.mediaCleanup/.test(fn) && /exports\.mediaUsage/.test(fn));
 assert.ok(/'mediaFiles' && collection != 'rateLimits'/.test(rules), "browsers can't touch mediaFiles/rateLimits");

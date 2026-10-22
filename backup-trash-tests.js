@@ -25,10 +25,28 @@ function makeEnv(confirmAnswer){
     const file={text:JSON.stringify({[K.c]:[{id:'c9',name:'من النسخة'}],_meta:{schemaVersion:1}})};
     const input={files:[file],value:'x'};
     x.restoreBackupFile(input);await new Promise(r=>setTimeout(r,60));
-    assert.strictEqual(e.confirms.length,1,'confirmation shown');
+    assert.strictEqual(e.confirms.length,2,'merge offer + replace confirmation shown');
     assert.strictEqual(JSON.parse(e.store[K.c]||'[]').length,0,'cancel must not replace data');
     x.restoreBackupFile({files:[file],value:'y'});await new Promise(r=>setTimeout(r,60));
     assert.strictEqual(e.readers.length,2,'a second restore attempt must not be blocked after cancelling');
+  }
+  // «دمج»: بيضيف اللي ناقص بس، ومايمسحش ولا يغيّر الموجود
+  {
+    const e=makeEnv(true),x=e.context,K=e.K;
+    e.store[K.c]=JSON.stringify([{id:'c1',name:'جديد بعد النسخة'},{id:'c2',name:'معدّل'}]);
+    const file={text:JSON.stringify({[K.c]:[{id:'c2',name:'قديم'},{id:'c3',name:'اتمسح بعدين'}],[K.r]:[],_meta:{schemaVersion:1}})};
+    x.restoreBackupFile({files:[file],value:'m'});await new Promise(r=>setTimeout(r,80));
+    const cs=JSON.parse(e.store[K.c]);
+    assert.deepStrictEqual(cs.map(c=>c.id),['c1','c2','c3']);assert.strictEqual(cs[1].name,'معدّل','الموجود مايتغيرش');
+    assert.ok(/دمج/.test(e.confirms[0])&&/1 سجل/.test(e.confirms[0]));
+  }
+  // «استبدال كامل»: بيقول هيتمسح كام سجل، ومحتاج كلمة «استبدال»
+  {
+    let n=0;const e=makeEnv(true),x=e.context,K=e.K;x.confirm=m=>{e.confirms.push(m);return n++>0};
+    e.store[K.c]=JSON.stringify([{id:'c1',name:'جديد'}]);
+    x.restoreBackupFile({files:[{text:JSON.stringify({[K.c]:[{id:'c0',name:'قديم'}],_meta:{schemaVersion:1}})}],value:'r'});await new Promise(r=>setTimeout(r,80));
+    assert.ok(/هتتمسح من السحابة/.test(e.confirms[1])&&/: 1/.test(e.confirms[1]));
+    assert.deepStrictEqual(JSON.parse(e.store[K.c]).map(c=>c.id),['c1'],'من غير كلمة التأكيد ما اتغيرش حاجة');
   }
   // تعطل/إلغاء قراءة الملف ما يعلّقش قفل النسخ والاسترجاع، والمحاولة التالية تشتغل.
   {
@@ -69,6 +87,7 @@ function makeEnv(confirmAnswer){
     e.store[K.tr]=JSON.stringify([{id:'t1',amount:50}]);e.store[K.wtx]=JSON.stringify([{id:'w1',amount:50}]);e.store[K.s]=JSON.stringify({centers:['مركز حالي']});
     e.store[K.c]=JSON.stringify([{id:'cur',name:'عميل حالي'}]);
     const file={text:JSON.stringify({[K.c]:[{id:'c9',name:'من النسخة'}],[K.d]:[],[K.r]:[],[K.p]:[],_meta:{schemaVersion:1}})};
+    let q=0;x.confirm=m=>{e.confirms.push(m);return q++>0};x.prompt=()=>"استبدال";
     x.restoreBackupFile({files:[file],value:'x'});await new Promise(r=>setTimeout(r,80));
     assert.ok(/هتتفرّغ/.test(e.confirms[0])&&/الخزنة/.test(e.confirms[0])&&/حركات الحسابات/.test(e.confirms[0])&&/الصور والتسجيلات/.test(e.confirms[0]),'confirmation lists the sections and images that will be emptied');
     assert.strictEqual(JSON.parse(e.store[K.c])[0].id,'c9','data replaced by the backup');
