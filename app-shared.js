@@ -299,7 +299,7 @@ function requestAgeMs(r){
 function techCloseOnServer(r){
   if(navigator.onLine===false){alert("قفل الأمر محتاج نت عشان التحصيل يتسجل في عهدتك.");return}
   let wallet=document.getElementById("rCloseWallet")?.value||(window.WFPerm?.wallet?.()||"");
-  let remain=Math.max(0,Math.round(((+r.total||0)-(+r.deposit||0))*100)/100);
+  let remain=orderRemainAmt(r);
   if(remain>0&&!wallet){alert("اختار المحفظة اللي هيتسجل فيها المبلغ.");return}
   if(!confirm(`تأكيد استلام ${remain.toFixed(2)} ج وقفل الأمر ${r.no||""}${remain>0?`\nالمبلغ هيتسجل في: ${wallet}`:""}؟`))return;
   let d=new Date(),p=n=>String(n).padStart(2,"0");

@@ -101,5 +101,18 @@ const req = (phone, extra = {}) => Object.assign({ data: { phone }, appVerified:
     assert.ok(keys.length === 2 && keys.every((k) => !k.includes('01012345678') && !k.includes('203.0.113.9')), keys.join());
     assert.ok([...store.entries()].filter(([k]) => k.startsWith('rateLimits/')).every(([, v]) => v.expireAt instanceof Date));
   }
+  // طلب الزائر من السيرفر: الحقول بتتنضف، المرجع بيتولد، والحد لكل رقم
+  {
+    const { db, store } = fakeDb();
+    const h = createPhoneHandlers({ db, allowedOrigins: () => ['https://app.test'], serverTime: () => 'TS' });
+    const g = (extra) => req('01012345678', { data: Object.assign({ phone: '01012345678', name: 'أحمد', center: 'مطاي', village: '', street: 'شارع المستشفى', deviceType: 'غسالة', fault: 'مبتصفيش', loc: { lat: 28.1, lng: 30.7, evil: 1 } }, extra || {}) });
+    const r1 = await h.guest(g());
+    assert.ok(/^G-[A-HJ-NP-Z2-9]{6}$/.test(r1.ref));
+    const doc = store.get('guestRequests/' + r1.ref);
+    assert.strictEqual(doc.ref, r1.ref); assert.strictEqual(doc.handled, false); assert.strictEqual(doc.guest, true); assert.strictEqual(doc.createdAt, 'TS'); assert.deepStrictEqual(doc.loc, { lat: 28.1, lng: 30.7, acc: 0 });
+    await rejects(h.guest(g({ fault: 'x' })), 'invalid-argument');
+    await h.guest(g()); await h.guest(g());
+    await rejects(h.guest(g()), 'resource-exhausted');
+  }
   console.log('phone-lookup-tests: PASS');
 })().catch((e) => { console.error(e); process.exit(1); });

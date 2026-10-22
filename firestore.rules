@@ -114,10 +114,10 @@ service cloud.firestore {
     }
 
     match /phoneIndex/{phone} {
-      // المرحلة 1 (آمنة النشر دلوقتي): القراءة المباشرة لسه مفتوحة عشان نسخ المتصفح القديمة
-      // تفضل شغالة لحد ما دوال portalLoginLookup / portalPhoneAvailable تتنشر والواجهة تتحدّث.
-      // بعدها انشر firestore.rules.proposed (المرحلة 2) اللي بتقفل get للموظفين وصاحب الحساب بس.
-      allow get: if true;
+      // المرحلة 2: ما ينفعش تنشر الملف ده إلا بعد نشر دوال portalLoginLookup / portalPhoneAvailable
+      // وتحديث الواجهة (portal.html + app-check.js). القراءة بقت للموظفين وصاحب الحساب بس؛
+      // أي حد تاني بيستخدم الدالة (محدودة العدد ومحمية بـ App Check).
+      allow get: if isStaff() || (signedIn() && resource != null && resource.data.uid == request.auth.uid);
       allow list: if false;
       // الإنشاء: مفتاح المستند لازم يكون رقم موبايل مصري صحيح، والإيميل المسجّل لازم يكون
       // إيميل حساب المستخدم نفسه (يمنع توجيه رقم لإيميل شخص تاني أو مفاتيح عشوائية).
@@ -206,21 +206,8 @@ service cloud.firestore {
     // الموظفون وحدهم يقرؤون الطلبات ويحوّلونها لأوامر شغل (من لوحة بوابة العملاء).
     match /guestRequests/{id} {
       allow read, update, delete: if isStaff();
-      // رقم الطلب G-XXXXXX هو نفسه معرّف المستند (يتولّد عند الزائر)؛ لو اتكرر الإنشاء بيتحوّل لتعديل ويترفض.
-      allow create: if id.matches('^G-[A-HJ-NP-Z2-9]{6}$')
-        && request.resource.data.keys().hasOnly(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt', 'loc'])
-        && (!('loc' in request.resource.data) || locOk(request.resource.data.loc))
-        && request.resource.data.keys().hasAll(['ref', 'name', 'phone', 'center', 'village', 'street', 'deviceType', 'fault', 'handled', 'guest', 'createdAt'])
-        && request.resource.data.ref == id
-        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 80
-        && request.resource.data.phone is string && request.resource.data.phone.matches('^[0-9]{8,15}$')
-        && request.resource.data.center is string && request.resource.data.center.size() >= 1 && request.resource.data.center.size() <= 80
-        && request.resource.data.village is string && request.resource.data.village.size() <= 80
-        && request.resource.data.street is string && request.resource.data.street.size() >= 3 && request.resource.data.street.size() <= 200
-        && request.resource.data.deviceType is string && request.resource.data.deviceType.size() <= 60
-        && request.resource.data.fault is string && request.resource.data.fault.size() >= 3 && request.resource.data.fault.size() <= 1000
-        && request.resource.data.handled == false && request.resource.data.guest == true
-        && request.resource.data.createdAt == request.time;
+      // الزائر بيبعت الطلب عن طريق دالة السيرفر portalGuestRequest (محدودة العدد لكل IP ولكل رقم) — مفيش كتابة مباشرة.
+      allow create: if false;
     }
 
     match /portalPosts/{id} {

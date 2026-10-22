@@ -296,7 +296,7 @@ function toggleQuickClose(i){
 async function routeSaveDraftLabor(i){
   const labor=+(document.getElementById(`qcLabor-${i}`)?.value);
   if(!Number.isFinite(labor)||labor<0)return true;
-  return updateRequestRecordAsync(i,(_,r)=>{r.labor=labor;r.total=(+r.partsTotal||0)+labor;r.remain=Math.max(0,r.total-(+r.deposit||0));return true});
+  return updateRequestRecordAsync(i,(_,r)=>{r.labor=labor;r.total=(+r.partsTotal||0)+labor;r.remain=orderRemainAmt(r);return true});
 }
 async function routeConfirmAddPart(requestId){
   if(!await routeSaveDraftLabor(requestId))return;
@@ -334,7 +334,7 @@ function confirmQuickPartialPayment(i){
   let separate=false;
   if(typeof applyAdditionalDeposit==="function")separate=applyAdditionalDeposit(r,newDeposit,wallet).separate;
   else{r.deposit=(+r.deposit||0)+newDeposit;if(wallet)r.depositWallet=wallet}
-  r.remain=Math.max(0,r.total-r.deposit);
+  r.remain=orderRemainAmt(r);
   const saved=withRollback([K.r,K.wtx],()=>{
     if(!put(K.r,a))return{ok:false};
     if(typeof syncWalletForOrderDeposit==="function"&&!syncWalletForOrderDeposit(r))return{ok:false};

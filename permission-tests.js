@@ -82,7 +82,7 @@ const proposed = fs.readFileSync(path.join(__dirname, 'firestore.rules.proposed'
 const phoneBlock = (txt) => { const i = txt.indexOf('match /phoneIndex/{phone} {'); const j = txt.indexOf('match /customers/{id} {'); assert.ok(i > 0 && j > i, 'phoneIndex block present'); return [txt.slice(0, i) + txt.slice(j), txt.slice(i, j)]; };
 const [restRules, phoneRules] = phoneBlock(rules), [restProposed, phoneProposed] = phoneBlock(proposed);
 assert.strictEqual(restProposed, restRules, 'the proposed rules file must not diverge from the canonical secured rules (outside phoneIndex)');
-assert.ok(/allow get: if true;/.test(phoneRules), 'phase 1 keeps public phoneIndex get until the functions are deployed');
+assert.ok(!/allow get: if true;/.test(phoneRules) && /allow get: if isStaff\(\) \|\| \(signedIn\(\) && resource != null && resource\.data\.uid == request\.auth\.uid\);/.test(phoneRules), 'phase 2 is live: phoneIndex is not publicly readable');
 assert.ok(/allow get: if isStaff\(\) \|\| \(signedIn\(\) && resource != null && resource\.data\.uid == request\.auth\.uid\);/.test(phoneProposed) && !/allow get: if true;/.test(phoneProposed), 'phase 2 locks phoneIndex get');
 const createRule = (b) => b.slice(b.indexOf('allow create'), b.indexOf('allow update'));
 assert.strictEqual(createRule(phoneProposed), createRule(phoneRules), 'both phases share the same create constraints');

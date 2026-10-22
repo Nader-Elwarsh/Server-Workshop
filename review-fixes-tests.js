@@ -6,7 +6,7 @@ const rq = read("app-requests.js");
 assert.ok(/if\(r\.status==="ملغي"\)return alert\("الأمر ملغي/.test(rq), "مفيش إضافة قطع من المخزن لأمر ملغي (كانت بتتخصم مرتين لما الأمر يرجع)");
 assert.ok(/status==="ملغي"\)return alert\("الأمر ملغي — رجّع حالته «جديد» الأول وبعدين ضيف القطع\."\);const ord0=/.test(rq), "ولا قطعة من بره");
 assert.ok(/canEdit&&r\.status!=="ملغي"&&window\.wfSyncMode!=="scoped"/.test(rq));
-assert.strictEqual((rq.match(/\(r\.paid\?0:Math\.max\(0,Math\.round/g) || []).length, 4, "المتبقي في الإيصال وواتساب = صفر للأمر المدفوع");
+assert.strictEqual((rq.match(/\(r\.paid\?0:orderRemainAmt\(r\)\)/g) || []).length, 4, "المتبقي في الإيصال وواتساب = صفر للأمر المدفوع");
 assert.ok(/!canEdit\?"":`<div class="workshop-track"><h3>🏭 سحب الجهاز للورشة/.test(rq), "مفيش سحب للورشة على أمر مقفول");
 assert.ok(/moves\[k\]\.type="خروج بسبب أمر شغل جديد"/.test(rq));
 const del = read("app-delete-tools.js");
