@@ -839,15 +839,26 @@
     };
     setTimeout(function () { var f = $("wfPw0"); if (f) f.focus(); }, 50);
   };
-  var converting = false;
+  var converting = false, SAFE_ID = /^[A-Za-z0-9_~.\-]{1,120}$/;
   function convertPortal() { // حوّل طلبات البوابة الجديدة لأوامر شغل حقيقية
     var fns = ["orderNo", "recordStatusHistory", "applyStatusTimestamp", "saveJSONSafe", "arr", "settings"];
     if (SCOPED || !online() || converting || !ready || fns.some(function (f) { return typeof window[f] !== "function"; }) || !window.K) return Promise.resolve();
     converting = true;
     return (reqSnap ? Promise.resolve(reqSnap) : db.collection("portalRequests").where("handled", "==", false).get()).then(function (snap) {
       var n = 0, marks = [], seenPortal = {};
+      /* 🛡️ حماية من السبام: الطلب بيتحول لأمر شغل لوحده لحد حد معيّن، والزيادة بتستنى موافقتك من «إدارة البوابة».
+         - العميل عنده أمرين مفتوحين من البوابة أو أكتر، أو
+         - اتحوّل 5 طلبات بوابة أو أكتر في آخر 24 ساعة (حسابات كتير جديدة مثلًا). */
+      var allR = window.arr(window.K.r), dayAgo = Date.now() - 864e5, openBy = {}, lastDay = 0;
+      allR.forEach(function (x) { if (!x || x.source !== "portal") return; if (!x.closed && x.status !== "ملغي") openBy[x.customerId] = (openBy[x.customerId] || 0) + 1; if (Date.parse(x.createdAt) > dayAgo) lastDay++; });
+      var holds = [];
       snap.docs.forEach(function (d) {
         var p = sanitize(clean(d.data())), id = d.id, ds = window.arr(window.K.d), cs = window.arr(window.K.c);
+        // 🛡️ المعرّفات بيختارها جهاز العميل: أي رمز غريب (علامات تنصيص، <>) ممكن يتحقن في صفحات الإدارة — نرفضه
+        if (!SAFE_ID.test(id) || (p.deviceId && !SAFE_ID.test(String(p.deviceId)))) { marks.push(d.ref.update({ handled: true, rejected: true, rejectReason: "bad_id" })); return; }
+        if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(String(p.visit || ""))) p.visit = "";
+        ["fault", "note", "executionPlace"].forEach(function (f) { if (p[f] != null) p[f] = String(p[f]).slice(0, f === "executionPlace" ? 60 : 1000); });
+        if (p.hold === true && p.approved !== true) return; // مستني موافقتك
         var dev = ds.find(function (x) { return x.id === p.deviceId; }), cust = cs.find(function (x) { return x.id === p.customerId; });
         if (!dev || !cust) return; // لسه مانزلش على الجهاز: هنحاول تاني
         if (dev.customerId !== p.customerId) { marks.push(d.ref.update({ handled: true, rejected: true })); return; }
@@ -860,6 +871,7 @@
         // هوية طلب البوابة هي مفتاح التكرار؛ لا نعتمد على رقم أمر جديد أو
         // على دورة onSnapshot وحدها، لأن تبويبين قد يحاولا التحويل معًا.
         var exists = window.arr(window.K.r).find(function (x) { return x.id === id || (x.source === "portal" && x.portalRequestId === id); });
+        if (!exists && p.approved !== true && ((openBy[p.customerId] || 0) >= 2 || lastDay >= 5)) { holds.push(d.ref.update({ hold: true, holdReason: (openBy[p.customerId] || 0) >= 2 ? "customer_open" : "daily_limit" })); return; }
         if (!exists) {
           var s = window.settings();
           var r = { id: id, portalRequestId: id, no: window.orderNo(), customerId: p.customerId, deviceId: p.deviceId, addressKey: "main", visit: p.visit || "", status: "جديد", executionPlace: p.executionPlace || (s.executionPlaces || [])[0] || "عند العميل", workshopStatus: (s.workshopStatuses || [])[0] || "غير مطلوب", partsWaiting: false, tag: "", fault: p.fault || "", work: "", labor: 0, parts: [], partsTotal: 0, partsCost: 0, total: 0, deposit: 0, remain: 0, closed: false, source: "portal", customerNote: p.note || "", createdAt: new Date().toISOString() };
@@ -869,14 +881,15 @@
           if (p.loc && typeof p.loc === "object" && ((isFinite(+p.loc.lat) && isFinite(+p.loc.lng)) || typeof p.loc.url === "string")) r.loc = p.loc.url ? { url: String(p.loc.url).slice(0, 300) } : { lat: +p.loc.lat, lng: +p.loc.lng, acc: +p.loc.acc || 0 };
           window.recordStatusHistory(r, "", r.status); window.applyStatusTimestamp(r, r.status);
           if (!window.saveJSONSafe(window.K.r, window.arr(window.K.r).concat(r))) return;
-          exists = r; n++;
+          exists = r; n++; openBy[p.customerId] = (openBy[p.customerId] || 0) + 1; lastDay++;
         }
         marks.push(d.ref.update({ handled: true, orderId: id, orderNo: exists.no || "" }));
       });
-      return Promise.all(marks).then(function () { if (n) { banner(); return projectOrders(); } });
+      return Promise.all(marks.concat(holds.map(function (h) { return h.catch(function () {}); }))).then(function () { if (n) { banner(); return projectOrders(); } });
     }).catch(function (e) { console.warn("portal convert", e && e.message); }).then(function () { converting = false; });
   }
 
+  window.wfConvertPortalNow = function () { reqSnap = null; return convertPortal(); }; // بعد موافقتك على طلب متوقف
   function isDirty(k) {
     var rawv = ls.getItem(k);
     if (COLS[k] && touched[k] instanceof Set && !SCOPED) { var tq0 = touchedIdx(k), B0 = SB.c[k] || {}; return tq0.ids.some(function (id) { var r = tq0.idx[id]; return !r || B0[id] !== hrc(r); }); }
@@ -1162,6 +1175,8 @@
         }));
       });
     }
+    // 📦 أوامره القديمة اللي في الأرشيف (على السيرفر) بتتنقل للعميل اللي فضل كمان — لو الدالة مش متاحة الدمج بيكمّل والأرشيف يفضل زي ما هو
+    if (cloud) chain = chain.then(function () { return Promise.resolve().then(function () { return callServer("archiveRepointCustomer", { dupId: dupId, keepId: keepId }); }).catch(function (e) { console.warn("archive repoint", e && e.message); }); });
     return chain.then(function () { var ok = applyMergeLocal(dupId, keepId); try { projectOrders(); } catch (e) {} return ok; });
   }
   function doMerge(j) { return mergeCustomers(j.keep.id, j.dup.id); }
@@ -1181,6 +1196,16 @@
     merging = true; var done = 0, chain = Promise.resolve();
     jobs.forEach(function (j) { chain = chain.then(function () { return doMerge(j); }).then(function (ok) { if (ok) done++; }).catch(function (e) { console.warn("portal merge failed", e && e.message); }); });
     return chain.then(function () { merging = false; if (done) banner(); return done; });
+  }
+  function callServer(name, data) {
+    var u = firebase.auth().currentUser; if (!u) return Promise.reject(new Error("sign_in_required"));
+    var url = "https://us-central1-" + encodeURIComponent(firebase.app().options.projectId) + ".cloudfunctions.net/" + encodeURIComponent(name);
+    return u.getIdToken().then(function (tok) {
+      return (window.WFAppCheck && window.WFAppCheck.headers ? window.WFAppCheck.headers().catch(function () { return {}; }) : Promise.resolve({})).then(function (h) {
+        var hdr = { "Content-Type": "application/json", Authorization: "Bearer " + tok }; Object.keys(h || {}).forEach(function (k) { hdr[k] = h[k]; });
+        return withTimeout(fetch(url, { method: "POST", headers: hdr, body: JSON.stringify({ data: data || {} }) })).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (r.ok && j && j.result !== undefined) return j.result; throw new Error((j && j.error && j.error.message) || ("HTTP " + r.status)); }); });
+      });
+    });
   }
   window.wfMergeCustomers = mergeCustomers;
   window.wfMergePortalDuplicates = mergePortalDuplicates;
