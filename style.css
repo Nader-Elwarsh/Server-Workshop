@@ -808,3 +808,8 @@ label:has(> input[type="checkbox"]),label:has(> input[type="radio"]){display:fle
 .profile .profile-grid>.kv:last-child:nth-child(odd){grid-column:1/-1}
 /* أزرار رأس الصفحة: سطر لوحدها بعرض الصفحة، والزرار بيكبر يملا مكانه (مفيش زرار واقف لوحده في الطرف) */
 @media(max-width:650px){.profile>.page-head{flex-wrap:wrap}.profile>.page-head>.compact-actions{width:100%;display:flex;flex-wrap:wrap;gap:6px}.profile>.page-head>.compact-actions>button,.profile>.page-head>.compact-actions>a{flex:1 1 auto;justify-content:center;text-align:center}.profile>.page-head>.compact-actions>.ps-inline-actions{flex:0 0 auto}}
+
+/* batch97: زرار الحذف مابقاش في القوايم — الحذف من صفحة السجل نفسه ← «⚙️ خيارات أكتر» */
+.card-side-actions [data-wf-code^="deleteCustomerRecord("],.card-side-actions [data-wf-code^="deleteDeviceRecord("],
+.simple-record-actions [data-wf-code^="deleteCustomerRecord("],.simple-record-actions [data-wf-code^="deleteDeviceRecord("],.simple-record-actions [data-wf-code^="deletePartRecord("],
+#customerList [data-wf-code^="deleteCustomerRecord("],#deviceList [data-wf-code^="deleteDeviceRecord("],#partList [data-wf-code^="deletePartRecord("],#faultList [data-wf-code^="deleteFaultCodeRecord("]{display:none!important}

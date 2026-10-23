@@ -24,17 +24,41 @@ function normalizeFaultText(v){
     .replace(/[۰-۹]/g,d=>String(d.charCodeAt(0)-0x06F0))
     .replace(/[\s\-_./\\]+/g,"").trim();
 }
-/* model (اختياري): نفس الكود لنفس الماركة بس لسلسلة/موديلات مختلفة (زي شارب ES-TN وشارب أمامي) = مش مكرر */
-function findDuplicateFaultCode(deviceType,brand,code,excludeId,model){
+/* الماركة بالاسم الموحّد (Tornado = تورنيدو) قبل المقارنة */
+function faultBrandKey(b){try{if(typeof wfBrandKey==="function"&&typeof wfCanonicalBrand==="function")return wfBrandKey(wfCanonicalBrand(b))}catch(_){}return normalizeFaultText(b)}
+/* الموديلات متوافقة: واحد فيهم فاضي، أو فيه موديل مشترك (ES-TN / TWE-TLN ↔ TWE-TLN) */
+function faultModelTokens(m){return String(m||"").split(/[,،/|+\n]|\s-\s|\s+و\s+/).map(normalizeFaultText).filter(x=>x.length>=2)}
+function faultModelsMatch(a,b){const x=faultModelTokens(a),y=faultModelTokens(b);if(!x.length||!y.length)return true;return x.some(t=>y.indexOf(t)>-1)}
+/* التصنيف (أمامي/فوق): نفس الكود في غسالة أمامي وفوق أوتوماتيك عطلين مختلفين (E01 أمامي ≠ E1 علوي) */
+function faultCategoryMatch(a,b){const x=normalizeFaultText(a),y=normalizeFaultText(b);return !x||!y||x===y}
+/* model / category (اختياريين): نفس الكود لنفس الماركة بس لسلسلة/موديلات أو تصنيف مختلف = مش مكرر.
+   الكود نفسه بيتقارن زي ما هو مكتوب (E1 ≠ E01): في الكتالوجات الاتنين بيبقوا لأجهزة مختلفة. */
+function findDuplicateFaultCode(deviceType,brand,code,excludeId,model,category){
   let nc=normalizeFaultText(code);if(!nc)return null;
-  let nt=normalizeFaultText(deviceType),nb=normalizeFaultText(brand),nm=normalizeFaultText(model);
+  let nt=normalizeFaultText(deviceType),nb=faultBrandKey(brand);
   return arr(K.fc).find(f=>String(f.id)!==String(excludeId||"")
     &&f.kind!=="test"
-    &&(!nm||!normalizeFaultText(f.model)||normalizeFaultText(f.model)===nm)
+    &&faultModelsMatch(model,f.model)
+    &&faultCategoryMatch(category,f.category)
     &&normalizeFaultText(f.code)===nc
     &&normalizeFaultText(f.deviceType)===nt
-    &&normalizeFaultText(f.brand)===nb)||null;
+    &&faultBrandKey(f.brand)===nb)||null;
 }
+/* 🧪 بصمة طريقة الدخول: أسماء الزراير بالإنجليزي (Rinse + ON ← Start). نفس الزراير لنفس الماركة والموديلات = نفس التيست مود
+   حتى لو العنوان مكتوب بشكل تاني (الذكاء الاصطناعي بيسمّي نفس التيست بعناوين مختلفة كل استيراد). */
+function testModeSig(enter){
+  const words=(String(enter||"").match(/[A-Za-z][A-Za-z0-9]*/g)||[]).map(w=>w.toLowerCase()).filter(w=>w.length>1||w==="i");
+  if(words.length>=2)return "w:"+Array.from(new Set(words)).sort().join(",");
+  const t=normalizeFaultText(String(enter||"").replace(/(^|\s)\d{1,2}\s*[).\-]/g," ").replace(/[()+،,:؛;]/g,""));
+  return t?"t:"+t:"";
+}
+function sameTestMode(a,b){
+  if(!a||!b||normalizeFaultText(a.deviceType)!==normalizeFaultText(b.deviceType)||faultBrandKey(a.brand)!==faultBrandKey(b.brand))return false;
+  if(normalizeFaultText(a.title)&&normalizeFaultText(a.title)===normalizeFaultText(b.title))return true;
+  const sa=testModeSig(a.enter);return !!sa&&sa===testModeSig(b.enter)&&faultModelsMatch(a.model,b.model)&&faultCategoryMatch(a.category,b.category);
+}
+function findDuplicateTestMode(rec,excludeId){return arr(K.fc).find(f=>f&&f.kind==="test"&&String(f.id)!==String(excludeId||"")&&sameTestMode(rec,f))||null}
+window.faultBrandKey=faultBrandKey;window.faultModelsMatch=faultModelsMatch;window.testModeSig=testModeSig;window.sameTestMode=sameTestMode;window.findDuplicateTestMode=findDuplicateTestMode;
 
 /* ---------------------------------------------------------------------
    القوائم المستخدمة (نفس أنواع/ماركات الأجهزة في باقي النظام، من ⚙️
@@ -72,6 +96,7 @@ function saveFaultCodesRecords(records){
 }
 function persistFaultRecord(formData,existing){
   let f=existing||{id:id(),source:"manual",createdAt:new Date().toISOString()};
+  if(formData&&formData.brand&&typeof wfCanonicalBrand==="function")formData.brand=wfCanonicalBrand(formData.brand);
   Object.assign(f,formData);f.updatedAt=new Date().toISOString();
   let a=arr(K.fc);
   if(!saveFaultCodesRecords(existing?a.map(x=>x.id===f.id?f:x):a.concat(f)))return{ok:false};
@@ -82,7 +107,7 @@ function saveFaultCode(e,existing=null){
   let formData=collectFaultFormData();
   if(!formData.code)return alert("اكتب كود العطل.");
   if(!formData.title)return alert("اكتب وصف قصير للعطل.");
-  let dup=findDuplicateFaultCode(formData.deviceType,formData.brand,formData.code,existing?.id);
+  let dup=findDuplicateFaultCode(formData.deviceType,formData.brand,formData.code,existing?.id,existing?.model,existing?.category);
   if(dup)return alert(`⚠️ الكود «${dup.code}» مسجّل بالفعل لنفس النوع/الماركة (${dup.title||""}).\n\nعدّل الكود الموجود بدل ما تضيف نسخة تانية.`);
   let result=persistFaultRecord(formData,existing);
   if(!result.ok)return;
@@ -321,20 +346,18 @@ function importFaultCodesFile(input){
         // التيست مود: مكرر لو نفس النوع/الماركة/العنوان
         if(raw&&raw.kind==="test"){
           if(!raw.title||!raw.enter)return;
-          let tk=["test",raw.deviceType,raw.brand,raw.title].map(normalizeFaultText).join("|");
-          if(seenImport.has(tk)||existing.some(f=>f.kind==="test"&&["test",f.deviceType,f.brand,f.title].map(normalizeFaultText).join("|")===tk)){skipped++;return}
-          seenImport.add(tk);
-          existing.push({id:id(),kind:"test",deviceType:raw.deviceType||"",brand:raw.brand||"",model:raw.model||"",title:raw.title,enter:raw.enter||"",tests:raw.tests||"",exit:raw.exit||"",note:raw.note||"",media:Array.isArray(raw.media)?raw.media.slice(0,10):[],source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+          if(existing.some(f=>f.kind==="test"&&sameTestMode(raw,f))){skipped++;return} /* الملف نفسه: اللي اتضاف منه بقى جوه existing */
+          existing.push({id:id(),kind:"test",deviceType:raw.deviceType||"",brand:typeof wfCanonicalBrand==="function"?wfCanonicalBrand(raw.brand||""):(raw.brand||""),category:raw.category||"",model:raw.model||"",title:raw.title,enter:raw.enter||"",tests:raw.tests||"",exit:raw.exit||"",note:raw.note||"",media:Array.isArray(raw.media)?raw.media.slice(0,10):[],source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
           added++;return;
         }
         if(!raw||!raw.code)return;
         // مكرر عندك أو مكرر جوه نفس الملف (قبل كده التكرار جوه الملف كان بيدخل مرتين)
-        let key=[raw.deviceType,raw.brand,raw.code].map(normalizeFaultText).join("|");
-        let dup=findDuplicateFaultCode(raw.deviceType,raw.brand,raw.code,null)||seenImport.has(key);
+        let key=[raw.deviceType,faultBrandKey(raw.brand),raw.category,raw.model,raw.code].map(normalizeFaultText).join("|");
+        let dup=findDuplicateFaultCode(raw.deviceType,raw.brand,raw.code,null,raw.model,raw.category)||seenImport.has(key);
         seenImport.add(key);
         if(dup){skipped++;return}
         existing.push({
-          id:id(),deviceType:raw.deviceType||"",brand:raw.brand||"",code:raw.code||"",
+          id:id(),deviceType:raw.deviceType||"",brand:typeof wfCanonicalBrand==="function"?wfCanonicalBrand(raw.brand||""):(raw.brand||""),category:raw.category||"",model:raw.model||"",code:raw.code||"",
           title:raw.title||"",cause:raw.cause||"",fix:raw.fix||"",note:raw.note||"",
           addedBy:raw.addedBy||"",media:Array.isArray(raw.media)?raw.media.slice(0,10):[],source:"imported",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
         });
@@ -348,3 +371,79 @@ function importFaultCodesFile(input){
   };
   reader.readAsText(file);
 }
+
+/* ---------------------------------------------------------------------
+   🧹 دمج المكرر (أكواد + تيست مود): بيجمع اللي شبه بعض، وانت بتختار تسيب أنهي واحد،
+   والباقي بيتدمج فيه (الناقص بيتكمّل، والمختلف بيتحط في الملاحظات عشان مايضيعش) وبعدين يتشال.
+   الأكواد: نفس الكود حرفيًا + نفس النوع والماركة والتصنيف والموديلات (E1 و E01 مش بيتجمعوا).
+   التيست مود: نفس العنوان، أو نفس زراير الدخول لنفس الماركة والموديلات.
+--------------------------------------------------------------------- */
+function findFaultDuplicateGroups(){
+  const all=arr(K.fc).filter(Boolean),tests=all.filter(f=>f.kind==="test"),codes=all.filter(f=>f.kind!=="test"),groups=[];
+  function cluster(list,same,kind){
+    const parent=list.map((_,i)=>i),find=i=>parent[i]===i?i:(parent[i]=find(parent[i]));
+    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)if(same(list[i],list[j]))parent[find(j)]=find(i);
+    const by={};list.forEach((f,i)=>{(by[find(i)]=by[find(i)]||[]).push(f)});
+    Object.values(by).forEach(g=>{if(g.length>1)groups.push({kind,items:g})});
+  }
+  cluster(tests,sameTestMode,"test");
+  cluster(codes,(a,b)=>normalizeFaultText(a.code)===normalizeFaultText(b.code)&&normalizeFaultText(a.deviceType)===normalizeFaultText(b.deviceType)&&faultBrandKey(a.brand)===faultBrandKey(b.brand)&&faultCategoryMatch(a.category,b.category)&&!faultModelTokens(a.model).length===!faultModelTokens(b.model).length&&faultModelsMatch(a.model,b.model),"code"); /* كود عام وكود لموديل معيّن بنفس الرقم غالبًا عطلين مختلفين: مايتجمعوش */
+  return groups;
+}
+const FC_MERGE_FIELDS={test:[["enter","طريقة الدخول"],["tests","الخطوات"],["exit","الخروج"]],code:[["title","الوصف"],["cause","السبب"],["fix","الحل"]]};
+function faultRichness(f){return ["title","cause","fix","enter","tests","exit","note","model","category"].reduce((a,k)=>a+String(f[k]||"").length,0)+((f.media||[]).length*200)}
+function mergeFaultRecords(keepId,dropIds){
+  const all=arr(K.fc),keep=all.find(f=>f.id===keepId);if(!keep)return false;
+  const drop=all.filter(f=>dropIds.indexOf(f.id)>-1&&f.id!==keepId);if(!drop.length)return false;
+  const kind=keep.kind==="test"?"test":"code",notes=[];
+  const has=(big,small)=>normalizeFaultText(big).indexOf(normalizeFaultText(small))>-1;
+  drop.forEach(o=>{
+    const extra=[];
+    FC_MERGE_FIELDS[kind].forEach(([k,label])=>{
+      const a=String(keep[k]||"").trim(),b=String(o[k]||"").trim();if(!b)return;
+      if(!a){keep[k]=b;return}
+      if(!has(a,b))extra.push(label+":\n"+b);
+    });
+    ["category","model"].forEach(k=>{const a=String(keep[k]||"").trim(),b=String(o[k]||"").trim();if(b&&!a)keep[k]=b;else if(b&&k==="model"&&!has(a,b))keep[k]=a+" / "+b});
+    const on=String(o.note||"").trim();if(on&&!has(keep.note||"",on))extra.push("ملاحظات:\n"+on);
+    if(extra.length)notes.push("📎 من النسخة المدموجة «"+(o.title||o.code||"")+"»:\n"+extra.join("\n"));
+    const urls=new Set((keep.media||[]).map(m=>m&&m.url));(o.media||[]).forEach(m=>{if(m&&m.url&&!urls.has(m.url)){urls.add(m.url);(keep.media=keep.media||[]).push(m)}});
+  });
+  if(notes.length)keep.note=[String(keep.note||"").trim()].concat(notes).filter(Boolean).join("\n\n");
+  if(keep.brand&&typeof wfCanonicalBrand==="function")keep.brand=wfCanonicalBrand(keep.brand);
+  keep.updatedAt=new Date().toISOString();
+  const ids=new Set(drop.map(f=>f.id));
+  if(!saveFaultCodesRecords(all.filter(f=>!ids.has(f.id))))return false;
+  try{window.auditLog?.("دمج مكرر",kind==="test"?"تيست مود":"كود عطل",keep.id,(keep.title||keep.code||"")+" ← "+drop.length+" نسخة")}catch(_){}
+  return true;
+}
+function openFaultDupTool(){
+  const groups=findFaultDuplicateGroups();
+  if(!groups.length)return alert("✅ مفيش أكواد ولا تيست مود مكررين.");
+  document.getElementById("fcDupModal")?.remove();
+  const m=document.createElement("div");m.id="fcDupModal";m.style.cssText="position:fixed;inset:0;z-index:100000;background:#0009;display:flex;align-items:center;justify-content:center;padding:12px;direction:rtl";
+  const card=f=>{const sub=[f.model?"📟 "+f.model:"",f.category||"",f.createdAt?("🕐 "+String(f.createdAt).slice(0,10)):""].filter(Boolean).join(" • "),txt=f.kind==="test"?(f.enter||""):(f.cause||"");return `<label style="display:block;border:1px solid var(--border,#ccd);border-radius:10px;padding:8px;margin:6px 0;cursor:pointer"><input type="radio" name="__G__" value="${esc(f.id)}"> <b>${f.kind==="test"?"🧪 "+esc(f.title):"🧯 "+esc(f.code)+" — "+esc(f.title)}</b><div class="hint">${esc(f.brand||"كل الماركات")}${sub?" • "+esc(sub):""}</div><div class="hint" style="white-space:pre-line;max-height:4.8em;overflow:hidden">${esc(String(txt).slice(0,220))}</div></label>`};
+  m.innerHTML=`<div style="background:var(--panel,#fff);color:var(--text,#172033);border-radius:14px;padding:14px;max-width:640px;width:100%;max-height:88vh;overflow:auto"><h3 style="margin-top:0">🧹 مراجعة المكرر (${groups.length} مجموعة)</h3><p class="hint">في كل مجموعة اختار النسخة اللي تفضل (المختارة تلقائي هي الأكمل). الباقي هيتدمج فيها: الناقص بيتكمّل، واللي مختلف بيتحط في ملاحظاتها، وبعدين يتشال. شيل علامة «ادمج» من أي مجموعة مش متكررة فعلًا.</p>${groups.map((g,i)=>{const best=g.items.slice().sort((a,b)=>faultRichness(b)-faultRichness(a))[0];return `<div class="item" data-g="${i}" style="margin:10px 0"><label><input type="checkbox" data-on checked> <b>ادمج المجموعة دي</b> <span class="hint">(${g.kind==="test"?"تيست مود":"كود"} • ${g.items.length} نسخ)</span></label>${g.items.map(card).join("").replace(/__G__/g,"g"+i).replace(`value="${esc(best.id)}"`,`value="${esc(best.id)}" checked`)}</div>`}).join("")}<div style="display:flex;gap:8px;position:sticky;bottom:0;background:inherit;padding-top:8px"><button type="button" class="primary" id="fcDupGo">🧹 ادمج المختار</button><button type="button" class="secondary" id="fcDupX">إغلاق</button></div></div>`;
+  document.body.appendChild(m);
+  m.addEventListener("click",e=>{if(e.target===m)m.remove()});
+  m.querySelector("#fcDupX").onclick=()=>m.remove();
+  m.querySelector("#fcDupGo").onclick=()=>{
+    let n=0,gn=0;
+    groups.forEach((g,i)=>{const box=m.querySelector(`[data-g="${i}"]`);if(!box.querySelector("[data-on]").checked)return;const keep=box.querySelector(`input[name="g${i}"]:checked`);if(!keep)return;const drop=g.items.map(f=>f.id).filter(x=>x!==keep.value);if(mergeFaultRecords(keep.value,drop)){n+=drop.length;gn++}});
+    if(!gn)return alert("مااخترتش أي مجموعة.");
+    m.remove();try{renderFaultCodes?.();window.WFTestModes?.render()}catch(_){}renderFaultDupBar();
+    alert(`✅ اتدمج ${gn} مجموعة (اتشال ${n} نسخة مكررة).`);
+  };
+}
+/* شريط صغير فوق القايمة بيظهر بس لو فيه مكرر */
+function renderFaultDupBar(){
+  const list=document.getElementById("faultList");if(!list)return;
+  let bar=document.getElementById("fcDupBar");
+  const n=findFaultDuplicateGroups().length;
+  if(!n){bar?.remove();return}
+  if(!bar){bar=document.createElement("div");bar.id="fcDupBar";bar.className="hint no-print";bar.style.cssText="margin:8px 0;padding:8px 10px;border:1px dashed var(--warn-text,#b45309);border-radius:10px";const anchor=document.getElementById("tmTabs");if(anchor)anchor.parentNode.insertBefore(bar,anchor.nextSibling);else list.parentNode.insertBefore(bar,list)}
+  bar.innerHTML=`🧹 فيه <b>${n}</b> مجموعة شكلها مكرر (أكواد أو تيست مود). <button type="button" class="secondary small-btn" id="fcDupOpen">راجعها وادمجها</button>`;
+  bar.querySelector("#fcDupOpen").onclick=openFaultDupTool;
+}
+window.findFaultDuplicateGroups=findFaultDuplicateGroups;window.mergeFaultRecords=mergeFaultRecords;window.openFaultDupTool=openFaultDupTool;
+document.addEventListener("DOMContentLoaded",()=>{if(document.getElementById("faultList"))setTimeout(()=>{try{renderFaultDupBar()}catch(e){console.warn("dup bar",e)}},600)});
