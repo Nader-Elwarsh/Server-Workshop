@@ -3,7 +3,7 @@
 const crypto = require("node:crypto");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineString, defineSecret, defineBoolean } = require("firebase-functions/params");
-const { createPhoneHandlers, PhoneError } = require("./phone-lookup");
+const { createPhoneHandlers, PhoneError, takeToken } = require("./phone-lookup");
 const { createStaffAdmin, AdminError } = require("./staff-admin");
 const { createTechLedger } = require("./tech-ledger");
 const { initializeApp } = require("firebase-admin/app");
@@ -42,7 +42,7 @@ function json(res, status, body) { res.status(status).set("Cache-Control", "no-s
 async function uploaderRole(uid) {
   const db = getFirestore();
   const staff = await db.doc(`staff/${uid}`).get();
-  if (staff.exists) return "staff";
+  if (staff.exists) return (staff.data() || {}).disabled === true ? "" : "staff";
   const link = await db.doc(`portalLinks/${uid}`).get();
   if (link.exists) return link.data().disabled !== true && typeof link.data().customerId === "string" ? "customer" : "";
   // عميل سجّل بنفسه من البوابة: مفيش portalLinks، والهوية = customers/{uid} (نفس منطق قواعد Firestore own()).
@@ -62,7 +62,14 @@ exports.uploadImage = onRequest({ region: "us-central1", secrets: [apiSecret], t
     const match = authorization.match(/^Bearer (.+)$/i);
     if (!match) return json(res, 401, { error: "authentication_required" });
     const decoded = await getAuth().verifyIdToken(match[1]);
-    if (!(await uploaderRole(decoded.uid))) return json(res, 403, { error: "upload_not_authorized" });
+    const upRole = await uploaderRole(decoded.uid);
+    if (!upRole) return json(res, 403, { error: "upload_not_authorized" });
+    /* حد عدد مرات: الموظف 150 صورة/ساعة، والعميل 20 في اليوم (عشان حساب عميل مايستهلكش مساحة Cloudinary) */
+    try {
+      const rule = upRole === "staff" ? { limit: 150, windowMs: 3600000 } : { limit: 20, windowMs: 86400000 };
+      const fs = getFirestore();
+      if (!(await takeToken({ collection: (p) => fs.collection(p), runTransaction: (fn) => fs.runTransaction(fn) }, "up-" + upRole, decoded.uid, rule, Date.now()))) return json(res, 429, { error: "upload_rate_limited" });
+    } catch (e) { console.warn("upload rate-limit store failed (allowing)", e && e.message); }
     const mime = String(req.get("content-type") || "").split(";")[0].trim().toLowerCase();
     const file = req.rawBody;
     if (!MIME_TYPES.has(mime)) return json(res, 415, { error: "file_type_not_allowed" });
@@ -144,6 +151,7 @@ const phoneHandlers = createPhoneHandlers({
   db: { collection: (...a) => getFirestore().collection(...a), runTransaction: (...a) => getFirestore().runTransaction(...a) },
   enforceAppCheck: () => enforceAppCheckParam.value(),
   allowedOrigins: () => allowedOrigins.value().split(",").map((x) => x.trim()).filter(Boolean),
+  serverTime: () => FieldValue.serverTimestamp(),
   log: (...a) => console.warn("[phone-lookup]", ...a)
 });
 function callable(name, handler) {
@@ -165,6 +173,7 @@ function callable(name, handler) {
 }
 exports.portalLoginLookup = callable("portalLoginLookup", phoneHandlers.lookup);
 exports.portalPhoneAvailable = callable("portalPhoneAvailable", phoneHandlers.available);
+exports.portalGuestRequest = callable("portalGuestRequest", phoneHandlers.guest);
 
 /* ---------------------------------------------------------------------
    إدارة المستخدمين والأدوار (للمالك فقط، ما عدا staffSync اللي أي موظف بيناديه لنفسه).
@@ -193,6 +202,7 @@ exports.staffDirectory = adminCallable("staffDirectory", (uid) => staffAdmin.dir
 exports.staffCreate = adminCallable("staffCreate", (uid, d) => staffAdmin.create(uid, d));
 exports.staffUpdate = adminCallable("staffUpdate", (uid, d) => staffAdmin.update(uid, d));
 exports.staffResetPassword = adminCallable("staffResetPassword", (uid, d) => staffAdmin.resetPassword(uid, d));
+exports.staffDelete = adminCallable("staffDelete", (uid, d) => staffAdmin.remove(uid, d));
 exports.rolesSave = adminCallable("rolesSave", (uid, d) => staffAdmin.saveRoles(uid, d));
 
 /* ---------------------------------------------------------------------
@@ -274,6 +284,38 @@ exports.usageReport = mediaCallable("usageReport", async (uid, d) => {
   return usage.report(!!(d && d.refresh));
 }, { timeoutSeconds: 60 });
 
+/* ---------------------------------------------------------------------
+   الذكاء الاصطناعي (functions/ai.js): Gemini على Vertex AI بنفس حساب الخدمة — مفيش مفتاح.
+   أول مرة: فعّل Vertex AI API على المشروع (الأوامر في الإعدادات ← 🤖 الذكاء الاصطناعي).
+   --------------------------------------------------------------------- */
+const { createAI, AIError } = require("./ai");
+const ai = createAI({
+  db: { doc: (p) => getFirestore().doc(p) },
+  getToken: async () => (await adc.getAccessToken()).access_token,
+  projectId: process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "",
+  actor: mediaActor,
+  inc: (n) => FieldValue.increment(n),
+  // المخزن من السيرفر (بيشتغل للفني كمان حتى لو جهازه مش شايف المخزن) — متخزن في الذاكرة 10 دقايق.
+  listParts: async () => (await getFirestore().collection("parts").get()).docs.map((d) => { const x = d.data() || {}; return { id: d.id, name: String(x.name || ""), qty: +x.qty || 0, category: String(x.category || ""), buy: +x.buy || 0, archived: x.archived === true || x.deleted === true }; }),
+  log: (...a) => console.warn("[ai]", ...a)
+});
+function aiCallable(name, handler, opts) {
+  return onCall(Object.assign({ region: "us-central1", cors: true, invoker: "public", maxInstances: 5, timeoutSeconds: 60, memory: "256MiB" }, opts || {}), async (request) => {
+    if (!request.auth || !request.auth.uid) throw new HttpsError("unauthenticated", "sign_in_required");
+    try { return await handler(request.auth.uid, request.data || {}); }
+    catch (e) {
+      if (e instanceof AIError) throw new HttpsError(e.code, e.message);
+      console.error(`[${name}]`, e && e.message);
+      throw new HttpsError("internal", "internal");
+    }
+  });
+}
+exports.aiConfig = aiCallable("aiConfig", (uid) => ai.config(uid), { timeoutSeconds: 20 });
+exports.aiConfigSave = aiCallable("aiConfigSave", (uid, d) => ai.saveConfig(uid, d), { timeoutSeconds: 20 });
+exports.aiDiagnose = aiCallable("aiDiagnose", (uid, d) => ai.diagnose(uid, d), { timeoutSeconds: 90 });
+// الكتب والفواتير والمكالمات بالموديل القوي ممكن تاخد كذا دقيقة — الحد 9 دقايق (قبل كده دقيقتين فكان بيقطع).
+exports.aiTask = aiCallable("aiTask", (uid, d) => ai.task(uid, d), { timeoutSeconds: 540, memory: "1GiB" });
+
 /* الفاتورة الحقيقية: ميزانية Google Cloud بتبعت المصروف لموضوع Pub/Sub اسمه billing-alerts كذا مرة في اليوم،
    والدالة دي بتحفظه عشان شاشة «الاستهلاك والمساحة» تعرض نفس رقم صفحة الفواتير بالظبط. */
 const { onMessagePublished } = require("firebase-functions/v2/pubsub");
@@ -291,8 +333,20 @@ const notifier = createNotifier({ db: fdb, push: sendPush, log: (...a) => consol
 const TRIG = { region: notifyRegion, maxInstances: 10, memory: "256MiB", timeoutSeconds: 60, retry: false };
 function data(snap) { return snap && snap.exists ? snap.data() : null; }
 function guard(name, fn) { return async (event) => { try { await fn(event); } catch (e) { console.error(`[notify:${name}]`, e && e.message); } }; }
-exports.notifyRequests = onDocumentWritten(Object.assign({ document: "requests/{id}" }, TRIG), guard("requests", (ev) => {
+const { guardTechEdit } = require("./order-guard");
+exports.notifyRequests = onDocumentWritten(Object.assign({ document: "requests/{id}" }, TRIG), guard("requests", async (ev) => {
   const a = data(ev.data && ev.data.after), b = data(ev.data && ev.data.before);
+  // حارس تعديلات الفني: قطع المخزن والإجماليات (والمصنعية لو مقفولة من الإعدادات) — التصحيح بيتكتب باسم السيرفر
+  try {
+    if (a && b && a._by && a._by !== "srv" && a.techId && a._by === a.techId) {
+      const g = await getFirestore().doc("settings/global").get();
+      const fix = guardTechEdit(b, a, { laborLocked: !!(g.exists && g.data().techLaborLocked === true) });
+      if (fix) {
+        await ev.data.after.ref.update(Object.assign({}, fix.patch, { _by: "srv", _ts: FieldValue.serverTimestamp(), guardFixAt: new Date().toISOString(), guardFix: fix.why.join("، ") }));
+        console.warn("[order-guard]", ev.params.id, fix.why.join(","));
+      }
+    }
+  } catch (e) { console.error("[order-guard]", e && e.message); }
   return notifier.onRequestWrite(ev.params.id, b, a, (a && a._by) || "");
 }));
 exports.notifyExpenses = onDocumentWritten(Object.assign({ document: "techExpenses/{id}" }, TRIG), guard("expenses", (ev) => notifier.onExpenseWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
@@ -344,3 +398,4 @@ exports.notifySend = adminCallable("notifySend", async (uid, d) => {
   try { return await notifier.sendMessage(uid, d); }
   catch (e) { if (e && e.code && /permission|invalid|not-found/.test(e.code)) throw new AdminError(e.code, e.message); throw e; }
 });
+Object.assign(exports, require("./archive-fns"));

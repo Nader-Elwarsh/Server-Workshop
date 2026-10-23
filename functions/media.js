@@ -110,15 +110,21 @@ function createMedia({ db, now = () => Date.now(), creds, fetchImpl = fetch, act
     const minAge = Math.max(1, Math.min(60, +(data && data.minAgeDays) || 3));
     const apply = !!(data && data.apply);
     const cutoff = now() - minAge * DAY;
-    const [files, reqs, preqs, settings] = await Promise.all([
+    // صور/فيديو الأوامر + صور أكواد الأعطال والتيست مود (faultCodes) + سلة المهملات = مستخدمة
+    const [files, reqs, preqs, settings, codes] = await Promise.all([
       db.collection("mediaFiles").where("at", "<", cutoff).get(),
       db.collection("requests").get(),
       db.collection("portalRequests").get(),
-      db.collection("settings").get()
+      db.collection("settings").get(),
+      db.collection("faultCodes").get()
     ]);
     const chunks = [];
     reqs.forEach((d) => chunks.push(JSON.stringify(d.data())));
+    codes.forEach((d) => chunks.push(JSON.stringify(d.data())));
     preqs.forEach((d) => chunks.push(JSON.stringify(d.data())));
+    for (const c of ["faultCodes", "archRequests", "portalQuestions", "portalComplaints", "guestRequests", "techExpenses"]) {
+      try { (await db.collection(c).get()).forEach((d) => chunks.push(JSON.stringify(d.data()))); } catch (e) { console.warn("orphans scan " + c, e && e.message); throw new Error("scan_failed"); }
+    }
     settings.forEach((d) => { if (String(d.id).indexOf("wfkv_wf_trash") === 0) chunks.push(JSON.stringify(d.data())); });
     const hay = chunks.join("\n");
     const list = [];

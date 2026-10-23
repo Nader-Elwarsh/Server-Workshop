@@ -57,10 +57,14 @@ function recalc(r) {
   r.partsTotal = r2(parts.reduce((a, p) => a + num(p.qty) * num(p.sell), 0));
   r.partsCost = r2(parts.reduce((a, p) => a + num(p.qty) * num(p.cost), 0));
   r.total = r2(num(r.labor) + r.partsTotal);
-  r.remain = Math.max(0, r2(r.total - num(r.deposit)));
+  r.remain = Math.max(0, r2(r.total - netDeposit(r)));
   return r;
 }
-function collectedOf(r) { return Math.max(0, r2(num(r.total) - num(r.deposit))); }
+/* العربون الصافي = اللي اتدفع − اللي اترد للعميل (ردّ زيادة العربون من الإدارة). من غيره الفني كان مايقدرش يقفل أمر اترد فيه عربون */
+function netDeposit(r) { return r2(num(r.deposit) - num(r.depositRefunded)); }
+/* أمر ضمان: المصنعية على الورشة مش على العميل — حتى لو الفني كتب أجرة */
+function warrantyLabor(r, work) { if (r.warrantyDecision === "warranty" && num(r.labor) !== 0) { r.labor = 0; work.labor = 0; } }
+function collectedOf(r) { return Math.max(0, r2(num(r.total) - netDeposit(r))); }
 
 const PAY_KINDS = ["custody", "own", "workshop"];
 function createTechLedger(deps) {
@@ -111,7 +115,11 @@ function createTechLedger(deps) {
     if (myWallet) allowed.add(myWallet);
     const wallet = wanted || myWallet;
     let when = cairoParts(now());
-    if (data && DATE_RE.test(String(data.date || "")) && TIME_RE.test(String(data.time || ""))) when = { date: String(data.date), time: String(data.time) };
+    if (data && DATE_RE.test(String(data.date || "")) && TIME_RE.test(String(data.time || ""))) {
+      // تاريخ الجهاز مقبول لو النهارده أو امبارح بس (الفني كان أوفلاين) — مايتسجلش تحصيل بتاريخ قديم أو مستقبلي
+      const yday = cairoParts(new Date(now().getTime() - 86400000)).date;
+      if (String(data.date) === when.date || String(data.date) === yday) when = { date: String(data.date), time: String(data.time) };
+    }
     const wc = g.warranty || {};
 
     const ref = db.doc(`requests/${orderId}`);
@@ -124,12 +132,12 @@ function createTechLedger(deps) {
       // شغل الفني على الأمر (الحالة/الشغل/الأجرة/القطع) بيتسجل مع القفل نفسه، حتى لو المزامنة لسه مارفعتهوش
       const work = cleanWork(data && data.fields);
       const srvParts = r.parts;
-      Object.assign(r, work);
+      Object.assign(r, work); warrantyLabor(r, work);
       if (work.parts || work.labor !== undefined) { r.parts = mergeParts(srvParts, work.parts); recalc(r); ["parts", "partsTotal", "partsCost", "total"].forEach((k) => { work[k] = r[k]; }); }
       if (r.status !== "مكتمل") throw new AdminError("failed-precondition", "not_completed");
       const total = num(r.total), deposit = num(r.deposit);
       if (!isFinite(total) || total < 0 || !isFinite(deposit) || deposit < 0) throw new AdminError("failed-precondition", "bad_amounts");
-      if (deposit > total + 0.001) throw new AdminError("failed-precondition", "deposit_over_total");
+      if (netDeposit(r) > total + 0.001) throw new AdminError("failed-precondition", "deposit_over_total");
       if (data && data.expectTotal != null && Math.abs(r2(data.expectTotal) - r2(total)) > 0.005) throw new AdminError("aborted", "stale_total");
       if (data && data.expectDeposit != null && Math.abs(r2(data.expectDeposit) - r2(deposit)) > 0.005) throw new AdminError("aborted", "stale_total");
       const collected = collectedOf(r);
@@ -139,7 +147,7 @@ function createTechLedger(deps) {
       const txSnap = collected > 0 ? await tx.get(txRef) : null;
 
       const at = now().toISOString();
-      const patch = Object.assign({}, work, { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid, _ts: stamp() });
+      const patch = Object.assign({}, work, { paid: true, remain: 0, paidAt: at, closed: true, closedAt: at, closeWallet: wallet, closedByTech: uid, _by: "srv", _ts: stamp() });
       if (wc.enabled !== false && !r.warrantyManual) {
         const days = isFinite(+wc.days) && +wc.days > 0 ? +wc.days : 90;
         patch.warrantyDays = days;
@@ -295,7 +303,7 @@ function createTechLedger(deps) {
       if (!psnap.exists) throw new AdminError("not-found", "no_part");
       const p = psnap.data() || {};
       const work = cleanWork(data && data.fields); const srvParts = r.parts;
-      Object.assign(r, work); r.parts = mergeParts(srvParts, work.parts);
+      Object.assign(r, work); warrantyLabor(r, work); r.parts = mergeParts(srvParts, work.parts);
       let moved;
       if (dir === "use") {
         if (num(p.qty) < q) throw new AdminError("failed-precondition", "not_enough");
@@ -313,7 +321,7 @@ function createTechLedger(deps) {
         tx.set(mref, { id: mref.id, partId, type: "إرجاع بسبب تعديل أمر", qty: moved, requestId: orderId, at, byTech: uid, _ts: stamp() });
       }
       recalc(r);
-      const patch = Object.assign({}, work, { parts: r.parts, partsTotal: r.partsTotal, partsCost: r.partsCost, total: r.total, remain: r.remain, _ts: stamp() });
+      const patch = Object.assign({}, work, { parts: r.parts, partsTotal: r.partsTotal, partsCost: r.partsCost, total: r.total, remain: r.remain, _by: "srv", _ts: stamp() });
       tx.update(ref, patch);
       bumpMeta(tx);
       return { parts: r.parts, partsTotal: r.partsTotal, partsCost: r.partsCost, total: r.total, remain: r.remain, moved, name: String(p.name || ""), left: dir === "use" ? num(p.qty) - q : num(p.qty) + moved };
@@ -349,11 +357,11 @@ function createTechLedger(deps) {
       if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
       if (r.status === "ملغي") throw new AdminError("failed-precondition", "cancelled");
       const work = cleanWork(data && data.fields), srvParts = r.parts;
-      Object.assign(r, work);
+      Object.assign(r, work); warrantyLabor(r, work);
       if (work.parts || work.labor !== undefined) { r.parts = mergeParts(srvParts, work.parts); recalc(r); ["parts", "partsTotal", "partsCost", "total"].forEach((k) => { work[k] = r[k]; }); }
       const deposit = r2(num(r.deposit) + amount), extra = r2(num(r.depositExtra) + amount);
-      const remain = Math.max(0, r2(num(r.total) - deposit));
-      tx.update(ref, Object.assign({}, work, { deposit, depositExtra: extra, remain, _ts: stamp() }));
+      const remain = Math.max(0, r2(num(r.total) - deposit + num(r.depositRefunded)));
+      tx.update(ref, Object.assign({}, work, { deposit, depositExtra: extra, remain, _by: "srv", _ts: stamp() }));
       tx.set(txRef, { id: txRef.id, refKey: null, orderId, manualOverride: true, deleted: false, type: "in", amount, wallet, category: "تحصيل عميل",
         reason: `💵 عربون/دفعة أمر الشغل ${r.no || ""} — استلمها ${staff.name || "الفني"}`, note, date: when.date, time: when.time, source: "order-part", byTech: uid, createdAt: ts(now()), _ts: stamp() });
       bumpMeta(tx);

@@ -15,8 +15,11 @@ const HOUR = 60 * 60 * 1000;
 const DEFAULT_LIMITS = {
   lookupPerIp: { limit: 60, windowMs: HOUR },
   lookupPerPhone: { limit: 12, windowMs: HOUR },
-  availablePerIp: { limit: 30, windowMs: HOUR }
+  availablePerIp: { limit: 30, windowMs: HOUR },
+  guestPerIp: { limit: 6, windowMs: HOUR },
+  guestPerPhone: { limit: 3, windowMs: 24 * HOUR }
 };
+const GUEST_ABC = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 class PhoneError extends Error {
   constructor(code, message) { super(message || code); this.code = code; }
@@ -91,6 +94,28 @@ function createPhoneHandlers(deps) {
       const idx = await readIndex(phone);
       const email = idx && typeof idx.email === "string" && idx.email.includes("@") ? idx.email : null;
       return { email };
+    },
+    /* طلب صيانة سريع من زائر: بقى من السيرفر بس (القواعد بتمنع الكتابة المباشرة) عشان يتحدد عدد مرات لكل IP ولكل رقم */
+    async guest(req) {
+      const phone = guard(req);
+      const d = req.data || {};
+      const s = (v, max) => String(v == null ? "" : v).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max);
+      const doc = { name: s(d.name, 80), phone, center: s(d.center, 80), village: s(d.village, 80), street: s(d.street, 200), deviceType: s(d.deviceType, 60), fault: s(d.fault, 1000), handled: false, guest: true };
+      if (doc.name.length < 2 || !doc.center || doc.street.length < 3 || doc.fault.length < 3) throw new PhoneError("invalid-argument", "bad_fields");
+      const l = d.loc;
+      if (l && typeof l === "object") {
+        if (typeof l.url === "string" && /^https:\/\/\S+$/.test(l.url) && l.url.length <= 300) doc.loc = { url: l.url };
+        else if (isFinite(+l.lat) && isFinite(+l.lng) && Math.abs(+l.lat) <= 90 && Math.abs(+l.lng) <= 180) doc.loc = { lat: +l.lat, lng: +l.lng, acc: isFinite(+l.acc) ? Math.min(100000, Math.max(0, +l.acc)) : 0 };
+      }
+      await limit("gr-ip", req.ip || "unknown", limits.guestPerIp);
+      await limit("gr-ph", phone, limits.guestPerPhone);
+      for (let i = 0; i < 5; i++) {
+        let ref = "G-"; for (let k = 0; k < 6; k++) ref += GUEST_ABC[crypto.randomInt(GUEST_ABC.length)];
+        const dref = db.collection("guestRequests").doc(ref);
+        const made = await db.runTransaction(async (tx) => { const snap = await tx.get(dref); if (snap.exists) return false; tx.set(dref, Object.assign({ ref }, doc, { createdAt: deps.serverTime ? deps.serverTime() : new Date() })); return true; });
+        if (made) return { ref };
+      }
+      throw new PhoneError("unavailable", "try_again");
     },
     async available(req) {
       const phone = guard(req);

@@ -80,7 +80,9 @@ function createStaffAdmin(deps) {
     const sc = core.scopeOf(cfg, staff) === "assigned" ? "a" : "w";
     await auth.setCustomUserClaims(uid, Object.assign({}, existing, { role: core.roleIdOf(staff), pm: core.toMask(perms), sc }));
     // نسخة من النطاق في مستند الموظف: قواعد Firestore بتقرأه من هنا (بيسري فورًا، مش بعد تجديد الـ token).
-    await db.doc(`staff/${uid}`).set({ sc }, { merge: true });
+    // ونسخة من الصلاحيات نفسها (p) وهل هو مالك (own): قواعد Firestore بتتحقق منها مع كل قراءة/كتابة (المرحلة 2 من الصلاحيات).
+    const pmap = {}; perms.forEach((k) => { pmap[k] = true; });
+    await db.doc(`staff/${uid}`).set({ sc, p: pmap, own: core.isOwner(cfg, staff) }, { mergeFields: ["sc", "p", "own"] }); // mergeFields: الحقول دي بتتبدّل كلها (صلاحية اتشالت ماتفضلش)
     return perms;
   }
   async function activeOwners(cfg) {
@@ -231,6 +233,25 @@ function createStaffAdmin(deps) {
     return { uid: target, password };
   }
 
+  /* حذف موظف نهائيًا (للمالك): حسابه في الدخول + مستند الموظف. مش بيمسح أي بيانات شغل (أوامره وحركاته بتفضل باسمه).
+     ماينفعش يمسح نفسه ولا آخر مالك. */
+  async function remove(uid, data) {
+    const { cfg } = await requireOwner(uid);
+    const target = String((data && data.uid) || "");
+    if (!target) throw new AdminError("invalid-argument", "bad_uid");
+    if (target === uid) throw new AdminError("failed-precondition", "cannot_delete_self");
+    const stored = await getStaff(target);
+    if (!stored) throw new AdminError("not-found", "no_such_user");
+    if (core.isOwner(cfg, stored)) {
+      const owners = await activeOwners(cfg);
+      if (owners.filter((x) => x !== target).length === 0) throw new AdminError("failed-precondition", "last_owner");
+    }
+    try { await auth.revokeRefreshTokens(target); } catch (_) {}
+    try { await auth.deleteUser(target); } catch (e) { if (!e || e.code !== "auth/user-not-found") throw e; }
+    await db.doc(`staff/${target}`).delete();
+    await audit(uid, "delete_user", target, { name: stored.name || "", role: core.roleIdOf(stored), wallet: stored.wallet || "" });
+    return { uid: target, deleted: true };
+  }
   async function saveRoles(uid, data) {
     const { cfg: oldCfg } = await requireOwner(uid);
     if (!data || typeof data.config !== "object" || !data.config) throw new AdminError("invalid-argument", "bad_config");
@@ -250,7 +271,7 @@ function createStaffAdmin(deps) {
     return { config: next, claimFailures: failures };
   }
 
-  return { sync, list, directory, create, update, resetPassword, saveRoles, loadConfig, genPassword, AdminError };
+  return { sync, list, directory, create, update, resetPassword, remove, saveRoles, loadConfig, genPassword, AdminError };
 }
 
 module.exports = { createStaffAdmin, AdminError, CONFIG_PATH };
