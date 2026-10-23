@@ -188,7 +188,9 @@
     var bl = b.querySelector(".wf-ai-books"), books = importedBooks(), sig = JSON.stringify(books);
     if (bl && bl.getAttribute("data-sig") !== sig) {
       bl.setAttribute("data-sig", sig);
-      bl.innerHTML = books.length ? "<div class='hint' style='margin-top:6px'>📚 اتستورد قبل كده من:</div>" + books.map(function (x, i) { return "<div class='wf-ai-row2' style='font-size:13.5px'><span>«" + esc(x.name) + "» — " + x.codes + " كود، " + x.tests + " تيست مود</span>" + (can("faultcodes.delete") ? "<button type='button' class='danger-btn small-btn' data-delbook='" + i + "'>🗑️ امسحهم</button>" : "") + "</div>"; }).join("") : "";
+      /* القايمة مقفولة، ومسح المستورد جوه «⚙️ خيارات أكتر» تحتها — مش قدامك على طول عشان ماتتداسش بالغلط */
+      bl.innerHTML = books.length ? "<details style='margin-top:6px'><summary class='hint' style='cursor:pointer'>📚 اتستورد قبل كده من " + books.length + " كتاب</summary>" + books.map(function (x) { return "<div class='hint' style='font-size:13.5px;margin:4px 0'>«" + esc(x.name) + "» — " + x.codes + " كود، " + x.tests + " تيست مود</div>"; }).join("") +
+        (can("faultcodes.delete") ? "<details style='margin-top:8px'><summary class='hint' style='cursor:pointer'>⚙️ خيارات أكتر</summary>" + books.map(function (x, i) { return "<div style='margin:6px 0'><button type='button' class='secondary small-btn' data-delbook='" + i + "'>🗑️ مسح المستورد من «" + esc(x.name) + "»</button></div>"; }).join("") + "</details>" : "") + "</details>" : "";
       Array.prototype.forEach.call(bl.querySelectorAll("[data-delbook]"), function (btn) { btn.onclick = function () { var x = books[+btn.getAttribute("data-delbook")]; if (deleteImported(x.name)) { try { if (typeof w.renderFaultCodes === "function") w.renderFaultCodes(); if (w.WFTestModes) w.WFTestModes.render(); } catch (e) {} bl.setAttribute("data-sig", ""); bookBtn(); classifyBtn(); codesFillBtn(); w.alert("✅ اتمسح المستورد من «" + x.name + "»."); } }; });
     }
   }
@@ -440,6 +442,7 @@
     var list = importedFrom(name); if (!list.length) return false;
     var nT = list.filter(function (f) { return f.kind === "test"; }).length;
     if (!w.confirm("هتمسح كل اللي اتستورد من «" + name + "»: " + (list.length - nT) + " كود و" + nT + " تيست مود (حتى اللي اتصنّف بالماركة بعد كده).\n\nأي كود أو تيست مود ضفته بإيدك مش هيتلمس. تمام؟")) return false;
+    if (String(w.prompt("للتأكيد اكتب كلمة: امسح") || "").trim() !== "امسح") { w.alert("ما اتمسحش حاجة."); return false; }
     var ids = {}; list.forEach(function (f) { ids[f.id] = 1; });
     var withMedia = list.filter(function (f) { return (f.media || []).length; }).length;
     if (withMedia && !w.confirm("⚠️ فيه " + withMedia + " منهم عليه صور/فيديو هتتشال معاه. متأكد؟")) return false;
