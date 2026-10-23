@@ -15,7 +15,7 @@
    لا تُضاف تحصيلات أوامر الشغل ولا تُخصم مصاريف التشغيل من رصيدها تلقائيًا.
    يمكن عرض ملخص التشغيل للمتابعة فقط، لكنه لا يدخل في رصيد الخزنة.
 --------------------------------------------------------------------- */
-function treasuryEntries(){return arr(K.tr).filter(x=>!x.deleted)}
+function treasuryEntries(){return (typeof arrCached==="function"?arrCached(K.tr):arr(K.tr)).filter(x=>!x.deleted)}
 function treasuryBalance(){return Math.round(treasuryEntries().reduce((a,x)=>a+(x.type==="in"?(+x.amount||0):-(+x.amount||0)),0)*100)/100}
 function syncTreasuryForOrderDeposit(order){return null}
 function syncTreasuryForOrderClose(order,collected){return null}
@@ -122,8 +122,9 @@ function deleteTreasuryEntry(entryId){
 }
 function operationalTreasurySummary(){
   // العربون اللي اترد للعميل مايتحسبش تحصيل
-  let deposits=arr(K.r).reduce((a,x)=>a+Math.max(0,(+x.deposit||0)-(+x.depositRefunded||0)),0);
-  let finalCollections=arr(K.r).filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-((+x.deposit||0)-(+x.depositRefunded||0)))*100)/100),0);
+  const ordersRO=typeof arrCached==="function"?arrCached(K.r):arr(K.r);
+  let deposits=ordersRO.reduce((a,x)=>a+Math.max(0,(+x.deposit||0)-(+x.depositRefunded||0)),0);
+  let finalCollections=ordersRO.filter(x=>x.closed||x.paid).reduce((a,x)=>a+Math.max(0,Math.round(((+x.total||0)-((+x.deposit||0)-(+x.depositRefunded||0)))*100)/100),0);
   let expenses=(typeof walletTxEntries==="function"?walletTxEntries():[]).filter(x=>x.category==="مصروف تشغيل").reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0);
   return {deposits,finalCollections,orderCollections:deposits+finalCollections,expenses};
 }
@@ -133,7 +134,7 @@ function renderTreasury(){
   let list=treasuryEntries().sort((a,b)=>new Date((b.date||"")+"T"+(b.time||"00:00"))-new Date((a.date||"")+"T"+(a.time||"00:00"))||new Date(b.createdAt)-new Date(a.createdAt));
   // رصيد الدرج بعد كل حركة (بالترتيب الزمني) — عشان تطابق الدرج الفعلي في أي لحظة
   const runBal={};{let b=0;for(let k=list.length-1;k>=0;k--){const x=list[k];b=Math.round((b+(x.type==="in"?1:-1)*(+x.amount||0))*100)/100;runBal[x.id]=b}}
-  let opening=arr(K.tr).find(x=>x.refKey==="opening-balance"&&!x.deleted);
+  let opening=(typeof arrCached==="function"?arrCached(K.tr):arr(K.tr)).find(x=>x.refKey==="opening-balance"&&!x.deleted);
   let op=operationalTreasurySummary();
   let today=localDateKey(new Date());
   el.innerHTML=`

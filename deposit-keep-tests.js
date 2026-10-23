@@ -36,7 +36,7 @@ vm.runInContext(w.match(/async function restoreOrderDepositFromTx[\s\S]*?\n}\n/)
 {
   const st = { wf_r: [{ id: "b", no: "W26-10-22-5", createdAt: "2026-10-22T10:00:00Z" }, { id: "a", no: "W26-10-22-5", createdAt: "2026-10-22T09:00:00Z" }, { id: "c", no: "W26-10-22-6", createdAt: "2026-10-22T11:00:00Z" }],
     wf_wallet_tx: [{ id: "t", refKey: "order-deposit-b", reason: "💵 عربون أمر الشغل W26-10-22-5" }, { id: "t2", refKey: "order-deposit-a", reason: "💵 عربون أمر الشغل W26-10-22-5" }] };
-  const c4 = { K: { r: "wf_r", wtx: "wf_wallet_tx" }, arr: (k) => st[k], put: (k, v) => { st[k] = v; return true; }, window: {}, console };
+  const c4 = { K: { r: "wf_r", wtx: "wf_wallet_tx" }, arr: (k) => st[k], _roArr: (k) => st[k], put: (k, v) => { st[k] = v; return true; }, window: {}, console };
   vm.createContext(c4);
   vm.runInContext(w.match(/let _dupNoAt=0;\nfunction fixDuplicateOrderNumbers[\s\S]*?\n}\n/)[0] + "\nthis.fix=fixDuplicateOrderNumbers;", c4);
   assert.strictEqual(c4.fix(true), 1);

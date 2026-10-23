@@ -104,7 +104,9 @@
       seen[k] = 1; out.push(c);
     });
 
-    var devs = window.arr(K.d), devChanged = 0;
+    // نسخة قابلة للتعديل بس لو فيه ماركة فعلًا محتاجة تتوحّد (أغلب الصفحات: لأ → قراءة من غير نسخ)
+    var RO = typeof window.arrCached === "function" ? window.arrCached : window.arr;
+    var devs = RO(K.d).some(function (d) { return d && d.brand && wfCanonicalBrand(d.brand) !== d.brand; }) ? window.arr(K.d) : RO(K.d), devChanged = 0;
     devs.forEach(function (d) {
       if (!d || !d.brand) return;
       var c = wfCanonicalBrand(d.brand);
@@ -115,7 +117,7 @@
       if (!auto && k && !seen[k]) { seen[k] = 1; out.push(c); }
     });
 
-    var fcs = window.arr(K.fc), fcChanged = 0;
+    var fcs = RO(K.fc).some(function (f) { return f && f.brand && wfCanonicalBrand(f.brand) !== f.brand; }) ? window.arr(K.fc) : RO(K.fc), fcChanged = 0;
     fcs.forEach(function (f) {
       if (!f || !f.brand) return;
       var c = wfCanonicalBrand(f.brand);
@@ -163,7 +165,11 @@
     Promise.resolve(window.workshopReady).then(function () {
       try {
         if (typeof window.settings !== "function" || !window.K) return;
+        // لو الأجهزة والأكواد ما اتكتبش فيها حاجة من آخر توحيد (ختم التخزين نفسه)، مفيش داعي نلف على كل الأجهزة تاني
+        var S = window.WFStorage, K = window.K, sig = S && S.stamp ? [S.stamp(K.d), S.stamp(K.fc)].join(":") : "";
+        if (sig && sig !== "0:0" && S.getItem("wf_brand_unify_sig") === sig) return;
         wfUnifyBrands({ auto: true });
+        if (S && S.stamp) { var sig2 = [S.stamp(K.d), S.stamp(K.fc)].join(":"); try { if (S.getItem("wf_brand_unify_sig") !== sig2) S.setItem("wf_brand_unify_sig", sig2); } catch (e) {} }
       } catch (e) { console.warn("[brand-unify] تعذر التوحيد التلقائي", e); }
     });
   });

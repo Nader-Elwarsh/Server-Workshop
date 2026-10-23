@@ -12,6 +12,8 @@
   function deviceRows() { return arr(K.d); }
   function requestRows() { return arr(K.r); }
   function stockRows() { return arr(K.p); }
+  // قراءة بس (عرض): نفس المصفوفة المخزّنة من غير نسخ — التعديل/الحذف بيستخدموا الدوال اللي فوق
+  function ro(k) { return typeof arrCached === "function" ? arrCached(k) : arr(k); }
   function moveRows() { return arr(K.m); }
   function restorePartsForRequestsInto(stock, requests) {
     (requests || []).forEach(function (r) {
@@ -30,7 +32,7 @@
     if (!el) return;
     const raw = (document.getElementById("customerSearch")?.value || "").toLowerCase().trim();
     const q = raw.replace(/\s+/g, " ");
-    const rows = customerRows().filter(function (c) {
+    const rows = ro(K.c).filter(function (c) {
       const main = typeof addressText === "function" ? addressText(c.mainAddress || {}) : "";
       const extra = typeof addressText === "function" ? addressText(c.extraAddress || {}) : "";
       const hay = [
@@ -42,8 +44,8 @@
     });
 
     el.innerHTML = rows.length ? rows.map(function (c) {
-      const devices = deviceRows().filter(function (d) { return d.customerId === c.id; });
-      const orders = requestRows().filter(function (r) { return r.customerId === c.id; });
+      const devices = ro(K.d).filter(function (d) { return d.customerId === c.id; });
+      const orders = ro(K.r).filter(function (r) { return r.customerId === c.id; });
       const main = typeof addressText === "function" ? addressText(c.mainAddress || {}) : "";
       return `<div class="item record-card">
         <div class="card-side-actions">
@@ -67,14 +69,14 @@
     const el = document.getElementById("customerProfile");
     if (!el) return;
     const idValue = new URLSearchParams(location.search).get("id");
-    const c = customerRows().find(function (x) { return x.id === idValue; });
+    const c = ro(K.c).find(function (x) { return x.id === idValue; });
     if (!c) {
       el.innerHTML = "<div class='item'>العميل غير موجود.</div>";
       return;
     }
 
-    const ds = deviceRows().filter(function (d) { return d.customerId === c.id; });
-    const rs = requestRows().filter(function (r) { return r.customerId === c.id; });
+    const ds = ro(K.d).filter(function (d) { return d.customerId === c.id; });
+    const rs = ro(K.r).filter(function (r) { return r.customerId === c.id; });
     const main = typeof addressText === "function" ? addressText(c.mainAddress || {}) : "";
     const extra = typeof addressText === "function" ? addressText(c.extraAddress || {}) : "";
 
@@ -109,7 +111,7 @@
     const topPartEntry = Object.entries(partUsage).sort(function (a, b) { return b[1].amount - a[1].amount; })[0];
     const topPartLabel = topPartEntry
       ? (function () {
-          const p = stockRows().find(function (x) { return x.id === topPartEntry[0]; });
+          const p = ro(K.p).find(function (x) { return x.id === topPartEntry[0]; });
           return `${esc(p?.name || "قطعة محذوفة")} (${topPartEntry[1].qty})`;
         })()
       : "—";
@@ -178,7 +180,7 @@
 
       <h2>🔧 الأجهزة</h2>
       ${ds.length ? ds.map(function (d) {
-        const deviceOrders = requestRows().filter(function (r) { return r.deviceId === d.id; });
+        const deviceOrders = ro(K.r).filter(function (r) { return r.deviceId === d.id; });
         const count = deviceOrders.length;
         const isRecurring = count >= 2 && (typeof deviceOrdersRecurring === "function" ? deviceOrdersRecurring(deviceOrders) : true);
         const activeDeviceOrders = deviceOrders.filter(function (r) { return r.status !== "مكتمل" && r.status !== "ملغي"; });
@@ -320,7 +322,7 @@ const trashPayload = { device: d, requests: orders, moves: removedMoves, partsDe
     if (!el) return;
     const q = (document.getElementById("deviceSearch")?.value || "").toLowerCase().trim();
 
-    const rows = deviceRows().filter(function (d) {
+    const rows = ro(K.d).filter(function (d) {
       const hay = [
         typeof customerName === "function" ? customerName(d.customerId) : "",
         d.type, d.category, d.brand, d.model, d.desc

@@ -89,11 +89,16 @@ function applyAdditionalDeposit(r,amount,wallet){
   else r.depositWallet=wallet; // من غير محفظة = مفيش حركة، ومايتسجلش في محفظة قديمة محدّدة على الأمر
   return{separate};
 }
+// قراءة بس من النسخة المخزّنة (من غير نسخ القسم كله)؛ لو مش متاحة (اختبارات) بنرجع لـ arr
+function _roArr(k){return typeof arrCached==="function"?arrCached(k):arr(k)}
 function linkedOrderForWalletTx(tx){
-  if(tx&&tx.orderId&&tx.source==="order-part")return arr(K.r).find(r=>String(r.id)===String(tx.orderId))||null;
+  // قراءة بس (عرض): من فهرس المعرّفات بدل نسخ كل الأوامر مع كل حركة (كانت صفحة المحفظة بتاخد ثواني)
+  const idx=typeof byIdCached==="function"?byIdCached(K.r):null;
+  const find=id=>idx?(idx.get(id)||idx.get(String(id))||_roArr(K.r).find(r=>String(r.id)===String(id))||null):(arr(K.r).find(r=>String(r.id)===String(id))||null);
+  if(tx&&tx.orderId&&tx.source==="order-part")return find(tx.orderId);
   let ref=String(tx?.refKey||"");
   let match=ref.match(/^order-(?:deposit|final)-(.+)$/);
-  return match?arr(K.r).find(r=>String(r.id)===match[1]):null;
+  return match?find(match[1]):null;
 }
 function walletsOverview(){return (settings().wallets||[]).map(w=>({name:w,balance:walletBalance(w),raw:walletRawBalance(w),cap:walletCapOf(w)}))}
 // إجمالي الرصيد الكلي عبر كل المحافظ مع بعض، للعرض السريع فوق الصفحة.
@@ -299,6 +304,12 @@ function deleteWalletTx(txId){
 // بيتساب واحدة بس (اللي اتعدلت يدويًا أولًا، وإلا الأقدم) والباقي بيتعلّم deleted.
 function dedupeWalletTxByRef(){
   try{
+    // فحص سريع على نسخة القراءة الأول: أغلب المرات مفيش تكرار، فمفيش داعي ننسخ كل الحركات
+    const S=window.WFStorage,sig=S&&S.stamp?String(S.stamp(K.wtx)):"";
+    if(sig&&sig!=="0"&&S.getItem("wf_wtx_dedupe_sig")===sig)return false; // الحركات ما اتغيّرتش من آخر فحص
+    {const ro=_roArr(K.wtx),ids=new Set(),refs=new Set();let dup=false;
+      for(const x of ro){if(!x)continue;if(x.id!=null){if(ids.has(x.id)){dup=true;break}ids.add(x.id)}if(x.refKey&&!x.deleted){if(refs.has(x.refKey)){dup=true;break}refs.add(x.refKey)}}
+      if(!dup){if(sig&&sig!=="0")try{S.setItem("wf_wtx_dedupe_sig",sig)}catch(_){}return false}}
     let a=arr(K.wtx),groups={},changed=false;
     // سجلين بنفس الـ id (كان بيحصل لما حركة عربون محذوفة تتعمل من جديد): نسيب الفعّال
     // بالـ id الأصلي وننقل التاني لـ id تاني، عشان الحذف/التعديل/المزامنة تشتغل على السجل الصح.
@@ -331,6 +342,7 @@ function fixDuplicateOrderNumbers(force){
   try{
     if(typeof arr!=="function"||typeof K==="undefined"||!K.r||window.wfSyncMode==="scoped")return 0;
     const nowMs=Date.now();if(!force&&nowMs-_dupNoAt<60000)return 0;_dupNoAt=nowMs;
+    {const seen=new Set();let dup=false;for(const r of _roArr(K.r)){if(!r||!r.no)continue;if(seen.has(r.no)){dup=true;break}seen.add(r.no)}if(!dup)return 0}
     const orders=arr(K.r),groups={};
     orders.forEach(r=>{if(r&&r.id&&r.no)(groups[r.no]=groups[r.no]||[]).push(r)});
     const dups=Object.keys(groups).filter(n=>groups[n].length>1).sort();

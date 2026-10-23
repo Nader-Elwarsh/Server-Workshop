@@ -15,7 +15,7 @@
   const WEEKDAYS=['الأحد','الاتنين','التلات','الأربع','الخميس','الجمعة','السبت'];
   const SOURCES={portal:'🌐 بوابة العملاء',guest:'🛠️ طلب سريع (زائر)',server:'🌐 بوابة العملاء'};
   const safe=(fn,fb)=>{try{const v=fn();return v===undefined?fb:v}catch(e){return fb}};
-  function list(k){return safe(()=>arr(k),[])||[]}
+  function list(k){return safe(()=>(typeof arrCached==="function"?arrCached(k):arr(k)),[])||[]} // التقارير بتقرا بس
 
   function validDateKey(value){if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return false;const d=new Date(value+'T12:00:00');return !Number.isNaN(d.getTime())&&dateKey(d)===value}
   function mkRange(from,to){return {from,to,valid:true,start:new Date(from+'T00:00:00'),end:new Date(to+'T23:59:59.999')}}
@@ -41,10 +41,10 @@
     const s=new Date(e);s.setDate(s.getDate()-days+1);
     return mkRange(dateKey(s),dateKey(e));
   }
-  function inRangeDate(v,r){if(!v)return false;const d=typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)?new Date(v+'T12:00:00'):new Date(v);return !Number.isNaN(d.getTime())&&d>=r.start&&d<=r.end}
+  function inRangeDate(v,r){if(!v)return false;const t=typeof v==='string'?(v.length===10&&v.charCodeAt(4)===45&&v.charCodeAt(7)===45?Date.parse(v+'T12:00:00'):Date.parse(v)):+new Date(v);return t===t&&t>=+r.start&&t<=+r.end}
   function inRangeDay(v,r){if(!v)return false;const raw=String(v);const k=/^\d{4}-\d{2}-\d{2}$/.test(raw)?raw:dateKey(new Date(raw));return !!k&&k>=r.from&&k<=r.to}
   function dayOf(v){if(!v)return '';const raw=String(v);if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;const d=new Date(raw);return Number.isNaN(d.getTime())?'':dateKey(d)}
-  function orders(r,records=arr(K.r)){return records.filter(x=>inRangeDate(x.createdAt,r)||inRangeDate(x.closedAt,r))}
+  function orders(r,records=list(K.r)){return records.filter(x=>inRangeDate(x.createdAt,r)||inRangeDate(x.closedAt,r))}
   function walletEntries(){return safe(()=>typeof walletTxEntries==="function"?walletTxEntries():[],[])||[]}
   function expenses(r){return walletEntries().filter(x=>x.category==="مصروف تشغيل"&&inRangeDay(x.date,r))}
   function treasuryUntil(end){return list(K.tr).filter(x=>!x.deleted&&new Date((x.date||'1970-01-01')+'T'+(x.time||'00:00'))<=end).reduce((a,x)=>a+(x.type==='in'?(+x.amount||0):-(+x.amount||0)),0)}
@@ -61,7 +61,7 @@
   function bump(map,k,f){const v=map.get(k)||f();map.set(k,v);return v}
 
   function compute(r,light){
-    const allOrders=arr(K.r).filter(Boolean),os=orders(r,allOrders),ex=expenses(r);
+    const allOrders=(typeof arrCached==="function"?arrCached(K.r):arr(K.r)).filter(Boolean)/* من غير safe: فشل قراية الأوامر لازم يظهر كخطأ */,os=orders(r,allOrders),ex=expenses(r);
     const closedOrders=allOrders.filter(x=>x.closed&&inRangeDate(x.closedAt||x.createdAt,r));
     const labor=closedOrders.reduce((a,x)=>a+(+x.labor||0),0),partsSell=closedOrders.reduce((a,x)=>a+(+x.partsTotal||0),0),partsCost=closedOrders.reduce((a,x)=>a+(+x.partsCost||0),0);
     // 🛒 بيع قطع مباشر (من غير أمر شغل): من حركات المخزن «خروج بيع مباشر» اللي ماتلغتش

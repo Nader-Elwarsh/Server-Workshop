@@ -67,22 +67,19 @@
     });
   }
 
+  /* WFStorage هو المصدر (المزامنة وكل الحفظ بيكتبوا فيه). قبل كده كل فتح صفحة كان بينسخ نسخة IndexedDB دي فوقه —
+     فأي تعديل جه من جهاز تاني بالمزامنة (أو اتحفظ من غير المسار ده) كان بيرجع لقديمه، وكمان كتابة كبيرة مع كل صفحة.
+     دلوقتي: لو WFStorage فيه القسم → هو الصح، والنسخة هنا بتتحدّث في الخلفية. لو مش فيه (اتمسح؟) → نرجّعه من هنا. */
   async function hydrate() {
     try {
+      const raw = window.WFStorage && window.WFStorage.getItem(LOCAL_KEY);
+      if (raw !== null && raw !== undefined) {
+        const S = window.WFStorage, sig = S.stamp ? String(S.stamp(LOCAL_KEY)) : "", SIGK = LOCAL_KEY + "_idb_sig";
+        if (!sig || sig === "0" || S.getItem(SIGK) !== sig) setTimeout(() => { replace(localRecords()).then(ok => { if (ok && sig && sig !== "0") S.setItem(SIGK, sig); }).catch(() => {}); }, 3000);
+        return null;
+      }
       const records = await all();
-      const local = localRecords();
-      // أول تشغيل: ننسخ البيانات القديمة إلى IndexedDB بدون حذف نسخة WFStorage.
-      if (!records.length && local.length) {
-        await replace(local);
-        return local;
-      }
-      // بعد التهيئة: IndexedDB هي المصدر المحلي لهذه المجموعة، وWFStorage ظل توافق.
-      if (records.length) {
-        window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records));
-        return records;
-      }
-      // لا توجد بيانات في أي مكان؛ نعلّم المخزن أنه مهيأ.
-      await replace([]);
+      if (records.length) { window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records)); return records; }
       return [];
     } catch (error) {
       console.warn("[FaultCodesIDB] fallback إلى WFStorage:", error);

@@ -109,13 +109,17 @@ function toggleRouteOverdueView(){
   renderRouteDayStrip();renderRoute();
 }
 let routeDayStripScrolledOnce=false;
+function showOlderRouteDays(){routeViewState.stripAll=true;renderRouteDayStrip()}
 function renderRouteDayStrip(){
   const el=document.getElementById("routeDayStrip");if(!el)return;
   const today=dayKeyLocal(new Date());
   if(!routeViewState.day)routeViewState.day=today;
-  const days=routeDaysWithData();
-  const counts={};arr(K.r).forEach(x=>{if(x.visit){let k=dayKeyLocal(x.visit);if(k)counts[k]=(counts[k]||0)+1}if(x.closed&&x.closedAt){let k=dayKeyLocal(x.closedAt);if(k&&k!==dayKeyLocal(x.visit))counts[k]=(counts[k]||0)+1}});
-  el.innerHTML=days.map(d=>{
+  // سرعة: الشريط بيعرض شهرين قبل وبعد النهارده بس (ممكن يبقى فيه مئات الأيام بعد سنين شغل) + زر للأقدم
+  const allDays=routeDaysWithData(),lo=dayKeyLocal(new Date(Date.now()-60*86400000)),hi=dayKeyLocal(new Date(Date.now()+60*86400000));
+  const days=routeViewState.stripAll?allDays:allDays.filter(d=>(d>=lo&&d<=hi)||d===routeViewState.day||d===today);
+  const hiddenOld=allDays.length-days.length;
+  const counts={};(typeof arrCached==="function"?arrCached(K.r):arr(K.r)).forEach(x=>{if(x.visit){let k=dayKeyLocal(x.visit);if(k)counts[k]=(counts[k]||0)+1}if(x.closed&&x.closedAt){let k=dayKeyLocal(x.closedAt);if(k&&k!==dayKeyLocal(x.visit))counts[k]=(counts[k]||0)+1}});
+  el.innerHTML=(hiddenOld>0?`<button type="button" class="route-day-cell" data-wf-event="click" data-wf-code="showOlderRouteDays()"><small>أقدم</small><b>⏪</b><span class="badge">${hiddenOld}</span></button>`:"")+days.map(d=>{
     const s=routeDayShort(d),n=counts[d]||0,isToday=d===today,active=!routeViewState.overdueView&&d===routeViewState.day;
     return `<button type="button" class="route-day-cell${active?" active":""}${isToday?" is-today":""}" data-wf-event="click" data-wf-code="selectRouteDay('${d}')"><small>${s.label}</small><b>${s.date}</b>${n?`<span class="badge">${n}</span>`:""}</button>`;
   }).join("");

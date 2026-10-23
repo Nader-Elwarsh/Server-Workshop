@@ -60,16 +60,19 @@
       return false;
     });
   }
+  /* WFStorage هو المصدر (المزامنة وكل الحفظ بيكتبوا فيه). قبل كده كل فتح صفحة كان بينسخ نسخة IndexedDB دي فوقه —
+     فأي تعديل جه من جهاز تاني بالمزامنة (أو اتحفظ من غير المسار ده) كان بيرجع لقديمه، وكمان كتابة كبيرة مع كل صفحة.
+     دلوقتي: لو WFStorage فيه القسم → هو الصح، والنسخة هنا بتتحدّث في الخلفية. لو مش فيه (اتمسح؟) → نرجّعه من هنا. */
   async function hydrate() {
     try {
-      const records = await all();
-      const local = localRecords();
-      if (!records.length && local.length) { await replace(local); return local; }
-      if (records.length) {
-        window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records));
-        return records;
+      const raw = window.WFStorage && window.WFStorage.getItem(LOCAL_KEY);
+      if (raw !== null && raw !== undefined) {
+        const S = window.WFStorage, sig = S.stamp ? String(S.stamp(LOCAL_KEY)) : "", SIGK = LOCAL_KEY + "_idb_sig";
+        if (!sig || sig === "0" || S.getItem(SIGK) !== sig) setTimeout(() => { replace(localRecords()).then(ok => { if (ok && sig && sig !== "0") S.setItem(SIGK, sig); }).catch(() => {}); }, 3000);
+        return null;
       }
-      await replace([]);
+      const records = await all();
+      if (records.length) { window.WFStorage.setItem(LOCAL_KEY, JSON.stringify(records)); return records; }
       return [];
     } catch (error) {
       console.warn("[TasksIDB] fallback إلى WFStorage:", error);
