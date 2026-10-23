@@ -116,7 +116,8 @@ const PARTS = [
   assert.strictEqual(invBodies.length, 2);
   assert.strictEqual(invBodies[0].contents[0].parts.length, 3, "صورتين + النص");
   assert.ok(!/مخزن الورشة/.test(invBodies[0].contents[0].parts[2].text), "خطوة القراية من غير المخزن");
-  assert.strictEqual(invBodies[0].generationConfig.mediaResolution, "MEDIA_RESOLUTION_HIGH");
+  // جوجل بيرفض الدقة العالية (HIGH) لأكتر من صورة أو PDF (خطأ 400) — بتتطلب لصورة واحدة بس
+  assert.strictEqual(invBodies[0].generationConfig.mediaResolution, undefined, "صورتين: من غير HIGH");
   assert.strictEqual(invBodies[0].generationConfig.temperature, 0);
   assert.ok(/ربط سابق/.test(invBodies[1].contents[0].parts[0].text) && /«ريلاى» ← ريلاي قديم/.test(invBodies[1].contents[0].parts[0].text));
   assert.ok(!/قديم\]/.test(invBodies[1].contents[0].parts[0].text) && !/S\d+: قديم/.test(invBodies[1].contents[0].parts[0].text), "المؤرشف مش في القايمة");
