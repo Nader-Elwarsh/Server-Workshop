@@ -77,6 +77,10 @@ service cloud.firestore {
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) || request.resource.data.status != 'ملغي');
     }
 
+    // 🛡️ بوابة العملاء: المعرّفات اللي بيختارها جهاز العميل حروف/أرقام بس (من غير تنصيص أو <>)، والنصوص بطول محدود
+    function safeId(x) { return x is string && x.matches('^[A-Za-z0-9_-]{1,80}$'); }
+    function portalText(d, k, n) { return !(k in d) || d[k] == null || (d[k] is string && d[k].size() <= n); }
+
     function linkRef() {
       return /databases/$(database)/documents/portalLinks/$(request.auth.uid);
     }
@@ -166,7 +170,8 @@ service cloud.firestore {
       allow delete: if isStaff() && can(['customers.delete', 'customers.merge', 'data.wipe']);
       allow read: if own(id);
       allow create: if own(id) && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'mainAddress', 'extraAddress', 'portal', 'createdAt', 'updatedAt']);
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'email', 'mainAddress', 'extraAddress', 'portal', 'createdAt', 'updatedAt'])
+        && portalText(request.resource.data, 'name', 80) && portalText(request.resource.data, 'phone', 20) && portalText(request.resource.data, 'email', 120);
       allow update: if own(id) && resource.data.portal == true && request.resource.data.portal == true
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'mainAddress', 'extraAddress', 'updatedAt']);
     }
@@ -177,8 +182,9 @@ service cloud.firestore {
       allow update: if isStaff() && can(['devices.edit', 'devices.add', 'customers.merge', 'requests.add', 'requests.edit', 'portal.manage']);
       allow delete: if isStaff() && can(['devices.delete', 'customers.merge', 'data.wipe']);
       allow read: if own(resource.data.customerId);
-      allow create: if own(request.resource.data.customerId) && request.resource.data.portal == true
-        && request.resource.data.keys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt']);
+      allow create: if own(request.resource.data.customerId) && request.resource.data.portal == true && safeId(id)
+        && request.resource.data.keys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt'])
+        && portalText(request.resource.data, 'model', 120) && portalText(request.resource.data, 'desc', 500);
       allow update: if own(resource.data.customerId) && own(request.resource.data.customerId) && request.resource.data.portal == true
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customerId', 'addressKey', 'type', 'category', 'brand', 'model', 'desc', 'photo', 'portal', 'createdAt', 'updatedAt']);
     }
@@ -186,8 +192,10 @@ service cloud.firestore {
     match /portalRequests/{id} {
       allow read, write: if isStaff() && can(['portal.manage', 'requests.add', 'customers.merge']);
       allow read: if own(resource.data.customerId);
-      allow create: if own(request.resource.data.customerId)
+      allow create: if own(request.resource.data.customerId) && safeId(id)
         && request.resource.data.handled == false && request.resource.data.portal == true
+        && portalText(request.resource.data, 'fault', 1000) && portalText(request.resource.data, 'note', 1000) && portalText(request.resource.data, 'executionPlace', 60)
+        && (!('visit' in request.resource.data) || request.resource.data.visit == null || (request.resource.data.visit is string && request.resource.data.visit.matches('^([0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2})?)?)?$')))
         && ownsDevice(request.resource.data.customerId, request.resource.data.get('deviceId', ''))
         && request.resource.data.keys().hasOnly(['customerId', 'deviceId', 'fault', 'visit', 'executionPlace', 'note', 'handled', 'portal', 'createdAt', 'media', 'loc'])
         // صور/فيديو/صوت العطل (لينكات Cloudinary — بتتفحص تاني وقت العرض) ولوكيشن مكان التنفيذ: اختياريين.

@@ -223,6 +223,7 @@
   defineOverride("deleteCustomerRecord", "workshop-mini-enhancements.js", async function (cid) {
     const c = customerRows().find(function (x) { return x.id === cid; });
     if (!c) return;
+    if (typeof window.archiveDeleteGuard === "function" && !(await window.archiveDeleteGuard("customerId", cid, "العميل"))) return;
 
     const devices = deviceRows().filter(function (d) { return d.customerId === cid; });
     const deviceIds = new Set(devices.map(function (d) { return d.id; }));
@@ -279,6 +280,7 @@ const trashPayload = { customer: c, devices: devices, requests: orders, moves: r
   defineOverride("deleteDeviceRecord", "workshop-mini-enhancements.js", async function (did) {
     const d = deviceRows().find(function (x) { return x.id === did; });
     if (!d) return;
+    if (typeof window.archiveDeleteGuard === "function" && !(await window.archiveDeleteGuard("deviceId", did, "الجهاز"))) return;
 
     const orders = requestRows().filter(function (r) { return r.deviceId === did; });
     const message =

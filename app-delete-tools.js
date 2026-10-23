@@ -20,8 +20,25 @@ function restorePartsIntoStock(stock,requests){
     const p=stock.find(z=>z.id===x.partId);if(p)p.qty=(+p.qty||0)+(+x.qty||0);
   }));
 }
+/* 📦 أوامر العميل/الجهاز القديمة اللي اتنقلت للأرشيف (على السيرفر): عددها، أو -1 لو مش معروف (مفيش نت) */
+async function archivedOrdersCount(field,id){
+  try{if(field==="customerId"){const c=JSON.parse(WFStorage.getItem("wf_arch_cache")||"null"),n=+((((c&&c.cust)||{})[id])||{}).n||0;if(n>0)return n}}catch(_){}
+  const fb=typeof window!=="undefined"?window.firebase:null;
+  if(!fb||!fb.apps||!fb.apps.length)return 0; // نسخة من غير سحابة أصلًا = مفيش أرشيف
+  if(typeof navigator!=="undefined"&&navigator.onLine===false)return -1;
+  try{const s=await Promise.race([fb.firestore().collection("archRequests").where(field,"==",String(id)).limit(50).get(),new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),8000))]);return s.size}catch(e){return -1}
+}
+/* العميل/الجهاز اللي ليه أوامر في الأرشيف مايتمسحش (الأوامر القديمة كانت هتفضل من غير صاحب) */
+async function archiveDeleteGuard(field,id,label){
+  const n=await archivedOrdersCount(field,id);
+  if(n>0){alert(`📦 ${label} ده ليه ${n>=50?"أكتر من 50":n} أمر قديم في الأرشيف — مينفعش يتمسح عشان تاريخه مايضيعش.\n\nلو لازم تمسحه: افتح «الأوامر القديمة» في صفحته ورجّعها للشغل الأول.`);return false}
+  if(n<0)return confirm(`مش قادر أتأكد دلوقتي (مفيش نت) إن ${label} مالوش أوامر قديمة في الأرشيف.\n\nتكمّل الحذف برضه؟`);
+  return true;
+}
+window.archiveDeleteGuard=archiveDeleteGuard;
 async function deleteCustomerRecord(cid){
   const c=arr(K.c).find(x=>x.id===cid);if(!c)return;
+  if(!await archiveDeleteGuard("customerId",cid,"العميل"))return;
   if(arr(K.d).some(d=>d.customerId===cid)||arr(K.r).some(r=>r.customerId===cid)){alert("لا يمكن حذف العميل الآن لأن له أجهزة أو أوامر شغل مرتبطة به. احذف البيانات المرتبطة أولاً أو استخدم الحذف العام.");return}
   const linkedTasks=arr(K.tasks).filter(t=>t.customerId===cid);
   // عميل عنده حساب بوابة: الحذف هيقفل عليه الدخول. نوضّح ده قبل التأكيد.
@@ -38,6 +55,7 @@ async function deleteCustomerRecord(cid){
 }
 async function deleteDeviceRecord(did){
   const d=arr(K.d).find(x=>x.id===did);if(!d)return;
+  if(!await archiveDeleteGuard("deviceId",did,"الجهاز"))return;
   if(arr(K.r).some(r=>r.deviceId===did)){alert("لا يمكن حذف الجهاز لأنه مرتبط بأمر شغل. احذف أمر الشغل المرتبط أولًا أو استخدم الحذف العام.");return}
   if(!confirm("حذف الجهاز نهائيًا؟"))return;
   const values={[K.d]:arr(K.d).filter(x=>x.id!==did)};
