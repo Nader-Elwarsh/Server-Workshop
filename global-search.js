@@ -200,7 +200,7 @@
       if (custRec) main = addressText(r.addressKey === "extra" && custRec.extraAddress ? custRec.extraAddress : (custRec.mainAddress || {}));
       if (!hit([cust, main, r.no])) return;
       var visitLabel = "";
-      try { visitLabel = new Date(r.visit).toLocaleString("ar-EG", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) {}
+      try { visitLabel = visitText(r.visit, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch (e) {}
       results.push({
         cat: "route", icon: "🗺️",
         title: cust || "موعد بدون اسم",

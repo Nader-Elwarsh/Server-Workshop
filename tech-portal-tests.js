@@ -122,11 +122,11 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   // 2) تفاصيل أمر: الموعد، الشغل، القطع (مع مصروف عهدة)، الإجمالي
   data = mkData(); e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl });
   run(e); await flush();
-  const dtInput = all(e.root).find((n) => n.type === 'datetime-local');
-  dtInput.value = at(1, 9);
+  const dtInput = all(e.root).find((n) => n.type === 'date');
+  dtInput.value = at(1, 9).slice(0, 10);
   assert(!btnOf(e.root, 'حفظ الموعد'), 'مفيش زرار حفظ: الحفظ تلقائي');
   await dtInput.onchange(); await flush();
-  assert.strictEqual(data.wf_r[0].visit, at(1, 9), 'الموعد اتحفظ على الأمر');
+  assert.strictEqual(data.wf_r[0].visit, at(1, 9).slice(0, 10), 'الموعد اتحفظ على الأمر (يوم بس)');
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
   const ta = all(e.root).find((n) => n.tagName === 'TEXTAREA'); ta.value = 'غيّرت السخان';
   const labor = all(e.root).find((n) => n.type === 'number' && n.placeholder.includes('أجرة')); labor.value = '200';
@@ -168,7 +168,7 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   data.wf_r[0].parts = data.wf_r[0].parts.slice(0, 1); data.wf_r[0].partsTotal = 600; data.wf_r[0].partsCost = 440; data.wf_r[0].total = 800; data.wf_r[0].remain = 750;
   // من غير صلاحية تعديل: عرض بس
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl, perms: (k) => k !== 'requests.edit' }); run(e); await flush();
-  assert(!all(e.root).some((n) => n.type === 'datetime-local') && !btnOf(e.root, 'إضافة القطعة') && !all(e.root).some((n) => n.tagName === 'TEXTAREA'), 'بدون requests.edit مفيش تعديل');
+  assert(!all(e.root).some((n) => n.type === 'date') && !btnOf(e.root, 'إضافة القطعة') && !all(e.root).some((n) => n.tagName === 'TEXTAREA'), 'بدون requests.edit مفيش تعديل');
 
   // 3) القفل: لازم مكتمل، المحفظة الافتراضية = عهدته، والقفل بيروح للسيرفر
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();

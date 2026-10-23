@@ -567,6 +567,19 @@ var WFStorage = window.WFStorage;
   // قراءة عبر arrCached بعد كده تجيب القيمة الصح مش نسخة قديمة من الكاش.
   window.invalidateReadCache = invalidateReadCache;
   window.esc = esc;
+  /* ميعاد الزيارة: «2026-10-24» (يوم بس، من غير ساعة) أو «2026-10-24T14:30». العرض بيحترم ده (مفيش «3:00 ص» وهمية). */
+  window.visitText = function (v, o) {
+    if (!v) return "";
+    var s = String(v), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (m) {
+      var oo = Object.assign({}, o || {}); delete oo.hour; delete oo.minute; delete oo.second; delete oo.hour12;
+      if (!oo.day) { oo.day = "numeric"; oo.month = "long"; oo.weekday = "long"; }
+      try { return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString("ar-EG", oo); } catch (_) { return s; }
+    }
+    var d = new Date(s); if (isNaN(d.getTime())) return s;
+    try { return d.toLocaleString("ar-EG", o); } catch (_) { return s; }
+  };
+  window.visitInputValue = function (v) { var s = String(v || ""); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : ""; };
   window.escAttr = escAttr;
   window.id = id;
 

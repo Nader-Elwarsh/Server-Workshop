@@ -178,6 +178,21 @@ const seed = {
     const N3 = createNotifier({ db: db2, now: () => clock });
     assert.strictEqual((await N3.tick()).reminders, 0);
     assert.strictEqual((await N3.deliver(["t2"], { kind: "visit_reminder", key: "x1", title: "x" })).length, 0, "globally off kind is never delivered");
+    // ميعاد بيوم بس (من غير ساعة): مفيش تذكير، ومش «متأخر» في نفس اليوم؛ بيتأخر بعد ما اليوم يخلص
+    {
+      const db6 = mockDb(seed); let c6 = new Date("2026-10-15T19:00:00Z"); // 10 بالليل بتوقيت مصر
+      const N6 = createNotifier({ db: db6, now: () => c6 });
+      db6.data["requests/d1"] = { no: "D1", customerId: "c1", techId: "t1", visit: "2026-10-15", status: "جديد", closed: false };
+      db6.data["requests/d0"] = { no: "D0", customerId: "c1", visit: "2026-10-14", status: "جديد", closed: false };
+      const r6 = await N6.tick();
+      assert.strictEqual(r6.reminders, 0);
+      assert.ok(!inbox(db6, "own").some((x) => /D1/.test(x.title)), "same-day date-only is not overdue");
+      assert.ok(inbox(db6, "own").some((x) => x.kind === "overdue_order" && /D0/.test(x.title)), "yesterday date-only is overdue");
+      c6 = new Date("2026-10-16T06:00:00Z"); // تاني يوم 9 الصبح
+      await N6.tick();
+      assert.ok(inbox(db6, "own").some((x) => x.kind === "overdue_order" && /D1/.test(x.title)), "date-only overdue next day");
+      assert.strictEqual(inbox(db6, "own").filter((x) => /D0/.test(x.title) && x.kind === "overdue_order").length, 1, "no repeat");
+    }
     // عهدة فني عدّت الحد
     db2.data["notifConfig/global"] = { off: [], custodyMax: 1000 };
     const N4 = createNotifier({ db: db2, now: () => clock });

@@ -12,7 +12,7 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), "utf8");
     assert.ok(/request\.resource\.data\.visit\.matches\(/.test(r) && /portalText\(request\.resource\.data, 'name', 80\)/.test(r), f);
   });
   // 2) الميعاد في صفحة الأمر متنضّف
-  assert.ok(read("app-requests.js").includes('value="${esc(r.visit||"")}"'));
+  assert.ok(read("app-requests.js").includes('value="${esc(visitInputValue(r.visit))}"'));
   // 3) تحويل طلبات البوابة: رفض المعرّف الغريب، تنضيف الميعاد، والحد اليومي/للعميل
   const sync = read("firebase-sync.js");
   assert.ok(/SAFE_ID = \/\^\[A-Za-z0-9_~\.\\-\]\{1,120\}\$\//.test(sync));
