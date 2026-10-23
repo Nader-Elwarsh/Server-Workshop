@@ -627,7 +627,7 @@
     var dv = A(K().d).filter(function (x) { return x && x.id === r.deviceId; })[0] || {};
     var remain = orderRemainAmt(r);
     st.busy = true; st.err = ""; msgSlots0();
-    task("message", { kind: st.kind, note: st.note, order: { deviceType: [dv.type, dv.category].filter(Boolean).join(" "), status: r.paid ? "مدفوع بالكامل" : r.status, fault: r.fault, work: r.work, place: r.executionPlace, visit: r.visit ? new Date(r.visit).toLocaleString("ar-EG", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) : "", warrantyDays: r.warrantyDays || "", hasRemain: !r.paid && remain > 0, partsWaiting: !!r.partsWaiting } }).then(function (res) {
+    task("message", { kind: st.kind, note: st.note, order: { deviceType: [dv.type, dv.category].filter(Boolean).join(" "), status: r.paid ? "مدفوع بالكامل" : r.status, fault: r.fault, work: r.work, place: r.executionPlace, visit: r.visit ? visitText(r.visit, { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" }) : "", warrantyDays: r.warrantyDays || "", hasRemain: !r.paid && remain > 0, partsWaiting: !!r.partsWaiting } }).then(function (res) {
       st.raw = res.text || ""; if (!st.raw) st.err = "مارجعش نص — جرّب تاني.";
     }, function (e) { st.err = (e && e.message) || "تعذّر"; }).then(function () { st.busy = false; msgSlots0(); });
   }

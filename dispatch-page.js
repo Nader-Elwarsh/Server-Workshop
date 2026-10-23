@@ -32,7 +32,7 @@
     }
     /* المنطقة (المركز - القرية) والموعد: أهم حاجتين وانت بتوزّع على الفنيين */
     function areaOf(r) { try { var a = typeof window.resolveRequestAddress === "function" ? window.resolveRequestAddress(r) : {}; return [a.center, a.village].filter(Boolean).join(" - "); } catch (e) { return ""; } }
-    function visitLabel(v) { var d = new Date(v); if (!v || isNaN(d.getTime())) return ""; return d.toLocaleDateString("ar-EG", { weekday: "short", day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
+    function visitLabel(v) { if (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) && window.visitText) return window.visitText(v, { weekday: "short", day: "numeric", month: "short" }); var d = new Date(v); if (!v || isNaN(d.getTime())) return ""; return d.toLocaleDateString("ar-EG", { weekday: "short", day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
     function openLoad() { var m = {}; A(window.K.r).forEach(function (r) { if (r && r.techId && !r.closed && !r.paid && r.status !== "ملغي") m[r.techId] = (m[r.techId] || 0) + 1; }); return m; }
     var shownIds = {};
     /* المحدد = اللي ظاهر قدامك بس (لو غيّرت الفلتر أو البحث، اللي اختفى مايتعيّنش من غير ما تشوفه) */

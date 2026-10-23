@@ -83,13 +83,14 @@
     }
     function mapHref(c, r, addr) { var l = locOf(c, r); return l ? window.WFLoc.navHref(l) : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(addr); }
     function dayOf(v) { try { return window.dayKeyLocal(v); } catch (e) { return ""; } }
-    function timeOf(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
+    function timeOf(v) { if (/^\d{4}-\d{2}-\d{2}$/.test(String(v || ""))) return ""; var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }); }
     function dateLabel(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" }); }
     function shortDate(v) { var d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("ar-EG", { day: "numeric", month: "short" }); }
-    function toInputValue(v) { // datetime-local = YYYY-MM-DDTHH:mm
+    function toInputValue(v) { // الموعد بيوم بس (من غير ساعة) = YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(String(v || ""))) return String(v).slice(0, 10);
       var d = new Date(v); if (isNaN(d.getTime())) return "";
       var p = function (n) { return String(n).padStart(2, "0"); };
-      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+      return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
     }
     function nowKey() { var d = new Date(); return { date: dayOf(d), time: String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0") }; }
     // زرار «رجوع» جوه الأمر: لو جاي من قايمة البوابة نرجع لها فعلًا (history.back) بنفس الفلتر
@@ -451,7 +452,7 @@
 
       if (edit) {
         var sc = block("📅 الموعد" + (r.visit ? "" : " (لسه ما اتحددش)"));
-        var inp = el("input", "tp-input"); inp.type = "datetime-local"; inp.value = toInputValue(r.visit);
+        var inp = el("input", "tp-input"); inp.type = "date"; inp.value = toInputValue(r.visit);
         var row3 = el("div", "tp-row tp-wrap tp-gap"), vs = savedTag();
         // حفظ تلقائي: أول ما تختار الموعد بيتحفظ (من غير زرار حفظ)
         inp.onchange = function () {

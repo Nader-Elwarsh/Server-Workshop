@@ -1,4 +1,4 @@
-const CACHE_NAME = "workshop-v133-batch102";
+const CACHE_NAME = "workshop-v134-batch103";
 importScripts("./notif-shared.js");
 importScripts("./share-store.js");
 const FIREBASE_FILES = [
