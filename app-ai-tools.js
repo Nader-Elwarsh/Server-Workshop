@@ -362,20 +362,21 @@
     $("wfAiBkType").addEventListener("change", function () { var t = this.value; Array.prototype.forEach.call(body.querySelectorAll("[data-cat]"), function (s) { s.innerHTML = catOptions(t, s.value); }); });
     var v = function (card, sel) { var e = card.querySelector(sel); return e ? e.value.trim() : ""; };
     var replacing = function () { var e = $("wfAiBkReplace"); return !!(e && e.checked); };
-    function dupCode(type, brand, code, model) { var x = typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, code, null, model) : null; return x && replacing() && bookOf(x) === pdfName ? null : x; }
-    function dupTest(type, brand, title) { var k = [type, brand, title].map(nfx).join("|"); return A(K().fc).filter(function (f) { return f && f.kind === "test" && [f.deviceType, f.brand, f.title].map(nfx).join("|") === k && !(replacing() && bookOf(f) === pdfName); })[0] || null; }
+    function dupCode(type, brand, code, model, cat) { var x = typeof w.findDuplicateFaultCode === "function" ? w.findDuplicateFaultCode(type, brand, code, null, model, cat) : null; return x && replacing() && bookOf(x) === pdfName ? null : x; }
+    /* التيست مود مكرر لو نفس العنوان، أو نفس الزراير في طريقة الدخول لنفس الماركة والموديلات (العنوان بيتكتب بأشكال مختلفة كل استيراد) */
+    function dupTest(type, brand, title, enter, model, cat) { var rec = { deviceType: type, brand: brand, title: title, enter: enter, model: model, category: cat }; return A(K().fc).filter(function (f) { return f && f.kind === "test" && (typeof w.sameTestMode === "function" ? w.sameTestMode(rec, f) : [f.deviceType, f.brand, f.title].map(nfx).join("|") === [type, brand, title].map(nfx).join("|")) && !(replacing() && bookOf(f) === pdfName); })[0] || null; }
     function refresh() {
       var type = $("wfAiBkType").value, nNew = 0, nFill = 0, tNew = 0, tDup = 0;
       Array.prototype.forEach.call(body.querySelectorAll(".wf-ai-card[data-kind]"), function (card) {
         var ok = card.querySelector("[data-ok]").checked, brs = pickedBrands(card), list = brs.length ? brs : [""], dups = 0;
         if (card.getAttribute("data-kind") === "code") {
           var code = v(card, "[data-code]"); card.querySelector("[data-codehead]").textContent = (code || "—") + (brs.length ? " — " + brs.join(" + ") : " — عام");
-          list.forEach(function (b) { if (code && dupCode(type, b, code, v(card, "[data-models]"))) dups++; });
+          list.forEach(function (b) { if (code && dupCode(type, b, code, v(card, "[data-models]"), v(card, "[data-cat]"))) dups++; });
           card.querySelector("[data-dup]").innerHTML = dups ? " <span class='wf-ai-chip wf-ai-lo'>" + (dups === list.length ? "متسجّل قبل كده — هيتكمّل الناقص بس" : dups + " من " + list.length + " متسجّلين") + "</span>" : "";
           if (ok) { nFill += dups; nNew += list.length - dups; }
         } else {
-          list.forEach(function (b) { if (dupTest(type, b, v(card, "[data-title]"))) dups++; });
-          card.querySelector("[data-dup]").innerHTML = dups ? " <span class='wf-ai-chip wf-ai-lo'>نفس العنوان موجود — مش هيتكرر</span>" : "";
+          var dt0 = null; list.forEach(function (b) { var x = dupTest(type, b, v(card, "[data-title]"), v(card, "[data-enter]"), v(card, "[data-models]"), v(card, "[data-cat]")); if (x) { dups++; dt0 = dt0 || x; } });
+          card.querySelector("[data-dup]").innerHTML = dups ? " <span class='wf-ai-chip wf-ai-lo'>موجود قبل كده" + (dt0 && dt0.title ? " باسم «" + esc(dt0.title) + "»" : "") + " — مش هيتكرر</span>" : "";
           if (ok) { tDup += dups; tNew += list.length - dups; }
         }
         card.classList.toggle("off", !ok);
@@ -394,7 +395,8 @@
         if (card.getAttribute("data-kind") === "test") {
           var t = tms[i], title = v(card, "[data-title]"), enter = v(card, "[data-enter]"); if (!title || !enter) return;
           list.forEach(function (b) {
-            var tk = ["t", b, title].map(nfx).join("|"); if (seen[tk] || dupTest(type, b, title)) return; seen[tk] = 1;
+            var tk = ["t", b, title].map(nfx).join("|"), tsig = typeof w.testModeSig === "function" ? ["s", b, w.testModeSig(enter), models].map(nfx).join("|") : tk;
+            if (seen[tk] || seen[tsig] || dupTest(type, b, title, enter, models, cat)) return; seen[tk] = 1; seen[tsig] = 1;
             all.push({ id: w.id(), kind: "test", source: "ai-book", deviceType: type, category: cat, brand: b, model: models, title: title, enter: enter, tests: v(card, "[data-tests]"), exit: v(card, "[data-exit]"), note: [v(card, "[data-tnote]"), "📚 من " + src + " — 🤖 راجعه."].filter(Boolean).join("\n"), media: [], createdAt: at, updatedAt: at });
             addedT++;
           });
@@ -404,8 +406,8 @@
         var cause = v(card, "[data-cause]"), fix = v(card, "[data-fix]");
         var tag = "📚 من " + src + " — 🤖" + (c.aiCause || c.aiFix ? " (فيه أجزاء من خبرة الذكاء الاصطناعي)" : "") + " — راجعه.";
         list.forEach(function (b) {
-          var key = ["c", b, models, code].map(nfx).join("|"); if (seen[key]) return; seen[key] = 1;
-          var dup = dupCode(type, b, code, models), ex = dup && all.filter(function (f) { return f.id === dup.id; })[0];
+          var key = ["c", b, models, cat, code].map(nfx).join("|"); if (seen[key]) return; seen[key] = 1;
+          var dup = dupCode(type, b, code, models, cat), ex = dup && all.filter(function (f) { return f.id === dup.id; })[0];
           if (ex) {
             var ch = false;
             if (!String(ex.title || "").trim() && title2) { ex.title = title2; ch = true; }

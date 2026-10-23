@@ -114,9 +114,11 @@
     v.deviceType = $("tmType").value; v.brand = $("tmBrand").value;
     if (!v.title) return w.alert("اكتب عنوان للتيست مود.");
     if (!v.enter) return w.alert("اكتب طريقة الدخول.");
+    if (v.brand && typeof w.wfCanonicalBrand === "function") v.brand = w.wfCanonicalBrand(v.brand);
     var all = A(), key = [v.deviceType, v.brand, v.title].map(nf).join("|");
-    var dup = all.filter(function (f) { return isTest(f) && (!editing || f.id !== editing.id) && [f.deviceType, f.brand, f.title].map(nf).join("|") === key; })[0];
-    if (dup) return w.alert("⚠️ فيه تيست مود بنفس العنوان لنفس النوع/الماركة: «" + dup.title + "».");
+    var dup = typeof w.findDuplicateTestMode === "function" ? w.findDuplicateTestMode(Object.assign({ category: editing && editing.category }, v), editing && editing.id)
+      : all.filter(function (f) { return isTest(f) && (!editing || f.id !== editing.id) && [f.deviceType, f.brand, f.title].map(nf).join("|") === key; })[0];
+    if (dup && !w.confirm("⚠️ فيه تيست مود شبهه لنفس النوع/الماركة: «" + dup.title + "» (نفس العنوان أو نفس زراير الدخول).\n\nتحفظه برضه كتيست مود منفصل؟\n(إلغاء = ترجع تراجع)")) return;
     var at = new Date().toISOString(), rec;
     if (editing) { rec = all.filter(function (f) { return f.id === editing.id; })[0]; if (!rec) return; Object.assign(rec, v, { updatedAt: at }); }
     else { rec = Object.assign({ id: w.id(), kind: "test", source: "manual", media: [], createdAt: at, updatedAt: at }, v); all.push(rec); }
