@@ -23,8 +23,9 @@
   }
   function save(all) { return typeof w.saveFaultCodesRecords === "function" ? w.saveFaultCodesRecords(all) : false; }
   function isTest(f) { return !!(f && f.kind === "test"); }
-  function tests() { return A().filter(isTest); }
-  function codesCount() { return A().filter(function (f) { return !isTest(f); }).length; }
+  function RO() { try { return (typeof w.arrCached === "function" ? w.arrCached(w.K.fc) : A()) || []; } catch (e) { return []; } } // قراءة بس
+  function tests() { return RO().filter(isTest); }
+  function codesCount() { return RO().filter(function (f) { return !isTest(f); }).length; }
   function nf(v) { return typeof w.normalizeFaultText === "function" ? w.normalizeFaultText(v) : String(v || "").toLowerCase().trim(); }
   function types() { return Object.keys(S().types || {}); }
   function brands() { var s = S(); return typeof w.wfBrandList === "function" ? w.wfBrandList(s.brands) : (s.brands || []); }

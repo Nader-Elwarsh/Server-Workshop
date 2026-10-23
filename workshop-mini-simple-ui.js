@@ -150,10 +150,14 @@
     renderParts();
   };
 
+  // نفس التاريخ بيتحسب كذا مرة لكل أمر (العدّادات + الفلاتر) — بنحفظ الناتج للنصوص
+  const dateKeyMemo = new Map();
   function dateKey(value) {
+    if (typeof value === "string") { const hit = dateKeyMemo.get(value); if (hit !== undefined) return hit; }
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "";
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    const out = Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    if (typeof value === "string") { if (dateKeyMemo.size > 50000) dateKeyMemo.clear(); dateKeyMemo.set(value, out); }
+    return out;
   }
 
   function todayKey() {
@@ -305,13 +309,18 @@
     renderCustomers();
   };
 
+  /* ملخص أوامر كل عميل/جهاز بيتحسب مرة واحدة (لحد ما البيانات تتغيّر) بدل ما يتحسب لكل فلتر × كل عميل */
+  let statIX = null; const cStat = new Map(), dStat = new Map();
+  function statsReset() { const cur = ix(); if (statIX !== cur) { statIX = cur; cStat.clear(); dStat.clear(); } }
+  function orderStats(orders) { let active = false, done = false; for (const r of orders) { if (!orderIsCompleted(r) && r.status !== "ملغي") active = true; else if (orderIsCompleted(r)) done = true; } return { n: orders.length, active, done }; }
+  function customerStat(cid) { statsReset(); let s = cStat.get(cid); if (!s) { s = orderStats(ordersOfCustomer(cid)); cStat.set(cid, s); } return s; }
+  function deviceStat(did) { statsReset(); let s = dStat.get(did); if (!s) { s = orderStats(ordersOfDevice(did)); dStat.set(did, s); } return s; }
   function customerBucketMatch(c, bucket) {
-    const orders = ordersOfCustomer(c.id);
-    const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
-    const workshop = hasWorkshopDeviceForCustomer(c.id);
-    if (bucket === "active") return active;
-    if (bucket === "workshop") return workshop;
-    if (bucket === "completed") return orders.length > 0 && !active && orders.some(r => orderIsCompleted(r));
+    const st = customerStat(c.id);
+    if (bucket === "active") return st.active;
+    if (bucket === "workshop") return hasWorkshopDeviceForCustomer(c.id);
+    if (bucket === "completed") return st.n > 0 && !st.active && st.done;
+    if (bucket === "none") return st.n === 0;
     if (bucket === "none") return orders.length === 0;
     if (bucket === "city") return customerCityGroup(c) === "city";
     if (bucket === "village") return customerCityGroup(c) === "village";
@@ -431,13 +440,11 @@
   };
 
   function deviceBucketMatch(d, bucket) {
-    const orders = ordersOfDevice(d.id);
-    const active = orders.some(r => !orderIsCompleted(r) && r.status !== "ملغي");
-    const workshop = hasWorkshopDevice(d.id);
-    if (bucket === "active") return active;
-    if (bucket === "workshop") return workshop;
-    if (bucket === "completed") return orders.length > 0 && !active && orders.some(r => orderIsCompleted(r));
-    if (bucket === "none") return orders.length === 0;
+    const st = deviceStat(d.id);
+    if (bucket === "active") return st.active;
+    if (bucket === "workshop") return hasWorkshopDevice(d.id);
+    if (bucket === "completed") return st.n > 0 && !st.active && st.done;
+    if (bucket === "none") return st.n === 0;
     if (bucket === "recurring") return deviceIsRecurring(d);
     if (bucket === "stale") return deviceIsStale(d);
     if (bucket.indexOf("type:") === 0) return (d.type || "") === bucket.slice(5);

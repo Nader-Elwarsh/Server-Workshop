@@ -1,4 +1,36 @@
 var WFStorage = window.WFStorage;
+/* سرعة: تنسيق التواريخ (toLocaleDateString/TimeString/String) بيعمل منسّق Intl جديد مع كل نداء — بطيء جدًا جوه القوايم
+   (آلاف الأوامر). هنا بنحتفظ بالمنسّق لكل (لغة + خيارات) ونعيد استخدامه، بنفس الناتج بالظبط. */
+(function () {
+  try {
+    if (typeof Intl === "undefined" || !Intl.DateTimeFormat || Date.prototype.__wfIntlCache) return;
+    var cache = new Map(), DF = ["weekday", "year", "month", "day"], TF = ["dayPeriod", "hour", "minute", "second", "fractionalSecondDigits"];
+    function formatter(loc, opt, req) {
+      if (opt != null && (typeof opt !== "object" || opt.dateStyle !== undefined || opt.timeStyle !== undefined)) return null;
+      var key; try { key = JSON.stringify([loc === undefined ? null : loc, opt || null, req]); } catch (e) { return null; }
+      var f = cache.get(key); if (f) return f;
+      var o = {}, k; if (opt) for (k in opt) if (Object.prototype.hasOwnProperty.call(opt, k)) o[k] = opt[k];
+      var need = true;
+      if ((req === "date" || req === "any") && DF.some(function (x) { return o[x] !== undefined; })) need = false;
+      if ((req === "time" || req === "any") && TF.some(function (x) { return o[x] !== undefined; })) need = false;
+      if (need && req !== "time") { o.year = "numeric"; o.month = "numeric"; o.day = "numeric"; }
+      if (need && req !== "date") { o.hour = "numeric"; o.minute = "numeric"; o.second = "numeric"; }
+      f = new Intl.DateTimeFormat(loc, o);
+      if (cache.size > 300) cache.clear();
+      cache.set(key, f); return f;
+    }
+    [["toLocaleDateString", "date"], ["toLocaleTimeString", "time"], ["toLocaleString", "any"]].forEach(function (p) {
+      var orig = Date.prototype[p[0]];
+      Date.prototype[p[0]] = function (loc, opt) {
+        var t = this.getTime();
+        if (t !== t) return orig.call(this, loc, opt); // تاريخ غير صالح: نفس رسالة المتصفح
+        try { var f = formatter(loc, opt, p[1]); if (f) return f.format(t); } catch (e) {}
+        return orig.call(this, loc, opt);
+      };
+    });
+    Object.defineProperty(Date.prototype, "__wfIntlCache", { value: true });
+  } catch (e) {}
+})();
 /* =========================================================
    الورشة الفنية — طبقة البيانات المشتركة (shared-data.js)
    =========================================================
@@ -77,15 +109,8 @@ var WFStorage = window.WFStorage;
     if (!window.WFStorage || typeof window.WFStorage.subscribe !== "function") return;
     window.WFStorage.subscribe(function (key, value, removed, remote) {
       if (writingThroughDataApi || !OPERATIONAL_KEYS.has(String(key))) return;
-      try {
-        const records = removed ? [] : JSON.parse(String(value));
-        if (remote) {
-          window.WorkshopDB?.setSnapshot?.(key, records);
-          invalidateReadCache(key);
-          return;
-        }
-        persistOperational({ [key]: records });
-      } catch (e) { console.warn("[WorkshopData] تجاهل كتابة تخزين غير صالحة في جسر IndexedDB", key, e); }
+      // النص نفسه اتحفظ في التخزين، ونسخة القراءة بتتبني من جديد عند أول طلب (من غير تحليل كل كتابة هنا).
+      invalidateReadCache(key);
     });
   }
   hookDirectOperationalStorage();
@@ -107,11 +132,8 @@ var WFStorage = window.WFStorage;
       return value;
     } catch { return f; }
   }
+  // نسخة قابلة للتعديل: تحليل واحد للنص المحفوظ (أسرع من نسخ نسخة القراءة بـ stringify + parse)
   function get(k, f = []) {
-    const snapshot = window.WorkshopDB && window.WorkshopDB.getSnapshot && window.WorkshopDB.getSnapshot(k);
-    if (snapshot) {
-      try { return JSON.parse(JSON.stringify(snapshot.records)); } catch (_) { return snapshot.records.map(x => ({ ...x })); }
-    }
     try { let x = JSON.parse(WFStorage.getItem(k)); return x ?? f; }
     catch { return f; }
   }
@@ -136,10 +158,10 @@ var WFStorage = window.WFStorage;
   function commitStorage(values) {
     const entries = Object.entries(values || {}), previous = {};
     try {
-      for (const [k, v] of entries) JSON.stringify(v);
+      const texts = entries.map(([k, v]) => JSON.stringify(v)); // مرة واحدة بس (كانت مرتين لكل حفظ)
       for (const [k] of entries) previous[k] = WFStorage.getItem(k);
       writingThroughDataApi = true;
-      try { for (const [k, v] of entries) WFStorage.setItem(k, JSON.stringify(v)); }
+      try { entries.forEach(([k], i) => WFStorage.setItem(k, texts[i])); }
       finally { writingThroughDataApi = false; }
       invalidateReadCache(entries.map(([k]) => k));
       persistOperational(Object.fromEntries(entries));
@@ -165,7 +187,7 @@ var WFStorage = window.WFStorage;
     invalidateReadCache(Object.keys(values || {}));
     persistOperational(values || {});
   }
-  async function commitStorageAsync(values) {
+  async function commitStorageAsync(values, pre) {
     const entries = Object.entries(values || {});
     const operational = Object.fromEntries(entries.filter(([key]) => OPERATIONAL_KEYS.has(key)));
     if (!Object.keys(operational).length || !window.WorkshopDB || typeof window.WorkshopDB.replaceMany !== "function") return commitStorage(values);
@@ -175,13 +197,13 @@ var WFStorage = window.WFStorage;
     }
     const previous = {};
     try {
-      entries.forEach(([key, value]) => JSON.stringify(value));
+      const texts = entries.map(([key, value]) => (pre && typeof pre[key] === "string" ? pre[key] : JSON.stringify(value))); // مرة واحدة بس
       entries.forEach(([key]) => { previous[key] = WFStorage.getItem(key); });
-      for (const [key, value] of entries) {
+      entries.forEach(([key], i) => {
         writingThroughDataApi = true;
-        try { WFStorage.setItem(key, JSON.stringify(value)); }
+        try { WFStorage.setItem(key, texts[i]); }
         finally { writingThroughDataApi = false; }
-      }
+      });
       // نفس اللي put بيعمله: نسخة القراءة الفورية بتتحدث دلوقتي (ورقم نسختها بيزيد). من غيرها، لو كتابة سابقة لنفس
       // المجموعة لسه بتخلص في IndexedDB، كانت بتلاقي رقم النسخة زي ما هو فتكتب بياناتها القديمة فوق الحفظ ده،
       // والحفظ ده نفسه بيتخطّى تحديث النسخة → السجل الجديد بيختفي (مثلًا put ثم حفظ أمر في نفس اللحظة).
@@ -208,6 +230,31 @@ var WFStorage = window.WFStorage;
     }
   }
   function putAsync(key, value) { return commitStorageAsync({ [key]: value }); }
+  /* تعديل سجل واحد في قسم كبير (زي أمر شغل): بنستخدم نسخة القراءة نفسها ونستنسخ السجل المتعدّل بس،
+     ونص JSON للسجلات اللي ما اتغيّرتش بيتعاد استخدامه (كان كل تعديل بيحوّل آلاف الأوامر لنص من الأول مرتين). */
+  const recJSON = new WeakMap();
+  function snapshotJSON(records, fresh) {
+    const parts = new Array(records.length);
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      if (r && typeof r === "object" && r !== fresh) { let t = recJSON.get(r); if (t === undefined) { t = JSON.stringify(r); recJSON.set(r, t); } parts[i] = t; }
+      else { const t = JSON.stringify(r); parts[i] = t === undefined ? "null" : t; }
+    }
+    return "[" + parts.join(",") + "]";
+  }
+  async function updateRecordFast(key, id, update) {
+    const snap = readCached(key, null);
+    if (!Array.isArray(snap)) return null; // مفيش نسخة قراءة: المسار العادي
+    const i = snap.findIndex(x => x && String(x.id) === String(id));
+    if (i < 0) return false;
+    const records = snap.slice(), rec = JSON.parse(JSON.stringify(snap[i]));
+    records[i] = rec;
+    if (update(records, rec) === false) return false;
+    const text = snapshotJSON(records, rec);
+    try { if (typeof window.wfSyncNoteBase === "function") window.wfSyncNoteBase(key, snap[i]); } catch (_) {}
+    try { return await commitStorageAsync({ [key]: records }, { [key]: text }); }
+    finally { try { if (typeof window.wfSyncNoteDone === "function") window.wfSyncNoteDone(key); } catch (_) {} }
+  }
   function arr(k) { return get(k, []); }
   function arrCached(k) { return readCached(k, []); }
   function debounce(fn, wait = 120) {
@@ -488,7 +535,7 @@ var WFStorage = window.WFStorage;
   }
 
   window.WorkshopData = {
-    K, get, put, commitStorage, putAsync, commitStorageAsync, arr, arrCached, byIdCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
+    K, get, put, commitStorage, putAsync, commitStorageAsync, updateRecordFast, arr, arrCached, byIdCached, debounce, esc, escAttr, id, settings, duplicateCustomerByPhone,
     customerName, deviceName, addresses, addressText, defineOverride, refreshAllScreens,
     getSchemaVersion, setSchemaVersion, CURRENT_SCHEMA_VERSION, withRollback, withRollbackAsync
   };
@@ -501,6 +548,7 @@ var WFStorage = window.WFStorage;
   window.commitStorage = commitStorage;
   window.putAsync = putAsync;
   window.commitStorageAsync = commitStorageAsync;
+  window.updateRecordFast = updateRecordFast;
   window.arr = arr;
   window.wfPhoneKey = phoneKey;
   window.wfCustomerDupGroups = customerDupGroups;

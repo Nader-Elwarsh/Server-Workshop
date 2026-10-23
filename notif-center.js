@@ -495,7 +495,12 @@
      (بدل آخر 60 إشعار كل مرة). كل 20 دقيقة بنقرا القايمة كاملة تاني عشان «اتقرا» من جهاز تاني يظهر. */
   var NC_FULL_MS = 20 * 60000;
   function ncKey(kind) { return "wf_nc_cache_" + kind + "_" + st.uid; }
-  function ncSave(kind, rows, t) { try { sset(ncKey(kind), JSON.stringify({ t: t, rows: rows })); } catch (e) {} }
+  // حفظ نسخة الإشعارات على الجهاز: مرة واحدة بعد ما التحديثات تهدى (كانت بتتكتب مئات المرات وقت فتح الصفحة)
+  var ncTimers = {}, ncLast = {};
+  function ncSave(kind, rows, t) {
+    clearTimeout(ncTimers[kind]);
+    ncTimers[kind] = setTimeout(function () { try { var v = JSON.stringify({ t: t, rows: rows }); if (ncLast[kind] === v) return; ncLast[kind] = v; sset(ncKey(kind), v); } catch (e) {} }, 400);
+  }
   function ncPersist() { var c = st.ncT || {}; if (c.own) ncSave("own", st.items, c.own); if (c.b) ncSave("b", st.bcast, c.b); }
   function listen(kind, base, lim) {
     var c = null; try { c = JSON.parse(sget(ncKey(kind)) || "null"); } catch (e) {}

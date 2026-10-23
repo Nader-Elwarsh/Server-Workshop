@@ -34,6 +34,10 @@
   let storageReady = null, storageTail = Promise.resolve(), storageChannel = null;
   const snapshots = new Map(), snapshotVersions = new Map();
   const storageCache = new Map(), storageListeners = new Set();
+  /* ختم لكل مفتاح بيتغيّر مع كل كتابة (ومحفوظ مع القيمة): المزامنة بتعرف منه إن قسم ما اتغيّرش من آخر مرة
+     من غير ما تحسب بصمة النص كله (ملايين الحروف) مع كل فتح صفحة. */
+  const storageAt = new Map(); let lastStamp = 0; const BIG_MSG = 200000;
+  function nextStamp() { const t = Date.now(); lastStamp = t > lastStamp ? t : lastStamp + 1; return lastStamp; }
 
   /* سجل كتابة احتياطي (write-ahead journal) في localStorage.
      IndexedDB بيتكتب فيه بشكل غير متزامن؛ لو الصفحة اتنقلت أو اتعملها reload أو اتقفلت
@@ -65,18 +69,6 @@
     try { window.localStorage.removeItem(WAL_PREFIX + key); } catch (_) {}
   }
 
-  const persisted = new Map(); // آخر محتوى اتكتب في مخزن كل مجموعة (بصمته + نص كل سجل) عشان الحفظ يكتب الفرق بس
-  function hashText(text) {
-    let h = 2166136261;
-    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36) + ":" + text.length;
-  }
-  function fingerprint(value) {
-    const text = JSON.stringify(value);
-    let h = 2166136261;
-    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return (h >>> 0).toString(36) + ":" + text.length;
-  }
   // سجل بدون id مش بيتخزن في مخازن IndexedDB: قبل كده كان بيتشال بصمت (فقد بيانات غير ملحوظ).
   // دلوقتي بنسجّل تحذير وبنحفظ العدد في WFStorageStatus.droppedRecords عشان يتشخّص.
   function validRecords(value) {
@@ -90,6 +82,8 @@
   }
   // فشل الحفظ في IndexedDB (مساحة ممتلئة، تبويب قديم، خطأ متصفح) كان بيتسجل في الـconsole بس،
   // والمستخدم يفتكر إن البيانات اتحفظت. دلوقتي بيظهر شريط تحذير واضح لحد ما الحفظ ينجح تاني.
+  // انتظار كتابات keyValues بس (من جوه طابور الكتابة؛ WFStorage.flush بيستنى الطابور نفسه)
+  function kvFlush() { return Promise.all([storageReady, storageTail]).then(r => { if (r[0] === false || (window.WFStorageStatus && window.WFStorageStatus.writeError)) throw new Error("تعذر تأكيد الحفظ في IndexedDB"); return true; }); }
   function storageFailure(error) {
     window.WFStorageStatus = Object.assign({}, window.WFStorageStatus, { writeError: error || true });
     try {
@@ -113,9 +107,20 @@
     snapshots.set(key, validRecords(records));
     snapshotVersions.set(key, (snapshotVersions.get(key) || 0) + 1);
   }
+  /* نسخة القراءة (snapshot) بتتبني عند أول طلب بس، من النص اللي في الذاكرة (تحليل JSON واحد).
+     قبل كده كل صفحة كانت بتقرا كل الأقسام من مخازن IndexedDB وتحسب بصمتها حتى لو الصفحة مش محتاجاها. */
   function getSnapshot(key) {
-    return snapshots.has(key) ? { records: snapshots.get(key), version: snapshotVersions.get(key) || 0 } : null;
+    if (!snapshots.has(key)) {
+      if (!STORES[key] || !(window.WFStorageStatus && window.WFStorageStatus.ready)) return null;
+      const raw = storageCache.get(key);
+      if (raw == null) return null;
+      let records; try { records = JSON.parse(raw); } catch (_) { return null; }
+      snapshots.set(key, validRecords(records));
+      snapshotVersions.set(key, (snapshotVersions.get(key) || 0) + 1);
+    }
+    return { records: snapshots.get(key), version: snapshotVersions.get(key) || 0 };
   }
+  function dropSnapshot(key) { if (snapshots.has(key)) { snapshots.delete(key); snapshotVersions.set(key, (snapshotVersions.get(key) || 0) + 1); } }
   function open() {
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
@@ -154,7 +159,8 @@
   }
   function notifyStorage(key, value, removed, remote, silentLocal) {
     if (!silentLocal) storageListeners.forEach(fn => { try { fn(key, value, !!removed, !!remote); } catch (error) { console.warn("[WFStorage] storage listener failed", error); } });
-    if (!remote) { try { storageChannel && storageChannel.postMessage({ key, value, removed: !!removed }); } catch (_) {} }
+    // القيم الكبيرة مابتتبعتش للتابات التانية هنا (نسخ ملايين الحروف مع كل حفظ): بيتبعت إشعار بعد ما الحفظ يتأكد، والتاب التاني بيقراها من التخزين
+    if (!remote && !(value && String(value).length > BIG_MSG)) { try { storageChannel && storageChannel.postMessage({ key, value, removed: !!removed, at: storageAt.get(key) || 0 }); } catch (_) {} }
   }
   try {
     if (window.BroadcastChannel) {
@@ -162,12 +168,24 @@
       storageChannel.onmessage = event => {
         const d = event && event.data;
         if (!d || typeof d.key !== "string") return;
+        if (d.big) { // تاب تاني حفظ قيمة كبيرة: نقراها من التخزين (بعد ما اتأكدت)
+          if ((storageAt.get(d.key) || 0) >= (+d.at || 0)) return;
+          open().then(db => new Promise(ok => { const q = db.transaction([KV_STORE], "readonly").objectStore(KV_STORE).get(d.key); q.onsuccess = () => ok(q.result); q.onerror = () => ok(null); })).then(row => {
+            if (!row || (storageAt.get(d.key) || 0) >= (+row.at || 0)) return;
+            storageCache.set(d.key, String(row.value)); storageAt.set(d.key, +row.at); if (+row.at > lastStamp) lastStamp = +row.at;
+            if (STORES[d.key]) dropSnapshot(d.key);
+            notifyStorage(d.key, String(row.value), false, true);
+          }).catch(() => {});
+          return;
+        }
         if (d.removed) storageCache.delete(d.key); else storageCache.set(d.key, String(d.value));
+        storageAt.set(d.key, d.at || nextStamp()); if (+d.at > lastStamp) lastStamp = +d.at;
+        if (STORES[d.key]) dropSnapshot(d.key);
         notifyStorage(d.key, d.value, d.removed, true);
       };
     }
   } catch (_) {}
-  function persistStorageMutation(key, value, remove) {
+  function persistStorageMutation(key, value, remove, stamp) {
     const current = storageTail.then(() => storageReady).then(ok => {
       if (!ok) {
         if (remove) window.localStorage.removeItem(key); else window.localStorage.setItem(key, String(value));
@@ -175,7 +193,7 @@
       }
       return open().then(db => new Promise((resolve, reject) => {
         const tx = db.transaction([KV_STORE], "readwrite"), store = tx.objectStore(KV_STORE);
-        if (remove) store.delete(key); else store.put({ key, value: String(value), at: Date.now() });
+        if (remove) store.delete(key); else store.put({ key, value: String(value), at: stamp || Date.now() });
         tx.oncomplete = () => resolve(true);
         tx.onerror = () => reject(tx.error || new Error("تعذر حفظ قيمة التخزين"));
         tx.onabort = () => reject(tx.error || new Error("أُلغيت كتابة التخزين"));
@@ -194,16 +212,18 @@
     legacy.forEach(([key, value]) => { if (!storageCache.has(key)) storageCache.set(key, value); });
     storageReady = open().then(db => new Promise((resolve, reject) => {
       const tx = db.transaction([KV_STORE, META], "readwrite"), store = tx.objectStore(KV_STORE), meta = tx.objectStore(META);
-      const allReq = store.getAll(), markReq = meta.get(KV_MIGRATION_KEY);
-      let rows = [], imported = false, migrationMarker = null;
-      allReq.onsuccess = () => { rows = Array.isArray(allReq.result) ? allReq.result : []; };
+      const markReq = meta.get(KV_MIGRATION_KEY);
+      let imported = false, migrationMarker = null;
       markReq.onsuccess = () => {
         migrationMarker = markReq.result || null;
         imported = !migrationMarker;
-        if (!imported) return;
-        const known = new Set(rows.map(row => row && row.key));
-        legacy.forEach(([key, value]) => { if (!known.has(key)) store.put({ key, value: String(value) }); });
-        meta.put({ key: KV_MIGRATION_KEY, at: Date.now(), count: legacy.length, legacySourceCleared: false });
+        if (!imported) return; // الاستيراد القديم اتعمل قبل كده: مفيش داعي نقرا كل القيم مرتين
+        const keysReq = store.getAllKeys();
+        keysReq.onsuccess = () => {
+          const known = new Set(Array.isArray(keysReq.result) ? keysReq.result : []);
+          legacy.forEach(([key, value]) => { if (!known.has(key)) store.put({ key, value: String(value) }); });
+          meta.put({ key: KV_MIGRATION_KEY, at: Date.now(), count: legacy.length, legacySourceCleared: false });
+        };
       };
       markReq.onerror = () => { try { tx.abort(); } catch (_) {} };
       tx.oncomplete = () => {
@@ -215,7 +235,7 @@
       tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة مخزن القيم"));
     })).then(async ({ rows, imported, migrationMarker }) => {
       storageCache.clear();
-      rows.forEach(row => { if (row && typeof row.key === "string") storageCache.set(row.key, String(row.value)); });
+      rows.forEach(row => { if (row && typeof row.key === "string") { storageCache.set(row.key, String(row.value)); if (row.at) { storageAt.set(row.key, +row.at); if (+row.at > lastStamp) lastStamp = +row.at; } } });
       // استرجاع الكتابات اللي ضاعت قبل ما IndexedDB يأكدها (راجع سجل الكتابة الاحتياطي فوق).
       if (walBoot.size) {
         const replay = [];
@@ -230,7 +250,7 @@
               const tx = rdb.transaction([KV_STORE], "readwrite"), st = tx.objectStore(KV_STORE);
               replay.forEach(([key, e]) => {
                 if (e.r) { st.delete(key); storageCache.delete(key); }
-                else { st.put({ key, value: String(e.v), at: Number(e.t) || Date.now() }); storageCache.set(key, String(e.v)); }
+                else { st.put({ key, value: String(e.v), at: Number(e.t) || Date.now() }); storageCache.set(key, String(e.v)); storageAt.set(key, Number(e.t) || nextStamp()); }
               });
               tx.oncomplete = () => resolve(true);
               tx.onerror = () => reject(tx.error || new Error("تعذر استرجاع الكتابات المعلقة"));
@@ -280,13 +300,14 @@
     getItem(key) { key = String(key); return storageCache.has(key) ? storageCache.get(key) : null; },
     setItem(key, value) {
       key = String(key); value = String(value);
-      storageCache.set(key, value); notifyStorage(key, value, false);
+      const stamp = nextStamp(); storageAt.set(key, stamp);
+      storageCache.set(key, value); if (STORES[key]) dropSnapshot(key); notifyStorage(key, value, false);
       if (key === "wf_theme") syncThemeCookie(value);
       const seq = walPut(key, value, false);
-      persistStorageMutation(key, value, false).then(() => walDone(key, seq)).catch(() => {});
+      persistStorageMutation(key, value, false, stamp).then(() => { walDone(key, seq); if (value.length > BIG_MSG) { try { storageChannel && storageChannel.postMessage({ key, big: 1, at: stamp }); } catch (_) {} } }).catch(() => {});
     },
     removeItem(key) {
-      key = String(key); storageCache.delete(key); notifyStorage(key, null, true);
+      key = String(key); storageCache.delete(key); storageAt.set(key, nextStamp()); if (STORES[key]) dropSnapshot(key); notifyStorage(key, null, true);
       if (key === "wf_theme") syncThemeCookie(null);
       const seq = walPut(key, null, true);
       persistStorageMutation(key, null, true).then(() => walDone(key, seq)).catch(() => {});
@@ -302,6 +323,7 @@
         }));
       }).catch(error => { console.error("[WFStorage] clear failed", error); try { window.localStorage.clear(); } catch (_) {} return false; });
     },
+    stamp(key) { return storageAt.get(String(key)) || 0; },
     subscribe(fn) { if (typeof fn !== "function") return () => {}; storageListeners.add(fn); return () => storageListeners.delete(fn); },
     flush() { return Promise.all([storageReady, storageTail, writeTail]).then(results => { if (results[0] === false || (window.WFStorageStatus && window.WFStorageStatus.writeError)) throw new Error("تعذر تأكيد الحفظ في IndexedDB"); return true; }); },
     exportAll() { return Object.fromEntries(storageCache); },
@@ -356,59 +378,27 @@
     writeTail = current.catch(error => { console.error("[WorkshopDB] فشل حفظ IndexedDB:", error); storageFailure(error); });
     return current;
   }
+  /* الحفظ: النص الكامل للقسم بيتكتب مرة واحدة في keyValues (من WFStorage.setItem اللي كل المسارات بتناديه قبل هنا).
+     هنا بنحدّث نسخة القراءة بس ونستنى تأكيد الكتابة. (قبل كده كل حفظ كان بيحوّل كل سجل لنص ويحسب بصمة ويكتب نسخة تانية
+     كاملة في مخازن السجلات + نسخة تالتة من النص — ثواني مع آلاف الأوامر.) */
   function writeCollections(values) {
     const entries = Object.entries(values || {}).filter(([key]) => STORES[key]);
     if (!entries.length) return Promise.resolve(true);
     const expectedVersions = new Map(entries.map(([key]) => [key, snapshotVersions.get(key) || 0]));
+    entries.forEach(([key, value]) => {
+      if ((snapshotVersions.get(key) || 0) !== expectedVersions.get(key)) return;
+      if (!storageCache.has(key)) { const text = JSON.stringify(validRecords(value)), st = nextStamp(); storageAt.set(key, st); storageCache.set(key, text); persistStorageMutation(key, text, false, st); }
+      setSnapshot(key, value);
+    });
     return enqueueWrite(async () => {
       if (!await window.WFStorageReady) throw new Error("WFStorage غير جاهز");
-      const db = await open();
-      return new Promise((resolve, reject) => {
-        const names = entries.map(([key]) => STORES[key].name).concat([META, KV_STORE]);
-        const tx = db.transaction(names, "readwrite"), meta = tx.objectStore(META), kv = tx.objectStore(KV_STORE);
-        const fresh = {};
-        entries.forEach(([key, value]) => {
-          const records = validRecords(value), store = tx.objectStore(STORES[key].name);
-          const rows = records.map(r => JSON.stringify(r)), text = "[" + rows.join(",") + "]", fp = hashText(text), prev = persisted.get(key);
-          fresh[key] = { fp, rows: new Map(records.map((r, i) => [String(r.id), { id: r.id, json: rows[i] }])) };
-          const putAll = () => { store.clear(); records.forEach(record => store.put(record)); };
-          if (!prev) putAll();
-          else {
-            // كتابة اللي اتغيّر بس: قبل كده كل حفظ (تغيير حالة أمر واحد مثلًا) كان بيمسح ويكتب كل الأوامر من الأول،
-            // ومع آلاف الأوامر ده كان بياخد ثواني. بنتأكد الأول إن المخزن لسه زي آخر مرة كتبناه (تاب تاني ماغيّرهوش).
-            const getMeta = meta.get(key);
-            getMeta.onsuccess = () => {
-              const prior = getMeta.result;
-              if (!prior || prior.fingerprint !== prev.fp) return putAll();
-              const seen = new Set();
-              records.forEach((r, i) => { const k = String(r.id); seen.add(k); const old = prev.rows.get(k); if (!old || old.json !== rows[i]) store.put(r); });
-              prev.rows.forEach((old, k) => { if (!seen.has(k)) store.delete(old.id); });
-            };
-          }
-          meta.put({ key, version: 1, count: records.length, fingerprint: fp, updatedAt: Date.now() });
-          kv.put({ key, value: text, at: Date.now() });
-        });
-        tx.oncomplete = () => {
-          Object.keys(fresh).forEach(key => persisted.set(key, fresh[key]));
-          entries.forEach(([key, value]) => {
-            if ((snapshotVersions.get(key) || 0) !== expectedVersions.get(key)) return;
-            setSnapshot(key, value);
-            const serialized = JSON.stringify(validRecords(value)); storageCache.set(key, serialized); notifyStorage(key, serialized, false, false, true);
-          });
-          resolve(true);
-        };
-        tx.onerror = () => reject(tx.error || new Error("فشلت معاملة حفظ البيانات"));
-        tx.onabort = () => reject(tx.error || new Error("أُلغيت معاملة حفظ البيانات"));
-      });
+      await kvFlush();
+      return true;
     });
   }
   function readCollection(key) {
     if (!STORES[key]) return Promise.reject(new Error("مجموعة غير مدعومة: " + key));
-    return open().then(db => new Promise((resolve, reject) => {
-      const tx = db.transaction(STORES[key].name, "readonly"), request = tx.objectStore(STORES[key].name).getAll();
-      request.onsuccess = () => resolve(validRecords(request.result));
-      request.onerror = () => reject(request.error || new Error("تعذرت قراءة البيانات"));
-    }));
+    return window.WFStorageReady.then(() => { const snap = getSnapshot(key); return snap ? snap.records.map(r => ({ ...r })) : []; });
   }
   function mirrorLegacy(values, expectedVersions) {
     Object.entries(values || {}).forEach(([key, records]) => {
@@ -418,101 +408,56 @@
     });
   }
   function getById(key, id) {
-    if (!STORES[key]) return Promise.reject(new Error("مجموعة غير مدعومة: " + key));
-    return open().then(db => new Promise((resolve, reject) => {
-      const request = db.transaction(STORES[key].name, "readonly").objectStore(STORES[key].name).get(id);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error || new Error("تعذرت قراءة السجل"));
-    }));
+    return readCollection(key).then(rows => rows.find(r => String(r.id) === String(id)) || null);
   }
   function queryIndex(key, indexName, value) {
     if (!STORES[key] || !STORES[key].indexes.some(x => x[0] === indexName)) return Promise.reject(new Error("فهرس غير مدعوم"));
-    return open().then(db => new Promise((resolve, reject) => {
-      const store = db.transaction(STORES[key].name, "readonly").objectStore(STORES[key].name);
-      const request = store.index(indexName).getAll(value);
-      request.onsuccess = () => resolve(request.result || []);
-      request.onerror = () => reject(request.error || new Error("تعذر البحث في الفهرس"));
-    }));
+    const field = STORES[key].indexes.find(x => x[0] === indexName)[1];
+    return readCollection(key).then(rows => rows.filter(r => r[field] === value));
   }
   function initialize(keys) {
     if (initializePromise) return initializePromise;
-    const selected = (keys || Object.keys(STORES)).filter(key => STORES[key]);
-    if (!selected.length) return Promise.resolve(true);
     initializePromise = window.WFStorageReady.then(ok => {
       if (!ok) throw new Error("WFStorage غير جاهز");
-      return open();
-    }).then(db => new Promise((resolve, reject) => {
-      const names = selected.map(key => STORES[key].name).concat(META);
-      const tx = db.transaction(names, "readwrite"), meta = tx.objectStore(META);
-      selected.forEach(key => {
-        let records = [];
-        try { records = validRecords(JSON.parse(WFStorage.getItem(key) || "[]")); } catch (_) {}
-        const store = tx.objectStore(STORES[key].name), getMeta = meta.get(key);
-        const rows = records.map(r => JSON.stringify(r)), fp = hashText("[" + rows.join(",") + "]");
-        getMeta.onsuccess = () => {
-          const prior = getMeta.result;
-          if (!prior || prior.fingerprint !== fp) {
-            store.clear(); records.forEach(record => store.put(record));
-            meta.put({ key, version: 1, count: records.length, fingerprint: fp, updatedAt: Date.now(), migratedFrom: "keyValues" });
-          }
-          persisted.set(key, { fp, rows: new Map(records.map((r, i) => [String(r.id), { id: r.id, json: rows[i] }])) });
-        };
-        getMeta.onerror = () => { try { tx.abort(); } catch (_) {} };
-      });
-      tx.oncomplete = () => Promise.all(selected.map(key => readCollection(key).then(records => setSnapshot(key, records))))
-        .then(() => resolve(true), reject);
-      tx.onerror = () => reject(tx.error || new Error("فشل تهيئة قاعدة البيانات"));
-      tx.onabort = () => reject(tx.error || new Error("أُلغيت تهيئة قاعدة البيانات"));
-    }));
+      // تنظيف مرة واحدة: مخازن السجلات القديمة (نسخة مكررة محدش بيقراها) بتتفضّى عشان توفّر مساحة الجهاز
+      setTimeout(retireRecordStores, 4000);
+      return true;
+    });
     return initializePromise;
+  }
+  const RETIRED_KEY = "recordStoresRetiredV1";
+  function retireRecordStores() {
+    open().then(db => new Promise(resolve => {
+      const names = Object.keys(STORES).map(k => STORES[k].name).filter(n => db.objectStoreNames.contains(n));
+      const tx = db.transaction(names.concat([META]), "readwrite"), meta = tx.objectStore(META), mark = meta.get(RETIRED_KEY);
+      mark.onsuccess = () => {
+        if (mark.result) return;
+        names.forEach(n => tx.objectStore(n).clear());
+        Object.keys(STORES).forEach(k => meta.delete(k));
+        meta.put({ key: RETIRED_KEY, at: Date.now() });
+      };
+      tx.oncomplete = () => resolve(true); tx.onerror = () => resolve(false); tx.onabort = () => resolve(false);
+    })).catch(() => {});
   }
   function replace(key, records) {
     if (!STORES[key]) return Promise.reject(new Error("مجموعة غير مدعومة: " + key));
-    const values = { [key]: validRecords(records) }, expectedVersions = new Map([[key, snapshotVersions.get(key) || 0]]);
-    return writeCollections(values).then(() => { mirrorLegacy(values, expectedVersions); return WFStorage.flush(); });
+    const recs = validRecords(records);
+    WFStorage.setItem(key, JSON.stringify(recs));
+    return writeCollections({ [key]: recs }).then(() => WFStorage.flush());
   }
+  /* معاملة على أكتر من قسم: نسخة عمل من البيانات الحالية ← callback متزامن ← حفظ كل الأقسام مرة واحدة */
   function transaction(keys, callback) {
     const unique = Array.from(new Set((keys || []).filter(key => STORES[key])));
     if (!unique.length || typeof callback !== "function") return Promise.reject(new Error("معاملة غير صالحة"));
-    const expectedVersions = new Map(unique.map(key => [key, snapshotVersions.get(key) || 0]));
     return enqueueWrite(async () => {
       if (!await window.WFStorageReady) throw new Error("WFStorage غير جاهز");
-      const db = await open();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(unique.map(key => STORES[key].name).concat([META, KV_STORE]), "readwrite");
-        const meta = tx.objectStore(META), kv = tx.objectStore(KV_STORE), draft = {}, pending = new Set(unique);
-        let result, callbackError = null;
-        unique.forEach(key => {
-          const request = tx.objectStore(STORES[key].name).getAll();
-          request.onsuccess = () => {
-            draft[key] = validRecords(request.result).map(row => ({ ...row })); pending.delete(key);
-            if (pending.size) return;
-            try {
-              result = callback(draft);
-              if (result && typeof result.then === "function") throw new Error("WorkshopDB.transaction callback must be synchronous");
-              unique.forEach(k => {
-                const records = validRecords(draft[k]), store = tx.objectStore(STORES[k].name);
-                store.clear(); records.forEach(record => store.put(record));
-                meta.put({ key: k, version: 1, count: records.length, fingerprint: fingerprint(records), updatedAt: Date.now() });
-                kv.put({ key: k, value: JSON.stringify(records), at: Date.now() });
-              });
-            } catch (error) { callbackError = error; try { tx.abort(); } catch (_) {} }
-          };
-          request.onerror = () => { callbackError = request.error || new Error("تعذرت قراءة مجموعة المعاملة"); try { tx.abort(); } catch (_) {} };
-        });
-        tx.oncomplete = () => {
-          const mirror = {};
-          unique.forEach(key => {
-            if ((snapshotVersions.get(key) || 0) === expectedVersions.get(key)) { setSnapshot(key, draft[key]); mirror[key] = draft[key]; }
-          });
-          mirrorLegacy(mirror, expectedVersions);
-          // القيم التشغيلية ونسختها في keyValues حُفظتا ذريًا داخل هذه المعاملة.
-          // لا ننتظر writeTail هنا لأن هذا المسار نفسه موجود داخله.
-          resolve(result);
-        };
-        tx.onerror = () => reject(callbackError || tx.error || new Error("فشلت معاملة البيانات"));
-        tx.onabort = () => reject(callbackError || tx.error || new Error("أُلغيت معاملة البيانات"));
-      });
+      const draft = {};
+      unique.forEach(k => { const snap = getSnapshot(k); draft[k] = snap ? snap.records.map(r => ({ ...r })) : []; });
+      const result = callback(draft);
+      if (result && typeof result.then === "function") throw new Error("WorkshopDB.transaction callback must be synchronous");
+      unique.forEach(k => { const recs = validRecords(draft[k]); WFStorage.setItem(k, JSON.stringify(recs)); setSnapshot(k, recs); });
+      await kvFlush();
+      return result;
     });
   }
   function flush() { return Promise.all([writeTail, WFStorage.flush()]).then(() => true); }

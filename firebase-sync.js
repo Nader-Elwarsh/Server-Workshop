@@ -72,7 +72,9 @@
   try { conflicts = JSON.parse(ls.getItem(CONFLICT_KEY) || "{}") || {}; } catch (e) { conflicts = {}; }
   var DEV = ls.getItem("wf_device_id") || (function () { var x = Math.random().toString(36).slice(2); origSet.call(ls, "wf_device_id", x); return x; })();
   var SB; try { SB = JSON.parse(ls.getItem(BASEKEY)) || {}; } catch (e) { SB = {}; } SB.c = SB.c || {}; SB.x = SB.x || {};
-  function saveBase() { baseVer = (typeof baseVer === "number" ? baseVer : 0) + 1; origSet.call(ls, BASEKEY, JSON.stringify(SB)); }
+  // كذا حفظ لـ«أصل المزامنة» في نفس الدورة → كتابة واحدة في آخرها (النص ده ممكن يبقى ~مليون حرف)
+  var baseQueued = false;
+  function saveBase() { baseVer = (typeof baseVer === "number" ? baseVer : 0) + 1; if (baseQueued) return; baseQueued = true; Promise.resolve().then(function () { baseQueued = false; origSet.call(ls, BASEKEY, JSON.stringify(SB)); }); }
 
   /* ---------- واجهة ---------- */
   function cover(msg) { var ex = document.getElementById("wfCloudCover"); if (ex) { ex.textContent = msg; return; } var d = document.createElement("div"); d.id = "wfCloudCover"; d.style.cssText = "position:fixed;inset:0;z-index:99999;background:#001b4d;color:#fff;display:flex;align-items:center;justify-content:center;font:600 18px sans-serif;direction:rtl;text-align:center;padding:20px"; d.textContent = msg; (document.body || document.documentElement).appendChild(d); }
@@ -122,8 +124,10 @@
         if (lastRaw[k] !== undefined && rawNow === lastRaw[k]) return;
         var c = pcCache[k];
         if (c && c.raw === rawNow && c.ver === baseVer) { count += c.n; return; }
-        var localRows = local(k), rows = Array.isArray(localRows) ? localRows : [], base = SB.c[k] || {}, seen = {}, n = 0;
-        rows.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (base[r.id] !== hr(r)) n++; });
+        var tq = touchedIdx(k);
+        if (tq) { var base0 = SB.c[k] || {}, n0 = 0; tq.ids.forEach(function (id) { var r = tq.idx[id]; if (!r || base0[id] !== hrc(r)) n0++; }); pcCache[k] = { raw: rawNow, ver: baseVer, n: n0 }; count += n0; return; }
+        var localRows = localRO(k), rows = Array.isArray(localRows) ? localRows : [], base = SB.c[k] || {}, seen = {}, n = 0;
+        rows.forEach(function (r) { if (!r || !r.id) return; seen[r.id] = 1; if (base[r.id] !== hrc(r)) n++; });
         Object.keys(base).forEach(function (id) { if (!seen[id]) n++; });
         pcCache[k] = { raw: rawNow, ver: baseVer, n: n }; count += n;
       } else if (lastRaw[k] !== undefined && ls.getItem(k) !== lastRaw[k]) count++;
@@ -293,6 +297,14 @@
   function stable(v) { if (typeof v === "string" && ISO.test(v)) { var t = Date.parse(v); if (!isNaN(t)) return JSON.stringify("~" + t); } if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]"; if (v && typeof v === "object") return "{" + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ":" + stable(v[k]); }).join(",") + "}"; return JSON.stringify(v === undefined ? null : v); }
   function sameField(a, b, key) { var ah = Object.prototype.hasOwnProperty.call(a || {}, key), bh = Object.prototype.hasOwnProperty.call(b || {}, key); return ah === bh && (!ah || stable(a[key]) === stable(b[key])); }
   function hr(r) { var o = Object.assign({}, r); delete o.id; delete o._by; return h(stable(o)); }
+  /* بصمة سجل من نسخة القراءة: بتتحسب مرة لكل سجل (السجلات اللي ما اتغيّرتش بتفضل نفس الكائن بعد الحفظ)،
+     بدل ما كل رفع بعد أي حفظ يحسب بصمة آلاف الأوامر مرتين (كان بيوقّف الموبايل ثواني بعد كل حفظ). */
+  var hrMemo = typeof WeakMap === "function" ? new WeakMap() : null;
+  function hrc(r) { if (!hrMemo || !r || typeof r !== "object") return hr(r); var v = hrMemo.get(r); if (v === undefined) { v = hr(r); hrMemo.set(r, v); } return v; }
+  /* السجلات المتعدّلة من آخر مزامنة (لما كل التعديلات جت من «تعديل سجل واحد»): بنفحص دول بس بدل كل القسم.
+     touched[k] = Set (معروفين) أو undefined (مش معروف → فحص كامل زي الأول). */
+  var touched = {}, fastNote = {};
+  function touchedIdx(k) { var t = touched[k]; if (!(t instanceof Set) || SCOPED) return null; var a = localRO(k) || [], idx = {}; for (var i = 0; i < a.length; i++) { var r = a[i]; if (r && r.id && t.has(r.id)) idx[r.id] = r; } return { ids: Array.from(t), idx: idx }; }
   /* ---------- دمج حقل بحقل ----------
      لكل سجل اتعدّل على الجهاز بنحفظ «أصله» (آخر نسخة كانت متطابقة مع السحابة). لما السحابة تتغيّر هي كمان،
      بدل ما نسجّل تعارض ونخيّرك بين النسختين كاملين (أو نكتب فوق التاني بصمت)، بنقارن كل حقل بأصله:
@@ -313,15 +325,24 @@
   function captureBases(k) {
     if (!COLS[k] || SCOPED) return;
     if (ls.getItem(k) === lastRaw[k]) return; // مفيش تعديل محلي من آخر مزامنة
+    var B = SB.c[k] || {}, bk = BR[k] = BR[k] || {}, any = false, need = [], tx = touchedIdx(k);
+    if (tx) tx.ids.forEach(function (id) { var r = tx.idx[id]; if (r && !bk[id] && B[id] !== undefined && hrc(r) !== B[id]) need.push(id); });
+    else (localRO(k) || []).forEach(function (r) { if (r && r.id && !bk[r.id] && B[r.id] !== undefined && hrc(r) !== B[r.id]) need.push(r.id); });
+    if (!need.length) return;
     var m = lastMap(k); if (!m) return;
-    var B = SB.c[k] || {}, L = local(k) || [], bk = BR[k] = BR[k] || {}, any = false;
-    L.forEach(function (r) {
-      if (!r || !r.id || bk[r.id] || B[r.id] === undefined) return;
-      var b = m[r.id]; if (!b || hr(b) !== B[r.id] || hr(r) === B[r.id]) return;
-      bk[r.id] = JSON.parse(JSON.stringify(b)); any = true;
-    });
+    need.forEach(function (id) { var b = m[id]; if (!b || hr(b) !== B[id]) return; bk[id] = JSON.parse(JSON.stringify(b)); any = true; });
     if (any) saveBR();
   }
+  /* تعديل سجل واحد (updateRecordFast): السجل القديم نفسه هو «الأصل» لو كان متزامن — نحفظه من غير ما نحلل نص القسم كله */
+  window.wfSyncNoteDone = function (k) { delete fastNote[k]; }; // لو الحفظ ما تمّش، الملاحظة ماتتطبّقش على كتابة تانية
+  window.wfSyncNoteBase = function (k, oldRec) {
+    try {
+      if (!COLS[k] || SCOPED || !oldRec || !oldRec.id) return;
+      (fastNote[k] = fastNote[k] || []).push(oldRec.id);
+      var B = SB.c[k] || {}; if (B[oldRec.id] === undefined || (BR[k] && BR[k][oldRec.id])) return;
+      if (hrc(oldRec) === B[oldRec.id]) { BR[k] = BR[k] || {}; BR[k][oldRec.id] = JSON.parse(JSON.stringify(oldRec)); saveBR(); }
+    } catch (e) {}
+  };
   var DEP_SET = ["deposit", "depositWallet", "depositExtra"], CLOSE_SET = ["closed", "paid", "paidAt", "closedAt", "closeWallet", "closedByTech", "remain", "warrantyDays", "warrantyUntil"];
   function merge3(k, base, loc, rem) {
     var out = {}, keys = {}, both = [];
@@ -385,13 +406,15 @@
   function setCursor(ms) { origSet.call(ls, DELTA_KEY, String(Math.max(0, +ms || 0))); }
   function toDoc(rec) { var o = JSON.parse(JSON.stringify(rec)); delete o.id; delete o._by; ["createdAt", "updatedAt", "at"].forEach(function (f) { if (typeof o[f] === "string" && !isNaN(Date.parse(o[f]))) o[f] = firebase.firestore.Timestamp.fromDate(new Date(o[f])); }); return o; }
   function byCreated(a, b) { return (Date.parse(a.createdAt || a.at) || 0) - (Date.parse(b.createdAt || b.at) || 0); }
+  /* قراءة بس (من غير نسخ): نفس نسخة القراءة اللي الصفحة بتستخدمها. ممنوع تعديل الناتج — للتعديل استخدم local(). */
+  function localRO(k) { try { var sn = window.WorkshopDB && window.WorkshopDB.getSnapshot && window.WorkshopDB.getSnapshot(k); if (sn) return sn.records; } catch (e) {} return local(k); }
   function local(k) { try { return JSON.parse(ls.getItem(k) || "null"); } catch (e) { return null; } }
   var SNAP_KEYS = { wf_c: 1, wf_d: 1, wf_r: 1, wf_p: 1, wf_m: 1, wf_wallet_tx: 1 };
   function raw(k, v) {
     applying = true; origSet.call(ls, k, v); applying = false;
     try { if (window.wfBumpDataRev) window.wfBumpDataRev(); } catch (e) {}
     // نسخة القراءة الفورية لازم تتحدث مع التخزين، وإلا كتابة محلية لسه بتخلص في IndexedDB كانت ترجّع البيانات القديمة فوق اللي نزل من السحابة
-    if (SNAP_KEYS[k] && window.WorkshopDB && typeof window.WorkshopDB.setSnapshot === "function") { try { window.WorkshopDB.setSnapshot(k, JSON.parse(v || "[]")); } catch (e) {} }
+    // نسخة القراءة بتتلغي تلقائيًا مع الكتابة (WFStorage) وبتتبني تاني بس لو صفحة احتاجتها — مفيش تحليل هنا
   }
   /* أصل الإعدادات (آخر نسخة معروفة إنها متطابقة مع السحابة) بيتحفظ على الجهاز كمان، مش في الذاكرة بس:
      من غيره كل فتح للصفحة بيبدأ بأصل مجهول، وأي تعديل بسيط في الإعدادات وقت الفتح كان بيتعامل كتعارض
@@ -402,15 +425,34 @@
   function online() { return navigator.onLine !== false && !!db; }
   /* علامة «متزامن» محفوظة لكل مجموعة (بصمة نصها كله). فتح أي صفحة كان بيحسب بصمة كل سجل في كل المجموعات عشان يعرف
      فيه حاجة اترفعتش ولا لأ (ثانية أو أكتر مع آلاف الأوامر). دلوقتي لو نص المجموعة زي آخر مرة اتزامنت، بنعتبرها نضيفة على طول. */
-  function markClean() { SB.rh = SB.rh || {}; Object.keys(COLS).forEach(function (k) { if (lastRaw[k] !== undefined) SB.rh[k] = h(lastRaw[k] || ""); }); saveBase(); }
+  /* علامة «القسم ده متزامن»: ختم آخر كتابة للمفتاح (رخيص) بدل بصمة النص كله. لو الختم مش متاح (متصفح/نسخة قديمة) بنرجع للبصمة. */
+  function stampOf(k) { try { return ls.stamp ? ls.stamp(k) : 0; } catch (e) { return 0; } }
+  function setClean(k, rawv) {
+    SB.rh = SB.rh || {}; SB.rs = SB.rs || {};
+    var st = stampOf(k);
+    if (st && ls.getItem(k) === rawv) { SB.rs[k] = st; delete SB.rh[k]; if (COLS[k]) touched[k] = new Set(); }
+    else { delete SB.rs[k]; SB.rh[k] = h(rawv || ""); }
+  }
+  function markClean() { Object.keys(COLS).forEach(function (k) { if (lastRaw[k] !== undefined) setClean(k, lastRaw[k]); }); saveBase(); }
   function primeClean() {
-    if (!SB.rh) return;
-    Object.keys(COLS).forEach(function (k) { if (lastRaw[k] !== undefined || SB.rh[k] === undefined) return; var r = ls.getItem(k); if (h(r || "") === SB.rh[k]) lastRaw[k] = r; });
+    if (!SB.rh && !SB.rs) return;
+    Object.keys(COLS).forEach(function (k) {
+      if (lastRaw[k] !== undefined) return;
+      var st = SB.rs && SB.rs[k];
+      if (st && stampOf(k) === st) { lastRaw[k] = ls.getItem(k); touched[k] = new Set(); return; } // ما اتكتبش من آخر مزامنة
+      if (!SB.rh || SB.rh[k] === undefined) return;
+      var r = ls.getItem(k); if (h(r || "") === SB.rh[k]) lastRaw[k] = r;
+    });
   }
 
-  ls.subscribe(function (k) { if (ready && !applying && ALL.indexOf(k) > -1) queue(k); });
+  ls.subscribe(function (k) {
+    if (COLS[k] && !applying) { var fn = fastNote[k]; delete fastNote[k]; if (fn && touched[k] instanceof Set) fn.forEach(function (id) { touched[k].add(id); }); else touched[k] = undefined; }
+    if (ready && !applying && ALL.indexOf(k) > -1) queue(k);
+  });
 
   /* ---------- الرفع ---------- */
+  /* الصفحة بتتقفل/تتنقل قبل ما الرفع المؤجل (700ms) يبدأ: احفظ أصل السجلات المتعدّلة دلوقتي، عشان الدمج حقل بحقل يشتغل بعد الفتح الجاي */
+  try { window.addEventListener("pagehide", function () { var any = false; Object.keys(timers).forEach(function (k) { try { captureBases(k); any = true; } catch (e) {} }); if (any) { clearTimeout(brTimer); try { origSet.call(ls, BRKEY, JSON.stringify(BR)); } catch (e) {} } }); } catch (e) {}
   function queue(k) { clearTimeout(timers[k]); timers[k] = setTimeout(function () { delete timers[k]; push(k, true); }, 700); badge(); }
   function commitOps(ops) { var chain = Promise.resolve(); for (var i = 0; i < ops.length; i += 400) (function (part) { chain = chain.then(function () { var b = db.batch(); part.forEach(function (f) { f(b); }); return withTimeout(b.commit()); }); })(ops.slice(i, i + 400)); return chain; }
   /* s = آخر مرة الإعدادات اتغيّرت: الأجهزة التانية بتقرا مجموعة الإعدادات (عشرات المستندات) بس لو s اتغيّر.
@@ -425,17 +467,20 @@
     if (!online() || pushing[k]) return Promise.resolve(false);
     pushing[k] = true;
     var done = function (ok, err) { pushing[k] = false; if (ok) { delete retryState[k]; clearTimeout(retryTimers[k]); delete retryTimers[k]; lastSyncAt = Date.now(); lastSyncError = ""; origRemove.call(ls, "wf_sync_last_error"); origSet.call(ls, "wf_last_sync_at", String(lastSyncAt)); saveRetryState(); } else { if (err) { lastSyncError = String(err.message || err); origSet.call(ls, "wf_sync_last_error", lastSyncError); } retryLater(k); } badge(); return ok; };
-    var snapshotRaw = ls.getItem(k), ops = [], v = local(k), next;
+    var snapshotRaw = ls.getItem(k), ops = [], v = COLS[k] ? localRO(k) : local(k), next; // الأقسام: قراءة بس (الرفع بيعمل نسخ بنفسه)
     if (COLS[k]) {
       var col = db.collection(COLS[k]), B = SB.c[k] || {}, arr = Array.isArray(v) ? v : [], seen = {}, dels = 0;
       next = Object.assign({}, B);
       var jobs = [];
-      arr.forEach(function (r) {
+      var tq = touchedIdx(k), fast = !!tq && tq.ids.every(function (id) { return tq.idx[id] && B[id] !== undefined; });
+      if (fast) { // كل التعديلات على سجلات معروفة موجودة: نفحصها هي بس (مفيش إضافة ولا حذف)
+        tq.ids.forEach(function (id) { var r = tq.idx[id], localHash = hrc(r); next[id] = localHash; if (B[id] !== localHash) { if (!SCOPED && conflicts[k] && conflicts[k][id]) next[id] = B[id]; else jobs.push({ id: id, ref: col.doc(id), record: r, localHash: localHash, baseHash: B[id], kind: "set" }); } });
+      } else arr.forEach(function (r) {
         if (!r || !r.id) return;
-        seen[r.id] = 1; var localHash = hr(r); next[r.id] = localHash;
+        seen[r.id] = 1; var localHash = hrc(r); next[r.id] = localHash;
         if (B[r.id] !== localHash) { if (!SCOPED && conflicts[k] && conflicts[k][r.id]) next[r.id] = B[r.id]; else jobs.push({ id: r.id, ref: col.doc(r.id), record: r, localHash: localHash, baseHash: B[r.id], kind: "set" }); }
       });
-      Object.keys(B).forEach(function (id) {
+      if (!fast) Object.keys(B).forEach(function (id) {
         if (!seen[id]) { if (SCOPED) { delete next[id]; return; } dels++; if (!(conflicts[k] && conflicts[k][id])) jobs.push({ id: id, ref: col.doc(id), localHash: null, baseHash: B[id], kind: "delete" }); }
       });
       var total = Object.keys(B).length;
@@ -530,16 +575,14 @@
             dropBase(k, j.id);
           });
           curD = curD.filter(Boolean); raw(k, JSON.stringify(curD)); snapshotRaw = ls.getItem(k);
-          try { if (window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function") { var mvD = {}; mvD[k] = curD; window.WorkshopDB.replaceMany(mvD).catch(function () {}); } } catch (e) {}
           deniedNote(k, deniedJobs.length);
         }
         if (mergedRecs.length) { // اللي اتدمج في السحابة يتحط على الجهاز كمان (لو السجل ما اتعدّلش تاني وإحنا بنرفع)
           var curL = local(k) || [], at = {}; curL.forEach(function (r, i) { if (r && r.id) at[r.id] = i; });
           mergedRecs.forEach(function (m) { var i = at[m.id]; if (i === undefined) return; if (hr(curL[i]) === m.localHash) { curL[i] = m.rec; dropBase(k, m.id); } else { BR[k] = BR[k] || {}; BR[k][m.id] = m.rec; saveBR(); } });
           raw(k, JSON.stringify(curL)); snapshotRaw = ls.getItem(k);
-          try { if (window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function") { var mv0 = {}; mv0[k] = curL; window.WorkshopDB.replaceMany(mv0).catch(function () {}); } } catch (e) {}
         }
-        SB.c[k] = next; if (!hasConflict) { SB.rh = SB.rh || {}; SB.rh[k] = h(snapshotRaw || ""); } saveBase();
+        SB.c[k] = next; if (!hasConflict) setClean(k, snapshotRaw); saveBase();
         if (hasConflict) { origSet.call(ls, CONFLICT_KEY, JSON.stringify(conflicts)); }
         if (!hasConflict) lastRaw[k] = snapshotRaw;
         var touch = wrote ? touchMeta() : Promise.resolve();
@@ -649,8 +692,8 @@
     if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:portalOrders"); return Promise.resolve(false); }
     if (poBusy) return Promise.resolve(false);
-    var cs = local("wf_c") || [], ds = local("wf_d") || [], rs = local("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
-    var pm = {}; (local("wf_p") || []).forEach(function (x) { if (x && x.id) pm[x.id] = x; });
+    var cs = localRO("wf_c") || [], ds = localRO("wf_d") || [], rs = localRO("wf_r") || [], portal = {}, po = SB.po = SB.po || {}, ops = [], seen = {}, next = Object.assign({}, po);
+    var pm = {}; (localRO("wf_p") || []).forEach(function (x) { if (x && x.id) pm[x.id] = x; });
     cs.forEach(function (c) { if (c && c.portal === true) portal[c.id] = 1; });
     rs.forEach(function (r) {
       if (!r || !r.id || !portal[r.customerId]) return; seen[r.id] = 1;
@@ -689,11 +732,12 @@
     if (SCOPED) return Promise.resolve(true);
     if (!online()) { retryLater("remote:techOrders"); return Promise.resolve(false); }
     if (tpBusy) return Promise.resolve(false);
-    var cs = {}, ds = {}, rs = local("wf_r") || [], tp = SB.tp = SB.tp || {}, ops = [], seen = {}, next = Object.assign({}, tp);
-    var fixClosed = false; rs.forEach(function (r) { if (r && r.techId && r.closed === undefined) { r.closed = false; fixClosed = true; } }); // السيرفر بيفلتر أوامر الفني بـ closed == false
-    if (fixClosed) ls.setItem("wf_r", JSON.stringify(rs));
-    (local("wf_c") || []).forEach(function (c) { if (c && c.id) cs[c.id] = c; });
-    (local("wf_d") || []).forEach(function (d) { if (d && d.id) ds[d.id] = d; });
+    var cs = {}, ds = {}, rs = localRO("wf_r") || [], tp = SB.tp = SB.tp || {}, ops = [], seen = {}, next = Object.assign({}, tp);
+    if (rs.some(function (r) { return r && r.techId && r.closed === undefined; })) { // السيرفر بيفلتر أوامر الفني بـ closed == false
+      rs = local("wf_r") || []; rs.forEach(function (r) { if (r && r.techId && r.closed === undefined) r.closed = false; }); ls.setItem("wf_r", JSON.stringify(rs));
+    }
+    (localRO("wf_c") || []).forEach(function (c) { if (c && c.id) cs[c.id] = c; });
+    (localRO("wf_d") || []).forEach(function (d) { if (d && d.id) ds[d.id] = d; });
     rs.forEach(function (r) {
       if (!r || !r.id || !r.techId || r.closed === true) return;
       var c = cs[r.customerId]; if (!c) return;
@@ -820,7 +864,8 @@
 
   function isDirty(k) {
     var rawv = ls.getItem(k);
-    if (COLS[k]) { var arr = local(k) || [], B = SB.c[k] || {}, ids = {}; for (var i = 0; i < arr.length; i++) { var r = arr[i]; if (!r || !r.id) continue; ids[r.id] = 1; if (B[r.id] !== hr(r)) return true; } return Object.keys(B).some(function (id) { return !ids[id]; }); }
+    if (COLS[k] && touched[k] instanceof Set && !SCOPED) { var tq0 = touchedIdx(k), B0 = SB.c[k] || {}; return tq0.ids.some(function (id) { var r = tq0.idx[id]; return !r || B0[id] !== hrc(r); }); }
+    if (COLS[k]) { var arr = localRO(k) || [], B = SB.c[k] || {}, ids = {}; for (var i = 0; i < arr.length; i++) { var r = arr[i]; if (!r || !r.id) continue; ids[r.id] = 1; if (B[r.id] !== hrc(r)) return true; } return Object.keys(B).some(function (id) { return !ids[id]; }); }
     if (k === SETTINGS) return rawv !== null && h(rawv) !== SB.x[k];
     return rawv === null ? (SB.x[k] !== undefined && SB.x[k] !== null) : h(rawv) !== SB.x[k];
   }
@@ -870,11 +915,8 @@
     }).then(function (r) {
       // نسخة السجلات في IndexedDB: بنعيد كتابة المجموعات اللي اتغيّرت بس (قبل كده كل مزامنة — حتى من غير أي تغيير —
       // كانت بتمسح وتكتب كل العملاء والأوامر والحركات من الأول، وده كان بيتقل الجهاز مع كل تعديل من جهاز تاني).
-      var mv = {}; ["wf_c", "wf_d", "wf_r", "wf_p", "wf_m", "wf_wallet_tx"].forEach(function (k) { if (changedKeys[k] || first) mv[k] = local(k) || []; });
-      var mirror = Object.keys(mv).length && window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function"
-        ? window.WorkshopDB.replaceMany(mv).catch(function (e) { console.warn("IndexedDB mirror after cloud hydration failed", e); })
-        : Promise.resolve();
-      return mirror.then(function () { hydrating = false; return r; });
+      // لازم نستنى الحفظ يتأكد قبل أي إعادة تحميل (أول مزامنة بتعيد تحميل الصفحة)، وإلا الأقسام الكبيرة كانت بتضيع
+      return Promise.resolve(ls.flush ? ls.flush().catch(function () {}) : null).then(function () { hydrating = false; return r; });
     }, function (e) { hydrating = false; throw e; });
   }
   var changedKeys = {};
@@ -945,9 +987,7 @@
       ALL.forEach(function (k) { if ((changedKeys[k] || st.changed) && !isDirty(k)) lastRaw[k] = ls.getItem(k); });
       markClean();
       if (lastRaw[SETTINGS] !== undefined) setSettingsBase(lastRaw[SETTINGS]); else if (st.g) setSettingsBase(JSON.stringify(st.g));
-      var mv = {}; ["wf_c", "wf_d", "wf_r", "wf_p", "wf_m", "wf_wallet_tx"].forEach(function (k) { if (changedKeys[k]) mv[k] = local(k) || []; });
-      var mirror = Object.keys(mv).length && window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function" ? window.WorkshopDB.replaceMany(mv).catch(function () {}) : Promise.resolve();
-      return mirror.then(function () { hydrating = false; return { changed: changedAny, cloudEmpty: false, delta: true, found: found, settingsChanged: st.changed }; });
+      hydrating = false; return { changed: changedAny, cloudEmpty: false, delta: true, found: found, settingsChanged: st.changed };
     }, function (e) { hydrating = false; console.warn("delta sync failed → full", e && e.message); return hydrateFull(); });
   }
   window.wfSyncDeltaInfo = function () { return { cursor: getCursor(), lastFull: +ls.getItem(FULL) || 0 }; };
@@ -1114,7 +1154,7 @@
     var W = window;
     if (SCOPED || !online() || !ready || merging || !W.K || typeof W.arr !== "function") return Promise.resolve(0);
     var by = {}, jobs = [];
-    W.arr(W.K.c).forEach(function (c) { var p = c && nph(c.phone); if (p) (by[p] = by[p] || []).push(c); });
+    (typeof W.arrCached === "function" ? W.arrCached(W.K.c) : W.arr(W.K.c)).forEach(function (c) { var p = c && nph(c.phone); if (p) (by[p] = by[p] || []).push(c); });
     Object.keys(by).forEach(function (p) {
       var g = by[p]; if (g.length < 2) return;
       var ports = g.filter(isSelfReg), others = g.filter(function (c) { return !isSelfReg(c); });
@@ -1326,8 +1366,7 @@
           changedKeys = {};
           if (applyDelta(k, ups, null)) {
             saveBase(); if (!isDirty(k)) lastRaw[k] = ls.getItem(k); markClean();
-            var mv = {}; mv[k] = local(k) || [];
-            try { if (window.WorkshopDB && typeof window.WorkshopDB.replaceMany === "function") window.WorkshopDB.replaceMany(mv).catch(function () {}); } catch (e) {}
+
             try { banner(); } catch (e) {}
             if (k === "wf_d") convertPortal(); // طلب جه على جهاز جديد: يتحوّل أول ما الجهاز ينزل
           }
@@ -1362,7 +1401,7 @@
     function goReady(reload) {
       primeClean();
       ready = true; uncover(); resumeRetries(); badge();
-      if (reload) { location.reload(); return; }
+      if (reload) { Promise.resolve(ls.flush ? ls.flush().catch(function () {}) : null).then(function () { location.reload(); }); return; }
       pushAll(false); watchMeta();
       if (SCOPED) return;
       publishPortalConfig(); setTimeout(function () { convertPortal(); projectOrders(); mergePortalDuplicates(); watchPortalCustomers(); }, 1500);

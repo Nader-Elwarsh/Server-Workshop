@@ -473,7 +473,7 @@ function ensureReceiptFields(s){
    ولون حسب الأيام الفاضلة، مع بحث. الأقرب للانتهاء فوق. */
 function activeWarrantyRows(){
   let now=new Date();
-  return arr(K.r).filter(r=>r.closed&&r.warrantyUntil&&new Date(r.warrantyUntil)>=now).sort((a,b)=>new Date(a.warrantyUntil)-new Date(b.warrantyUntil));
+  return (typeof arrCached==="function"?arrCached(K.r):arr(K.r)).filter(r=>r.closed&&r.warrantyUntil&&new Date(r.warrantyUntil)>=now).sort((a,b)=>new Date(a.warrantyUntil)-new Date(b.warrantyUntil));
 }
 function activeWarrantiesListHtml(opts){
   let now=new Date(),all=activeWarrantyRows();
@@ -486,13 +486,16 @@ function activeWarrantiesListHtml(opts){
     let cls=daysLeft<=7?"negative":daysLeft<=30?"high":"";
     return `<tr><td><a href="request.html?id=${esc(r.id)}">${esc(c.name||customerName(r.customerId)||"—")}</a><small style="display:block;color:var(--text-muted)">🛠️ ${esc(r.no||"")}${r.closedAt?" • اتقفل "+esc(new Date(r.closedAt).toLocaleDateString("ar-EG")):""}</small>${c.phone?`<a class="tel-link" style="display:block;font-size:13px" href="tel:${esc(c.phone)}">📞 ${esc(c.phone)}</a>`:""}</td><td><a href="device.html?id=${esc(r.deviceId)}">${esc(deviceName(r.deviceId))}</a></td><td><span class="badge ${cls}">${daysLeft} يوم</span><small style="display:block;color:var(--text-muted)">لحد ${esc(new Date(r.warrantyUntil).toLocaleDateString("ar-EG"))}</small></td></tr>`;
   };
-  let body=list.length?list.map(row).join(""):`<tr><td colspan="3">لا توجد نتائج للبحث.</td></tr>`;
+  // سرعة: أول 60 بس (مئات الصفوف كانت بتتقل الصفحة)، والباقي بزرار أو بالبحث
+  const LIMIT=60,shown=(q||window.__wfWarrantyAll)?list:list.slice(0,LIMIT);
+  let body=list.length?shown.map(row).join("")+(shown.length<list.length?`<tr><td colspan="3"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="showAllWarranties()">⬇️ عرض الكل (${list.length})</button></td></tr>`:""):`<tr><td colspan="3">لا توجد نتائج للبحث.</td></tr>`;
   let table=`<table class="report-table-full"><tr><th>العميل / الأمر</th><th>الجهاز</th><th>الضمان الفاضل</th></tr>${body}</table>`;
   if(opts&&opts.tableOnly)return table;
   return `<div class="setting-subhead">📋 عملاء عليهم ضمان سارٍ دلوقتي (${all.length})${soon?` • <span class="badge negative">⏳ ${soon} بيخلص خلال أسبوع</span>`:""}</div>`+
     `<label class="wide" style="display:block;margin:6px 0">🔍 <input id="warrantySearch" type="search" value="${esc(q)}" placeholder="اسم العميل، التليفون، رقم الأمر أو الجهاز" data-wf-event="input" data-wf-code="renderWarrantyList()" style="width:calc(100% - 30px)"></label>`+
     `<div class="report-table-wrap" id="warrantyTableWrap">${table}</div>`;
 }
+function showAllWarranties(){window.__wfWarrantyAll=true;renderWarrantyList()}
 function renderWarrantyList(){
   let wrap=document.getElementById("warrantyTableWrap");
   if(wrap){wrap.innerHTML=activeWarrantiesListHtml({tableOnly:true});return}

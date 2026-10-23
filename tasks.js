@@ -10,7 +10,7 @@
 /* ---------------------------------------------------------------------
    📋 المهام والمتابعة: قسم مستقل عن الدورة الأساسية.
 --------------------------------------------------------------------- */
-function taskRows(){return arr(K.tasks).filter(x=>!x.deleted)}
+function taskRows(){return (typeof arrCached==="function"?arrCached(K.tasks):arr(K.tasks)).filter(x=>!x.deleted)} // قراءة (عرض وعدّ) — التعديل بيقرا arr بنفسه
 function taskPriorityClass(p){return p==="عاجلة"?"negative":p==="عالية"?"high":""}
 /* الإضافة والتعديل من نفس الفورم (قبل كده التعديل كان 5 رسايل prompt ورا بعض). */
 let taskEditingId="";
