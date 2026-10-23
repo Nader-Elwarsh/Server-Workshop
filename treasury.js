@@ -53,6 +53,7 @@ function saveOpeningBalance(){
 function editTreasuryEntry(entryId){
   let a0=arr(K.tr),e0=a0.find(x=>x.id===entryId);if(!e0)return;
   if(e0.refKey==="opening-balance")return alert("الرصيد الافتتاحي بيتعدّل من «⚙️ الرصيد الافتتاحي».");
+  if(e0.source==="archive-carry")return alert("📦 ده «رصيد مُرحّل» من الأرشيف: صافي الحركات القديمة اللي اتنقلت للأرشيف، وبيتحسب لوحده على السيرفر — مايتعدّلش ولا يتمسح من هنا.");
   const D=document,cats=["شخصي","تشغيل","سلفة","تحويل","أخرى"];if(e0.category&&!cats.includes(e0.category))cats.push(e0.category);
   const m=D.createElement("div");m.className="txd-modal";m.id="trEditDialog";
   const isTr=e0.source==="transfer"&&e0.transferId;
@@ -105,11 +106,13 @@ function applyTreasuryEdit(entryId,v){
 }
 function deleteTreasuryEntry(entryId){
   let a0=arr(K.tr),e0=a0.find(x=>x.id===entryId);
+  if(e0&&e0.source==="archive-carry")return alert("📦 ده «رصيد مُرحّل» من الأرشيف: صافي الحركات القديمة اللي اتنقلت للأرشيف، وبيتحسب لوحده على السيرفر — مايتعدّلش ولا يتمسح من هنا.");
   let isTransfer=e0&&e0.source==="transfer"&&e0.transferId;
   let msg=isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في المحفظة. حذف الحركتين معًا (من الخزنة والمحفظة)؟":"حذف هذه الحركة من كشف الخزنة؟";
   if(!confirm(msg))return;
   let a=arr(K.tr),idx=a.findIndex(x=>x.id===entryId);if(idx<0)return;
   if(a[idx].refKey==="opening-balance"){alert("رصيد الافتتاح يُعدل من قسم الرصيد الافتتاحي ولا يُحذف من هنا.");return}
+  if(a[idx].source==="archive-carry"){alert("📦 ده «رصيد مُرحّل» من الأرشيف: صافي الحركات القديمة اللي اتنقلت للأرشيف، وبيتحسب لوحده على السيرفر — مايتعدّلش ولا يتمسح من هنا.");return}
   let transferId=a[idx].transferId;
   a.splice(idx,1);
   if(isTransfer&&transferId){

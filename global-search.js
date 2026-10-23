@@ -377,7 +377,8 @@
       catch (err) { resultsEl.innerHTML = '<div class="gs-empty">تعذّر البحث حاليًا.</div>'; return; }
 
       if (!results.length) {
-        resultsEl.innerHTML = '<div class="gs-empty">مفيش نتائج لـ «' + safeEsc(raw) + '».</div>';
+        resultsEl.innerHTML = '<div class="gs-empty">مفيش نتائج لـ «' + safeEsc(raw) + '».</div>' + ARCH_BTN;
+        wireArchive(raw);
         return;
       }
 
@@ -394,7 +395,27 @@
             safeEsc(r.title) + "</b>" + (r.sub ? "<span>" + safeEsc(r.sub) + "</span>" : "") + "</div></a>";
         });
       });
-      resultsEl.innerHTML = html;
+      resultsEl.innerHTML = html + ARCH_BTN;
+      wireArchive(raw);
+    }
+    /* 📦 الأوامر القديمة اتنقلت للأرشيف (مش على الجهاز): بحث فيها بضغطة (محتاج نت) */
+    var ARCH_BTN = '<button type="button" id="gsArchBtn" class="gs-item" style="width:100%;border:1px dashed currentColor;background:transparent;cursor:pointer;margin-top:8px"><i>📦</i><div><b>دوّر في الأرشيف (الأوامر القديمة)</b><span>برقم الأمر أو اسم/تليفون العميل أو الجهاز</span></div></button><div id="gsArchRes"></div>';
+    function loadArchive() {
+      if (window.WFArchive) return Promise.resolve(window.WFArchive);
+      return new Promise(function (res) { var t = document.createElement("script"); t.src = "archive.js"; t.onload = t.onerror = function () { res(window.WFArchive || null); }; document.head.appendChild(t); });
+    }
+    function wireArchive(raw) {
+      var b = resultsEl.querySelector("#gsArchBtn"), out = resultsEl.querySelector("#gsArchRes"); if (!b) return;
+      b.addEventListener("click", function () {
+        if (navigator.onLine === false) { out.innerHTML = '<div class="gs-empty">الأرشيف محتاج نت.</div>'; return; }
+        b.disabled = true; out.innerHTML = '<div class="gs-hint">⏳ بدوّر في الأرشيف…</div>';
+        loadArchive().then(function (A) { if (!A) throw new Error("no-archive"); return A.search(raw); }).then(function (list) {
+          if (input.value.trim() !== raw) return;
+          out.innerHTML = list.length ? '<div class="gs-group-title">📦 من الأرشيف (' + list.length + ')</div>' + list.map(function (o) {
+            return '<a class="gs-item" href="request.html?id=' + encodeURIComponent(o.id) + '"><i>📦</i><div><b>' + safeEsc(o.no || "—") + " — " + safeEsc((window.customerName ? window.customerName(o.customerId) : "") || "") + "</b><span>" + safeEsc(o.status || "") + " • " + safeEsc(String(o.closedAt || o.createdAt || "").slice(0, 10)) + " • " + safeEsc((+o.total || 0).toFixed(2)) + " ج</span></div></a>";
+          }).join("") : '<div class="gs-empty">مفيش حاجة في الأرشيف بالكلمة دي.</div>';
+        }).catch(function () { out.innerHTML = '<div class="gs-empty">تعذّر البحث في الأرشيف دلوقتي.</div>'; }).then(function () { b.disabled = false; });
+      });
     }
   }
 

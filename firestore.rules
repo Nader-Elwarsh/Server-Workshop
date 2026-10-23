@@ -349,6 +349,25 @@ service cloud.firestore {
       allow update: if isStaff() && can(['faultcodes.edit']);
       allow delete: if isStaff() && can(['faultcodes.delete', 'data.wipe']);
     }
+    // 📦 الأرشيف: السيرفر بس هو اللي بيكتب (الأرشفة الليلية والرجوع بدوال السيرفر). القراءة بنفس صلاحيات القسم الأصلي.
+    match /archRequests/{id} {
+      allow read: if isStaff() && can(['requests.view', 'customers.view', 'reports.view', 'warranty.view', 'data.backup']);
+    }
+    match /archWalletTx/{id} {
+      allow read: if isStaff() && can(['wallets.view', 'reports.view', 'requests.view', 'data.backup']);
+    }
+    match /archTreasury/{id} {
+      allow read: if isStaff() && can(['treasury.view', 'reports.view', 'data.backup']);
+    }
+    match /archSum/{id} {
+      allow read: if isStaff() && can(['reports.view', 'wallets.view', 'treasury.view']);
+    }
+    match /archCust/{id} {
+      allow read: if isStaff() && can(['customers.view', 'requests.view', 'reports.view']);
+    }
+    match /archMeta/{id} {
+      allow read: if isStaff();
+    }
     match /syncDeletes/{id} {
       allow read: if isStaff();
       allow create, update: if isStaff() && canDelCol(request.resource.data.get('c', ''));
@@ -389,7 +408,8 @@ service cloud.firestore {
     match /{collection}/{document=**} {
       // أي مجموعة تانية (قديمة/مستقبلية) للمالك بس — الموظف بياخد اللي صلاحياته بتسمح بيه من القواعد اللي فوق.
       allow read, write: if isStaff() && ownerS() && collection != 'staff' && collection != 'accessConfig' && collection != 'staffAudit'
-        && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig' && collection != 'mediaFiles' && collection != 'rateLimits';
+        && collection != 'inbox' && collection != 'notifPrefs' && collection != 'pushSubs' && collection != 'serverConfig' && collection != 'notifConfig' && collection != 'mediaFiles' && collection != 'rateLimits'
+        && !(collection in ['archRequests', 'archWalletTx', 'archTreasury', 'archSum', 'archCust', 'archMeta']);
     }
   }
 }

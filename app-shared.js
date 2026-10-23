@@ -77,7 +77,9 @@ function renderLivePhotoPreview(hostId, dataURL) {
 function localDateKey(date){return dayKeyLocal(date)}
 function parseLocalDateValue(value){if(typeof value==="string"){let m=value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);}return new Date(value)}
 function monthKeyLocal(value){let d=parseLocalDateValue(value);if(Number.isNaN(d.getTime()))return"";return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`}
-function orderNo(date=new Date()){let y=String(date.getFullYear()).slice(-2),m=date.getMonth()+1,d=date.getDate(),prefix=`W${y}-${m}-${d}-`,ymd=localDateKey(date);let n=arr(K.r).filter(x=>x.createdAt&&localDateKey(new Date(x.createdAt))===ymd).length+1;while(arr(K.r).some(x=>x.no===prefix+n))n++;return prefix+n}
+function orderNo(date=new Date()){let y=String(date.getFullYear()).slice(-2),m=date.getMonth()+1,d=date.getDate(),prefix=`W${y}-${m}-${d}-`,ymd=localDateKey(date);let n=arr(K.r).filter(x=>x.createdAt&&localDateKey(new Date(x.createdAt))===ymd).length+1;const am=archivedMaxNo(prefix);if(n<=am)n=am+1;while(arr(K.r).some(x=>x.no===prefix+n))n++;return prefix+n}
+/* 📦 أكبر مسلسل لأوامر نفس اليوم اللي اتنقلت للأرشيف (archive.js بيحفظه على الجهاز) — عشان أمر بتاريخ قديم (استيراد دفتر مثلًا) مايتكررش رقمه مع أمر متأرشف */
+function archivedMaxNo(prefix){try{const c=JSON.parse(WFStorage.getItem("wf_arch_cache")||"null");return +((c&&c.nos||{})[prefix])||0}catch(e){return 0}}
 
 /* =========================================================
    دورة حالات أمر الشغل المعتمدة (راجع WORK_ORDER_LIFECYCLE_APPROVED.md)

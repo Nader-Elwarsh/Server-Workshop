@@ -41,7 +41,9 @@ ${techPay!==0?`<tr class="report-row-clickable" data-wf-event="click" data-wf-co
 <tr class="report-row-clickable" data-wf-event="click" data-wf-code="showReportDetail('count')"><td>🛠️ عدد الأوامر</td><td>${r.length}</td></tr>
 <tr class="report-row-clickable" data-wf-event="click" data-wf-code="showReportDetail('completed')"><td>✅ أوامر مكتملة</td><td>${completedCount}</td></tr>
 <tr class="report-row-clickable" data-wf-event="click" data-wf-code="showReportDetail('avgTicket')"><td>📊 متوسط قيمة الأمر (المصنعية فقط)</td><td>${avgTicket.toFixed(2)} ج</td></tr>
-</table><div id="reportDetail" class="report-detail hidden"></div>`;renderExpenseList()}
+</table>${archReportNote(start,end)}<div id="reportDetail" class="report-detail hidden"></div>`;renderExpenseList()}
+/* 📦 الفترة فيها أوامر اتنقلت للأرشيف؟ التقرير ده بيحسب الموجود على الجهاز بس، فبننبّه ونوديه لصفحة التقارير (بتجمع الأرشيف) */
+function archReportNote(start,end){try{const c=JSON.parse(WFStorage.getItem("wf_arch_cache")||"null");if(!c||!c.sums)return "";const f=localDateKey(new Date(start)),t=localDateKey(new Date(end));const hit=Object.keys(c.sums).some(m=>Object.keys(c.sums[m]||{}).some(k=>k>=f&&k<=t));return hit?`<p class="hint">📦 جزء من الفترة دي اتنقل للأرشيف ومش محسوب هنا — الأرقام الكاملة في <a href="reports.html?from=${f}&amp;to=${t}">صفحة التقارير</a>.</p>`:""}catch(e){return ""}}
 // أجور الفنيين على الأوامر المقفولة في الفترة (الأجرة اللي المالك/المدير حددها على كل أمر) — تكلفة زي تكلفة القطع
 function reportTechPay(list){let{start,end}=getReportRange();const shares=arrCached(K.r).reduce((a,r)=>a+(r&&r.status!=="ملغي"?(r.payShares||[]).filter(s=>s&&inRange(s.at,start,end)).reduce((b,s)=>b+(+s.amount||0),0):0),0);return (list||reportClosedOrders()).reduce((a,x)=>a+(x.status!=="ملغي"?(+x.techPay||0):0),0)+shares} // + حصص الشغل الأول للأوامر اللي اتعملها مرتجع (بتاريخ المرتجع)
 /* 🛒 بيع قطع مباشر (من غير أمر شغل) في الفترة — نفس حساب صفحة التقارير عشان الرقمين يطلعوا واحد */
@@ -96,7 +98,7 @@ function spendData(month,wallet){
   const all=walletTxEntries().filter(x=>!wallet||String(x.wallet||"").trim()===wallet),inP=x=>month==="all"||String(x.date||"").slice(0,7)===month;
   const groups={op:new Map(),personal:new Map(),income:new Map()},tot={op:0,personal:0,income:0};
   all.forEach(x=>{
-    if(!x||!inP(x))return;
+    if(!x||!inP(x)||x.source==="archive-carry")return; /* الرصيد المُرحّل من الأرشيف مش دخل ولا مصروف */
     const amt=+x.amount||0,g=SPEND_EXP_CATS[x.category];
     if(g){const k=x.subCategory||"غير مصنف",sign=x.type==="in"?-1:1,m=groups[g];const e=m.get(k)||{amt:0,n:0,tx:[]};e.amt+=sign*amt;e.n++;e.tx.push(x);m.set(k,e);tot[g]+=sign*amt;return}
     if(x.type!=="in"||SPEND_NOT_INCOME_CATS.includes(x.category)||SPEND_NOT_INCOME_SRC.includes(x.source)||x.ownPocket)return;
@@ -143,7 +145,7 @@ function renderSpendAnalysisHtml(fixed,wallet){
 function treasuryAnalysisHtml(){
   const m=spendMonth(),inP=x=>m==="all"||String(x.date||"").slice(0,7)===m,money=n=>(Math.round((+n||0)*100)/100).toLocaleString("en-US",{maximumFractionDigits:2})+" ج";
   const rows={in:new Map(),out:new Map()},tot={in:0,out:0};
-  (typeof treasuryEntries==="function"?treasuryEntries():[]).forEach(x=>{if(!x||!inP(x)||x.refKey==="opening-balance")return;const t=x.type==="in"?"in":"out",k=x.category||"أخرى",a=+x.amount||0;const e=rows[t].get(k)||{amt:0,n:0};e.amt+=a;e.n++;rows[t].set(k,e);tot[t]+=a});
+  (typeof treasuryEntries==="function"?treasuryEntries():[]).forEach(x=>{if(!x||!inP(x)||x.refKey==="opening-balance"||x.source==="archive-carry")return;const t=x.type==="in"?"in":"out",k=x.category||"أخرى",a=+x.amount||0;const e=rows[t].get(k)||{amt:0,n:0};e.amt+=a;e.n++;rows[t].set(k,e);tot[t]+=a});
   const list=t=>{const r=[...rows[t].entries()].sort((a,b)=>b[1].amt-a[1].amt);if(!r.length)return `<div class="hint">مفيش ${t==="in"?"وارد":"صرف"} في الفترة.</div>`;const mx=Math.max(1,...r.map(x=>x[1].amt));return r.map(([k,e])=>`<div class="spend-row"><div class="spend-row-btn" style="cursor:default"><span class="spend-name">${esc(k)}</span><b>${money(e.amt)}</b><em class="spend-pct">${spendPct(e.amt,tot[t])}%</em><i class="spend-bar" style="width:${Math.max(2,e.amt/mx*100).toFixed(1)}%"></i><small class="spend-n">${e.n} حركة</small></div></div>`).join("")};
   return `<section class="tr-analysis spend-box-tr" style="margin:8px 0">
     <div class="spend-period"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(-1)" ${m==="all"?"disabled":""}>‹ اللي قبله</button><input type="month" value="${m==="all"?"":esc(m)}" data-wf-event="change" data-wf-code="setSpendMonth(this.value)" aria-label="الشهر"><button type="button" class="secondary mini-action" data-wf-event="click" data-wf-code="shiftSpendMonth(1)" ${m==="all"?"disabled":""}>اللي بعده ›</button><button type="button" class="secondary mini-action ${m==="all"?"active-track":""}" data-wf-event="click" data-wf-code="setSpendMonth('all')">كل الوقت</button></div>

@@ -191,6 +191,7 @@ function parseAmountInput(v){
    والتصنيف للحركات اليدوية بس (حركات الأوامر والتوريد تصنيفها ثابت عشان التقارير). */
 function editWalletTx(txId){
   let e0=arr(K.wtx).find(x=>x.id===txId);if(!e0)return;
+  if(e0.source==="archive-carry")return alert("📦 ده «رصيد مُرحّل» من الأرشيف: صافي الحركات القديمة اللي اتنقلت للأرشيف، وبيتحسب لوحده على السيرفر — مايتعدّلش ولا يتمسح من هنا.");
   const D=document;
   if(!D||typeof D.createElement!=="function"||!D.body){ // من غير شاشة (اختبارات): الطريقة القديمة
     let newAmount=prompt("المبلغ:",e0.amount);if(newAmount===null)return;
@@ -270,6 +271,7 @@ function applyWalletTxEdit(txId,v){
 }
 function deleteWalletTx(txId){
   let a=arr(K.wtx),e=a.find(x=>x.id===txId);if(!e)return;
+  if(e.source==="archive-carry")return alert("📦 ده «رصيد مُرحّل» من الأرشيف: صافي الحركات القديمة اللي اتنقلت للأرشيف، وبيتحسب لوحده على السيرفر — مايتعدّلش ولا يتمسح من هنا.");
   let isTransfer=e.source==="transfer"&&e.transferId,isW2W=e.source==="wallet-transfer"&&e.transferId,cPair=e.source==="custody"&&e.custodyId?a.find(x=>x&&x!==e&&x.source==="custody"&&x.custodyId===e.custodyId&&!x.deleted):null;
   if(!cPair&&e.ownPocket&&e.refKey){const k=/-own$/.test(e.refKey)?e.refKey.slice(0,-4):e.refKey+"-own";cPair=a.find(x=>x&&x!==e&&x.refKey===k&&!x.deleted)||null} // مصروف الفني من جيبه: الحركتين مع بعض
   let msg=isW2W?`هذه حركة تحويل بين محفظتين (${e.type==="out"?e.wallet+" ← "+(e.counterWallet||"؟"):(e.counterWallet||"؟")+" ← "+e.wallet}). حذف الحركتين معًا؟`:isTransfer?"هذه حركة تحويل مرتبطة بحركة مقابلة في الخزنة. حذف الحركتين معًا (من المحفظة والخزنة)؟":(e.refKey?"هذه الحركة مرتبطة بأمر شغل. حذفها من هنا لن يعدّل أمر الشغل نفسه، بس هتختفي من كشف المحفظة. تأكيد الحذف؟":"حذف هذه الحركة من كشف المحفظة؟");
