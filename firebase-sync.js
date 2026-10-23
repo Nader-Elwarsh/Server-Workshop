@@ -621,7 +621,13 @@
         }
         if (!snap.exists && baseRaw !== null) return { state: "conflict", remote: remote, fields: Object.keys(base).concat(Object.keys(v)) };
         var keys = Array.from(new Set(Object.keys(base).concat(Object.keys(v))));
-        var changed = keys.filter(function (key) { return !sameField(base, v, key); });
+        var DL = window.WFSettingsDefaultLists || {}, revived = []; // اللي اتساب بياخد نسخة السحابة في merged تحت (القايمة الحقيقية ترجع على الجهاز)
+        var changed = keys.filter(function (key) {
+          if (sameField(base, v, key)) return false;
+          // 🛡️ قايمة رجعت للافتراضي بالظبط وقايمتك المتزامنة كانت متعدّلة = غالبًا اتمسحت بالغلط (مش انت اللي رجّعتها): مانرفعهاش
+          if (DL[key] && Array.isArray(v[key]) && stable(v[key]) === stable(DL[key]) && Array.isArray(base[key]) && base[key].length && stable(base[key]) !== stable(DL[key])) { revived.push(key); return false; }
+          return true;
+        });
         var changedConflict = changed.filter(function (key) { return !sameField(remote, base, key) && !sameField(remote, v, key); });
         if (changedConflict.length) return { state: "conflict", remote: remote, fields: changedConflict };
         var patch = {}, merged = Object.assign({}, remote), localDoc = toDoc(v);

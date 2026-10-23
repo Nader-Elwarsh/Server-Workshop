@@ -429,9 +429,15 @@ var WFStorage = window.WFStorage;
     // قراءة الإعدادات يجب ألا تتحول إلى كتابة في كل شاشة؛ هذا يقلل استهلاك
     // WFStorage ويمنع ظهور أخطاء امتلاء التخزين أثناء عمليات القراءة فقط.
     const normalized = JSON.stringify(s);
-    if (stored !== normalized) put(K.s, s);
+    /* 🛡️ قبل ما التخزين يجهز، القراءة بترجع فاضي → الإعدادات بتتحسب بالقيم الافتراضية. الكتابة وقتها كانت بتمسح
+       الإعدادات الحقيقية (أنواع المصاريف، القوايم…) وبعدين المزامنة ترفع الافتراضي للسحابة. دلوقتي مابنكتبش غير والتخزين جاهز. */
+    const ready = !WFStorage || typeof WFStorage.isReady !== "function" || WFStorage.isReady();
+    if (stored !== normalized && ready && !(stored === null && window.WFStorageStatus && window.WFStorageStatus.ready === false)) put(K.s, s);
     return s;
   }
+  /* القوايم الافتراضية (للمزامنة: قايمة رجعت للافتراضي فجأة مايتكتبش فوق قايمتك المتعدّلة في السحابة) */
+  window.WFSettingsDefaultLists = (function () { const o = {}; Object.keys(def).forEach(k => { if (Array.isArray(def[k])) o[k] = def[k].slice(); });
+    Object.assign(o, { expenseCategories: ["وقود ومواصلات", "صيانة عدة وأدوات", "إيجار وفواتير", "أخرى"], personalExpenseCategories: ["مواصلات", "أكل وشرب", "متفرقات"], units: ["قطعة", "متر", "كيلو", "لتر", "مجموعة"], addressTypes: ["العنوان الأساسي", "العنوان الإضافي"], paymentStatuses: ["غير مكتمل", "تم الدفع بالكامل"] }); return o; })();
 
   // مفتاح موحّد للرقم: أرقام عربية/هندية → لاتينية، شيل أي رموز، +20 / 0020 / 20 → 0
   function phoneKey(v) {

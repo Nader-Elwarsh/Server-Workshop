@@ -158,6 +158,19 @@ function walletManualFromPage(type){
 }
 // أي تصنيف حركة له قايمة "نوع فرعي" مرتبطة به (لأغراض إحصائيات الصرف)،
 // وأي قايمة قابلة للتعديل بالكامل من ⚙️ الإعدادات ← الحسابات.
+/* 🛟 أنواع المصاريف (وقود، بقالة…) كانت ممكن ترجع للافتراضي مع التحديثات. مرة واحدة: أي نوع مستخدم في حركاتك ومش في القايمة بيرجع لها. */
+function recoverWalletSubCategories(){
+  try{
+    const s0=typeof settingsRO==="function"?settingsRO():settings();if(s0.subcatRecoveredV1)return 0;
+    const add={expenseCategories:[],personalExpenseCategories:[]};
+    _roArr(K.wtx).forEach(x=>{if(!x||x.deleted||!x.subCategory)return;const key=subCategoryKeyFor(x.category);if(!key)return;const v=String(x.subCategory).trim();if(v&&add[key].indexOf(v)<0)add[key].push(v)});
+    const s=settings();let n=0;
+    Object.keys(add).forEach(k=>{s[k]=Array.isArray(s[k])?s[k]:[];add[k].forEach(v=>{if(s[k].indexOf(v)<0){s[k].push(v);n++}})});
+    s.subcatRecoveredV1=true;put(K.s,s);
+    if(n)try{window.auditLog?.("استرجاع أنواع المصاريف","إعدادات","subcat",n+" نوع")}catch(_){}
+    return n;
+  }catch(e){console.warn("recoverWalletSubCategories",e);return 0}
+}
 function subCategoryKeyFor(category){
   if(category==="مصروف تشغيل")return "expenseCategories";
   if(category==="مصروف شخصي")return "personalExpenseCategories";
@@ -644,7 +657,7 @@ function walletManualFromDetail(type,walletName){
   window.auditLog?.(type==="in"?"إضافة وارد":"إضافة صرف", "محفظة", entry.id, `${walletName} ${amount.toFixed(2)} ج - ${reason}`);
   renderWalletDetail();
 }
-function renderWalletDetail(){dedupeWalletTxByRef();
+function renderWalletDetail(){recoverWalletSubCategories();dedupeWalletTxByRef();
   let el=document.getElementById("walletDetailPage");if(!el)return;
   let {type,name}=walletDetailParams();
   if(!name){el.innerHTML="<div class='item'>الحساب غير محدد.</div>";return}
@@ -892,7 +905,7 @@ function renderWalletAudit(){
 /* ---------------------------------------------------------------------
    العرض: صفحة المحافظ الكاملة
 --------------------------------------------------------------------- */
-function renderWallets(){dedupeWalletTxByRef();autoHealOrderWalletTx(true);
+function renderWallets(){recoverWalletSubCategories();dedupeWalletTxByRef();autoHealOrderWalletTx(true);
   let el=document.getElementById("walletsPage");if(!el)return;
   let wallets=settings().wallets||[],categories=settings().walletCategories||[];
   let overview=walletsOverview(),catTotals=walletCategoryTotals(),pvw=personalVsWorkshopTotals();
