@@ -365,6 +365,11 @@
       else { both.push(f); pick = loc; }                   // الاتنين غيّروه: الأحدث على الجهاز ده (زي قبل كده) — إلا القواعد تحت
       if (Object.prototype.hasOwnProperty.call(pick || {}, f)) out[f] = pick[f];
     });
+    /* 📦 كمية الصنف عدّاد: جهاز صرف قطعة وجهاز تاني باع قطعة في نفس الوقت = الاتنين يتخصموا
+       (الأصل + فرق الجهاز ده + فرق السحابة) بدل ما رقم جهاز واحد يكسب ويضيع التاني. */
+    if (k === "wf_p" && both.indexOf("qty") > -1 && isFinite(+base.qty) && isFinite(+loc.qty) && isFinite(+rem.qty)) {
+      out.qty = Math.round(((+base.qty) + (+loc.qty - +base.qty) + (+rem.qty - +base.qty)) * 1000) / 1000;
+    }
     if (k === "wf_r" && both.length) {
       var take = function (src, list) { list.forEach(function (f) { if (Object.prototype.hasOwnProperty.call(src, f)) out[f] = src[f]; else delete out[f]; }); };
       // الفلوس اللي اتسجل استلامها مابتضيعش: العربون الأكبر هو اللي يفضل
@@ -646,17 +651,49 @@
     }
     var hh0 = snapshotRaw === null ? null : h(snapshotRaw);
     if (SB.x[k] === hh0) { lastRaw[k] = snapshotRaw; return Promise.resolve(done(true)); }
-    var id = "wfkv_" + k, old = SB.x["n_" + k] || 0, parts = [], n;
+    var id = "wfkv_" + k;
+    /* 🔀 القوايم (المكالمات المعلّقة، السلة، المتابعة…): قبل ما نكتب نشوف لو جهاز تاني غيّرها من آخر مرة؛
+       لو آه بندمج الاتنين (الإضافات من الجهازين تفضل، والمحذوف من أي واحد يتشال) بدل ما نكتب فوقها. */
+    var pre = snapshotRaw !== null && SB.x[k] !== undefined ? withTimeout(db.collection("settings").doc(id).get()).then(function (m) {
+      var md = m.exists ? (m.data() || {}) : null;
+      if (!md || !md.h || md.h === SB.x[k] || !md.n) return;
+      return withTimeout(Promise.all(Array.from({ length: md.n }, function (_, i) { return db.collection("settings").doc(id + "~" + i).get(); }))).then(function (cs) {
+        if (cs.some(function (c) { return !c.exists; })) return;
+        var remoteRaw = cs.map(function (c) { return c.data().v; }).join(""), mg = mergeArrRaw(xBase(k), snapshotRaw, remoteRaw);
+        if (mg !== null && mg !== snapshotRaw) { raw(k, mg); snapshotRaw = mg; }
+      });
+    }) : Promise.resolve();
+    return pre.then(function () { return writeBlob(); }, function () { return writeBlob(); });
+    function writeBlob() {
+    ops = [];
+    var old = SB.x["n_" + k] || 0, parts = [], n;
     if (snapshotRaw !== null) for (var i = 0; i < snapshotRaw.length; i += CHUNK) parts.push(snapshotRaw.slice(i, i + CHUNK));
     n = parts.length;
-    ops.push(function (bt) { n ? bt.set(db.collection("settings").doc(id), { n: n, dev: DEV, ts: Date.now() }) : bt.delete(db.collection("settings").doc(id)); });
+    var bh = snapshotRaw === null ? null : h(snapshotRaw);
+    ops.push(function (bt) { n ? bt.set(db.collection("settings").doc(id), { n: n, dev: DEV, ts: Date.now(), h: bh }) : bt.delete(db.collection("settings").doc(id)); });
     parts.forEach(function (p, i) { ops.push(function (bt) { bt.set(db.collection("settings").doc(id + "~" + i), { v: p }); }); });
     for (var j = n; j < old; j++) (function (j) { ops.push(function (bt) { bt.delete(db.collection("settings").doc(id + "~" + j)); }); })(j);
-    return commitOps(ops).then(function () { SB.x[k] = snapshotRaw === null ? null : h(snapshotRaw); SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; return touchMeta(false, true); }).then(function () { return done(true); }).catch(function (e) {
+    return commitOps(ops).then(function () { SB.x[k] = bh; SB.x["n_" + k] = n; saveBase(); lastRaw[k] = snapshotRaw; setXBase(k, snapshotRaw); return touchMeta(false, true); }).then(function () { return done(true); }).catch(function (e) {
       if (isDenied(e)) { if (typeof lastRaw[k] === "string") raw(k, lastRaw[k]); else lastRaw[k] = snapshotRaw; deniedNote(k, 1); return done(true); }
       return done(false, e);
     });
+    }
   }
+  /* أصل القوايم (آخر نسخة متزامنة) عشان الدمج يعرف مين اتضاف ومين اتمسح */
+  var XBASE = "wf_xbase_";
+  function xBase(k) { try { return ls.getItem(XBASE + k); } catch (e) { return null; } }
+  function setXBase(k, v) { try { if (typeof v === "string") origSet.call(ls, XBASE + k, v); } catch (e) {} }
+  function xKey(x) { return x && typeof x === "object" && x.id != null ? "i:" + x.id : x && typeof x === "object" && x.ref != null ? "r:" + x.ref : "j:" + stable(x); }
+  function mergeArrRaw(baseRaw, locRaw, remRaw) {
+    var b, l, r; try { b = JSON.parse(baseRaw || "[]"); l = JSON.parse(locRaw || "[]"); r = JSON.parse(remRaw || "[]"); } catch (e) { return null; }
+    if (!Array.isArray(b) || !Array.isArray(l) || !Array.isArray(r)) return null;
+    var B = {}, L = {}, R = {}, out = [], seen = {};
+    b.forEach(function (x) { B[xKey(x)] = stable(x); }); l.forEach(function (x) { L[xKey(x)] = x; }); r.forEach(function (x) { R[xKey(x)] = x; });
+    r.forEach(function (x) { var q = xKey(x); if (seen[q]) return; seen[q] = 1; if (B[q] !== undefined && !L[q]) return; /* اتمسح هنا */ var lx = L[q]; out.push(lx && stable(lx) !== B[q] ? lx : x); });
+    l.forEach(function (x) { var q = xKey(x); if (seen[q]) return; seen[q] = 1; if (B[q] !== undefined && !R[q]) return; /* اتمسح على جهاز تاني */ out.push(x); });
+    return JSON.stringify(out);
+  }
+  window.wfMergeArrRaw = mergeArrRaw;
   function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
 
   /* ---------- رفع الصور/الصوت المعلّقة (اتعملت أوفلاين) ---------- */
@@ -952,7 +989,11 @@
     var ex = extrasFrom(sSnap), g = null, changed = false; sSnap.forEach(function (d) { if (d.id === "global") g = clean(d.data()); });
     EXTRA.forEach(function (k) {
       var lr = ls.getItem(k), ch = lr !== null && (first ? !ex[k] : h(lr) !== SB.x[k]);
-      if (ex[k] && !ch) { if (lr !== ex[k].v) { raw(k, ex[k].v); changed = true; } SB.x[k] = h(ex[k].v); }
+      if (ex[k] && !ch) { if (lr !== ex[k].v) { raw(k, ex[k].v); changed = true; } SB.x[k] = h(ex[k].v); setXBase(k, ex[k].v); }
+      else if (ex[k] && ch && !first && h(ex[k].v) !== SB.x[k]) { // الجهازين غيّروا: دمج بدل ما الجهاز ده يكتب فوق التاني
+        var mg = mergeArrRaw(xBase(k), lr, ex[k].v);
+        if (mg !== null) { if (mg !== lr) { raw(k, mg); changed = true; } SB.x[k] = h(ex[k].v); setXBase(k, ex[k].v); }
+      }
       SB.x["n_" + k] = ex[k] ? ex[k].n : (SB.x["n_" + k] || 0);
     });
     var lr = ls.getItem(SETTINGS), lchanged = lr !== null && (first ? !g : h(lr) !== SB.x[SETTINGS]);
