@@ -73,7 +73,9 @@ function r2(n) { return Math.round((+n || 0) * 100) / 100; }
 function money(n) { const v = r2(n); return (Number.isInteger(v) ? String(v) : v.toFixed(2)) + " ج"; }
 function str(v, max) { return String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, max || 160); }
 function keyId(k) { return String(k).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 140); }
-/* ميعاد الزيارة بيتخزن «2026-10-15T14:30» (توقيت مصر من غير منطقة) */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+function addDaysKey(day, n) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day); if (!m) return day; return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n)).toISOString().slice(0, 10); }
+/* ميعاد الزيارة بيتخزن «2026-10-15T14:30» (توقيت مصر من غير منطقة)، أو «2026-10-15» بس (يوم من غير ساعة) */
 function fmtVisit(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(String(v || ""));
   if (!m) return str(v, 40);
@@ -378,7 +380,7 @@ function createNotifier(deps) {
       const snap = await db.collection("requests").where("visit", ">", from).where("visit", "<=", to).get();
       for (const doc of snap.docs) {
         const r = doc.data() || {};
-        if (!isOpen(r) || !r.techId) continue;
+        if (!isOpen(r) || !r.techId || DATE_ONLY.test(String(r.visit || ""))) continue; // ميعاد بيوم بس (من غير ساعة): مفيش تذكير بساعة
         const c = await custName(r.customerId);
         out.reminders += (await deliver([r.techId], { kind: "visit_reminder", key: `remind-${doc.id}-${r.visit}`, refId: doc.id, link: `tech.html?id=${encodeURIComponent(doc.id)}`,
           title: `⏰ عندك زيارة ${fmtVisit(r.visit).replace(/^.*الساعة /, "الساعة ")}`, body: [c, str(r.fault, 80), `أمر ${str(r.no, 30)}`].filter(Boolean).join(" • ") })).length;
@@ -394,7 +396,12 @@ function createNotifier(deps) {
       const fromMs = Math.max(t.getTime() - 48 * 3600000, lastTo ? lastTo - 2 * 3600000 : 0);
       const from = cairoLocal(new Date(fromMs)), to = cairoLocal(new Date(toMs));
       const snap = await db.collection("requests").where("visit", ">", from).where("visit", "<=", to).get();
-      for (const doc of snap.docs) {
+      /* ميعاد بيوم بس «2026-10-24» (من غير ساعة) = آخر اليوم: بيتأخر بعد ما اليوم كله يخلص + مدة التأخير.
+         بنقراه باستعلام مساواة لليوم اللي خلص (واللي قبله احتياطي)، ومش من شريحة الساعات فوق (كان بيتعتبر ١٢ بالليل). */
+      const doneDay = addDaysKey(cairoLocal(new Date(toMs)).slice(0, 10), -1);
+      const dayDocs = [];
+      for (const d of [doneDay, addDaysKey(doneDay, -1)]) { const q = await db.collection("requests").where("visit", "==", d).get(); q.docs.forEach((x) => dayDocs.push(x)); }
+      for (const doc of snap.docs.filter((x) => !DATE_ONLY.test(String((x.data() || {}).visit || ""))).concat(dayDocs)) {
         const r = doc.data() || {};
         if (!isOpen(r)) continue;
         const sk = `${doc.id}|${r.visit}`;
