@@ -231,8 +231,12 @@ function validateBackupData(data){
   if(data.wf_notif_enabled!==undefined&&data.wf_notif_enabled!==null&&typeof data.wf_notif_enabled!=="string")throw new Error("invalid-notification-setting");
   return {schemaVersion:schema};
 }
-async function backupAllData(){if(backupBusy)return;backupBusy=true;try{const data=await snapshotAllData(),hash=await backupDataFingerprint(data),password=prompt("كلمة مرور اختيارية للنسخة الاحتياطية. اتركها فارغة لنسخة عادية:");if(password===null)return;const output=password?await encryptBackupData(data,password):data;if(!downloadBackupData(output,password?"نسخة-احتياطية-مشفرة":"نسخة-احتياطية"))throw new Error("download");WFStorage.setItem("wf_last_backup_at",data._meta.exportedAt);WFStorage.setItem(AUTO_BACKUP_HASH_KEY,hash);WFStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));WFStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));renderBackupInfo();if(typeof renderBackupReminder==="function")renderBackupReminder()}catch(e){console.error("[backup] فشل التصدير",e);alert("تعذر إنشاء النسخة الاحتياطية. تأكد من كلمة المرور ومساحة التخزين ثم حاول مرة أخرى.")}finally{backupBusy=false}}
+async function backupAllData(){if(backupBusy)return;backupBusy=true;try{const data=await snapshotAllData(),hash=await backupDataFingerprint(data),password=prompt("كلمة مرور اختيارية للنسخة الاحتياطية. اتركها فارغة لنسخة عادية:");if(password===null)return;await addArchiveToBackup(data);const output=password?await encryptBackupData(data,password):data;if(!downloadBackupData(output,password?"نسخة-احتياطية-مشفرة":"نسخة-احتياطية"))throw new Error("download");WFStorage.setItem("wf_last_backup_at",data._meta.exportedAt);WFStorage.setItem(AUTO_BACKUP_HASH_KEY,hash);WFStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));WFStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));renderBackupInfo();if(typeof renderBackupReminder==="function")renderBackupReminder()}catch(e){console.error("[backup] فشل التصدير",e);alert("تعذر إنشاء النسخة الاحتياطية. تأكد من كلمة المرور ومساحة التخزين ثم حاول مرة أخرى.")}finally{backupBusy=false}}
 
+/* 📦 الأرشيف (الأوامر القديمة على السيرفر) بيتضاف للنسخة اليدوية لو فيه نت — النسخ التلقائية بتفضل للجهاز بس */
+async function addArchiveToBackup(data){try{if(navigator.onLine===false)return;if(!window.WFArchive&&typeof loadArchiveScript==="function")await loadArchiveScript();if(!window.WFArchive)return;const a=await Promise.race([window.WFArchive.exportAll(),new Promise(r=>setTimeout(()=>r(null),60000))]);if(a&&(a.requests.length||a.walletTx.length||a.treasury.length))data._archive=a}catch(e){console.warn("[backup] الأرشيف ما اتضافش للنسخة",e)}}
+function loadArchiveScript(){return new Promise(res=>{if(window.WFArchive)return res();const t=document.createElement("script");t.src="archive.js";t.onload=t.onerror=()=>res();document.head.appendChild(t)})}
+async function restoreArchiveFromBackup(data){if(!data||!data._archive||navigator.onLine===false)return;try{if(!window.WFArchive)await loadArchiveScript();if(!window.WFArchive)return;const n=(data._archive.requests||[]).length+(data._archive.walletTx||[]).length+(data._archive.treasury||[]).length;if(!n||!confirm(`النسخة فيها أرشيف (${n} سجل قديم). ترجّع اللي مش موجود منه على السيرفر؟\n(اللي موجود مايتغيرش)`))return;const r=await window.WFArchive.importAll(data._archive);if(r&&r.added)alert(`📦 رجع ${r.added} سجل للأرشيف.`)}catch(e){console.warn("[backup] استرجاع الأرشيف",e);alert("تعذّر استرجاع الأرشيف دلوقتي (محتاج نت وصلاحية المالك). باقي النسخة اترجع عادي.")}}
 async function restoreBackupFile(input){
   if(backupBusy)return;backupBusy=true;
   const file=input?.files?.[0];if(!file){backupBusy=false;return;}
@@ -261,7 +265,7 @@ async function restoreBackupFile(input){
         const staged=backupMergeStaged(data);
         if(data.images&&window.ImageStore&&!await window.ImageStore.importAll(data.images))throw new Error("import-images");
         if(!await commitStorageAsync(staged))throw new Error("storage-failed");
-        window.auditLog?.("دمج نسخة احتياطية","نسخة احتياطية","",plusN+" سجل");
+        window.auditLog?.("دمج نسخة احتياطية","نسخة احتياطية","",plusN+" سجل");await restoreArchiveFromBackup(data);
         alert(`✅ اتضاف ${plusN} سجل من النسخة. هيترفعوا للسحابة مع المزامنة العادية.`);location.href="index.html";return;
       }
       const lossTxt=loss.total?`\n\n⛔ في بيانات دلوقتي مش موجودة في النسخة وهتتمسح من السحابة ومن كل الأجهزة:\n${loss.lines.join("\n")}`:"";
@@ -277,7 +281,7 @@ async function restoreBackupFile(input){
       if(data._meta?.exportedAt)WFStorage.setItem("wf_last_backup_at",data._meta.exportedAt);
       WFStorage.setItem(AUTO_BACKUP_HASH_KEY,await backupDataFingerprint(await snapshotAllData()));WFStorage.setItem(AUTO_BACKUP_CHECK_KEY,String(Date.now()));WFStorage.setItem(AUTO_BACKUP_PROMPT_KEY,String(Date.now()));
       if(window.wfCloudForceUpload){try{await window.wfCloudForceUpload(true)}catch(e){console.warn("[cloud] رفع النسخة المسترجعة تأجّل",e);alert("تم الاسترجاع على الجهاز، لكن رفعه للسحابة لسه ما تمش. افتح الإعدادات واضغط «رفع بيانات الجهاز للسحابة» وأنت أونلاين.")}}
-      alert("✅ تم استرجاع النسخة الاحتياطية بنجاح. هيتم فتح الرئيسية الآن.");location.href="index.html";
+      await restoreArchiveFromBackup(data);alert("✅ تم استرجاع النسخة الاحتياطية بنجاح. هيتم فتح الرئيسية الآن.");location.href="index.html";
     }catch(e){
       console.error("[backup] فشل الاسترجاع",e);
       await restoreLocalDataState(oldState);

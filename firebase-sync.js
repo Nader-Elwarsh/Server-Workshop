@@ -266,8 +266,17 @@
     var close = document.createElement("button"); close.type = "button"; close.textContent = "إغلاق"; close.style.cssText = "margin-top:10px"; close.onclick = function () { modal.remove(); };
     box.appendChild(close); modal.appendChild(box); modal.addEventListener("click", function (e) { if (e.target === modal) modal.remove(); }); document.body.appendChild(modal);
     var list = box.querySelector("#wfCtList"), KEY_OF = {}; Object.keys(COLS).forEach(function (k) { KEY_OF[COLS[k]] = k; });
-    withTimeout(db.collection("syncDeletes").orderBy("_ts", "desc").limit(150).get()).then(function (snap) {
-      var rows = snap.docs.map(function (d) { var x = d.data() || {}; return { x: x, t: tsMs(d) }; }).filter(function (r) { return r.x.rec && KEY_OF[r.x.c] && (!r.x.exp || !r.x.exp.toMillis || r.x.exp.toMillis() > Date.now()); });
+    /* شواهد الأرشيف (arch: true، من غير نسخة السجل) كتير وبتيجي في نفس الترتيب: بنقرا صفحات لحد ما نلاقي 150 محذوف فعلًا */
+    function pageDeleted(after, acc, pages) {
+      var q = db.collection("syncDeletes").orderBy("_ts", "desc"); if (after) q = q.startAfter(after);
+      return withTimeout(q.limit(400).get()).then(function (snap) {
+        snap.docs.forEach(function (d) { var x = d.data() || {}; if (x.rec && !x.arch) acc.push(d); });
+        if (acc.length >= 150 || snap.docs.length < 400 || pages >= 8) return acc.slice(0, 150);
+        return pageDeleted(snap.docs[snap.docs.length - 1], acc, pages + 1);
+      });
+    }
+    pageDeleted(null, [], 1).then(function (docs) {
+      var rows = docs.map(function (d) { var x = d.data() || {}; return { x: x, t: tsMs(d) }; }).filter(function (r) { return r.x.rec && KEY_OF[r.x.c] && (!r.x.exp || !r.x.exp.toMillis || r.x.exp.toMillis() > Date.now()); });
       list.innerHTML = ""; if (!rows.length) { list.textContent = "مفيش حاجة اتمسحت في آخر 30 يوم (أو اتمسحت قبل التحديث ده)."; return; }
       rows.forEach(function (r) {
         var rec; try { rec = JSON.parse(r.x.rec); } catch (e) { return; }
@@ -545,6 +554,7 @@
               mergedRecs.push({ id: job.id, rec: result.merged, localHash: job.localHash }); next[job.id] = hr(result.merged); wrote = true;
             } else {
               dropBase(k, job.id);
+              if (job.kind === "delete" && k === "wf_r") { SB.pd = SB.pd || {}; SB.pd[job.id] = 1; } // الجهاز ده مسح الأمر: نسخة البوابة تتمسح كمان
               if (job.kind === "delete") delete next[job.id]; else next[job.id] = job.localHash;
               if (SCOPED && job.record) { SB.sr = SB.sr || {}; SB.sr[job.id] = JSON.parse(JSON.stringify(job.record)); }
               if (result.state === "written") wrote = true;
@@ -719,10 +729,15 @@
       if (r.warrantyDecision === "warranty") p.warrantyOfNo = String(r.warrantyOfNo || "");
       var x = h(stable(p)); if (po[r.id] !== x) { next[r.id] = x; ops.push(function (bt) { bt.set(db.collection("portalOrders").doc(r.id), Object.assign({}, p, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() })); }); }
     });
-    Object.keys(po).forEach(function (id) { if (!seen[id]) { delete next[id]; ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); } });
-    if (!ops.length) { clearRetry("remote:portalOrders"); return Promise.resolve(true); }
+    /* نسخة البوابة بتتمسح بس لو الأمر لسه على الجهاز (العميل اتشال من البوابة) أو الجهاز ده هو اللي مسحه.
+       أمر اختفى بالمزامنة (اتنقل للأرشيف، أو اتمسح من جهاز تاني وهو اللي بيمسح نسخته) نسيب نسخته: العميل يفضل شايف تاريخه. */
+    var localIds = {}; rs.forEach(function (r) { if (r && r.id) localIds[r.id] = 1; });
+    var pd = SB.pd || {}, pdNext = Object.assign({}, pd);
+    Object.keys(po).forEach(function (id) { if (seen[id]) return; delete next[id]; delete pdNext[id]; if (localIds[id] || pd[id]) ops.push(function (bt) { bt.delete(db.collection("portalOrders").doc(id)); }); });
+    Object.keys(pdNext).forEach(function (id) { if (!po[id]) delete pdNext[id]; });
+    if (!ops.length) { SB.po = next; SB.pd = pdNext; saveBase(); clearRetry("remote:portalOrders"); return Promise.resolve(true); }
     poBusy = true;
-    return commitOps(ops).then(function () { SB.po = next; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); if (isDenied(e)) { clearRetry("remote:portalOrders"); return false; } retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
+    return commitOps(ops).then(function () { SB.po = next; SB.pd = pdNext; saveBase(); clearRetry("remote:portalOrders"); return true; }).catch(function (e) { console.warn("portal projection pending", e && e.message); if (isDenied(e)) { clearRetry("remote:portalOrders"); return false; } retryLater("remote:portalOrders"); return false; }).then(function (ok) { poBusy = false; return ok; });
   }
   /* نسخة العرض للفنيين: لكل أمر مفتوح ومعيّن لفني → techOrders/{id} فيها بيانات العميل والجهاز كاملة.
      بتتكتب من أجهزة الإدارة بس، والفني بيقراها هي وأمره المعيّن له فقط (قواعد Firestore). بتتمسح لما الأمر يتقفل أو يتسحب من الفني. */

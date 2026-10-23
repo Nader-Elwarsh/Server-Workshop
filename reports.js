@@ -47,7 +47,16 @@
   function orders(r,records=list(K.r)){return records.filter(x=>inRangeDate(x.createdAt,r)||inRangeDate(x.closedAt,r))}
   function walletEntries(){return safe(()=>typeof walletTxEntries==="function"?walletTxEntries():[],[])||[]}
   function expenses(r){return walletEntries().filter(x=>x.category==="مصروف تشغيل"&&inRangeDay(x.date,r))}
-  function treasuryUntil(end){return list(K.tr).filter(x=>!x.deleted&&new Date((x.date||'1970-01-01')+'T'+(x.time||'00:00'))<=end).reduce((a,x)=>a+(x.type==='in'?(+x.amount||0):-(+x.amount||0)),0)}
+  /* 📦 الأرشيف: الأوامر والحركات القديمة اتنقلت للأرشيف على السيرفر، وأرقامها محفوظة كملخصات يومية
+     (archive.js بينزّلها في wf_arch_cache). الإجماليات = الحالي + الملخص، والرصيد المُرحّل نفسه مش حركة فترة. */
+  let ARC=null,ARCraw;
+  function arcDays(){let raw=null;try{raw=WFStorage.getItem('wf_arch_cache')}catch(e){}if(raw!==ARCraw){ARCraw=raw;ARC=null;try{const c=JSON.parse(raw||'null');if(c&&c.sums){ARC={};Object.keys(c.sums).forEach(m=>Object.assign(ARC,c.sums[m]||{}))}}catch(e){ARC=null}}return ARC}
+  const ARC_F=['lab','ps','pc','tp','cl','cr','cx','rt','durS','durN','co','ex','tr'];
+  function archAgg(r){const A={days:{},cw:new Map(),any:false};ARC_F.forEach(f=>{A[f]=0});const D=arcDays();if(!D)return A;Object.keys(D).forEach(k=>{if(k<r.from||k>r.to)return;const v=D[k]||{};A.days[k]=v;A.any=true;ARC_F.forEach(f=>{A[f]+=+v[f]||0});if(v.cw)Object.keys(v.cw).forEach(w=>A.cw.set(w,(A.cw.get(w)||0)+(+v.cw[w]||0)))});return A}
+  function arcCust(){try{const c=JSON.parse(WFStorage.getItem('wf_arch_cache')||'null');return (c&&c.cust)||{}}catch(e){return {}}}
+  function archTrUntil(day){const D=arcDays();if(!D)return 0;let s=0;Object.keys(D).forEach(k=>{if(k<=day)s+=+(D[k]&&D[k].tr)||0});return s}
+  const isCarry=x=>x&&x.source==='archive-carry';
+  function treasuryUntil(end){return list(K.tr).filter(x=>!x.deleted&&!isCarry(x)&&new Date((x.date||'1970-01-01')+'T'+(x.time||'00:00'))<=end).reduce((a,x)=>a+(x.type==='in'?(+x.amount||0):-(+x.amount||0)),0)+archTrUntil(dateKey(end))}
   const revOf=o=>(+o.labor||0)+(+o.partsTotal||0);
   function cycleStart(o){const d=safe(()=>typeof requestCycleStart==='function'?requestCycleStart(o):null,null);if(d&&!Number.isNaN(d.getTime?.()))return d;const c=new Date(o.createdAt||0);return Number.isNaN(c.getTime())?null:c}
   function areaOf(o,customers){
@@ -61,35 +70,36 @@
   function bump(map,k,f){const v=map.get(k)||f();map.set(k,v);return v}
 
   function compute(r,light){
+    const A=archAgg(r);
     const allOrders=(typeof arrCached==="function"?arrCached(K.r):arr(K.r)).filter(Boolean)/* من غير safe: فشل قراية الأوامر لازم يظهر كخطأ */,os=orders(r,allOrders),ex=expenses(r);
     const closedOrders=allOrders.filter(x=>x.closed&&inRangeDate(x.closedAt||x.createdAt,r));
-    const labor=closedOrders.reduce((a,x)=>a+(+x.labor||0),0),partsSell=closedOrders.reduce((a,x)=>a+(+x.partsTotal||0),0),partsCost=closedOrders.reduce((a,x)=>a+(+x.partsCost||0),0);
+    const labor=closedOrders.reduce((a,x)=>a+(+x.labor||0),0)+A.lab,partsSell=closedOrders.reduce((a,x)=>a+(+x.partsTotal||0),0)+A.ps,partsCost=closedOrders.reduce((a,x)=>a+(+x.partsCost||0),0)+A.pc;
     // 🛒 بيع قطع مباشر (من غير أمر شغل): من حركات المخزن «خروج بيع مباشر» اللي ماتلغتش
     const directSales=list(K.m).filter(m=>m&&m.saleId&&m.type==='خروج بيع مباشر'&&!m.voided&&inRangeDate(m.at,r));
     const saleRev=directSales.reduce((a,m)=>a+(+m.total||0),0),saleCost=directSales.reduce((a,m)=>a+(+m.cost||0)*Math.abs(+m.qty||0),0),saleQty=directSales.reduce((a,m)=>a+Math.abs(+m.qty||0),0);
     const orderRevenue=labor+partsSell,revenue=orderRevenue+saleRev,gross=revenue-partsCost-saleCost;
-    const totalExp=ex.reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0);
+    const totalExp=ex.reduce((a,x)=>a+(x.type==="in"?-(+x.amount||0):(+x.amount||0)),0)+A.ex;
     const sharesIn=x=>x&&x.status!=="ملغي"?(x.payShares||[]).filter(s=>s&&inRangeDate(s.at,r)).reduce((b,s)=>b+(+s.amount||0),0):0;
-    const techPay=closedOrders.reduce((a,x)=>a+(+x.techPay||0),0)+allOrders.reduce((a,x)=>a+sharesIn(x),0),net=gross-totalExp-techPay;
-    const completed=os.filter(x=>x.closed?inRangeDate(x.closedAt||x.createdAt,r):x.status==='مكتمل').length;
+    const techPay=closedOrders.reduce((a,x)=>a+(+x.techPay||0),0)+allOrders.reduce((a,x)=>a+sharesIn(x),0)+A.tp,net=gross-totalExp-techPay;
+    const completed=os.filter(x=>x.closed?inRangeDate(x.closedAt||x.createdAt,r):x.status==='مكتمل').length+A.cl;
     const created=allOrders.filter(x=>inRangeDate(x.createdAt,r));
     // المحصّل = تحصيلات العملاء ناقص اللي اترد لهم (ردّ زيادة عربون/مرتجع)
     const collectedTx=walletEntries().filter(x=>!x.deleted&&(x.type==='in'||x.type==='out')&&x.category==='تحصيل عميل'&&inRangeDay(x.date,r));
     const sgn=x=>x.type==='out'?-(+x.amount||0):(+x.amount||0);
-    const collected=collectedTx.reduce((a,x)=>a+sgn(x),0);
+    const collected=collectedTx.reduce((a,x)=>a+sgn(x),0)+A.co;
     const durations=closedOrders.map(o=>{const s=cycleStart(o),e=o.closedAt?new Date(o.closedAt):null;return s&&e&&!Number.isNaN(e.getTime())&&e>=s?(e-s)/DAY:null}).filter(v=>v!==null);
-    const avgDays=durations.length?durations.reduce((a,b)=>a+b,0)/durations.length:null;
+    const avgDays=(durations.length+A.durN)?(durations.reduce((a,b)=>a+b,0)+A.durS)/(durations.length+A.durN):null;
     const returns=[];allOrders.forEach(o=>(Array.isArray(o.statusHistory)?o.statusHistory:[]).forEach(h=>{if(h&&/^مرتجع/.test(String(h.note||''))&&inRangeDate(h.at,r))returns.push({o,at:h.at,note:h.note})}));
     const cancelAt=o=>{const h=(Array.isArray(o.statusHistory)?o.statusHistory:[]).filter(x=>x&&x.to==='ملغي').pop();return h?h.at:(o.cancelledAt||o.createdAt)};
     const cancelled=allOrders.filter(o=>o.status==='ملغي'&&inRangeDate(cancelAt(o),r));
-    const base={r,os,closedOrders,created,labor,partsSell,partsCost,revenue,gross,totalExp,techPay,net,completed,collected,avgDays,returns,cancelled,
-      avgTicket:closedOrders.length?orderRevenue/closedOrders.length:0,directSales,saleRev,saleCost,saleQty,orderRevenue};
+    const base={r,os,closedOrders,created,n_created:created.length+A.cr,n_closedOrders:closedOrders.length+A.cl,n_cancelled:cancelled.length+A.cx,n_returns:returns.length+A.rt,arch:A,labor,partsSell,partsCost,revenue,gross,totalExp,techPay,net,completed,collected,avgDays,returns,cancelled,
+      avgTicket:(closedOrders.length+A.cl)?orderRevenue/(closedOrders.length+A.cl):0,directSales,saleRev,saleCost,saleQty,orderRevenue};
     if(light)return base;
-    const cs=list(K.c),ds=list(K.d),psAll=list(K.p),ps=psAll.filter(p=>p&&!p.archived&&!p.deleted),ts=list(K.tasks).filter(x=>inRangeDay(x.date,r)),tr=list(K.tr).filter(x=>!x.deleted&&inRangeDay(x.date,r));
+    const cs=list(K.c),ds=list(K.d),psAll=list(K.p),ps=psAll.filter(p=>p&&!p.archived&&!p.deleted),ts=list(K.tasks).filter(x=>inRangeDay(x.date,r)),tr=list(K.tr).filter(x=>!x.deleted&&!isCarry(x)&&inRangeDay(x.date,r));
     const open=os.filter(x=>!x.closed&&x.status!=='ملغي').length,activeOrders=allOrders.filter(x=>!x.closed&&x.status!=='مكتمل'&&x.status!=='ملغي'),waiting=activeOrders.filter(x=>x.partsWaiting===true||x.partsWaiting==='yes').length,currentWorkshop=activeOrders.filter(x=>x.workshopStatus!=='تم التسليم'&&(x.executionPlace==='الورشة'||(x.workshopStatus&&x.workshopStatus!=='غير مطلوب'))).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i),workshop=currentWorkshop.length;
     const custMap=new Map(cs.map(c=>[c.id,c])),devMap=new Map(ds.map(x=>[x.id,x]));
     // التحصيل: حسب المحفظة + المستحق على العملاء (مكتمل ولسه ماتقفلش/ماتدفعش) + عربون الأوامر المفتوحة
-    const byWallet=new Map();collectedTx.forEach(x=>{const k=x.wallet||'غير محدد';byWallet.set(k,(byWallet.get(k)||0)+sgn(x))});
+    const byWallet=new Map();collectedTx.forEach(x=>{const k=x.wallet||'غير محدد';byWallet.set(k,(byWallet.get(k)||0)+sgn(x))});A.cw.forEach((v,k)=>byWallet.set(k,(byWallet.get(k)||0)+v));
     const receivables=allOrders.filter(o=>o.status==='مكتمل'&&!o.closed&&!o.paid).map(o=>({o,due:Math.max(0,Math.round(((+o.total||0)-((+o.deposit||0)-(+o.depositRefunded||0)))*100)/100)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due);
     const depositsHeld=activeOrders.reduce((a,o)=>a+Math.max(0,(+o.deposit||0)-(+o.depositRefunded||0)),0);
     // الفنيين
@@ -114,8 +124,9 @@
     closedOrders.forEach(o=>{const k=keyFor(dayOf(o.closedAt||o.createdAt));if(series.has(k))series.get(k).rev+=revOf(o)});
     directSales.forEach(m=>{const k=keyFor(dayOf(m.at));if(series.has(k))series.get(k).rev+=(+m.total||0)});
     created.forEach(o=>{const k=keyFor(dayOf(o.createdAt));if(series.has(k))series.get(k).orders++});
+    Object.keys(A.days).forEach(day=>{const k=keyFor(day),v=A.days[day];if(series.has(k)){series.get(k).rev+=(+v.lab||0)+(+v.ps||0);series.get(k).orders+=(+v.cr||0)}});
     // العملاء
-    const ordersPerCust=new Map();allOrders.forEach(o=>{if(o.customerId)ordersPerCust.set(o.customerId,(ordersPerCust.get(o.customerId)||0)+1)});
+    const ordersPerCust=new Map();allOrders.forEach(o=>{if(o.customerId)ordersPerCust.set(o.customerId,(ordersPerCust.get(o.customerId)||0)+1)});const AC=arcCust();Object.keys(AC).forEach(id=>{const n=+AC[id].n||0;if(n)ordersPerCust.set(id,(ordersPerCust.get(id)||0)+n)});
     const activeCust=new Set(os.filter(o=>o.status!=='ملغي').map(o=>o.customerId).filter(Boolean)),repeat=[...activeCust].filter(id=>(ordersPerCust.get(id)||0)>=2).length;
     const custRev=new Map();closedOrders.forEach(o=>{if(o.customerId)custRev.set(o.customerId,(custRev.get(o.customerId)||0)+revOf(o))});
     // المخزن: الاستهلاك الفعلي (خروج − إرجاع) والوارد
@@ -123,7 +134,7 @@
     let adjQty=0;moves.forEach(m=>{if(skipMove(m))return;const t=String(m.type||''),q=Math.abs(+m.qty||0),p=partMap.get(m.partId)||{};let sign=0;if(/تعديل جرد|تسوية/.test(t)){adjQty+=/بالنقص/.test(t)?-q:q;return}if(/خروج|^out$/i.test(t))sign=1;else if(/إرجاع|ارجاع|return/i.test(t))sign=-1;else if(/توريد|دخول|^in$/i.test(t)){inQty+=q;return}else return;
       if(sign>0)outQty+=q;usedValue+=sign*q*(+p.buy||0);if(m.partId)use.set(m.partId,(use.get(m.partId)||0)+sign*q)});
     // المصاريف حسب البند
-    const expByCat=new Map();ex.forEach(x=>{const k=x.subCategory||x.reason||'أخرى';expByCat.set(k,(expByCat.get(k)||0)+(x.type==='in'?-(+x.amount||0):(+x.amount||0)))});
+    const expByCat=new Map();ex.forEach(x=>{const k=x.subCategory||x.reason||'أخرى';expByCat.set(k,(expByCat.get(k)||0)+(x.type==='in'?-(+x.amount||0):(+x.amount||0)))});if(A.ex)expByCat.set('📦 من الأرشيف (أقدم)',A.ex);
     /* (2) الأوامر الخسرانة/ضعيفة المكسب: الإيراد − تكلفة القطع − أجر الفني */
     const profitOf=o=>revOf(o)-(+o.partsCost||0)-(+o.techPay||0);
     const isWarrantyJob=o=>o.warrantyDecision==='warranty'||(!!o.warrantyOf&&o.warrantyDecision!=='paid');
@@ -156,6 +167,7 @@
     const visitedTotal=created.filter(o=>visitedBefore(o)||o.closed).length;
     /* (7) قيمة العميل على المدى الطويل (كل الوقت) + كبار بطّلوا ييجوا */
     const ltv=new Map();allOrders.forEach(o=>{if(!o.customerId||o.status==='ملغي')return;const c=bump(ltv,o.customerId,()=>({rev:0,n:0,last:'',first:''}));if(o.closed)c.rev+=revOf(o);c.n++;const k=dayOf(o.createdAt);if(k&&(!c.last||k>c.last))c.last=k;if(k&&(!c.first||k<c.first))c.first=k});
+    Object.keys(AC).forEach(id=>{const a=AC[id]||{},n=(+a.n||0)-(+a.nc||0);if(n<=0&&!(+a.rev))return;const c=bump(ltv,id,()=>({rev:0,n:0,last:'',first:''}));c.rev+=+a.rev||0;c.n+=Math.max(0,n);if(a.last&&(!c.last||a.last>c.last))c.last=a.last;if(a.first&&(!c.first||a.first<c.first))c.first=a.first}); /* 📦 أوامرهم القديمة المتأرشفة */
     const ltvArr=[...ltv.entries()].filter(x=>x[1].rev>0).sort((a,b)=>b[1].rev-a[1].rev);
     const vipCut=ltvArr.length?ltvArr[Math.max(0,Math.floor(ltvArr.length*0.2)-1)][1].rev:0,since120=dateKey(new Date(Date.now()-120*DAY));
     const sleepingVip=ltvArr.filter(x=>x[1].rev>=vipCut&&x[1].last&&x[1].last<since120).slice(0,15);
@@ -198,7 +210,7 @@
   function exportSummaryCSV(){const d=reportData();const p=d.prev;downloadCSV(`ملخص-التقرير-${d.r.from}-الى-${d.r.to}.csv`,["البند","الفترة","الفترة اللي قبلها"],[
     ["الإيراد",d.revenue.toFixed(2),p.revenue.toFixed(2)],["المصنعية",d.labor.toFixed(2),p.labor.toFixed(2)],["قطع الغيار",d.partsSell.toFixed(2),p.partsSell.toFixed(2)],["بيع قطع مباشر",d.saleRev.toFixed(2),p.saleRev.toFixed(2)],["تكلفة القطع",(d.partsCost+d.saleCost).toFixed(2),(p.partsCost+p.saleCost).toFixed(2)],
     ["مصاريف التشغيل",d.totalExp.toFixed(2),p.totalExp.toFixed(2)],["أجور الفنيين",d.techPay.toFixed(2),p.techPay.toFixed(2)],["صافي المكسب",d.net.toFixed(2),p.net.toFixed(2)],["المحصّل فعليًا",d.collected.toFixed(2),p.collected.toFixed(2)],
-    ["أوامر جديدة",d.created.length,p.created.length],["أوامر اتقفلت",d.closedOrders.length,p.closedOrders.length],["متوسط قيمة الأمر",d.avgTicket.toFixed(2),p.avgTicket.toFixed(2)],["مرتجعات",d.returns.length,p.returns.length],["ملغي",d.cancelled.length,p.cancelled.length]])}
+    ["أوامر جديدة",d.n_created,p.n_created],["أوامر اتقفلت",d.n_closedOrders,p.n_closedOrders],["متوسط قيمة الأمر",d.avgTicket.toFixed(2),p.avgTicket.toFixed(2)],["مرتجعات",d.n_returns,p.n_returns],["ملغي",d.n_cancelled,p.n_cancelled]])}
 
   /* ---------- أدوات العرض ---------- */
   function section(title,body,id){return `<section id="${id}" class="panel report-section"><div class="report-section-head"><h2>${title}</h2></div>${body}</section>`}
@@ -233,11 +245,11 @@
 
   /* ---------- الأقسام ---------- */
   const NAV=[['report-insights','💡 ملخص'],['report-target','🎯 الهدف'],['report-finance','المالية'],['report-trend','الاتجاه'],['report-collect','التحصيل'],['report-orders','أوامر الشغل'],['report-techs','الفنيين'],['report-response','المواعيد'],['report-areas','المناطق'],['report-customers','العملاء'],['report-devices','الأجهزة'],['report-inventory','المخزن'],['report-workshop','الورشة'],['report-returns','الإلغاء والمرتجعات'],['report-warranty','الضمان'],['report-treasury','الخزنة'],['report-tasks','المهام']];
-  function cards(d){const p=d.prev;const all=onlyKeys()==='all';return `${all?`<nav class="report-shortcuts" aria-label="الانتقال إلى أقسام التقرير">${NAV.map(([id,t])=>`<a href="#${id}">${t}</a>`).join('')}</nav>`:''}<div class="report-cards report-summary-cards">
+  function cards(d){const p=d.prev;const all=onlyKeys()==='all';return `${d.arch&&d.arch.any?'<p class="hint rep-arch-note">📦 جزء من الفترة دي في الأرشيف: الإجماليات (الإيراد والمكسب والتحصيل والمصاريف وعدد الأوامر) شاملة الأرشيف، أما القوايم والتفاصيل (المناطق والأجهزة والعملاء) فمن الأوامر الحالية بس.</p>':''}${all?`<nav class="report-shortcuts" aria-label="الانتقال إلى أقسام التقرير">${NAV.map(([id,t])=>`<a href="#${id}">${t}</a>`).join('')}</nav>`:''}<div class="report-cards report-summary-cards">
     ${card('💰 الإيراد',money(d.revenue),delta(d.revenue,p.revenue),'#report-finance')}${card('✅ صافي المكسب',money(d.net),delta(d.net,p.net),'#report-finance',d.net<0?'report-card-warn':'')}
     ${card('💵 المحصّل فعليًا',money(d.collected),delta(d.collected,p.collected),'#report-collect')}${card('🧾 متوسط قيمة الأمر',money(d.avgTicket),delta(d.avgTicket,p.avgTicket),'#report-finance')}
-    ${card('🛠️ أوامر الفترة',d.os.length,`<small>جديد ${d.created.length} ${delta(d.created.length,p.created.length)}</small>`,'#report-orders')}${card('🔒 مكتملة/مغلقة',d.completed,delta(d.closedOrders.length,p.closedOrders.length),'#report-orders')}
-    ${card('⏱️ متوسط مدة الإنجاز',d.avgDays===null?'—':num(d.avgDays)+' يوم',d.prev.avgDays!==null&&d.avgDays!==null?delta(d.avgDays,d.prev.avgDays,true):'<small>من الفتح للقفل</small>','#report-techs')}${card('🔄 مرتجعات',d.returns.length,`<small>${d.closedOrders.length?num(d.returns.length/d.closedOrders.length*100)+'% من المقفول':''}</small>`,'#report-returns',d.returns.length?'report-card-warn':'')}
+    ${card('🛠️ أوامر الفترة',d.os.length,`<small>جديد ${d.n_created} ${delta(d.n_created,p.n_created)}</small>`,'#report-orders')}${card('🔒 مكتملة/مغلقة',d.completed,delta(d.n_closedOrders,p.n_closedOrders),'#report-orders')}
+    ${card('⏱️ متوسط مدة الإنجاز',d.avgDays===null?'—':num(d.avgDays)+' يوم',d.prev.avgDays!==null&&d.avgDays!==null?delta(d.avgDays,d.prev.avgDays,true):'<small>من الفتح للقفل</small>','#report-techs')}${card('🔄 مرتجعات',d.n_returns,`<small>${d.n_closedOrders?num(d.n_returns/d.n_closedOrders*100)+'% من المقفول':''}</small>`,'#report-returns',d.n_returns?'report-card-warn':'')}
     <a class="report-card report-card-link" href="${linkFor('#report-workshop')}"><span>📦 انتظار قطع</span><b>${d.waiting}</b><small>فتح تقرير الورشة</small></a><a class="report-card report-card-link" href="${linkFor('#report-workshop')}"><span>🏭 في الورشة</span><b>${d.workshop}</b><small>عرض الموجود بالورشة</small></a><a class="report-card report-card-link" href="${linkFor('#report-customers')}"><span>👤 العملاء</span><b>${d.cs.length}</b><small>فتح تقرير العملاء</small></a><a class="report-card report-card-link" href="${linkFor('#report-inventory')}"><span>📦 أصناف المخزن</span><b>${d.ps.length} · منخفض ${d.low}</b><small>فتح تقرير المخزن</small></a>
   </div>`}
   function insights(d){
@@ -247,10 +259,10 @@
     if(d.revenue>0)out.push(`📈 هامش الربح بعد كل المصاريف ${num(d.net/d.revenue*100)}% — ${d.net>=0?'كل 100 ج إيراد بيفضل منها':'خسارة'} ${num(Math.abs(d.net/d.revenue*100))} ج.`);
     if(d.receivables.length)out.push(`🧾 ${d.receivables.length} أمر مكتمل لسه ماتحصّلش (${money0(d.receivables.reduce((a,x)=>a+x.due,0))}) — شوف قسم «التحصيل».`);
     const topArea=[...d.areas.entries()].filter(x=>x[0]!=='غير محدد').sort((a,b)=>b[1].orders-a[1].orders)[0];if(topArea)out.push(`📍 أكتر منطقة طلبًا: ${escR(topArea[0])} (${topArea[1].orders} أمر).`);
-    const wd=d.weekdays.indexOf(Math.max(...d.weekdays));if(d.created.length>=7)out.push(`📅 أكتر يوم بيجيلك فيه شغل: ${WEEKDAYS[wd]}.`);
+    const wd=d.weekdays.indexOf(Math.max(...d.weekdays));if(d.n_created>=7)out.push(`📅 أكتر يوم بيجيلك فيه شغل: ${WEEKDAYS[wd]}.`);
     const topType=[...d.byType.entries()].sort((a,b)=>b[1].rev-a[1].rev)[0];if(topType&&topType[1].rev>0)out.push(`🔧 أكتر نوع جهاز بيجيب فلوس: ${escR(topType[0])} (${money0(topType[1].rev)}).`);
-    if(d.closedOrders.length&&d.returns.length/d.closedOrders.length>0.08)out.push(`🔄 نسبة المرتجعات ${num(d.returns.length/d.closedOrders.length*100)}% — أعلى من الطبيعي، راجع قسم «الإلغاء والمرتجعات».`);
-    if(d.cancelled.length)out.push(`❌ ${d.cancelled.length} أمر اتلغى في الفترة.`);
+    if(d.n_closedOrders&&d.n_returns/d.n_closedOrders>0.08)out.push(`🔄 نسبة المرتجعات ${num(d.n_returns/d.n_closedOrders*100)}% — أعلى من الطبيعي، راجع قسم «الإلغاء والمرتجعات».`);
+    if(d.n_cancelled)out.push(`❌ ${d.n_cancelled} أمر اتلغى في الفترة.`);
     if(d.low)out.push(`📦 ${d.low} صنف وصل للحد الأدنى في المخزن.`);
     if(d.avgDays!==null)out.push(`⏱️ الأمر بياخد في المتوسط ${num(d.avgDays)} يوم من الفتح للقفل.`);
     const t=d.target;if(t&&t.target)out.unshift(`🎯 بالمعدل الحالي هتقفل الشهر على ${money0(t.forecast)} — ${t.forecast>=t.target?'يعني هتعدّي الهدف 🎉':`ناقص ${money0(t.target-t.forecast)} عن الهدف، محتاج ${money0(Math.max(0,t.target-t.mtd.revenue)/Math.max(1,t.left))} في اليوم`}.`);
@@ -266,7 +278,7 @@
     const margin=d.revenue?` (${num(d.gross/d.revenue*100)}%)`:'';
     const expRows=bars(d.expByCat,{fmt:v=>money(v),empty:'لا توجد مصاريف تشغيل في الفترة.'});
     return section('💰 التقرير المالي',`<div class="report-table-wrap"><table class="report-table-full rep-fin"><tr><th>البند</th><th>القيمة</th><th>ملاحظة</th></tr><tr><td>🔨 المصنعية</td><td>${money(d.labor)}</td><td>من الأوامر المقفولة</td></tr><tr><td>🔧 قطع الغيار المحصلة</td><td>${money(d.partsSell)}</td><td>من الأوامر المقفولة</td></tr>${d.directSales.length?`<tr><td>🛒 بيع قطع مباشر</td><td>${money(d.saleRev)}</td><td>${d.directSales.length} بيعة (${d.saleQty} قطعة) من غير أمر شغل — مكسبها ${money(d.saleRev-d.saleCost)}</td></tr>`:""}<tr><td>📦 تكلفة القطع</td><td>${money(d.partsCost+d.saleCost)}</td><td>تكلفة القطع المستخدمة${d.saleCost?" + المباعة مباشر":""}</td></tr><tr><td>💰 الإيراد</td><td>${money(d.revenue)}</td><td>مصنعية + قطع${d.saleRev?" + بيع مباشر":""}</td></tr><tr><td>📈 مكسب قبل المصاريف</td><td>${money(d.gross)}</td><td>الإيراد − تكلفة القطع${margin}</td></tr><tr><td>🧯 مصاريف التشغيل</td><td>${money(d.totalExp)}</td><td>لا تدخل في رصيد الخزنة (مشتريات القطع محسوبة في تكلفة القطع)</td></tr>${d.techPay!==0?`<tr><td>👷 أجور الفنيين</td><td>${money(d.techPay)}</td><td>الأجرة على الأوامر المقفولة</td></tr>`:""}<tr class="report-total"><td>✅ صافي المكسب</td><td>${money(d.net)}</td><td>للنشاط${d.revenue?` — ${num(d.net/d.revenue*100)}% من الإيراد`:''}</td></tr></table></div>
-      <div class="report-cards"><div class="report-card"><span>ربح القطع</span><b>${money(d.partsSell+d.saleRev-d.partsCost-d.saleCost)}</b><small>${(d.partsSell+d.saleRev)?num((d.partsSell+d.saleRev-d.partsCost-d.saleCost)/(d.partsSell+d.saleRev)*100)+'% من بيع القطع':''}${d.saleRev?' • منه بيع مباشر '+escR(money0(d.saleRev-d.saleCost)):''}</small></div><div class="report-card"><span>المصنعية من الإيراد</span><b>${d.revenue?num(d.labor/d.revenue*100)+'%':'—'}</b></div><div class="report-card"><span>متوسط مكسب الأمر</span><b>${money(d.closedOrders.length?(d.net-(d.saleRev-d.saleCost))/d.closedOrders.length:0)}</b></div><div class="report-card"><span>الفترة اللي فاتت (صافي)</span><b>${money(d.prev.net)}</b><small>${escR(fmtDay(d.prev.r.from))} – ${escR(fmtDay(d.prev.r.to))}</small></div></div>
+      <div class="report-cards"><div class="report-card"><span>ربح القطع</span><b>${money(d.partsSell+d.saleRev-d.partsCost-d.saleCost)}</b><small>${(d.partsSell+d.saleRev)?num((d.partsSell+d.saleRev-d.partsCost-d.saleCost)/(d.partsSell+d.saleRev)*100)+'% من بيع القطع':''}${d.saleRev?' • منه بيع مباشر '+escR(money0(d.saleRev-d.saleCost)):''}</small></div><div class="report-card"><span>المصنعية من الإيراد</span><b>${d.revenue?num(d.labor/d.revenue*100)+'%':'—'}</b></div><div class="report-card"><span>متوسط مكسب الأمر</span><b>${money(d.n_closedOrders?(d.net-(d.saleRev-d.saleCost))/d.n_closedOrders:0)}</b></div><div class="report-card"><span>الفترة اللي فاتت (صافي)</span><b>${money(d.prev.net)}</b><small>${escR(fmtDay(d.prev.r.from))} – ${escR(fmtDay(d.prev.r.to))}</small></div></div>
       <h3>🧯 المصاريف حسب البند</h3>${expRows}${weakSection(d)}`,'report-finance');
   }
   function trend(d){
@@ -284,7 +296,7 @@
     const sorted=d.os.slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
     const P=window.WFPager;const body=sorted.length?(P&&P.render?P.render('rep-orders',sorted,orderRow,d.r.from+'|'+d.r.to+'|'+sorted.length).html:sorted.map(orderRow).join('')):'<div class="report-empty">لا توجد أوامر في الفترة.</div>';
     const byStatus=new Map();d.os.forEach(o=>{const k=o.closed?'🔒 مقفول':(o.status||'—');byStatus.set(k,(byStatus.get(k)||0)+1)});
-    return section('🛠️ تقرير أوامر الشغل',`<div class="report-cards"><div class="report-card"><span>أوامر جديدة</span><b>${d.created.length}</b>${delta(d.created.length,d.prev.created.length)}</div><div class="report-card"><span>اتقفلت في الفترة</span><b>${d.closedOrders.length}</b>${delta(d.closedOrders.length,d.prev.closedOrders.length)}</div><div class="report-card"><span>مفتوحة من أوامر الفترة</span><b>${d.open}</b></div><div class="report-card"><span>اتلغت</span><b>${d.cancelled.length}</b></div></div>
+    return section('🛠️ تقرير أوامر الشغل',`<div class="report-cards"><div class="report-card"><span>أوامر جديدة</span><b>${d.n_created}</b>${delta(d.n_created,d.prev.created.length)}</div><div class="report-card"><span>اتقفلت في الفترة</span><b>${d.n_closedOrders}</b>${delta(d.n_closedOrders,d.prev.closedOrders.length)}</div><div class="report-card"><span>مفتوحة من أوامر الفترة</span><b>${d.open}</b></div><div class="report-card"><span>اتلغت</span><b>${d.n_cancelled}</b></div></div>
       <h3>حسب الحالة</h3>${bars(byStatus,{empty:'لا توجد أوامر.'})}
       <details class="rep-details"><summary>📋 قائمة أوامر الفترة (${sorted.length}) <button type="button" class="secondary small-btn no-print" data-wf-event="click" data-wf-code="exportOrdersCSV()">⬇️ تصدير CSV</button></summary><div class="report-list">${body}</div></details>`,'report-orders');
   }
@@ -308,7 +320,7 @@
     const reasons=new Map();d.cancelled.forEach(o=>{const k=String(o.cancelReason||'بدون سبب').trim()||'بدون سبب';reasons.set(k,(reasons.get(k)||0)+1)});
     const retReasons=new Map();d.returns.forEach(x=>{const m=String(x.note).replace(/^مرتجع(\s*\(كان مغلقًا\))?:\s*/,'').split(/[—\n]/)[0].trim().slice(0,60)||'بدون سبب';retReasons.set(m,(retReasons.get(m)||0)+1)});
     const retRows=d.returns.slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))).slice(0,20).map(x=>`<div class="report-list-row"><span>${detailLink('request.html',x.o.id,x.o.no||'أمر')} — ${detailLink('customer.html',x.o.customerId,customerName(x.o.customerId))}<small>${escR(fmtDay(dayOf(x.at)))}${x.o.techName?' • 👷 '+escR(x.o.techName):''}</small></span><b>🔄</b></div>`).join('');
-    return section('❌ الإلغاء والمرتجعات والمعاينات',`<div class="report-cards"><div class="report-card"><span>أوامر اتلغت</span><b>${d.cancelled.length}</b>${delta(d.cancelled.length,d.prev.cancelled.length,true)}</div><div class="report-card"><span>نسبة الإلغاء</span><b>${d.created.length?num(d.cancelled.length/d.created.length*100)+'%':'—'}</b><small>من الأوامر الجديدة</small></div><div class="report-card ${d.returns.length?'report-card-warn':''}"><span>مرتجعات</span><b>${d.returns.length}</b>${delta(d.returns.length,d.prev.returns.length,true)}</div><div class="report-card"><span>نسبة المرتجعات</span><b>${d.closedOrders.length?num(d.returns.length/d.closedOrders.length*100)+'%':'—'}</b><small>من الأوامر المقفولة</small></div></div><div class="report-mini-grid"><div><h3>أسباب الإلغاء</h3>${bars(reasons,{empty:'مفيش أوامر اتلغت في الفترة 👌'})}<h3>أسباب المرتجعات</h3>${bars(retReasons,{empty:'مفيش مرتجعات في الفترة 👌'})}</div><div><h3>آخر المرتجعات</h3><div class="report-list">${retRows||'<div class="report-empty">مفيش مرتجعات في الفترة 👌</div>'}</div></div></div>${inspectionsBlock(d)}`,'report-returns');
+    return section('❌ الإلغاء والمرتجعات والمعاينات',`<div class="report-cards"><div class="report-card"><span>أوامر اتلغت</span><b>${d.n_cancelled}</b>${delta(d.n_cancelled,d.prev.cancelled.length,true)}</div><div class="report-card"><span>نسبة الإلغاء</span><b>${d.n_created?num(d.n_cancelled/d.n_created*100)+'%':'—'}</b><small>من الأوامر الجديدة</small></div><div class="report-card ${d.n_returns?'report-card-warn':''}"><span>مرتجعات</span><b>${d.n_returns}</b>${delta(d.n_returns,d.prev.returns.length,true)}</div><div class="report-card"><span>نسبة المرتجعات</span><b>${d.n_closedOrders?num(d.n_returns/d.n_closedOrders*100)+'%':'—'}</b><small>من الأوامر المقفولة</small></div></div><div class="report-mini-grid"><div><h3>أسباب الإلغاء</h3>${bars(reasons,{empty:'مفيش أوامر اتلغت في الفترة 👌'})}<h3>أسباب المرتجعات</h3>${bars(retReasons,{empty:'مفيش مرتجعات في الفترة 👌'})}</div><div><h3>آخر المرتجعات</h3><div class="report-list">${retRows||'<div class="report-empty">مفيش مرتجعات في الفترة 👌</div>'}</div></div></div>${inspectionsBlock(d)}`,'report-returns');
   }
   function treasuryReport(d){let ins=d.tr.filter(x=>x.type==='in').reduce((a,x)=>a+(+x.amount||0),0),outs=d.tr.filter(x=>x.type==='out').reduce((a,x)=>a+(+x.amount||0),0);let rows=d.tr.slice().sort((a,b)=>String(b.date+b.time).localeCompare(String(a.date+a.time))).map(x=>`<tr><td>${escR(x.date||'—')}</td><td>${escR(x.time||'—')}</td><td>${x.type==='in'?'➕ وارد':'➖ صرف'}</td><td>${escR(x.reason||'—')}</td><td>${escR(x.counterparty||'')}</td><td>${escR(x.place||'')}</td><td>${money(x.amount)}</td></tr>`).join('');return section('💵 تقرير الخزنة المستقلة',`<div class="hint">الخزنة منفصلة عن حسابات أوامر الشغل وقطع الغيار ومصاريف التشغيل. الأرقام التالية لحركات درج الخزنة فقط.</div><button type="button" class="secondary small-btn no-print" data-wf-event="click" data-wf-code="exportTreasuryCSV()">⬇️ تصدير CSV</button><div class="report-cards"><div class="report-card"><span>وارد الفترة</span><b>${money(ins)}</b></div><div class="report-card"><span>صرف الفترة</span><b>${money(outs)}</b></div><div class="report-card"><span>صافي حركة الفترة</span><b>${money(ins-outs)}</b></div><div class="report-card"><span>رصيد الدرج حتى نهاية الفترة</span><b>${money(d.treasuryBalance)}</b></div></div><div class="report-table-wrap"><table class="report-table-full"><tr><th>التاريخ</th><th>الوقت</th><th>الحركة</th><th>السبب</th><th>لمن/من</th><th>المكان</th><th>المبلغ</th></tr>${rows||'<tr><td colspan="7">لا توجد حركات خزنة في الفترة.</td></tr>'}</table></div>`, 'report-treasury')}
   function tasksReport(d){let today=dateKey(new Date()),open=d.ts.filter(t=>!t.completed).length,done=d.ts.filter(t=>t.completed).length,over=d.ts.filter(t=>!t.completed&&t.date&&t.date<today).length;return section('📋 تقرير المهام والمتابعة',`<div class="report-cards"><div class="report-card"><span>مهام الفترة</span><b>${d.ts.length}</b></div><div class="report-card"><span>مكتملة</span><b>${done}</b></div><div class="report-card"><span>مفتوحة</span><b>${open}</b></div><div class="report-card"><span>متأخرة</span><b>${over}</b></div></div><div class="report-list">${d.ts.slice().sort((a,b)=>String(a.date).localeCompare(String(b.date))).map(t=>`<div class="report-list-row"><span>${t.completed?'✅':'📋'} ${escR(t.title)} <small>• ${escR(t.date||'')}</small></span><b>${escR(t.priority||'عادية')}</b></div>`).join('')||'<div class="report-empty">لا توجد مهام في الفترة.</div>'}</div>`, 'report-tasks')}
@@ -407,9 +419,9 @@
      فيه سطر «📊 إحصائيات القسم» بيفتح أقسامها بس. only=all = كل التقارير في صفحة واحدة (للطباعة). */
   const SECTIONS=[
     {k:'finance',id:'report-finance',icon:'💰',t:'المالية والأرباح',fn:d=>finance(d),sum:d=>`صافي ${money0(d.net)} • إيراد ${money0(d.revenue)}`},
-    {k:'trend',id:'report-trend',icon:'📈',t:'الاتجاه وأيام الشغل',fn:d=>trend(d),sum:d=>`${d.created.length} أمر جديد في الفترة`},
+    {k:'trend',id:'report-trend',icon:'📈',t:'الاتجاه وأيام الشغل',fn:d=>trend(d),sum:d=>`${d.n_created} أمر جديد في الفترة`},
     {k:'collect',id:'report-collect',icon:'🧾',t:'التحصيل والمديونية',fn:d=>collections(d),sum:d=>`اتحصّل ${money0(d.collected)} • لسه ${money0(d.receivables.reduce((a,x)=>a+x.due,0))}`},
-    {k:'orders',id:'report-orders',icon:'🛠️',t:'أوامر الشغل',fn:d=>ordersReport(d),sum:d=>`${d.os.length} أمر • اتقفل ${d.closedOrders.length}`},
+    {k:'orders',id:'report-orders',icon:'🛠️',t:'أوامر الشغل',fn:d=>ordersReport(d),sum:d=>`${d.os.length} أمر • اتقفل ${d.n_closedOrders}`},
     {k:'techs',id:'report-techs',icon:'👷',t:'أداء الفنيين',fn:d=>techsReport(d),sum:d=>`${[...d.techs.keys()].filter(k=>k!=='بدون فني').length} فني`},
     {k:'response',id:'report-response',icon:'⏱️',t:'المواعيد وسرعة الاستجابة',fn:d=>responseSection(d),sum:d=>d.withPlan.length?`${num(d.onTime.length/d.withPlan.length*100)}% في الميعاد • ${d.overdueNow.length} متأخر`:`${d.overdueNow.length} زيارة فات ميعادها`},
     {k:'areas',id:'report-areas',icon:'📍',t:'المناطق وربحيتها',fn:d=>areasReport(d),sum:d=>{const a=[...d.areas.entries()].filter(x=>x[0]!=='غير محدد').sort((x,y)=>y[1].orders-x[1].orders)[0];return a?`الأكتر: ${escR(a[0])}`:'—'}},
@@ -417,7 +429,7 @@
     {k:'devices',id:'report-devices',icon:'🔧',t:'الأجهزة والأعطال',fn:d=>devicesReport(d),sum:d=>{const t=[...d.byType.entries()].sort((a,b)=>b[1].rev-a[1].rev)[0];return t?`الأكتر دخلًا: ${escR(t[0])}`:`${d.ds.length} جهاز`}},
     {k:'inventory',id:'report-inventory',icon:'📦',t:'المخزن والشراء',fn:d=>inventoryReport(d),sum:d=>`${d.low} منخفض • ${d.runout.filter(x=>x.days!==null&&x.days<=7).length} هيخلص خلال أسبوع`},
     {k:'workshop',id:'report-workshop',icon:'🏭',t:'الورشة',fn:d=>workshopReport(d),sum:d=>`${d.workshop} جوه الورشة • ${d.waiting} انتظار قطع`},
-    {k:'returns',id:'report-returns',icon:'❌',t:'الإلغاء والمرتجعات والمعاينات',fn:d=>returnsReport(d),sum:d=>`${d.cancelled.length} ملغي • ${d.returns.length} مرتجع`},
+    {k:'returns',id:'report-returns',icon:'❌',t:'الإلغاء والمرتجعات والمعاينات',fn:d=>returnsReport(d),sum:d=>`${d.n_cancelled} ملغي • ${d.n_returns} مرتجع`},
     {k:'warranty',id:'report-warranty',icon:'🛡️',t:'تكلفة الضمان',fn:d=>warrantySection(d),sum:d=>`${d.warranty.length} شغل ضمان • ${money0(d.warranty.reduce((a,x)=>a+x.cost,0))}`},
     {k:'treasury',id:'report-treasury',icon:'💵',t:'الخزنة',fn:d=>treasuryReport(d),sum:d=>`رصيد ${money0(d.treasuryBalance)}`},
     {k:'tasks',id:'report-tasks',icon:'📋',t:'المهام',fn:d=>tasksReport(d),sum:d=>`${d.ts.filter(t=>!t.completed).length} مفتوحة من ${d.ts.length}`}
