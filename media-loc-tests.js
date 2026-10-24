@@ -109,14 +109,15 @@ console.log("media-loc-tests: PASS");
   store["settings/wfkv_wf_trash~0"] = { v: "...\"" + files[1] + ".mp4\"..." };
   store["faultCodes/fc1"] = { kind: "test", title: "تيست مود", media: [{ url: url(files[2], "image"), kind: "image" }] };
   store["invoices/i1"] = { photo: url(files[3], "image"), note: "فاتورة مورد", partIds: [] };
+  store["portalPosts/p1"] = { title: "نصيحة", image: url(files[4], "image"), published: true };
   await assert.rejects(m.orphans("st", {}), /owner_only/);
   const dry = await m.orphans("own", { minAgeDays: 1 });
-  assert.strictEqual(dry.checked, files.length); assert.strictEqual(dry.orphans, files.length - 4, "صورة التيست مود وصورة الفاتورة مش يتيمة"); assert.strictEqual(dry.deleted, 0);
+  assert.strictEqual(dry.checked, files.length); assert.strictEqual(dry.orphans, files.length - 5, "صورة التيست مود وصورة الفاتورة وصورة المقال مش يتيمة"); assert.strictEqual(dry.deleted, 0);
   const done = await m.orphans("own", { minAgeDays: 1, apply: true });
-  assert.strictEqual(done.deleted, files.length - 4);
+  assert.strictEqual(done.deleted, files.length - 5);
   assert.ok(store["mediaFiles/" + files[0].replace(/\//g, "_")] && store["mediaFiles/" + files[1].replace(/\//g, "_")], "referenced files kept");
   const u = await m.usage("own");
-  assert.strictEqual(u.usage.storage, 5242880); assert.strictEqual(u.tracked, 4);
+  assert.strictEqual(u.usage.storage, 5242880); assert.strictEqual(u.tracked, 5);
   console.log("media-server-tests: PASS");
 })().catch((e) => { console.error(e); process.exit(1); });
 
