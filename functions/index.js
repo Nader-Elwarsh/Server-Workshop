@@ -399,3 +399,5 @@ exports.notifySend = adminCallable("notifySend", async (uid, d) => {
   catch (e) { if (e && e.code && /permission|invalid|not-found/.test(e.code)) throw new AdminError(e.code, e.message); throw e; }
 });
 Object.assign(exports, require("./archive-fns"));
+Object.assign(exports, require("./projections"));
+Object.assign(exports, require("./portal-convert"));
