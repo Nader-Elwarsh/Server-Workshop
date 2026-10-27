@@ -113,7 +113,7 @@ function buildPartSale(input){
   const have=Number(p.qty??0);
   if(!Number.isFinite(have)||have<qty)return{ok:false,error:`الكمية اللي في المخزن (${Number.isFinite(have)?have:0}) أقل من اللي عايز تبيعه (${qty}). لو المخزن غلط صحّحه من «تعديل» الأول.`};
   const price=partSaleRound(input.price);
-  if(!Number.isFinite(+input.price)||price<0)return{ok:false,error:"اكتب سعر بيع صحيح."};
+  if(input.price===""||input.price==null||typeof input.price==="boolean"||!Number.isFinite(+input.price)||price<0)return{ok:false,error:"اكتب سعر بيع صحيح."};
   const total=partSaleRound(price*qty),wallet=String(input.wallet||"").trim();
   if(total>0&&!wallet&&partSaleWallets().length)return{ok:false,error:"اختار المحفظة اللي استلمت فيها الفلوس."};
   const saleId="sale-"+id(),now=new Date(),at=now.toISOString(),buyer=String(input.buyer||"").trim(),note=String(input.note||"").trim();

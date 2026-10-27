@@ -349,6 +349,17 @@ exports.notifyRequests = onDocumentWritten(Object.assign({ document: "requests/{
   } catch (e) { console.error("[order-guard]", e && e.message); }
   return notifier.onRequestWrite(ev.params.id, b, a, (a && a._by) || "");
 }));
+/* ختم _ts على عملاء/أجهزة البوابة (مايقدروش يكتبوه بنفسهم) عشان المزامنة بالتغييرات تسحبهم على كل الأجهزة. */
+const { needsStamp } = require("./portal-stamp-core");
+function portalStamp(name) {
+  return guard(name, async (ev) => {
+    const a = data(ev.data && ev.data.after), b = data(ev.data && ev.data.before);
+    if (!needsStamp(b, a)) return;
+    await ev.data.after.ref.update({ _ts: FieldValue.serverTimestamp(), _by: "portal" });
+  });
+}
+exports.portalStampCustomer = onDocumentWritten(Object.assign({ document: "customers/{id}" }, TRIG), portalStamp("stampCustomer"));
+exports.portalStampDevice = onDocumentWritten(Object.assign({ document: "devices/{id}" }, TRIG), portalStamp("stampDevice"));
 exports.notifyExpenses = onDocumentWritten(Object.assign({ document: "techExpenses/{id}" }, TRIG), guard("expenses", (ev) => notifier.onExpenseWrite(ev.params.id, data(ev.data.before), data(ev.data.after))));
 exports.notifyWalletTx = onDocumentCreated(Object.assign({ document: "walletTx/{id}" }, TRIG), guard("walletTx", (ev) => notifier.onWalletTxCreate(ev.params.id, data(ev.data))));
 exports.notifyPartMoves = onDocumentCreated(Object.assign({ document: "partMoves/{id}" }, TRIG), guard("partMoves", (ev) => notifier.onPartMoveCreate(ev.params.id, data(ev.data))));

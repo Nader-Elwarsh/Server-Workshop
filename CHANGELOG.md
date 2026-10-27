@@ -170,3 +170,12 @@
 - الذكاء الاصطناعي بقى يكتب ردوده بالعربية الفصحى المبسّطة بدل العامية (ai-tasks.js / ai.js).
 - `portalStampCustomer` / `portalStampDevice`: ختم `_ts` على العملاء والأجهزة اللي بتتسجل من البوابة، عشان كل الأجهزة (القديمة والجديدة) تسحبها فورًا.
 - منظف الملفات اليتيمة بيعتبر صور الأجهزة (`devices`) مستخدمة.
+
+## batch108 (مراجعة نهائية 2026-10-27)
+
+- `functions/media.js`: منظف الملفات اليتيمة كان بيفحص مجموعات أقل من المطلوب، فكان ممكن يعتبر مرفق مستخدم يتيمًا ويمسحه من Cloudinary. بقى بيفحص `ORPHAN_SCAN_COLLECTIONS` (faultCodes, invoices, portalPosts, archRequests, portalQuestions, portalComplaints, portalOrders, portalSuggestions, guestRequests, techOrders, techExpenses, parts, devices) + الأوامر وطلبات البوابة وسلة المهملات، ولو أي مجموعة فشلت قراءتها بيوقف بدل ما يمسح.
+- `functions/portal-stamp-core.js` (كان ناقص من الأرشيف) + `portalStampCustomer` / `portalStampDevice` في `functions/index.js`: ختم `_ts` على عملاء وأجهزة البوابة (كانوا مذكورين في batch107 وغير موجودين في الكود).
+- `portal-guard-tests.js`: بقى يتحقق من قائمة الفحص نفسها (مش من نص حرفي قديم) ويشمل الفواتير والمقالات.
+- `treasury-transfer-tests.js`: بيئة الاختبار بقت تعرّض `settings`/`settingsRO` زي المتصفح، فمسار `recoverWalletSubCategories` بقى بيتجرب فعلًا بدل ما يتبلع الخطأ.
+- `app-parts.js` → `buildPartSale`: رفض السعر الفاضي/null/boolean (كان بيتحوّل لصفر ويسجّل بيعة بدون وارد لو الدالة اتنادت من غير فحص الواجهة)، مع اختبار انحدار في `part-sale-tests.js` اتأكدت إنه بيفشل من غير الإصلاح.
+- `service-worker.js`: اسم الكاش بقى `workshop-v135-batch108` عشان نسخة `app-parts.js` الجديدة توصل للمستخدمين.

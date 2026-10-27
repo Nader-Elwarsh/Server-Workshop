@@ -24,6 +24,9 @@ const J=(e,k)=>JSON.parse(e.store[k]||'[]');
     const r=await x.savePartSale(bad);assert.ok(!r.ok,'should reject '+JSON.stringify(bad));
   }
   assert.strictEqual(J(e,K.p)[0].qty,5);assert.strictEqual(J(e,K.m).length,0);assert.strictEqual(J(e,K.wtx).length,0);
+  // سعر فاضي/null/boolean/نص مش رقم ماينفعش يتحوّل لصفر بصمت (بيعة بدون وارد)
+  for(const price of ['',null,undefined,true,'abc',NaN,-1]){const r2=await x.savePartSale({partId:'p1',qty:1,price,wallet:'كاش'});assert.ok(!r2.ok,'empty/garbage price must be rejected: '+String(price));}
+  assert.strictEqual(J(e,K.p)[0].qty,5);assert.strictEqual(J(e,K.m).length,0);
   // بيع صحيح
   const r=await x.savePartSale({partId:'p1',qty:2,price:65.5,wallet:'فودافون كاش',buyer:'أحمد',note:'كاش'});
   assert.ok(r.ok,r.error);

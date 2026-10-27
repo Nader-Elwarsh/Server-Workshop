@@ -32,6 +32,8 @@ const read = (f) => fs.readFileSync(path.join(__dirname, f), "utf8");
   assert.strictEqual(await ctx.archiveDeleteGuard("deviceId", "d1", "الجهاز"), true);
   assert.ok(/archiveDeleteGuard\("customerId", cid/.test(read("workshop-mini-enhancements.js")) && /archiveDeleteGuard\("deviceId", did/.test(read("workshop-mini-enhancements.js")));
   // 5) تنضيف الصور اليتيمة بيشوف التيست مود والأرشيف
-  assert.ok(/"faultCodes", "archRequests"/.test(read("functions/media.js")));
+  const mediaSrc = read("functions/media.js");
+  const scanList = (/ORPHAN_SCAN_COLLECTIONS = \[([^\]]*)\]/.exec(mediaSrc) || [])[1] || "";
+  for (const c of ["faultCodes", "archRequests", "invoices", "portalPosts"]) assert.ok(scanList.includes('"' + c + '"'), "تنضيف اليتيمة لازم يفحص " + c);
   console.log("portal-guard-tests: PASS (معرّفات البوابة، الميعاد، حد التحويل التلقائي، الحذف والأرشيف، الصور اليتيمة)");
 })().catch((e) => { console.error(e); process.exit(1); });

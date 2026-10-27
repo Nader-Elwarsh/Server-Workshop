@@ -19,6 +19,8 @@ const FORMATS = {
 };
 const KINDS = { image: "image", video: "video", audio: "video" }; // kind → resource_type
 const FOLDER = "workshop-media";
+// المجموعات (غير requests/portalRequests/settings) اللي ممكن تحمل رابط مرفق من workshop-media.
+const ORPHAN_SCAN_COLLECTIONS = ["faultCodes", "invoices", "portalPosts", "archRequests", "portalQuestions", "portalComplaints", "portalOrders", "portalSuggestions", "guestRequests", "techOrders", "techExpenses", "parts", "devices"];
 const DAY = 86400000;
 
 function signParams(params, secret) {
@@ -111,18 +113,18 @@ function createMedia({ db, now = () => Date.now(), creds, fetchImpl = fetch, act
     const apply = !!(data && data.apply);
     const cutoff = now() - minAge * DAY;
     // صور/فيديو الأوامر + صور أكواد الأعطال والتيست مود (faultCodes) + سلة المهملات = مستخدمة
-    const [files, reqs, preqs, settings, codes] = await Promise.all([
+    const [files, reqs, preqs, settings] = await Promise.all([
       db.collection("mediaFiles").where("at", "<", cutoff).get(),
       db.collection("requests").get(),
       db.collection("portalRequests").get(),
-      db.collection("settings").get(),
-      db.collection("faultCodes").get()
+      db.collection("settings").get()
     ]);
     const chunks = [];
     reqs.forEach((d) => chunks.push(JSON.stringify(d.data())));
-    codes.forEach((d) => chunks.push(JSON.stringify(d.data())));
     preqs.forEach((d) => chunks.push(JSON.stringify(d.data())));
-    for (const c of ["faultCodes", "archRequests", "portalQuestions", "portalComplaints", "guestRequests", "techExpenses"]) {
+    // أي مجموعة ممكن تحمل رابط مرفق لازم تتفحص قبل ما نحكم إن الملف يتيم (فاتورة، مقال، أكواد أعطال/تيست مود، أوامر فنيين...).
+    // لو أي مجموعة فشلت قراءتها بنوقف كله (scan_failed) بدل ما نمسح ملف مستخدم بالغلط.
+    for (const c of ORPHAN_SCAN_COLLECTIONS) {
       try { (await db.collection(c).get()).forEach((d) => chunks.push(JSON.stringify(d.data()))); } catch (e) { console.warn("orphans scan " + c, e && e.message); throw new Error("scan_failed"); }
     }
     settings.forEach((d) => { if (String(d.id).indexOf("wfkv_wf_trash") === 0) chunks.push(JSON.stringify(d.data())); });
