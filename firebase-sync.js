@@ -1260,17 +1260,15 @@
      بتفعّل حساب البوابة للعميل (الدخول برقم تليفونه) وتربطه بسجله الحالي، وبعدين
      تجهّز رسالة واتساب فيها لينك بيفتح على شاشة الدخول برقم العميل مكتوب. */
   var INV_KEY = "wf_portal_invite_tpl", SEC = null;
-  var INV_DEF = "أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة " + (window.WL ? WL.name() : "الورشة الفنية") + ":\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
+  function invDef() { return window.WFPortalInvite.defaultTpl(window.WL ? WL.name() : ""); }
   function portalPhone(x) { var d = nph(x); return /^01[0125]\d{8}$/.test(d) ? d : ""; }
   // كلمة مؤقتة عشوائية من 8 أرقام (crypto) للحسابات الجديدة وإعادة التعيين.
   function tempPassword() { var a = new Uint32Array(1); (window.crypto || window.msCrypto).getRandomValues(a); return String(10000000 + (a[0] % 90000000)); }
   function secApp() { if (!SEC) SEC = firebase.apps.filter(function (a) { return a.name === "sec"; })[0] || firebase.initializeApp(firebase.app().options, "sec"); try { if (window.WFAppCheck) WFAppCheck.attach(SEC); } catch (e) {} return SEC; }
   // temp: كلمة مؤقتة اتولّدت دلوقتي. legacy: حساب قديم كلمته نفس رقم التليفون. غير كده (كلمة اتبعتت قبل كده) مانكتبش كلمة.
-  function inviteText(c, p, mustChange, temp, legacy) {
-    var tpl = ls.getItem(INV_KEY) || INV_DEF;
-    var link = new URL("portal.html", location.href).href + "?p=" + p;
-    var pw = mustChange === false ? "" : temp ? "كلمة المرور المؤقتة: " + temp + " (هتطلب منك تغييرها أول دخول)." : legacy ? "كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول)." : "";
-    return tpl.replace(/\{الاسم\}/g, c.name || "").replace(/\{الرابط\}/g, link).replace(/\{الرقم\}/g, p).replace(/\{كلمة_المرور\}/g, pw).trim();
+  function inviteText(c, p, link, temp) {
+    var url = new URL("portal.html", location.href).href + "?p=" + p;
+    return window.WFPortalInvite.inviteMessage({ tpl: ls.getItem(INV_KEY) || invDef(), name: c.name, url: url, phone: p, wlName: window.WL ? WL.name() : "", link: link, temp: temp || "" });
   }
   function invModal(html) {
     var m = document.getElementById("wfInviteModal");
@@ -1314,7 +1312,7 @@
       return withTimeout(db.collection("portalLinks").doc(oldUid).set({ customerId: "_reset", phone: p, disabled: true, replacedBy: newUid, resetAt: SV })).catch(function () {});
     }).then(function () {
       try { sa.signOut(); } catch (e) {}
-      return { uid: newUid, mustChange: true, created: true, temp: temp };
+      return { uid: newUid, mustChange: true, created: true, temp: temp, pwKind: "random" };
     }).catch(function (e) {
       try { sa.signOut(); } catch (x) {}
       // فشل قبل تحويل الفهرس: امسح الحساب الجديد اللي اتفتح عشان مايفضلش حساب يتيم
@@ -1324,9 +1322,9 @@
   }
   function resolveInvite(c, p) {
     return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
-      if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp }; });
+      if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp, pwKind: "random" }; });
       var uid = d.data().uid;
-      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false, legacy: !l.data().pwKind } : null; };
+      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false, legacy: !l.data().pwKind, pwKind: l.data().pwKind || "" } : null; };
       return withTimeout(db.collection("portalLinks").doc(uid).get()).then(function (l) {
         var r = linkOk(l); if (r) return r;
         // فيه حساب بنفس الرقم اتسجّل بنفسه (مش مربوط بسجلك): ادمج الأول بعد ما نسحب آخر بيانات
@@ -1358,7 +1356,7 @@
     return resolveInvite(c, p).then(function (r) {
       var all = window.arr(window.K.c), cc = all.find(function (x) { return x.id === cid; });
       if (cc && (cc.portalUid !== r.uid || cc.portal !== true)) { cc.portal = true; cc.portalUid = r.uid; saveLocal(window.K.c, all); }
-      var msg = inviteText(c, p, r.mustChange, r.temp, r.legacy), wa = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
+      var im = inviteText(c, p, { mustChange: r.mustChange, pwKind: r.pwKind || "" }, r.temp), msg = im.text, wa = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
       var m = invModal('<b style="font-size:17px">' + (r.created ? "✅ تم تفعيل حساب البوابة" : "✅ الحساب متفعّل") + '</b><div style="margin:6px 0;color:#444">' + (r.mustChange ? (r.temp || r.legacy ? "العميل هيدخل برقمه وهيغيّر كلمة المرور أول مرة." : "الكلمة المؤقتة اتبعتت للعميل قبل كده ومش بتتعرض تاني. لو ضاعت اضغط «🔑 إعادة تعيين كلمة السر» في صفحة العميل.") : "العميل دخل قبل كده وعنده كلمة مرور.") + '</div><textarea id="wfInvText" readonly rows="8" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfInvWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 افتح واتساب</a><button id="wfInvCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfInvClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
       m.querySelector("#wfInvText").value = msg; m.querySelector("#wfInvWa").href = wa;
       m.querySelector("#wfInvCopy").onclick = function () { var t = m.querySelector("#wfInvText"); t.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).catch(function () { document.execCommand("copy"); }); } catch (e) { document.execCommand("copy"); } this.textContent = "✅ اتنسخت"; };
@@ -1418,7 +1416,7 @@
       if (cc) { cc.portal = true; cc.portalUid = newUid; saveLocal(window.K.c, all); }
       if (typeof window.auditLog === "function") try { window.auditLog("إعادة تعيين كلمة سر بوابة", "عميل", cid, c.name || ""); } catch (e) {}
       var link = new URL("portal.html", location.href).href + "?p=" + p;
-      var msg = "أهلاً " + (c.name || "") + " 👋\nتم إعادة تعيين كلمة مرورك في بوابة " + (window.WL ? WL.name() : "الورشة الفنية") + ".\n" + link + "\nالدخول برقم تليفونك: " + p + "\nكلمة المرور المؤقتة: " + temp + "\n(هتطلب منك تغييرها أول دخول)";
+      var msg = window.WFPortalInvite.resetMessage({ name: c.name, url: link, phone: p, temp: temp, wlName: window.WL ? WL.name() : "" });
       var m = invModal('<b style="font-size:17px">✅ اتعمل إعادة تعيين</b><div style="margin:6px 0;color:#444">كلمة المرور المؤقتة للعميل:</div><div id="wfRsPw" dir="ltr" style="font:700 26px/1.4 monospace;text-align:center;background:#f3f6ff;border:1px dashed #0b57d0;border-radius:10px;padding:8px;letter-spacing:2px;user-select:all">' + temp + '</div><div style="margin:6px 0;color:#a15c00;font-size:13px">الكلمة دي بتظهر مرة واحدة هنا — ابعتها للعميل دلوقتي. (لو ضاعت اعمل إعادة تعيين تاني.)</div><textarea id="wfRsText" readonly rows="6" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #bbb;border-radius:8px;font:14px/1.5 sans-serif"></textarea><div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><a id="wfRsWa" target="_blank" rel="noopener" style="flex:1;text-align:center;background:#25d366;color:#fff;padding:10px;border-radius:10px;text-decoration:none;font-weight:700">📲 ابعت واتساب</a><button id="wfRsCopy" type="button" style="flex:1;padding:10px;border-radius:10px;border:1px solid #999;background:#f3f3f3;color:#111">📋 نسخ الرسالة</button><button id="wfRsClose" type="button" style="padding:10px;border-radius:10px;border:1px solid #999;background:#fff;color:#111">إغلاق</button></div>');
       m.querySelector("#wfRsText").value = msg; m.querySelector("#wfRsWa").href = "https://wa.me/2" + p + "?text=" + encodeURIComponent(msg);
       m.querySelector("#wfRsCopy").onclick = function () { var t = m.querySelector("#wfRsText"); t.select(); try { (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).catch(function () { document.execCommand("copy"); }); } catch (e) { document.execCommand("copy"); } this.textContent = "✅ اتنسخت"; };

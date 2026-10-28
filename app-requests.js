@@ -632,7 +632,7 @@ function fillWaTemplate(text,r){
   let map={
     "اسم_العميل": customerName(r.customerId),
     "رابط_البوابة": new URL("portal.html",location.href).href,
-    "رقم_الدخول": String(cust.phone||"").replace(/\D/g,""),
+    "رقم_الدخول": window.WFPortalInvite?WFPortalInvite.loginPhone(cust.phone):String(cust.phone||"").replace(/\D/g,""),
     "اسم_الجهاز": deviceName(r.deviceId),
     "رقم_الأمر": r.no||"",
     "الحالة": r.paid?"مدفوع بالكامل":(r.status||""),

@@ -7,7 +7,7 @@
 <script src="./vendor/firebase-firestore-compat.js" defer></script>
 <script src="image-store.js" defer></script>
 <script src="firebase-config.js" defer></script><script src="app-check.js" defer></script>
-<script src="firebase-sync.js" defer></script>
+<script src="portal-invite-core.js" defer></script><script src="firebase-sync.js" defer></script>
 <script src="event-delegation.js" defer></script><script src="theme.js" defer></script>
 <script src="portal-ticker.js" defer></script>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -328,20 +328,21 @@ function guDel(id){if(!confirm("حذف الطلب نهائيًا؟"))return;db.c
 
 /* ---- الدعوات والحسابات ---- */
 var LK={},SEC=null,busy=false,TPL_KEY="wf_portal_invite_tpl";
-var TPL_DEF="أهلاً {الاسم} 👋\nتقدر تتابع أجهزتك وأوامر الصيانة وتسأل الورشة من بوابة "+(window.WL?WL.name():"الورشة الفنية")+":\n{الرابط}\n\nالدخول برقم تليفونك: {الرقم}\n{كلمة_المرور}";
-function normPhone(s){var d=String(s||"").replace(/[٠-٩]/g,function(x){return x.charCodeAt(0)-1632}).replace(/[۰-۹]/g,function(x){return x.charCodeAt(0)-1776}).replace(/\D/g,"");if(d.indexOf("0020")===0)d=d.slice(4);if(d.length===12&&d.indexOf("20")===0)d="0"+d.slice(2);if(d.length===10&&d[0]==="1")d="0"+d;return/^01[0125]\d{8}$/.test(d)?d:""}
+function tplDef(){return WFPortalInvite.defaultTpl(window.WL?WL.name():"")}
+function normPhone(s){return WFPortalInvite.normPhone(s)}
 function portalUrl(){return new URL("portal.html",location.href).href}
-function tpl(){try{return WFStorage.getItem(TPL_KEY)||TPL_DEF}catch(e){return TPL_DEF}}
+function tpl(){try{return WFStorage.getItem(TPL_KEY)||tplDef()}catch(e){return tplDef()}}
 var TEMP={};function tempPw(){var x=new Uint32Array(1);(window.crypto||window.msCrypto).getRandomValues(x);return String(10000000+(x[0]%90000000))}
-function inviteText(c){var p=normPhone(c.phone),l=LK[c.id],pw=(l&&l.mustChange===false)?"":TEMP[c.id]?"كلمة المرور المؤقتة: "+TEMP[c.id]+" (هتطلب منك تغييرها أول دخول).":(l&&l.pwKind)?"":"كلمة المرور المبدئية: نفس رقم تليفونك (هتطلب منك تغييرها أول دخول).";return $("acTpl").value.replace(/\{الاسم\}/g,c.name||"").replace(/\{الرابط\}/g,portalUrl()).replace(/\{الرقم\}/g,p).replace(/\{كلمة_المرور\}/g,pw).trim()}
+function inviteMsg(c){var l=LK[c.id];return WFPortalInvite.inviteMessage({tpl:$("acTpl").value,name:c.name,url:portalUrl(),phone:c.phone,wlName:window.WL?WL.name():"",link:l||null,temp:TEMP[c.id]||""})}
+function inviteText(c){return inviteMsg(c).text}
 function waHref(c){return"https://wa.me/2"+normPhone(c.phone)+"?text="+encodeURIComponent(inviteText(c))}
 function syncFlags(){var all=window.arr(window.K.c),ch=false;all.forEach(function(c){var l=c&&LK[c.id];if(l&&(c.portal!==true||c.portalUid!==l.uid)){c.portal=true;c.portalUid=l.uid;ch=true}});if(ch)window.put(window.K.c,all)}
-function acStatus(c,dupe){var l=LK[c.id];if(l)return l.mustChange===false?["ok","✅ دخل وغيّر كلمته"]:["wait","🟡 الحساب جاهز — لسه ما دخلش"];if(c.portal===true)return["ok","✅ سجّل بنفسه"];var p=normPhone(c.phone);if(!p)return["bad","⚠️ رقم التليفون ناقص/غلط"];if(dupe[p]>1)return["bad","⚠️ الرقم متكرر عند أكتر من عميل"];return["none","⚪ ملوش حساب"]}
+function acStatus(c,dupe){var l=LK[c.id];if(l){var st=WFPortalInvite.credState(l,TEMP[c.id]);return st==="active"?["ok","✅ دخل وغيّر كلمته"]:st==="temp"?["wait","🟡 الحساب جاهز — لسه ما دخلش (الكلمة المؤقتة في رسالة الدعوة)"]:st==="temp-lost"?["wait","🟡 الحساب جاهز — الكلمة المؤقتة اتبعتت قبل كده (لو ضاعت اعمل إعادة تعيين)"]:["wait","🟡 حساب قديم — كلمته المبدئية نفس رقم التليفون ولسه ما غيّرهاش"]}if(c.portal===true)return["ok","✅ سجّل بنفسه"];var p=normPhone(c.phone);if(!p)return["bad","⚠️ رقم التليفون ناقص/غلط"];if(dupe[p]>1)return["bad","⚠️ الرقم متكرر عند أكتر من عميل"];return["none","⚪ ملوش حساب"]}
 function acRows(){var cs=window.arr(window.K.c).filter(function(c){return c&&c.id}),dupe={};cs.forEach(function(c){var p=normPhone(c.phone);if(p)dupe[p]=(dupe[p]||0)+1});return cs.map(function(c){return{c:c,s:acStatus(c,dupe)}})}
 function rAc(){if(!window.K)return;var rows=acRows(),n={ok:0,wait:0,bad:0,none:0},q=($("acs").value||"").trim();rows.forEach(function(r){n[r.s[0]]++});
 $("acSum").innerHTML='<span>✅ '+n.ok+' عندهم حساب</span><span>🟡 '+n.wait+' جاهزين</span><span>⚪ '+n.none+' بدون حساب</span><span>⚠️ '+n.bad+' محتاجين تصحيح رقم</span>';
 var ord={none:0,bad:1,wait:2,ok:3},l=rows.filter(function(r){return!q||(window.wfMatch?window.wfMatch([r.c.name,r.c.phone],q):[r.c.name,r.c.phone].join(" ").indexOf(q)>-1)}).sort(function(a,b){return ord[a.s[0]]-ord[b.s[0]]});
-$("acl").innerHTML=l.slice(0,80).map(function(r){var c=r.c,k=r.s[0],has=k==="wait"||k==="ok";return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">'+esc(r.s[1])+'</span></div><div class="hint">📞 '+esc(c.phone||"—")+'</div><div class="pa-actions">'+(k==="none"?'<button type="button" data-act="actC" data-id="'+esc(c.id)+'">⚡ تفعيل الحساب</button>':"")+(has&&normPhone(c.phone)?'<a class="btn secondary" target="_blank" rel="noopener" href="'+esc(waHref(c))+'">📲 ابعت دعوة واتساب</a>':"")+(has&&normPhone(c.phone)?'<button type="button" class="secondary" data-act="actReset" data-id="'+esc(c.id)+'">🔑 إعادة تعيين كلمة السر</button>':"")+'</div></div>'}).join("")+(l.length>80?'<p class="hint">معروض أول 80 — استخدم البحث.</p>':"")||'<p class="hint">مفيش عملاء.</p>'}
+$("acl").innerHTML=l.slice(0,80).map(function(r){var c=r.c,k=r.s[0],has=k==="wait"||k==="ok";return'<div class="pa-item"><div class="pa-row"><b>'+esc(c.name)+'</b><span class="hint">'+esc(r.s[1])+'</span></div><div class="hint">📞 '+esc(c.phone||"—")+'</div><div class="pa-actions">'+(k==="none"?'<button type="button" data-act="actC" data-id="'+esc(c.id)+'">⚡ تفعيل الحساب</button>':"")+(has&&normPhone(c.phone)?'<a class="btn secondary" target="_blank" rel="noopener" href="'+esc(waHref(c))+'">'+(inviteMsg(c).needsReset?'📲 ابعت تذكير بالدخول':'📲 ابعت دعوة واتساب')+'</a>':"")+(has&&normPhone(c.phone)?'<button type="button" class="secondary" data-act="actReset" data-id="'+esc(c.id)+'">🔑 إعادة تعيين كلمة السر</button>':"")+'</div></div>'}).join("")+(l.length>80?'<p class="hint">معروض أول 80 — استخدم البحث.</p>':"")||'<p class="hint">مفيش عملاء.</p>'}
 function secApp(){if(!SEC)SEC=firebase.apps.filter(function(a){return a.name==="sec"})[0]||firebase.initializeApp(firebase.app().options,"sec");try{if(window.WFAppCheck)WFAppCheck.attach(SEC)}catch(e){}return SEC}
 function actOne(c){var p=normPhone(c.phone);if(!p)return Promise.resolve("bad");var em=p+"@phone.elwarsha.app",sa=secApp().auth();
 return db.collection("phoneIndex").doc(p).get().then(function(d){if(d.exists)return"dup";
@@ -349,7 +350,7 @@ var tp=tempPw();return sa.createUserWithEmailAndPassword(em,tp).then(function(cr
 function actList(list){if(busy)return;if(!list.length)return alert("مفيش عملاء محتاجين تفعيل.");if(!confirm("هتتفعّل حسابات "+list.length+" عميل: الدخول برقم التليفون وكلمة مؤقتة عشوائية لكل عميل (بتظهر في رسالة الواتساب لحد ما تقفل الصفحة)، ويتطلب تغييرها أول دخول. تكمّل؟"))return;busy=true;var ok=0,fail={},i=0;
 function next(){if(i>=list.length){busy=false;var f=Object.keys(fail).map(function(k){return k+": "+fail[k]}).join(" | ");$("acMsg").textContent="✅ اتفعّل "+ok+(f?" — مشاكل: "+f:"");rAc();return}
 $("acMsg").textContent="جاري التفعيل… "+i+"/"+list.length;var c=list[i++];actOne(c).then(function(r){if(r==="ok")ok++;else fail[r]=(fail[r]||0)+1;if(r==="auth/too-many-requests"||r==="auth/operation-not-allowed")i=list.length;setTimeout(next,350)})}next()}
-function addWaTpl(){var s=window.settings();s.waTemplates=s.waTemplates||[];if(s.waTemplates.some(function(t){return t.id==="portal-link"}))return alert("القالب موجود بالفعل في رسائل أمر الشغل.");s.waTemplates.push({id:"portal-link",name:"🌐 رابط متابعة الأمر",text:"مرحباً {اسم_العميل}، أمرك رقم {رقم_الأمر} ({اسم_الجهاز}) حالته: {الحالة}.\nتقدر تتابعه من بوابة الورشة:\n{رابط_البوابة}\nالدخول برقم تليفونك: {رقم_الدخول}",enabled:true});if(!window.put(window.K.s,s))return;alert("✅ اتضاف — هيظهر في أزرار رسائل واتساب جوه أمر الشغل.")}
+function addWaTpl(){var s=window.settings();s.waTemplates=s.waTemplates||[];if(s.waTemplates.some(function(t){return t.id==="portal-link"}))return alert("القالب موجود بالفعل في رسائل أمر الشغل.");s.waTemplates.push({id:"portal-link",name:"🌐 رابط متابعة الأمر",text:WFPortalInvite.WORK_ORDER_TPL,enabled:true});if(!window.put(window.K.s,s))return;alert("✅ اتضاف — هيظهر في أزرار رسائل واتساب جوه أمر الشغل.")}
 ACT.actC=function(b){var c=window.arr(window.K.c).find(function(x){return x.id===b.dataset.id});if(c)actList([c])};
 ACT.actReset=function(b){if(typeof window.wfResetCustomerPassword==="function")window.wfResetCustomerPassword(b.dataset.id);else alert("محتاج تحديث الصفحة.")};
 ACT.actAll=function(){actList(acRows().filter(function(r){return r.s[0]==="none"}).map(function(r){return r.c}))};
@@ -417,7 +418,7 @@ function rAll(){rTabs();rStats();rOv();rCl();rRq();rGu();rPo();rQs();rCp();rSg()
 function ready(){if(typeof firebase==="undefined"||!firebase.apps.length||!window.K||typeof window.settings!=="function"||!window.PortalTicker||typeof window.put!=="function"){return setTimeout(ready,300)}db=firebase.firestore();PTK=window.PortalTicker;SV=firebase.firestore.FieldValue.serverTimestamp();
 if(window.WFNavState)WFNavState.keep({cq:"cs",of:"of",qf:"qf",aq:"acs"});go((window.WFNavState&&WFNavState.getParam("tab"))||"ov");rAll();window.addEventListener("popstate",function(){if(window.WFBack&&WFBack.owns&&WFBack.owns())return;go((window.WFNavState&&WFNavState.getParam("tab"))||"ov","pop");rAll()});setTimeout(rAll,2500);window.addEventListener("focus",rAll);
 firebase.auth().onAuthStateChanged(function(u){if(!u)return;
-db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]={uid:d.id,mustChange:x.mustChange!==false}});syncFlags();rAll()});
+db.collection("portalLinks").onSnapshot(function(s){LK={};s.docs.forEach(function(d){var x=d.data();LK[x.customerId]=WFPortalInvite.linkInfo(d.id,x)});syncFlags();rAll()});
 db.collection("portalSuggestions").where("status","==","pending").onSnapshot(function(s){SG=docs(s);rTabs();rStats();rSg()});
 db.collection("portalPosts").onSnapshot(function(s){PT=docs(s).filter(function(p){return p.id!=="wf-ticker"}).sort(postCmp);rTabs();rStats();rOv();rPt()});
 db.collection("portalComplaints").onSnapshot(function(s){CP=docs(s);rTabs();rStats();rCp()});

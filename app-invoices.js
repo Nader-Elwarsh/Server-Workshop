@@ -210,7 +210,7 @@ function linkPartInvoice(partId, invId) {
 function unlinkPartInvoice(partId, invId) {
   const list = arr(K.inv), inv = list.find(x => x.id === invId); if (!inv) return;
   const when = `${new Date(inv.at).toLocaleDateString("ar-EG")}${inv.note ? " — " + inv.note : ""}`;
-  if (!confirm(`هل أنت متأكدة من إلغاء ربط هذه الفاتورة (${when}) بهذا الصنف؟`)) return;
+  if (!confirm(`هل تريد إلغاء ربط هذه الفاتورة (${when}) بهذا الصنف؟`)) return;
   inv.partIds = (inv.partIds || []).filter(pid => pid !== partId);
   if (!saveJSONSafe(K.inv, list)) return;
   if (typeof partProfile === "function") partProfile();
