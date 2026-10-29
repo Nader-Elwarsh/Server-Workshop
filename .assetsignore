@@ -26,3 +26,5 @@ staging-setup-tests.js
 .git/**
 .wrangler
 .wrangler/**
+.env
+.env.*
