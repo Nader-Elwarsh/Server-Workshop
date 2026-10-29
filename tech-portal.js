@@ -59,6 +59,7 @@
       try { window.scrollTo(0, 0); } catch (e) {}
     }
     function A(k) { try { return window.arr(k) || []; } catch (e) { return []; } }
+    function newOpId() { var b = new Uint8Array(12); try { window.crypto.getRandomValues(b); } catch (e) { for (var i = 0; i < b.length; i++) b[i] = Math.floor(Math.random() * 256); } return "op_" + Array.prototype.map.call(b, function (x) { return ("0" + x.toString(16)).slice(-2); }).join(""); }
     function money(n) { return (Math.round((+n || 0) * 100) / 100).toLocaleString("en-US", { maximumFractionDigits: 2 }) + " ج"; }
     function uid() { try { return window.firebase.auth().currentUser.uid; } catch (e) { return ""; } }
     function me() { var p = window.WFPerm.profile && window.WFPerm.profile(); return (p && p.name) || ""; }
@@ -337,19 +338,26 @@
         try { window.WFStorage.setItem(CAT_KEY, JSON.stringify({ uid: uid(), at: Date.now(), parts: state.catalog })); } catch (e) {}
       }, function (e) { state.catalogErr = "تعذّر تحميل المخزن (" + errText(e, "") + ")"; });
     }
+    var stockOps = {}; // 🔁 عملية مخزن لسه ماتأكدتش: نفس opId في إعادة المحاولة، وتجاهل الضغطة التانية وهي شغالة
     function stockCall(name, data, r, okMsg) {
       if (!online()) return say("الإضافة من المخزن محتاجة نت (عشان تتخصم من المخزن فعلًا).", true);
+      var opKey = [name, r.id, data.partId, data.qty || ""].join("|"), op = stockOps[opKey] = stockOps[opKey] || { id: newOpId(), busy: false };
+      if (op.busy) return Promise.resolve();
+      op.busy = true; data.opId = op.id;
       if (state.flushWork) state.flushWork();
       r = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
       data.fields = workFields(r);
       say("⏳ جارٍ التنفيذ…");
       return window.WFPerm.call(name, data).then(function (res) {
+        delete stockOps[opKey];
         if (state.catalog && res) state.catalog.forEach(function (x) { if (x.id === data.partId) x.qty = res.left; });
         return window.updateRequestRecordAsync(r.id, function (_, x) { ["parts", "partsTotal", "partsCost", "total", "remain"].forEach(function (k) { if (res && res[k] !== undefined) x[k] = res[k]; }); return true; })
           .then(function () { say(okMsg); draw(); });
       }, function (e) {
+        op.busy = false;
         var code = (e && (e.message || e.code)) || "";
-        var MSG = { not_enough: "الكمية مش متاحة في المخزن دلوقتي.", not_your_order: "الأمر مش متعيّن ليك.", already_closed: "الأمر اتقفل.", no_edit_permission: "مالكش صلاحية تعديل الأوامر.", not_on_order: "القطعة مش على الأمر." };
+        if (code === "op_conflict" || code === "not_enough" || code === "not_on_order" || code === "already_closed") delete stockOps[opKey]; // رفض نهائي: الضغطة الجاية عملية جديدة
+        var MSG = { op_conflict: "العملية دي اتسجلت قبل كده — حدّث الصفحة.", not_enough: "الكمية مش متاحة في المخزن دلوقتي.", not_your_order: "الأمر مش متعيّن ليك.", already_closed: "الأمر اتقفل.", no_edit_permission: "مالكش صلاحية تعديل الأوامر.", not_on_order: "القطعة مش على الأمر." };
         say(MSG[code] || errText(e, "ما اتنفذش"), true); loadCatalog().then(draw);
       });
     }
@@ -595,7 +603,10 @@
         var dw = el("select", "tp-input"); walletChoices().forEach(function (w) { var o = el("option", "", w === myWallet() ? "💼 " + w + " (عهدتك)" : w); o.value = w; dw.appendChild(o); });
         var dn = el("input", "tp-input"); dn.placeholder = "ملاحظة (اختياري) — مثلًا: عربون قطعة الغيار"; dn.maxLength = 200;
         df.appendChild(da); df.appendChild(dw); df.appendChild(dn);
+        // 🔁 معرّف ثابت لنفس العملية (نفس المبلغ والمحفظة): لو النت قطع بعد ما السيرفر سجّل، إعادة المحاولة مابتسجلش الدفعة مرتين
+        var depOp = null, depBusy = false;
         df.appendChild(btn("✅ تسجيل العربون", "tp-btn tp-mt", function () {
+          if (depBusy) return;
           var v = Math.round(+da.value * 100) / 100;
           if (!isFinite(v) || v <= 0) return say("اكتب المبلغ.", true);
           if (!online()) return say("تسجيل العربون محتاج نت (عشان يتسجل في عهدتك على السيرفر).", true);
@@ -604,11 +615,16 @@
           say("⏳ جارٍ التسجيل…");
           if (state.flushWork) state.flushWork();
           var curR = A(window.K.r).filter(function (x) { return x.id === r.id; })[0] || r;
-          window.WFPerm.call("techCollectDeposit", { orderId: r.id, amount: v, wallet: dw.value, note: dn.value.trim(), fields: workFields(curR) }).then(function (res) {
+          var opKey = r.id + "|" + v + "|" + dw.value;
+          if (!depOp || depOp.key !== opKey) depOp = { key: opKey, id: newOpId() };
+          depBusy = true;
+          window.WFPerm.call("techCollectDeposit", { orderId: r.id, amount: v, wallet: dw.value, note: dn.value.trim(), fields: workFields(curR), opId: depOp.id }).then(function (res) {
+            depOp = null; depBusy = false;
             return window.updateRequestRecordAsync(r.id, function (_, x) { x.deposit = res.deposit; x.depositExtra = res.depositExtra; x.remain = res.remain; return true; })
               .then(function () { say("✅ اتسجل عربون " + money(v) + " — الباقي على العميل " + money(res.remain) + "."); loadAccount(); draw(); });
           }, function (e) {
-            var code = (e && (e.message || e.code)) || "", MSG = { bad_wallet: "المحفظة دي مش مسموحة.", already_closed: "الأمر اتقفل.", not_your_order: "الأمر مش متعيّن ليك.", no_close_permission: "مالكش صلاحية التحصيل.", wallet_required: "مفيش محفظة عهدة متحددة لحسابك." };
+            depBusy = false; // depOp بيفضل زي ما هو: إعادة المحاولة بنفس المعرّف
+            var code = (e && (e.message || e.code)) || "", MSG = { op_conflict: "العملية دي اتسجلت قبل كده بمبلغ مختلف — حدّث الصفحة وراجع العربون.", bad_wallet: "المحفظة دي مش مسموحة.", already_closed: "الأمر اتقفل.", not_your_order: "الأمر مش متعيّن ليك.", no_close_permission: "مالكش صلاحية التحصيل.", wallet_required: "مفيش محفظة عهدة متحددة لحسابك." };
             say(MSG[code] || errText(e, "ما اتسجلش"), true);
           });
         }));

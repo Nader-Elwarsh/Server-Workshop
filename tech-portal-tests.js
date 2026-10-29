@@ -205,6 +205,25 @@ function makeEnv({ rootId, search = '', data, perms = () => true, fs: fsData = {
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: accImpl }); run(e); await flush();
   await btnOf(e.root, 'قفل الأمر').onclick(); await flush(); await flush();
   assert(e.msg.textContent.includes('techCloseOrder'), 'رسالة إن الدالة مش متنشرة');
+  // 🔁 (2026-10-30) عربون من الفني: نت ضعيف (السيرفر سجّل والرد ما وصلش) → إعادة المحاولة بنفس opId، وضغطتين ورا بعض = طلب واحد
+  {
+    const dd = mkData(); let n = 0, release;
+    const depImpl = Object.assign({}, accImpl, { techCollectDeposit: (d) => { n++; if (n === 1) { const er = new Error('deadline-exceeded'); er.code = 'deadline-exceeded'; return Promise.reject(er); } return new Promise((res) => { release = () => res({ deposit: 50 + d.amount, depositExtra: d.amount, remain: 1, total: 800 }); }); } });
+    e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data: dd, callImpl: depImpl }); e.win.confirm = () => true; run(e); await flush();
+    const det = all(e.root).find((x) => x.tagName === 'DETAILS' && x.textContent.includes('استلام عربون'));
+    const amt = all(det).find((x) => x.tagName === 'INPUT' && x.type === 'number'); amt.value = '120';
+    const go = btnOf(det, 'تسجيل العربون');
+    await go.onclick(); await flush();
+    await go.onclick(); go.onclick(); await flush(); // إعادة محاولة + ضغطة زيادة وهي لسه شغالة
+    const dc = e.calls.filter((c) => c[0] === 'techCollectDeposit');
+    assert.strictEqual(dc.length, 2, 'الضغطة اللي وهي شغالة اتجاهلت');
+    assert(/^op_[0-9a-f]{24}$/.test(dc[0][1].opId), 'opId: ' + dc[0][1].opId);
+    assert.strictEqual(dc[1][1].opId, dc[0][1].opId, 'إعادة المحاولة بنفس المعرّف');
+    release(); await flush(); await flush();
+    amt.value = '30'; await go.onclick(); await flush();
+    const dc2 = e.calls.filter((c) => c[0] === 'techCollectDeposit');
+    assert.notStrictEqual(dc2[2][1].opId, dc[0][1].opId, 'عملية جديدة = معرّف جديد');
+  }
   // أوفلاين: مايبعتش
   e = makeEnv({ rootId: 'techRoot', search: '?id=r1', data, callImpl: closeImpl, online: false }); run(e); await flush();
   await btnOf(e.root, 'قفل الأمر').onclick(); await flush();

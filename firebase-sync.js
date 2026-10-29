@@ -409,6 +409,27 @@
     lastSyncError = msg; try { origSet.call(ls, "wf_sync_last_error", msg); } catch (e) {}
     try { window.alert(msg); } catch (e) {}
   }
+  /* 🔐 قراءة مجموعة الإعدادات: الموظف اللي ماعندوش صلاحية المصروفات/أجور الفنيين القواعد بترفض له قراءة
+     المجموعة كلها مرة واحدة (القواعد مش فلتر). ساعتها بنقرا المستندات بالاسم: الإعدادات العامة + كل قايمة لوحدها،
+     واللي مالوش صلاحية عليها بتتساب (من غير ما المزامنة تقف). نفس شكل نتيجة get() عشان applySettingsSnap ماتتغيرش. */
+  var NOX = {};
+  function readSettingsSnap() {
+    return db.collection("settings").get().then(function (s) { NOX = {}; return s; }, function (e) {
+      if (!isDenied(e)) throw e;
+      var docs = [], col = db.collection("settings");
+      function keep(d) { if (d && d.exists) docs.push(d); return d; }
+      function soft(p) { return p.then(keep, function (er) { if (isDenied(er)) return null; throw er; }); }
+      return Promise.all([soft(col.doc("global").get()), soft(col.doc("wf_meta").get())].concat(EXTRA.map(function (k) {
+        var id = "wfkv_" + k;
+        return col.doc(id).get().then(function (m) {
+          delete NOX[k]; if (!m.exists) return null; keep(m);
+          var n = +((m.data() || {}).n) || 0;
+          return Promise.all(Array.from({ length: n }, function (_, i) { return soft(col.doc(id + "~" + i).get()); }));
+        }, function (er) { if (isDenied(er)) { NOX[k] = 1; return null; } throw er; });
+      }))).then(function () { return { docs: docs, size: docs.length, empty: !docs.length, forEach: function (fn) { docs.forEach(fn); } }; });
+    });
+  }
+  window.wfSettingsNoAccess = function () { return Object.keys(NOX); };
   function tombRef(k, id) { return db.collection("syncDeletes").doc(COLS[k] + "__" + id); }
   /* شاهد الحذف بقى فيه نسخة من السجل المحذوف (30 يوم) عشان أي مسح بالغلط يترجع من «المحذوف من السحابة» */
   function tombData(k, id, rec) {
@@ -477,6 +498,7 @@
   function push(k, interactive) {
     if (SCOPED && k !== "wf_r") { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // المحدود النطاق: مفيش رفع غير أوامره
     if (COLS[k] && NOACC[k]) { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // قسم مالوش صلاحية عليه أصلًا
+    if (NOX[k]) { lastRaw[k] = ls.getItem(k); return Promise.resolve(true); } // قايمة إعدادات مالوش صلاحية يقراها (مصروفات/أجور): مفيش رفع فوقها
     if (COLS[k] && !pushing[k]) { try { captureBases(k); } catch (e) {} } // أصل السجلات المتعدّلة بيتحفظ حتى لو أوفلاين (عشان الدمج بعدين)
     if (!online() || pushing[k]) return Promise.resolve(false);
     pushing[k] = true;
@@ -700,7 +722,7 @@
     return JSON.stringify(out);
   }
   window.wfMergeArrRaw = mergeArrRaw;
-  function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
+  function pushAll(interactive) { if (!ready || !online()) return Promise.resolve(); return Promise.all(ALL.filter(function (k) { return !NOX[k] && ls.getItem(k) !== lastRaw[k]; }).map(function (k) { return push(k, interactive); })).then(flushImages); }
 
   /* ---------- رفع الصور/الصوت المعلّقة (اتعملت أوفلاين) ---------- */
   function flushImages() {
@@ -965,7 +987,7 @@
     if (hydrating) return Promise.resolve(false); hydrating = true;
     var keys = Object.keys(COLS), first = ls.getItem(HYD) !== CURRENT_UID;
     keys.forEach(function (k) { try { captureBases(k); } catch (e) {} }); // قبل ما نسحب: أصل أي تعديل محلي عشان الدمج
-    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get().then(function (r) { delete NOACC[k]; return r; }, function (e) { if (isDenied(e)) { NOACC[k] = 1; return null; } throw e; }); }).concat([db.collection("settings").get()]))).then(function (res) {
+    return withTimeout(Promise.all(keys.map(function (k) { return db.collection(COLS[k]).get().then(function (r) { delete NOACC[k]; return r; }, function (e) { if (isDenied(e)) { NOACC[k] = 1; return null; } throw e; }); }).concat([readSettingsSnap()]))).then(function (res) {
       var changedAny = false, maxTs = 0; changedKeys = {};
       var sSnap = res[keys.length], st = applySettingsSnap(sSnap, first);
       var cloudEmpty = !st.g && !Object.keys(st.ex).length && keys.every(function (k, i) { return !res[i] || !res[i].docs.length; });
@@ -1046,7 +1068,7 @@
     Object.keys(COLS).forEach(function (k) { try { captureBases(k); } catch (e) {} });
     var keys = Object.keys(COLS), since = firebase.firestore.Timestamp.fromMillis(Math.max(0, cur - DELTA_OVERLAP));
     var qs = keys.map(function (k) { return NOACC[k] ? Promise.resolve(null) : db.collection(COLS[k]).where("_ts", ">", since).get().catch(function (e) { if (isDenied(e)) { NOACC[k] = 1; return null; } throw e; }); });
-    qs.push(db.collection("syncDeletes").where("_ts", ">", since).get(), skipS ? Promise.resolve(null) : db.collection("settings").get());
+    qs.push(db.collection("syncDeletes").where("_ts", ">", since).get(), skipS ? Promise.resolve(null) : readSettingsSnap());
     return withTimeout(Promise.all(qs)).then(function (res) {
       var changedAny = false, maxTs = cur, found = 0; changedKeys = {};
       var tombs = {}; res[keys.length].docs.forEach(function (d) { var x = d.data() || {}, t = tsMs(d); if (t > cur) found++; if (t > maxTs) maxTs = t; var k = keys.filter(function (kk) { return COLS[kk] === x.c; })[0]; if (k && x.id) (tombs[k] = tombs[k] || {})[x.id] = t; });
@@ -1182,8 +1204,8 @@
     var ea = keep.extraAddress || {};
     if (!(ea.center || ea.village || ea.street || ea.address) && dup.extraAddress) keep.extraAddress = dup.extraAddress;
     if (!keep.portalUid) {
-      if (isSelfReg(dup)) { keep.portal = true; keep.portalUid = dupId; }
-      else if (dup.portalUid) { keep.portal = true; keep.portalUid = dup.portalUid; }
+      // 🔐 حساب سجّل بنفسه = رقم مش متأكد إنه بتاع صاحبه، فمايتعتبرش حساب بوابة للسجل اللي فضل لحد ما الدعوة تتبعت
+      if (!isSelfReg(dup) && dup.portalUid) { keep.portal = true; keep.portalUid = dup.portalUid; }
     }
     keep.updatedAt = new Date().toISOString();
     CUST_REF_KEYS.forEach(function (rk) {
@@ -1208,7 +1230,11 @@
     if (cloud) {
       chain = chain.then(function () {
         if (!isSelfReg(dup)) return;
-        return withTimeout(db.collection("portalLinks").doc(dupId).set({ customerId: keepId, phone: nph(dup.phone), mustChange: false, mergedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }));
+        /* 🔐 حساب البوابة اللي سجّل بنفسه ممكن يكون أي حد كتب رقم العميل (التسجيل مابيتحققش من ملكية الرقم).
+           قبل كده الدمج (حتى التلقائي في الخلفية) كان بيربطه بسجل العميل الحقيقي فيشوف عنوانه وأجهزته وأوامره.
+           دلوقتي الربط بيتسجّل «في انتظار التحقق» ومعطّل؛ والوصول بيتفتح بس بدعوة الورشة على واتساب نفس الرقم
+           (resolveInvite بيعمل حساب جديد بكلمة مؤقتة توصل لصاحب الرقم الحقيقي). */
+        return withTimeout(db.collection("portalLinks").doc(dupId).set({ customerId: keepId, phone: nph(dup.phone), mustChange: false, disabled: true, pendingVerify: true, mergedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }));
       }).then(function () {
         return withTimeout(db.collection("portalLinks").where("customerId", "==", dupId).get()).then(function (sn) {
           return Promise.all(sn.docs.map(function (d) { return d.ref.update({ customerId: keepId }); }));
@@ -1255,6 +1281,15 @@
     });
   }
   window.wfMergeCustomers = mergeCustomers;
+  /* 🔎 مراجعة لمرة واحدة بعد التحديث: روابط بوابة اتعملت بالدمج القديم (قبل إصلاح 2026-10-30) وبتدّي وصول من غير تحقق من الرقم.
+     من الكونسول: wfPortalLinksToVerify().then(console.table) — وأي حساب منها مش متأكد منه اضغط له «🔑 إعادة تعيين كلمة السر». */
+  window.wfPortalLinksToVerify = function () {
+    return withTimeout(db.collection("portalLinks").get()).then(function (sn) {
+      return sn.docs.map(function (d) { var x = d.data() || {}; return { uid: d.id, customerId: x.customerId, phone: x.phone || "", mergedAt: x.mergedAt && x.mergedAt.toDate ? x.mergedAt.toDate().toISOString() : "" , pw: x.pwKind || "" , pending: x.pendingVerify === true, disabled: x.disabled === true, x: x }; })
+        .filter(function (r) { return r.mergedAt && !r.pw && !r.pending && !r.disabled && !r.x.replacedOrphan; })
+        .map(function (r) { delete r.x; delete r.pending; delete r.disabled; return r; });
+    });
+  };
   window.wfMergePortalDuplicates = mergePortalDuplicates;
   /* ----------  دعوة العميل للبوابة بضغطة واحدة  ----------
      بتفعّل حساب البوابة للعميل (الدخول برقم تليفونه) وتربطه بسجله الحالي، وبعدين
@@ -1324,7 +1359,7 @@
     return withTimeout(db.collection("phoneIndex").doc(p).get()).then(function (d) {
       if (!d.exists) return createPortalAccount(c, p).then(function (a) { return { uid: a.uid, mustChange: true, created: true, temp: a.temp, pwKind: "random" }; });
       var uid = d.data().uid;
-      var linkOk = function (l) { return l.exists && l.data().customerId === c.id ? { uid: uid, mustChange: l.data().mustChange !== false, created: false, legacy: !l.data().pwKind, pwKind: l.data().pwKind || "" } : null; };
+      var linkOk = function (l) { return l.exists && l.data().customerId === c.id && l.data().disabled !== true ? { uid: uid, mustChange: l.data().mustChange !== false, created: false, legacy: !l.data().pwKind, pwKind: l.data().pwKind || "" } : null; };
       return withTimeout(db.collection("portalLinks").doc(uid).get()).then(function (l) {
         var r = linkOk(l); if (r) return r;
         // فيه حساب بنفس الرقم اتسجّل بنفسه (مش مربوط بسجلك): ادمج الأول بعد ما نسحب آخر بيانات
@@ -1334,13 +1369,17 @@
             var r2 = linkOk(l2); if (r2) return r2;
             if (l2.exists) {
               var od = l2.data() || {};
+              // ربط معلّق (من دمج حساب سجّل بنفسه): التحقق = حساب جديد بكلمة مؤقتة تتبعت على واتساب الرقم نفسه
+              if (od.customerId === c.id && (od.pendingVerify === true || od.disabled === true)) return replaceOrphanPortalAccount(c, p, uid, od);
               return linkedCustomerGone(od).then(function (gone) {
                 if (!gone) throw { code: "linked-other" };
                 // الحساب القديم كلمة سره مجهولة للموظف: بنفتح حساب جديد بكلمة مؤقتة عشوائية تتبعت في الدعوة، ونعطّل القديم
                 return replaceOrphanPortalAccount(c, p, uid, od);
               });
             }
-            return withTimeout(db.collection("portalLinks").doc(uid).set({ customerId: c.id, phone: p, mustChange: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() })).then(function () { return { uid: uid, mustChange: false, created: false }; });
+            // 🔐 حساب سجّل بنفسه بالرقم ده ومش مربوط بحاجة: كان بيتربط بسجل العميل على طول (أي حد كتب الرقم ياخد بياناته).
+            // دلوقتي بنعمل حساب جديد بكلمة مؤقتة توصل لصاحب الرقم في الدعوة، والحساب القديم بيتعطّل.
+            return replaceOrphanPortalAccount(c, p, uid, null);
           });
       });
     });

@@ -2,6 +2,14 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs22",
-    "ignore": ["node_modules", ".git", "*.log", "README.md"]
+    "ignore": [
+      "node_modules",
+      ".git",
+      "*.log",
+      "README.md"
+    ],
+    "predeploy": [
+      "node \"$RESOURCE_DIR/check-deploy-config.js\""
+    ]
   }
 }

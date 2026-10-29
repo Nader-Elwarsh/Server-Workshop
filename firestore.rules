@@ -302,7 +302,14 @@ service cloud.firestore {
       allow create, update: if scopedStaff() && doc == 'wf_meta'
         && request.resource.data.keys().hasOnly(['ts', 'dev']);
       // موظف كامل: يقرأ الإعدادات كلها، ويكتب حسب صلاحياته (wfkv_* = قوايم إضافية متقسمة أجزاء ~0 ~1 ...)
-      allow read: if isStaff();
+      // 🔐 أقل صلاحية: المصروفات (wfkv_wf_e) وأجور الفنيين (wfkv_wf_techpay) لأصحاب صلاحيتها بس.
+      // الشرط الأول ما بيعتمدش على اسم المستند، فاستعلام المجموعة كلها (المزامنة) بيفضل شغال للمالك ولمن عنده الصلاحيتين.
+      // الباقي بيترفض له الاستعلام الكامل، والمزامنة (readSettingsSnap) بتقرا المستندات المسموحة بالاسم.
+      allow read: if isStaff() && (
+        (can(['wallets.view', 'wallets.add', 'wallets.edit', 'wallets.delete', 'reports.view']) && can(['techpay.manage', 'reports.view']))
+        || (!doc.matches('^wfkv_wf_(e|techpay)(~[0-9]+)?$'))
+        || (doc.matches('^wfkv_wf_e(~[0-9]+)?$') && can(['wallets.view', 'wallets.add', 'wallets.edit', 'wallets.delete', 'reports.view']))
+        || (doc.matches('^wfkv_wf_techpay(~[0-9]+)?$') && can(['techpay.manage', 'reports.view'])));
       allow write: if isStaff() && (
         doc == 'wf_meta'
         || (doc == 'global' && (can(['settings.edit', 'branding.manage'])

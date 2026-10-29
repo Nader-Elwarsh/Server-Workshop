@@ -1,6 +1,6 @@
 // اختبار حساب الفني على السيرفر (functions/tech-ledger.js) بقاعدة بيانات وهمية.
 const assert = require("assert");
-const { createTechLedger } = require("./functions/tech-ledger");
+const { createTechLedger } = (() => { try { return require("./functions/tech-ledger"); } catch (e) { return require("./tech-ledger"); } })(); // بيشتغل من جذر المشروع أو من جوه functions (Cloud Shell)
 
 let autoN = 0;
 function makeDb(seed) {
@@ -184,6 +184,32 @@ function makeDb(seed) {
   await fail(L.account("t2", { uid: "t1" }), "custody_only");
   const byBoss = await L.account("boss", { uid: "t1" });
   assert.strictEqual(byBoss.uid, "t1");
+  // 🔁 (2026-10-30) نفس الضغطة وصلت مرتين (نت ضعيف: السيرفر نفّذ والرد ما وصلش، فالفني أعاد المحاولة) = دفعة واحدة
+  db.data.requests.u9 = { techId: "t1", no: "U9", status: "جاري التنفيذ", labor: 500, deposit: 0, parts: [], total: 500, closed: false };
+  const op = "op_abc12345";
+  const d1 = await L.collectDeposit("t1", { orderId: "u9", amount: 120, opId: op });
+  const d2 = await L.collectDeposit("t1", { orderId: "u9", amount: 120, opId: op });
+  const u9tx = () => Object.values(db.data.walletTx).filter((x) => x.orderId === "u9" && x.source === "order-part");
+  assert.deepStrictEqual([d1.deposit, d2.deposit, d2.repeated, db.data.requests.u9.deposit, db.data.requests.u9.depositExtra, db.data.requests.u9.remain, u9tx().length], [120, 120, true, 120, 120, 380, 1], "التكرار ما زوّدش العربون ولا الحركة");
+  assert.strictEqual(u9tx()[0].opId, op);
+  await fail(L.collectDeposit("t1", { orderId: "u9", amount: 999, opId: op }), "op_conflict"); // نفس المعرّف بمبلغ تاني = تلاعب/خطأ
+  await fail(L.collectDeposit("t1", { orderId: "u9", amount: 10, opId: "bad id!" }), "bad_op");
+  await L.collectDeposit("t1", { orderId: "u9", amount: 30, opId: "op_second99" }); // ضغطة جديدة فعلًا = دفعة جديدة
+  assert.deepStrictEqual([db.data.requests.u9.deposit, u9tx().length], [150, 2]);
+  await L.collectDeposit("t1", { orderId: "u9", amount: 5 }); // واجهة قديمة من غير opId: نفس السلوك القديم
+  assert.deepStrictEqual([db.data.requests.u9.deposit, u9tx().length], [155, 3]);
+  // 🔁 نفس الشيء للقطع: «استخدم قطعة» وصلت مرتين بنفس opId = خصم واحد من المخزن وسطر واحد على الأمر
+  db.data.parts.P9 = { name: "ترموستات", qty: 5, use: 100, buy: 60 };
+  const sop = "op_part1234";
+  const s1 = await L.usePart("t1", { orderId: "u9", partId: "P9", qty: 2, opId: sop });
+  const s2 = await L.usePart("t1", { orderId: "u9", partId: "P9", qty: 2, opId: sop });
+  const p9lines = db.data.requests.u9.parts.filter((x) => x.partId === "P9");
+  assert.deepStrictEqual([db.data.parts.P9.qty, p9lines.length, p9lines[0].qty, s1.left, s2.left, s2.repeated, Object.values(db.data.partMoves).filter((m) => m.partId === "P9").length], [3, 1, 2, 3, 3, true, 1], "القطعة اتخصمت مرة واحدة");
+  await fail(L.usePart("t1", { orderId: "u9", partId: "P9", qty: 3, opId: sop }), "op_conflict");
+  await L.usePart("t1", { orderId: "u9", partId: "P9", qty: 1, opId: "op_part5678" });
+  assert.deepStrictEqual([db.data.parts.P9.qty, db.data.requests.u9.parts.find((x) => x.partId === "P9").qty], [2, 3]);
+  delete db.data.parts.P9;
+  delete db.data.requests.u9; Object.keys(db.data.walletTx).forEach((k) => { if (db.data.walletTx[k].orderId === "u9") delete db.data.walletTx[k]; });
   // التاريخ بتوقيت القاهرة
   assert.deepStrictEqual(L._cairoParts(new Date("2026-10-12T22:30:00.000Z")), { date: "2026-10-13", time: "01:30" });
   console.log("tech-ledger-tests: PASS (قفل من السيرفر + حركة التحصيل، الحمايات، اختيار محفظة، الرصيد والسجل والمصروفات، إصلاح التحصيل الناقص مرة واحدة)");

@@ -9,7 +9,7 @@ const sync = read("firebase-sync.js");
 assert.ok(!/where\("portal", "==", true\)\.onSnapshot/.test(sync), "مفيش مراقبة لكل عملاء البوابة");
 assert.ok(/collection\(p\[1\]\)\.where\("updatedAt", ">", since\)\.onSnapshot/.test(sync), "مراقبة اللي اتعدّل من البوابة بس");
 assert.ok(/reqSnap \? Promise\.resolve\(reqSnap\)/.test(sync), "تحويل طلبات البوابة بيستخدم نسخة المراقبة");
-assert.ok(/skipS \? Promise\.resolve\(null\) : db\.collection\("settings"\)\.get\(\)/.test(sync), "الإعدادات بتتقري بس لو اتغيّرت");
+assert.ok(/skipS \? Promise\.resolve\(null\) : readSettingsSnap\(\)/.test(sync) && /function readSettingsSnap\(\) \{\s*return db\.collection\("settings"\)\.get\(\)/.test(sync), "الإعدادات بتتقري بس لو اتغيّرت (ولو الاستعلام الكامل اترفض: بالاسم)");
 assert.ok(/meta\.set\(v, \{ merge: true \}\)/.test(sync) && /touchMeta\(false, true\)/.test(sync), "ختم نسخة الإعدادات");
 assert.ok(/FULL_EVERY = 48 \* 60 \* 60 \* 1000/.test(sync));
 const nc = read("notif-center.js");
