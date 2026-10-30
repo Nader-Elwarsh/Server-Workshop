@@ -7,6 +7,6 @@
     "check:storage": "node check-local-storage.js --runtime",
     "check": "node syntax-check.js && npm run check:storage && npm test",
     "browser-test": "bash browser-smoke.sh",
-    "check:browser-security": "node csp-browser-tests.js && node xss-browser-tests.js && node ui-keep-browser-tests.js"
+    "check:browser-security": "node csp-browser-tests.js && node xss-browser-tests.js && node ui-keep-browser-tests.js && node portal-offline-browser-tests.js"
   }
 }

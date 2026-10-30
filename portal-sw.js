@@ -1,6 +1,8 @@
 /* Service worker مستقل لبوابة العملاء (مش بيلمس تطبيق الموظفين) */
-const CACHE = "portal-v40-batch111";
-const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./ui-keep.js", "./wf-session.js", "./firebase-config.js", "./app-check.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./notif-center.js", "./wf-media.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
+const CACHE = "portal-v41-batch112";
+const SHELL = ["./portal.html", "./portal-ticker.js", "./pw-eye.js", "./ui-keep.js", "./wf-session.js", "./firebase-config.js", "./app-check.js", "./portal-manifest.json", "./icon-192-v13.png", "./icon-512-v13.png", "./app-icon.svg", "./wf-shell.css", "./branding.js", "./white-label.js", "./white-label-config.js", "./theme-mini.js", "./workshop-logo.svg", "./workshop-idb.js", "./image-store.js", "./notif-center.js", "./wf-media.js", "./vendor/firebase-app-compat.js", "./vendor/firebase-auth-compat.js", "./vendor/firebase-firestore-compat.js"];
+// الصفحة نفسها بتتعامل لوحدها (portal.html) والمانيفست/الأيقونات ليهم كاش هوية النظام
+const SHELL_REL = SHELL.map(x => x.replace(/^\.\//, "")).filter(k => k !== "portal.html" && !/^(portal-manifest\.json|icon-.*\.png)$/.test(k));
 self.addEventListener("install", e => {
   e.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -43,10 +45,11 @@ self.addEventListener("fetch", e => {
     return;
   }
   // صفحة البوابة: الشبكة أولًا ثم الكاش
-  const helper = u.origin === location.origin && /\/(portal-ticker\.js|pw-eye\.js|ui-keep\.js|wf-session\.js|wf-shell\.css|app-icon\.svg|workshop-idb\.js|image-store\.js|wf-media\.js)$/.exec(u.pathname);
-  if (helper) { // ملفات مساعدة: الشبكة أولًا ثم الكاش (عشان التحديثات توصل)
-    const key = "./" + helper[1];
-    e.respondWith(netFirst(r, key, 4000));
+  // كل ملفات الهيكل (SHELL) — مش قايمة صغيرة: من غير كده مكتبات Firebase وإعدادها كانت بتتحمّل من الشبكة بس، فالبوابة ما كانتش بتفتح أوفلاين
+  // (الكاش كان بيتملي في التثبيت وما حدّش بيقراه). الصفحة نفسها والمانيفست والأيقونات ليهم معالجة خاصة فوق/تحت.
+  const rel = SHELL_REL.find(k => u.origin === location.origin && u.pathname.endsWith("/" + k));
+  if (rel) { // ملفات مساعدة: الشبكة أولًا ثم الكاش (عشان التحديثات توصل)
+    e.respondWith(netFirst(r, "./" + rel, 4000));
     return;
   }
   if (u.origin === location.origin && u.pathname.endsWith("/portal.html")) {

@@ -20,14 +20,21 @@ function seed() {
   const r = [{ id: "r1", no: "W26-10-30-1", customerId: "c1", deviceId: "d1", status: "جديد", fault: P("fault"), customerNote: P("cnote"), work: P("work"), executionPlace: "عند العميل", visit: today, tag: "", createdAt: now,
     parts: [{ external: true, name: P("extpart"), qty: 1, sell: 10, cost: 5 }, { partId: "p1", qty: 1, sell: 10, cost: 5 }], partsTotal: 20, partsCost: 10, labor: 100, total: 120, deposit: 20, remain: 100, depositWallet: "كاش", source: "portal",
     statusHistory: [{ from: "", to: "جديد", at: now, note: P("histnote") }], techName: P("tech") }];
+  const old = new Date(Date.now() - 60 * 86400000).toISOString(), wu = new Date(Date.now() + 20 * 86400000).toISOString();
+  r.push({ id: "r2", no: "W26-08-30-1", customerId: "c2", deviceId: "d1", status: "مكتمل", fault: P("fault2"), customerNote: P("cnote2"), work: P("work2"), executionPlace: "الورشة", visit: old.slice(0, 10), createdAt: old, closed: true, paid: true, paidAt: old, closedAt: old,
+    partsTotal: 0, labor: 50, total: 50, deposit: 0, remain: 0, warrantyDays: 50, warrantyUntil: wu, techName: P("tech2"), statusHistory: [{ from: "جاري التنفيذ", to: "مكتمل", at: old, note: P("histnote2") }] });
   const p = [{ id: "p1", name: P("pname"), code: "C1", category: P("pcat"), qty: 2, buy: 5, use: 10, createdAt: now }];
   const wtx = [{ id: "w1", refKey: "order-deposit-r1", wallet: "كاش", type: "in", amount: 20, category: "تحصيل عميل", reason: P("reason"), note: P("wnote"), date: today, time: "10:00", source: "order-link", createdAt: now }];
   const tr = [{ id: "t1", type: "in", amount: 5, reason: P("treason"), note: P("tnote"), date: today, time: "09:00", createdAt: now }];
   const tasks = [{ id: "k1", title: P("task"), note: P("tasknote"), customerId: "c1", due: today, createdAt: now }];
   const fc = [{ id: "f1", code: "E1", title: P("fctitle"), brand: P("fcbrand"), desc: P("fcdesc"), createdAt: now }];
-  return { wf_c: c, wf_d: d, wf_r: r, wf_p: p, wf_wallet_tx: wtx, wf_treasury: tr, wf_tasks: tasks, wf_fault_codes: fc,
-    wf_s: { wallets: ["كاش"], statuses: ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"], executionPlaces: ["عند العميل", "الورشة"] },
-    wf_pending_calls: [{ id: "pc1", name: P("pcname"), phone: "01005781925", note: P("pcnote"), at: now }],
+  // ⚠️ مفتاح الخزنة الحقيقي wf_tr (كان الفحص بيزرع wf_treasury فصفحة الخزنة ما كانتش بتعرض أي بيانات خبيثة)، وحركات القطع wf_m
+  const pm = [{ id: "m1", partId: "p1", type: P("mtype"), qty: 1, total: 10, wallet: P("mwallet"), requestId: "r1", saleId: "s1", buyer: P("mbuyer"), invoice: P("minv"), note: P("mnote"), at: now, createdAt: now }];
+  const wtx2 = [{ id: "w2", refKey: "x2", wallet: P("wname"), type: "out", amount: 7, category: P("wcat"), reason: P("reason2"), note: P("wnote2"), date: today, time: "11:00", source: "manual", createdAt: now }];
+  const c2 = [{ id: "c2", name: P("cname2"), phone: "01005781925", mainAddress: { center: P("center2") }, createdAt: now }];
+  return { wf_c: c.concat(c2), wf_d: d, wf_r: r, wf_p: p, wf_m: pm, wf_wallet_tx: wtx.concat(wtx2), wf_tr: tr, wf_tasks: tasks, wf_fault_codes: fc,
+    wf_s: { wallets: ["كاش", P("wname")], walletCategories: [P("wcat")], statuses: ["جديد", "جاري التنفيذ", "مكتمل", "ملغي"], executionPlaces: ["عند العميل", "الورشة"] },
+    wf_pending_calls: [{ id: "pc1", title: P("pctitle"), text: P("pctext"), url: P("pcurl"), fileName: P("pcfile"), phone: "01005781925", at: now }],
     wf_followup_log: [{ id: "fl1", orderId: "r1", note: P("flnote"), at: now }] };
 }
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png" };
@@ -39,7 +46,7 @@ const server = http.createServer((req, res) => {
   fs.createReadStream(f).pipe(res);
 });
 const PAGES = (process.env.XSS_PAGES ? process.env.XSS_PAGES.split(",") : null) || ["index.html", "customers.html", "customer.html?id=c1", "devices.html", "device.html?id=d1", "requests.html", "request.html?id=r1", "request.html?edit=r1", "route.html", "followup.html",
-  "dispatch.html", "warranty.html", "reports.html", "wallets.html", "wallet.html?w=%D9%83%D8%A7%D8%B4", "treasury.html", "tasks.html", "inventory.html", "part.html?id=p1", "part-moves.html", "pending-calls.html",
+  "dispatch.html", "warranty.html", "reports.html", "wallets.html", "wallet.html?type=wallet&name=%D9%83%D8%A7%D8%B4", () => "wallet.html?type=wallet&name=" + encodeURIComponent(P("wname")), "wallets.html?edit=1", "treasury.html", "tasks.html", "inventory.html", "part.html?id=p1", "part-moves.html?id=p1", "pending-calls.html",
   "merge-customers.html", "faultcodes.html", "faultcode.html?id=f1", "custody.html", "customers.html?edit=c1", "devices.html?edit=d1"];
 (async () => {
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -47,7 +54,7 @@ const PAGES = (process.env.XSS_PAGES ? process.env.XSS_PAGES.split(",") : null) 
   const browser = await pw.chromium.launch();
   const bad = [], rendered = [];
   for (const [mname, mfn] of [["tag", TAG], ["dquote", QUOTE], ["squote", SQUOTE]]) { MODE = mfn; const S = seed();
-  for (const pg of PAGES) {
+  for (const pg0 of PAGES) { const pg = typeof pg0 === "function" ? pg0() : pg0;
     const ctx = await browser.newContext({ serviceWorkers: "block", viewport: { width: 390, height: 800 } });
     await ctx.addInitScript(({ S, UID }) => {
       Object.defineProperty(Navigator.prototype, "onLine", { get: () => false }); // أوفلاين: افتح من البيانات المحلية بجلسة الموظف المحفوظة
