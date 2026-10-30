@@ -291,11 +291,22 @@ function createTechLedger(deps) {
     if (!orderId || orderId.indexOf("/") > -1 || !partId || partId.indexOf("/") > -1) throw new AdminError("invalid-argument", "bad_args");
     const q = dir === "use" ? Math.floor(+data.qty) : 0;
     if (dir === "use" && (!(q >= 1) || q > 1000)) throw new AdminError("invalid-argument", "bad_qty");
-    const ref = db.doc(`requests/${orderId}`), pref = db.doc(`parts/${partId}`), mref = db.collection("partMoves").doc();
+    // 🔁 نفس فكرة العربون: opId ثابت للضغطة = إعادة المحاولة بعد نت ضعيف ماتخصمش القطعة مرتين
+    const opId = data && data.opId != null ? String(data.opId) : "";
+    if (opId && !/^[A-Za-z0-9_-]{8,64}$/.test(opId)) throw new AdminError("invalid-argument", "bad_op");
+    const ref = db.doc(`requests/${orderId}`), pref = db.doc(`parts/${partId}`), mref = opId ? db.doc(`partMoves/tpm-${orderId}-${opId}`) : db.collection("partMoves").doc();
     const at = now().toISOString();
     const out = await db.runTransaction(async (tx) => {
       const [snap, psnap] = [await tx.get(ref), await tx.get(pref)];
       if (!snap.exists) throw new AdminError("not-found", "no_order");
+      if (opId) {
+        const prev = await tx.get(mref);
+        if (prev.exists) {
+          const m = prev.data() || {}, o = snap.data() || {}, pp = psnap.exists ? psnap.data() || {} : {};
+          if (m.partId !== partId || m.requestId !== orderId || m.byTech !== uid || (dir === "use" && num(m.qty) !== q)) throw new AdminError("failed-precondition", "op_conflict");
+          return { parts: o.parts || [], partsTotal: o.partsTotal, partsCost: o.partsCost, total: o.total, remain: o.remain, moved: num(m.qty), name: String(pp.name || ""), left: num(pp.qty), repeated: true };
+        }
+      }
       const r = Object.assign({ id: orderId }, snap.data());
       if (r.techId !== uid) throw new AdminError("permission-denied", "not_your_order");
       if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
@@ -348,10 +359,23 @@ function createTechLedger(deps) {
     if (!allowed.has(wallet)) throw new AdminError("invalid-argument", "bad_wallet");
     const note = String((data && data.note) || "").slice(0, 200);
     const when = cairoParts(now());
-    const ref = db.doc(`requests/${orderId}`), txRef = db.collection("walletTx").doc();
+    /* 🔁 منع التكرار: الواجهة بتبعت opId ثابت للضغطة الواحدة (ونفسه في أي إعادة محاولة بعد نت ضعيف).
+       الحركة بتتكتب بمعرّف مشتق منه، فلو الطلب اتنفذ ووصل تاني بيرجع نفس النتيجة من غير ما يزوّد العربون مرتين.
+       من غير opId (نسخة واجهة قديمة) = نفس السلوك القديم. */
+    const opId = data && data.opId != null ? String(data.opId) : "";
+    if (opId && !/^[A-Za-z0-9_-]{8,64}$/.test(opId)) throw new AdminError("invalid-argument", "bad_op");
+    const ref = db.doc(`requests/${orderId}`), txRef = opId ? db.doc(`walletTx/tdep-${orderId}-${opId}`) : db.collection("walletTx").doc();
     const out = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new AdminError("not-found", "no_order");
+      if (opId) {
+        const prev = await tx.get(txRef);
+        if (prev.exists) {
+          const p = prev.data() || {}, o = snap.data() || {};
+          if (p.orderId !== orderId || p.byTech !== uid || Math.abs(num(p.amount) - amount) > 0.001 || String(p.wallet || "") !== wallet) throw new AdminError("failed-precondition", "op_conflict");
+          return { deposit: r2(o.deposit), depositExtra: r2(o.depositExtra), remain: r2(o.remain), total: r2(o.total), wallet, amount, repeated: true };
+        }
+      }
       const r = Object.assign({ id: orderId }, snap.data());
       if (r.techId !== uid) throw new AdminError("permission-denied", "not_your_order");
       if (r.closed === true || r.paid === true) throw new AdminError("failed-precondition", "already_closed");
@@ -363,11 +387,11 @@ function createTechLedger(deps) {
       const remain = Math.max(0, r2(num(r.total) - deposit + num(r.depositRefunded)));
       tx.update(ref, Object.assign({}, work, { deposit, depositExtra: extra, remain, _by: "srv", _ts: stamp() }));
       tx.set(txRef, { id: txRef.id, refKey: null, orderId, manualOverride: true, deleted: false, type: "in", amount, wallet, category: "تحصيل عميل",
-        reason: `💵 عربون/دفعة أمر الشغل ${r.no || ""} — استلمها ${staff.name || "الفني"}`, note, date: when.date, time: when.time, source: "order-part", byTech: uid, createdAt: ts(now()), _ts: stamp() });
+        reason: `💵 عربون/دفعة أمر الشغل ${r.no || ""} — استلمها ${staff.name || "الفني"}`, note, date: when.date, time: when.time, source: "order-part", byTech: uid, createdAt: ts(now()), _ts: stamp(), ...(opId ? { opId } : {}) });
       bumpMeta(tx);
       return { deposit, depositExtra: extra, remain, total: r2(r.total), wallet, amount };
     });
-    log("tech deposit", uid, orderId, amount, wallet);
+    log(out.repeated ? "tech deposit (repeat ignored)" : "tech deposit", uid, orderId, amount, wallet);
     return out;
   }
   return { closeOrder, account, partsCatalog, collectDeposit, usePart: (uid, d) => stockMove(uid, d, "use"), returnPart: (uid, d) => stockMove(uid, d, "return"), _cairoParts: cairoParts };
