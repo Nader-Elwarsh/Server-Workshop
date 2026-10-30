@@ -137,7 +137,10 @@ service cloud.firestore {
     }
 
     match /portalLinks/{uid} {
-      allow read, write: if isStaff() && can(['portal.manage', 'customers.merge', 'customers.edit']);
+      allow read: if isStaff() && can(['portal.manage', 'customers.merge', 'customers.edit']);
+      // الكتابة (إنشاء رابط/تفعيل/تعطيل) لمن يدير البوابة أو يدمج العملاء بس — «تعديل عميل» لوحدها ما تكفيش:
+      // وإلا موظف بيعدّل بيانات العملاء يقدر يربط حسابه بأي عميل أو يفعّل رابط معلّق للتحقق (pendingVerify).
+      allow write: if isStaff() && can(['portal.manage', 'customers.merge']);
       allow read: if signedIn() && request.auth.uid == uid;
       // العميل يستطيع فقط إنهاء تغيير كلمة المرور الإجباري، ولا يغيّر هوية الربط أو تعطيله.
       allow update: if signedIn() && request.auth.uid == uid
