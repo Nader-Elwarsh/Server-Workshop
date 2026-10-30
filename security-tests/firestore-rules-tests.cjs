@@ -46,7 +46,7 @@ async function main() {
       const seed = [
         ['staff/staff-1', { name: 'Authorized staff' }],
         ['staff/staff-disabled', { name: 'Suspended staff', role: 'tech', disabled: true }],
-        ['staff/staff-tech', { name: 'Technician', role: 'tech' }],
+        ['staff/staff-tech', { name: 'Technician', role: 'tech', acl: 1 }], // مُدار (acl:1): مستند من غير acl = مالك قديم بحسب القواعد
         ['accessConfig/roles', { version: 1, order: ['owner', 'tech'], roles: { owner: { name: 'المالك' }, tech: { name: 'فني', perms: [] } } }],
         ['staffAudit/a1', { at: '2026-10-11T00:00:00Z', by: 'staff-1', action: 'save_roles' }],
         ['customers/customer-alice', { name: 'Alice', phone: '0100', portal: true }],
@@ -164,8 +164,11 @@ async function main() {
       ref, name: 'زائر', phone: '01012345678', center: 'مطاي', village: 'أبو عزيز', street: 'شارع الجامعة',
       deviceType: 'غسالات', fault: 'الغسالة مش بتفتح', handled: false, guest: true, createdAt: require('firebase/firestore').serverTimestamp()
     });
-    await assertSucceeds(setDoc(doc(anonymous, 'guestRequests/G-ABC234'), GUEST('G-ABC234')));
-    await assertSucceeds(setDoc(doc(anonymous, 'guestRequests/G-ABC235'), { ...GUEST('G-ABC235'), village: '' }));
+    // الإنشاء المباشر من المتصفح مقفول خالص (allow create: if false): الطلب بيعدّي على دالة السيرفر portalGuestRequest (محدودة العدد لكل IP/رقم)
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC234'), GUEST('G-ABC234')));
+    await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC235'), { ...GUEST('G-ABC235'), village: '' }));
+    await assertFails(setDoc(doc(alice, 'guestRequests/G-ABC240'), GUEST('G-ABC240')));
+    await env.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), 'guestRequests/G-ABC234'), { ...GUEST('G-ABC234'), createdAt: new Date() }); }); // اللي بتكتبه دالة السيرفر
     await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC234'), GUEST('G-ABC234'))); // نفس الرقم تاني = تعديل ← مرفوض
     await assertFails(setDoc(doc(anonymous, 'guestRequests/g1'), GUEST('g1'))); // صيغة الرقم غلط
     await assertFails(setDoc(doc(anonymous, 'guestRequests/G-ABC236'), GUEST('G-ZZZ999'))); // ref لا يطابق المعرّف
@@ -183,7 +186,7 @@ async function main() {
     await assertSucceeds(getDoc(doc(staff, 'guestRequests/G-ABC234')));
     await assertSucceeds(updateDoc(doc(staff, 'guestRequests/G-ABC234'), { handled: true }));
 
-    // ---- phoneIndex: مرحلة 1 (القواعد الحالية) — قيود الإنشاء، والقراءة لسه مفتوحة ----
+    // ---- phoneIndex: قيود الإنشاء + القراءة لصاحب الرقم والموظفين بس (القواعد الحالية = المرحلة 2) ----
     const signedUp = env.authenticatedContext('phone-user', { email: 'New@Example.com' }).firestore();
     const otherUser = env.authenticatedContext('phone-other', { email: 'other@example.com' }).firestore();
     const noEmailUser = env.authenticatedContext('phone-noemail').firestore();
@@ -197,7 +200,9 @@ async function main() {
     await assertFails(setDoc(doc(anonymous, 'phoneIndex/01212345678'), { email: 'x@example.com', uid: 'x' }));
     await assertFails(setDoc(doc(otherUser, 'phoneIndex/01012345678'), { email: 'other@example.com', uid: 'phone-other' })); // حجز رقم موجود = تعديل ← مرفوض
     await assertFails(updateDoc(doc(signedUp, 'phoneIndex/01012345678'), { email: 'z@example.com' }));
-    await assertSucceeds(getDoc(doc(anonymous, 'phoneIndex/01012345678'))); // مؤقتًا حتى نشر الدوال (المرحلة 2)
+    await assertFails(getDoc(doc(anonymous, 'phoneIndex/01012345678'))); // المرحلة 2 (الحالية): القراءة المباشرة مقفولة على الزائر
+    await assertFails(getDoc(doc(otherUser, 'phoneIndex/01012345678'))); // ولا لمستخدم تاني
+    await assertSucceeds(getDoc(doc(signedUp, 'phoneIndex/01012345678'))); // صاحب الرقم يقرا بتاعه
     await assertFails(getDocs(collection(anonymous, 'phoneIndex')));
     await assertSucceeds(updateDoc(doc(staff, 'phoneIndex/01012345678'), { email: 'staff-fixed@example.com' }));
     await assertSucceeds(deleteDoc(doc(staff, 'phoneIndex/01012345678')));
@@ -209,7 +214,7 @@ async function main() {
         ['staff/tech-a', { name: 'Tech A', role: 'tech', acl: 1, sc: 'a' }],
         ['staff/tech-b', { name: 'Tech B', role: 'tech', acl: 1, sc: 'a' }],
         ['staff/tech-claim', { name: 'Tech claim only', role: 'tech', acl: 1 }],
-        ['staff/promoted', { name: 'Was tech', role: 'manager', acl: 1, sc: 'w' }],
+        ['staff/promoted', { name: 'Was tech', role: 'manager', acl: 1, sc: 'w', p: { 'customers.view': 1, 'requests.view': 1 } }],
         ['requests/o1', { techId: 'tech-a', closed: false, customerId: 'customer-alice', deviceId: 'device-a', no: 'A1', total: 100, deposit: 10, work: '' }],
         ['requests/o2', { techId: 'tech-b', closed: false, customerId: 'customer-bob', no: 'B1', total: 100 }],
         ['requests/o3', { techId: 'tech-a', closed: true, customerId: 'customer-alice', no: 'A0', total: 100 }],
@@ -382,6 +387,57 @@ async function main() {
       await env2.cleanup();
     }
 
+    // ---- 🔐 أقل صلاحية في settings: المصروفات وأجور الفنيين لأصحاب صلاحيتها بس (2026-10-30) ----
+    await env.withSecurityRulesDisabled(async context => {
+      const db = context.firestore();
+      for (const [pathName, value] of [
+        ['staff/clerk', { name: 'Clerk', role: 'clerk', acl: 1, sc: 'w', p: { 'requests.view': 1 } }],
+        ['staff/accountant', { name: 'Accountant', role: 'acc', acl: 1, sc: 'w', p: { 'wallets.view': 1, 'reports.view': 1 } }],
+        ['settings/wfkv_wf_e~0', { v: '[]' }],
+        ['settings/wfkv_wf_techpay', { n: 1 }],
+        ['settings/wfkv_wf_techpay~0', { v: '[]' }],
+        ['settings/wfkv_wf_followup_log', { n: 0 }]
+      ]) await setDoc(doc(db, pathName), value);
+    });
+    const clerk = env.authenticatedContext('clerk').firestore();
+    const accountant = env.authenticatedContext('accountant').firestore();
+    await assertFails(getDocs(collection(clerk, 'settings')));                 // الاستعلام الكامل مرفوض → المزامنة بتقرا بالاسم
+    await assertSucceeds(getDoc(doc(clerk, 'settings/global')));
+    await assertSucceeds(getDoc(doc(clerk, 'settings/wfkv_wf_followup_log')));
+    await assertFails(getDoc(doc(clerk, 'settings/wfkv_wf_e')));
+    await assertFails(getDoc(doc(clerk, 'settings/wfkv_wf_e~0')));
+    await assertFails(getDoc(doc(clerk, 'settings/wfkv_wf_techpay~0')));
+    await assertSucceeds(getDocs(collection(accountant, 'settings')));         // reports.view بيغطي الاتنين
+    await assertSucceeds(getDoc(doc(accountant, 'settings/wfkv_wf_e~0')));
+    await assertSucceeds(getDocs(collection(ownerClaim, 'settings')));         // المالك زي ما هو
+    await assertSucceeds(getDoc(doc(promoted, 'settings/global')));
+    await assertFails(getDoc(doc(promoted, 'settings/wfkv_wf_e')));            // موظف كامل النطاق من غير صلاحيات
+
+    console.log('settings-least-privilege (emulator): PASS');
+
+    // ---- 🔐 ربط بوابة «في انتظار التحقق» (حساب سجّل بنفسه برقم عميل موجود) ما يدّيش أي وصول ----
+    await env.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'portalLinks/squatter'), { customerId: 'customer-alice', phone: '0100', disabled: true, pendingVerify: true, mustChange: false });
+      await setDoc(doc(context.firestore(), 'customers/squatter'), { name: 'Squatter', phone: '0100', portal: true });
+    });
+    const squatter = env.authenticatedContext('squatter').firestore();
+    await assertFails(getDoc(doc(squatter, 'customers/customer-alice')));
+    await assertFails(getDoc(doc(squatter, 'devices/device-a')));
+    await assertFails(getDoc(doc(squatter, 'portalOrders/order-a')));
+    await assertFails(getDoc(doc(squatter, 'customers/squatter')));          // ولا سجله القديم (الربط موجود ومعطّل)
+    await assertFails(updateDoc(doc(squatter, 'portalLinks/squatter'), { disabled: false }));
+    await assertFails(updateDoc(doc(squatter, 'portalLinks/squatter'), { pendingVerify: false }));
+    // موظف «تعديل عميل» لوحده ما يقدرش يكتب في portalLinks (لا يفعّل رابط معلّق ولا يربط حساب بعميل)، ومدير البوابة يقدر
+    await env.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'staff/cust-editor'), { name: 'Cust editor', role: 'ce', acl: 1, sc: 'w', p: { 'customers.edit': 1, 'customers.view': 1 } });
+      await setDoc(doc(context.firestore(), 'staff/portal-mgr'), { name: 'Portal mgr', role: 'pm', acl: 1, sc: 'w', p: { 'portal.manage': 1 } });
+    });
+    const custEditor = env.authenticatedContext('cust-editor').firestore(), portalMgr = env.authenticatedContext('portal-mgr').firestore();
+    await assertSucceeds(getDoc(doc(custEditor, 'portalLinks/squatter')));
+    await assertFails(updateDoc(doc(custEditor, 'portalLinks/squatter'), { disabled: false }));
+    await assertFails(setDoc(doc(custEditor, 'portalLinks/cust-editor'), { customerId: 'customer-alice', phone: '0100', disabled: false, mustChange: false }));
+    await assertSucceeds(updateDoc(doc(portalMgr, 'portalLinks/squatter'), { disabled: false }));
+    console.log('pending portal link (emulator): PASS');
     console.log('firestore-rules-emulator-tests: PASS (technician assigned-only scope + owner isolation, read-only orders, complaint ownership, device references, staff membership, URL-id tampering, phoneIndex create limits + phase-2 read lock + suspended staff + accessConfig/staffAudit lock)');
   } finally {
     await env.cleanup();
